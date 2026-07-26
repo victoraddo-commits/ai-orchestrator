@@ -1,0 +1,5 @@
+{
+  "auto_restart_allowed": false,
+  "critical_requires_approval": true,
+  "maintenance_window": "02:00-04:00"
+}

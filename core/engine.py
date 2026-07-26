@@ -1,4 +1,4 @@
-from core.scanner import scan
+from core.state_manager import refresh_state
 from core.health import analyze
 from core.decision import decide
 from core.incidents import create_incident
@@ -10,7 +10,7 @@ def run():
     info("AI orchestrator cycle started")
 
 
-    scan_result = scan()
+    scan_result = refresh_state()
 
 
     findings = analyze()
@@ -36,10 +36,15 @@ def run():
 
 
     result = {
+
         "scan": scan_result,
+
         "findings": findings,
+
         "decisions": decisions,
+
         "incidents": incidents
+
     }
 
 
@@ -49,7 +54,6 @@ def run():
 
 
     return result
-
 
 
 if __name__ == "__main__":

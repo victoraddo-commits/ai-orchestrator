@@ -8,5 +8,4 @@ logs/*.log
 memory/system_state.json
 memory/incidents.json
 memory/decisions.json
-
 memory/last_scan.json

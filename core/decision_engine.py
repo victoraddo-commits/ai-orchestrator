@@ -1,4 +1,4 @@
-from core.approval import create_request
+from core.approval_manager import get_or_create_request
 from core.memory import load
 
 
@@ -22,7 +22,7 @@ def evaluate_incidents():
             and incident.get("occurrences", 0) >= 3
         ):
 
-            request = create_request(
+            request = get_or_create_request(
                 "restart_container",
                 incident["service"],
                 f"Repeated critical incident: {incident['issue']}"

@@ -2,7 +2,7 @@ from core.memory import load
 from core.approval import create_request
 
 
-def existing_request(action, service):
+def existing_request(action, service, incident_id):
 
     requests = load(
         "approval_queue.json"
@@ -17,6 +17,7 @@ def existing_request(action, service):
         if (
             req.get("action") == action
             and req.get("service") == service
+            and req.get("incident") == incident_id
             and req.get("status") in (
                 "pending",
                 "approved",
@@ -30,11 +31,17 @@ def existing_request(action, service):
 
 
 
-def get_or_create_request(action, service, reason):
+def get_or_create_request(
+    action,
+    service,
+    reason,
+    incident_id
+):
 
     existing = existing_request(
         action,
-        service
+        service,
+        incident_id
     )
 
 
@@ -43,8 +50,13 @@ def get_or_create_request(action, service, reason):
         return existing
 
 
-    return create_request(
+    request = create_request(
         action,
         service,
         reason
     )
+
+
+    request["incident"] = incident_id
+
+    return request

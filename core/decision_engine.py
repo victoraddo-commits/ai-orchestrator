@@ -23,10 +23,11 @@ def evaluate_incidents():
         ):
 
             request = get_or_create_request(
-                "restart_container",
-                incident["service"],
-                f"Repeated critical incident: {incident['issue']}"
-            )
+    "restart_container",
+    incident["service"],
+    f"Repeated critical incident: {incident['issue']}",
+    incident["id"]
+)
 
             decisions.append({
                 "incident": incident["id"],

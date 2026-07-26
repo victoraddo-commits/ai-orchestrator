@@ -130,3 +130,15 @@ if __name__ == "__main__":
             "pulse"
         )
     )
+def execute_action(action, service):
+
+    if action == "restart_container":
+
+        return restart_container(service)
+
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "service": service,
+        "action": action,
+        "status": "blocked"
+    }

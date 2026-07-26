@@ -3,53 +3,27 @@ from pathlib import Path
 from datetime import datetime
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-MEMORY_DIR = BASE_DIR / "memory"
+MEMORY_DIR = Path("memory")
 
-
-DEFAULT_FILES = {
-    "system_state.json": {
-        "hostname": "",
-        "services": [],
-        "last_scan": ""
-    },
-    "decisions.json": [],
-    "incidents.json": []
-}
-
-
-def ensure_memory():
-
-    MEMORY_DIR.mkdir(exist_ok=True)
-
-    for filename, default in DEFAULT_FILES.items():
-
-        path = MEMORY_DIR / filename
-
-        if not path.exists():
-
-            with open(path, "w") as file:
-                json.dump(
-                    default,
-                    file,
-                    indent=2
-                )
+MEMORY_DIR.mkdir(exist_ok=True)
 
 
 def load(name):
 
-    ensure_memory()
-
     path = MEMORY_DIR / name
 
-    with open(path, "r") as file:
-        return json.load(file)
+    if not path.exists():
+        return {}
 
+    try:
+        with open(path, "r") as file:
+            return json.load(file)
+
+    except json.JSONDecodeError:
+        return {}
 
 
 def save(name, data):
-
-    ensure_memory()
 
     path = MEMORY_DIR / name
 
@@ -59,7 +33,6 @@ def save(name, data):
             file,
             indent=2
         )
-
 
 
 def update_system_scan():
@@ -76,9 +49,6 @@ def update_system_scan():
     return state
 
 
-
 if __name__ == "__main__":
 
     print(update_system_scan())
-
-

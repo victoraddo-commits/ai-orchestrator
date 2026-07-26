@@ -1,0 +1,26 @@
+providers:
+
+  claude:
+    enabled: true
+    command: claude
+    role:
+      - architecture
+      - debugging
+      - planning
+      - system_design
+
+  codex:
+    enabled: true
+    command: codex
+    role:
+      - coding
+      - refactoring
+      - testing
+
+tools:
+
+  docker:
+    enabled: true
+
+  proxmox:
+    enabled: true

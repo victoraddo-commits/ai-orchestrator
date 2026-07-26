@@ -41,3 +41,11 @@ def move_to_closed(incident_id):
         incident_id,
         "closed"
     )
+
+
+def move_to_failed(incident_id):
+
+    return transition(
+        incident_id,
+        "failed"
+    )

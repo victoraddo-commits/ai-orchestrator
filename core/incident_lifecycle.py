@@ -1,43 +1,54 @@
 from datetime import datetime
-
 from core.memory import load, save
 
 
 def get_incidents():
 
-    incidents = load(
+    return load(
         "incidents.json"
+    ) or []
+
+
+
+def save_incidents(data):
+
+    save(
+        "incidents.json",
+        data
     )
 
-    if not incidents:
-        return []
-
-    return incidents
 
 
-
-def update_incident(incident_id, status):
+def update_status(
+    incident_id,
+    status
+):
 
     incidents = get_incidents()
 
+
+    updated = None
+
+
     for incident in incidents:
 
-        if incident.get("id") == incident_id:
+        if str(incident.get("id")) == str(incident_id):
 
             incident["status"] = status
 
             incident["updated"] = (
-                datetime.now().isoformat()
+                datetime.now()
+                .isoformat()
             )
 
+            updated = incident
 
-    save(
-        "incidents.json",
+
+    save_incidents(
         incidents
     )
 
-
-    return True
+    return updated
 
 
 
@@ -47,27 +58,36 @@ def get_active_incidents():
 
     return [
         i for i in incidents
-        if i.get("status", "open")
+        if i.get("status")
         not in (
-            "resolved",
-            "closed"
+            "closed",
+            "resolved"
         )
     ]
 
 
 
-def mark_approved(incident_id):
+def mark_analyzed(incident_id):
 
-    return update_incident(
+    return update_status(
         incident_id,
-        "approved"
+        "analyzed"
+    )
+
+
+
+def mark_approval_pending(incident_id):
+
+    return update_status(
+        incident_id,
+        "approval_pending"
     )
 
 
 
 def mark_executing(incident_id):
 
-    return update_incident(
+    return update_status(
         incident_id,
         "executing"
     )
@@ -76,7 +96,7 @@ def mark_executing(incident_id):
 
 def mark_resolved(incident_id):
 
-    return update_incident(
+    return update_status(
         incident_id,
         "resolved"
     )
@@ -85,7 +105,7 @@ def mark_resolved(incident_id):
 
 def mark_closed(incident_id):
 
-    return update_incident(
+    return update_status(
         incident_id,
         "closed"
     )

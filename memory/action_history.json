@@ -1,0 +1,14 @@
+[
+  {
+    "timestamp": "2026-07-26T10:24:02.221102",
+    "action": "restart_container",
+    "service": "pulse",
+    "result": "dry-run-success"
+  },
+  {
+    "timestamp": "2026-07-26T10:28:22.576670",
+    "action": "restart_container",
+    "service": "pulse",
+    "result": "approval-required"
+  }
+]

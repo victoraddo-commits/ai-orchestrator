@@ -1,9 +1,9 @@
 from core.action_policy import is_allowed
 from core.action_log import record
+from core.config import AUTONOMOUS_MODE
 
 
 def execute(action, service):
-
 
     if not is_allowed(action, service):
 
@@ -14,8 +14,16 @@ def execute(action, service):
         )
 
 
-    result = "dry-run-success"
+    if not AUTONOMOUS_MODE:
 
+        return record(
+            action,
+            service,
+            "approval-required"
+        )
+
+
+    result = "executed"
 
     return record(
         action,

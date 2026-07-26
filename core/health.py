@@ -1,5 +1,6 @@
 from core.memory import load
 from core.docker_analyzer import analyze_docker
+from core.service_monitor import check_services
 
 
 EXPECTED_SERVICES = (
@@ -44,18 +45,26 @@ def analyze():
         if service not in containers:
 
             findings.append({
+
                 "severity": "warning",
+
                 "service": service,
+
                 "issue": f"Missing container: {service}"
+
             })
 
 
     if len(containers) == 0:
 
         findings.append({
+
             "severity": "critical",
+
             "service": "docker",
+
             "issue": "No containers detected"
+
         })
 
 
@@ -65,10 +74,13 @@ def analyze():
         docker_findings
     )
 
-from core.service_monitor import check_services
-findings.extend(
-    check_services()
-)
+
+    service_findings = check_services()
+
+    findings.extend(
+        service_findings
+    )
+
 
     return findings
 

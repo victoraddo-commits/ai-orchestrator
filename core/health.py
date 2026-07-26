@@ -1,5 +1,5 @@
 from core.memory import load
-from datetime import datetime
+from core.docker_analyzer import analyze_docker
 
 
 EXPECTED_SERVICES = (
@@ -12,22 +12,31 @@ EXPECTED_SERVICES = (
 
 def analyze():
 
-    state = load("system_state.json")
-
     findings = []
 
-    docker = state.get("docker", {})
+    state = load("system_state.json")
+
+    docker = state.get(
+        "docker",
+        {}
+    )
+
 
     if not docker.get("available"):
+
         findings.append({
             "severity": "critical",
+            "service": "docker",
             "issue": "Docker unavailable"
         })
 
         return findings
 
 
-    containers = docker.get("containers", [])
+    containers = docker.get(
+        "containers",
+        []
+    )
 
 
     for service in EXPECTED_SERVICES:
@@ -36,6 +45,7 @@ def analyze():
 
             findings.append({
                 "severity": "warning",
+                "service": service,
                 "issue": f"Missing container: {service}"
             })
 
@@ -44,11 +54,20 @@ def analyze():
 
         findings.append({
             "severity": "critical",
+            "service": "docker",
             "issue": "No containers detected"
         })
 
 
+    docker_findings = analyze_docker()
+
+    findings.extend(
+        docker_findings
+    )
+
+
     return findings
+
 
 
 if __name__ == "__main__":

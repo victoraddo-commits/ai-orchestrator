@@ -1,4 +1,10 @@
 __pycache__/
 *.pyc
+
 .env
+
 logs/*.log
+
+memory/system_state.json
+memory/incidents.json
+memory/decisions.json

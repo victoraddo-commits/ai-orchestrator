@@ -32,8 +32,9 @@ console_handler = logging.StreamHandler(
 console_handler.setFormatter(formatter)
 
 
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+if not logger.handlers:
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
 
 
 

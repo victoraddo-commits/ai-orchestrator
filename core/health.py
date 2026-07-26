@@ -65,6 +65,10 @@ def analyze():
         docker_findings
     )
 
+from core.service_monitor import check_services
+findings.extend(
+    check_services()
+)
 
     return findings
 

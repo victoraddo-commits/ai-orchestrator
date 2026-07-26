@@ -50,13 +50,9 @@ def get_or_create_request(
         return existing
 
 
-    request = create_request(
+    return create_request(
         action,
         service,
-        reason
+        reason,
+        incident_id
     )
-
-
-    request["incident"] = incident_id
-
-    return request

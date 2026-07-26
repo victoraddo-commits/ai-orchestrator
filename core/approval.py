@@ -4,7 +4,7 @@ import uuid
 from core.memory import load, save
 
 
-def create_request(action, service, reason):
+def create_request(action, service, reason, incident_id=None):
 
     requests = load(
         "approval_queue.json"
@@ -16,19 +16,21 @@ def create_request(action, service, reason):
 
     request = {
 
-        "id": str(uuid.uuid4())[:8],
+    "id": str(uuid.uuid4())[:8],
 
-        "action": action,
+    "action": action,
 
-        "service": service,
+    "service": service,
 
-        "reason": reason,
+    "reason": reason,
 
-        "status": "pending",
+    "incident": incident_id,
 
-        "created": datetime.now().isoformat()
+    "status": "pending",
 
-    }
+    "created": datetime.now().isoformat()
+
+}
 
 
     requests.append(request)

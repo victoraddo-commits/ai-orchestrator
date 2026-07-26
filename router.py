@@ -2,7 +2,7 @@ from agents.claude_agent import run as claude
 from agents.codex_agent import run as codex
 
 
-coding_words = (
+CODE_WORDS = (
     "python",
     "javascript",
     "typescript",
@@ -18,37 +18,39 @@ coding_words = (
     "refactor",
     "unit test",
     "pytest",
-    "docker",
-    "dockerfile",
-    "container",
-    "kubernetes",
+    "function",
+    "class",
+)
+
+
+ARCHITECTURE_WORDS = (
+    "architecture",
+    "design",
     "proxmox",
-    "linux",
-    "bash",
+    "docker architecture",
+    "system design",
+    "security",
+    "network",
+    "infrastructure",
+    "deployment",
 )
 
 
 def route(task):
 
-    try:
+    text = task.lower()
 
-        if any(x in task.lower() for x in coding_words):
-            return codex(task)
-
-        response = claude(task)
-
-        if (
-            "Not logged in" in response
-            or "weekly limit" in response.lower()
-            or "Please run /login" in response
-        ):
-            return codex(task)
-
-        return response
-
-    except Exception:
+    if any(word in text for word in CODE_WORDS):
         return codex(task)
+
+    if any(word in text for word in ARCHITECTURE_WORDS):
+        return claude(task)
+
+    return claude(task)
 
 
 if __name__ == "__main__":
-    print(route("Analyze my Docker architecture"))
+
+    task = input("Task: ")
+
+    print(route(task))

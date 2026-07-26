@@ -1,5 +1,6 @@
 import time
-from core.engine import run
+
+from core.orchestrator_cycle import run_cycle
 from core.logger import info
 
 
@@ -15,14 +16,23 @@ def start():
 
         try:
 
-            result = run()
+            result = run_cycle()
 
             findings = len(
                 result.get("findings", [])
             )
 
+            incidents = len(
+                result.get("incidents", [])
+            )
+
+            decisions = len(
+                result.get("decisions", [])
+            )
+
+
             info(
-                f"cycle completed findings={findings}"
+                f"cycle completed findings={findings} incidents={incidents} decisions={decisions}"
             )
 
 

@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 
 
@@ -7,20 +8,47 @@ LOG_DIR = Path("logs")
 LOG_DIR.mkdir(exist_ok=True)
 
 
-logging.basicConfig(
-    filename=LOG_DIR / "orchestrator.log",
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
+logger = logging.getLogger("orchestrator")
+
+logger.setLevel(logging.INFO)
+
+
+formatter = logging.Formatter(
+    "%(asctime)s %(levelname)s %(message)s"
 )
 
 
+file_handler = logging.FileHandler(
+    LOG_DIR / "orchestrator.log"
+)
+
+file_handler.setFormatter(formatter)
+
+
+console_handler = logging.StreamHandler(
+    sys.stdout
+)
+
+console_handler.setFormatter(formatter)
+
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+
+
 def info(message):
-    logging.info(message)
+
+    logger.info(message)
+
 
 
 def error(message):
-    logging.error(message)
+
+    logger.error(message)
+
 
 
 def warning(message):
-    logging.warning(message)
+
+    logger.warning(message)

@@ -1,3 +1,4 @@
+import core.config as config
 from core.incident_manager import create_incident
 from core.decision_engine import evaluate_incidents, load_decisions, analyze_incident
 from core.approval import load_requests, approve, mark_executed
@@ -113,6 +114,26 @@ def test_multiple_other_incidents_on_same_service_lowers_confidence():
 
     assert analysis["confidence"] < 85
     assert "svc-a" in analysis["reason"] or "noisy" in analysis["reason"].lower() or "other" in analysis["reason"].lower()
+
+
+def test_requires_approval_stays_true_by_default_for_low_risk_action():
+    make_critical_incident()
+
+    decisions = evaluate_incidents()
+
+    assert decisions[0]["requires_approval"] is True
+    assert load_requests()[0]["status"] == "pending"
+
+
+def test_low_risk_action_auto_approves_when_autonomous_mode_enabled(monkeypatch):
+    monkeypatch.setattr(config, "AUTONOMOUS_MODE", True)
+
+    make_critical_incident()
+
+    decisions = evaluate_incidents()
+
+    assert decisions[0]["requires_approval"] is False
+    assert load_requests()[0]["status"] == "approved"
 
 
 def test_cause_probability_reflects_adjusted_confidence():

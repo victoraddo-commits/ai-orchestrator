@@ -1,8 +1,9 @@
 from core.approval_manager import get_or_create_request
-from core.approval import load_requests
+from core.approval import load_requests, approve
 from core.memory import load, save
 from core.lifecycle import new_object, transition
 from core.remediation_memory import get_action_success_rate
+from core.action_policy import requires_approval as policy_requires_approval
 
 
 SAFE_ACTIONS = ("restart_container", "restart_service")
@@ -216,6 +217,11 @@ def evaluate_incidents():
             incident["id"]
         )
 
+        approval_required = policy_requires_approval(analysis["recommended_action"])
+
+        if not approval_required and request["status"] == "pending":
+            approve(request["id"], note="auto-approved: low-risk action, autonomous mode enabled")
+
         decision = new_object(
             "proposed",
             trace_id=incident["id"],
@@ -227,7 +233,7 @@ def evaluate_incidents():
             risk_score=risk["risk_score"],
             risk_level=risk["risk_level"],
             risk_auto_execute=risk["auto_execute"],
-            requires_approval=True,
+            requires_approval=approval_required,
             approval_id=request["id"]
         )
 

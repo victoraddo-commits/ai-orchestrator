@@ -67,16 +67,16 @@ def transition_request(request_id, new_status, note=None):
     return None
 
 
-def approve(request_id):
-    return transition_request(request_id, "approved")
+def approve(request_id, note=None):
+    return transition_request(request_id, "approved", note=note)
 
 
-def reject(request_id):
-    return transition_request(request_id, "rejected")
+def reject(request_id, note=None):
+    return transition_request(request_id, "rejected", note=note)
 
 
-def mark_executed(request_id):
-    return transition_request(request_id, "executed")
+def mark_executed(request_id, note=None):
+    return transition_request(request_id, "executed", note=note)
 
 
 if __name__ == "__main__":

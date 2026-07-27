@@ -1,4 +1,5 @@
 from core.actions.container_actions import restart_container
+from core.execution_policy import allowed
 
 
 SUPPORTED_ACTIONS = [

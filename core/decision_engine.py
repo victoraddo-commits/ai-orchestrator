@@ -2,6 +2,7 @@ from core.approval_manager import get_or_create_request
 from core.approval import load_requests
 from core.memory import load, save
 from core.lifecycle import new_object, transition
+from core.remediation_memory import get_action_success_rate
 
 
 SAFE_ACTIONS = ("restart_container", "restart_service")
@@ -29,7 +30,12 @@ def save_decisions(decisions):
     save("decisions.json", decisions)
 
 
-def analyze_incident(incident):
+MIN_TRACK_RECORD_ATTEMPTS = 3
+
+
+def analyze_incident(incident, related_incidents=None):
+
+    related_incidents = related_incidents or []
 
     severity = incident.get("severity", "unknown")
     occurrences = incident.get("occurrences", 1)
@@ -41,10 +47,46 @@ def analyze_incident(incident):
         recommended_action = "restart_container"
         confidence = 85
 
+    reasons = [f"severity={severity}", f"occurrences={occurrences}"]
+
+    if recommended_action != "monitor":
+
+        track_record = get_action_success_rate(recommended_action)
+
+        if track_record["attempts"] >= MIN_TRACK_RECORD_ATTEMPTS:
+
+            success_rate = track_record["success_rate"]
+
+            if success_rate >= 80:
+                confidence = min(confidence + 10, 95)
+                reasons.append(f"{recommended_action} historically succeeds {success_rate}% of the time")
+
+            elif success_rate < 50:
+                confidence = max(confidence - 20, 10)
+                reasons.append(f"{recommended_action} historically only succeeds {success_rate}% of the time")
+
+
+        other_open_issues = {
+            i.get("issue")
+            for i in related_incidents
+            if i.get("service") == incident.get("service")
+            and i.get("id") != incident.get("id")
+            and i.get("status") not in ("closed", "resolved")
+        }
+
+        if len(other_open_issues) >= 2:
+            confidence = max(confidence - 10, 10)
+            reasons.append(
+                f"{len(other_open_issues)} other open issues on {incident.get('service')} "
+                "make a single-cause fix less certain"
+            )
+
+
     return {
+        "problem": incident.get("issue"),
         "recommended_action": recommended_action,
         "confidence": confidence,
-        "reason": f"severity={severity}, occurrences={occurrences}"
+        "reason": ", ".join(reasons)
     }
 
 
@@ -146,7 +188,7 @@ def evaluate_incidents():
 
     for incident in incidents:
 
-        analysis = analyze_incident(incident)
+        analysis = analyze_incident(incident, related_incidents=incidents)
 
         if analysis["recommended_action"] == "monitor":
             continue
@@ -178,7 +220,7 @@ def evaluate_incidents():
             "proposed",
             trace_id=incident["id"],
             incident_id=incident["id"],
-            problem=incident.get("issue"),
+            problem=analysis["problem"],
             cause_probability=round(analysis["confidence"] / 100, 2),
             recommended_action=analysis["recommended_action"],
             confidence=analysis["confidence"],

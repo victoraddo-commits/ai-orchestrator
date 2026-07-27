@@ -1,6 +1,7 @@
 from core.incident_manager import create_incident
-from core.decision_engine import evaluate_incidents, load_decisions
+from core.decision_engine import evaluate_incidents, load_decisions, analyze_incident
 from core.approval import load_requests, approve, mark_executed
+from core.remediation_memory import record_result
 
 
 def make_critical_incident(service="svc-a"):
@@ -68,3 +69,57 @@ def test_decision_status_syncs_with_approval_lifecycle():
     mark_executed(decisions[0]["approval_id"])
     decisions = evaluate_incidents()
     assert decisions[0]["status"] == "executed"
+
+
+def test_strong_track_record_boosts_confidence():
+    for _ in range(4):
+        record_result("prior-incident", "restart_container", "success")
+
+    incident = make_critical_incident()
+
+    analysis = analyze_incident(incident, related_incidents=[incident])
+
+    assert analysis["confidence"] > 85
+    assert analysis["confidence"] <= 95
+
+
+def test_poor_track_record_reduces_confidence():
+    for _ in range(4):
+        record_result("prior-incident", "restart_container", "failed")
+
+    incident = make_critical_incident()
+
+    analysis = analyze_incident(incident, related_incidents=[incident])
+
+    assert analysis["confidence"] < 85
+
+
+def test_sparse_track_record_does_not_adjust_confidence():
+    record_result("prior-incident", "restart_container", "success")
+
+    incident = make_critical_incident()
+
+    analysis = analyze_incident(incident, related_incidents=[incident])
+
+    assert analysis["confidence"] == 85
+
+
+def test_multiple_other_incidents_on_same_service_lowers_confidence():
+    incident = make_critical_incident("svc-a")
+    other1 = create_incident("svc-a", "Disk pressure", "warning")
+    other2 = create_incident("svc-a", "Memory pressure", "warning")
+
+    analysis = analyze_incident(incident, related_incidents=[incident, other1, other2])
+
+    assert analysis["confidence"] < 85
+    assert "svc-a" in analysis["reason"] or "noisy" in analysis["reason"].lower() or "other" in analysis["reason"].lower()
+
+
+def test_cause_probability_reflects_adjusted_confidence():
+    for _ in range(4):
+        record_result("prior-incident", "restart_container", "success")
+
+    incident = make_critical_incident()
+    decisions = evaluate_incidents()
+
+    assert decisions[0]["cause_probability"] == round(decisions[0]["confidence"] / 100, 2)

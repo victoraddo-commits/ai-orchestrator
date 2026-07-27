@@ -55,6 +55,7 @@ def create_incident(service, issue, severity="info"):
 
         existing["occurrences"] = existing.get("occurrences", 1) + 1
         existing["severity"] = severity
+        existing.setdefault("status", "open")
 
         now = datetime.now().isoformat()
         existing["updated"] = now

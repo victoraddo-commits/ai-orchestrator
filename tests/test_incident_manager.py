@@ -118,3 +118,23 @@ def test_transition_unknown_incident_reports_not_found():
     result = transition_incident("doesnotexist", "investigating")
 
     assert result == {"status": "not_found"}
+
+
+def test_dedup_tolerates_legacy_incident_missing_status_field(isolated_memory):
+    import json
+
+    legacy = [{
+        "id": "legacy01",
+        "timestamp": "2026-01-01T00:00:00",
+        "service": "proxmox-health-score",
+        "issue": "Healthy",
+        "severity": "info",
+        "occurrences": 1
+    }]
+    (isolated_memory / "incidents.json").write_text(json.dumps(legacy))
+
+    incident = create_incident("proxmox-health-score", "Healthy", "info")
+
+    assert incident["id"] == "legacy01"
+    assert incident["occurrences"] == 2
+    assert incident["history"][-1]["note"] == "recurrence"

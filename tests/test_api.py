@@ -89,3 +89,49 @@ def test_learning_endpoint_returns_action_classification():
     assert response.status_code == 200
     body = response.json()
     assert body["restart_container"]["recommendation"] == "trusted"
+
+
+def test_approve_endpoint_transitions_request_and_records_operator():
+    request = create_request("restart_container", "svc-a", "reason", incident_id="inc1")
+
+    response = client.post(f"/approvals/{request['id']}/approve", json={"operator": "alice"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "approved"
+    assert body["approved_by"] == "alice"
+
+
+def test_reject_endpoint_transitions_request_and_records_operator():
+    request = create_request("restart_container", "svc-a", "reason", incident_id="inc1")
+
+    response = client.post(f"/approvals/{request['id']}/reject", json={"operator": "bob"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "rejected"
+    assert body["rejected_by"] == "bob"
+
+
+def test_approve_endpoint_works_without_a_body():
+    request = create_request("restart_container", "svc-a", "reason", incident_id="inc1")
+
+    response = client.post(f"/approvals/{request['id']}/approve")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "approved"
+
+
+def test_approve_endpoint_returns_404_for_unknown_request():
+    response = client.post("/approvals/does-not-exist/approve")
+
+    assert response.status_code == 404
+
+
+def test_approve_endpoint_returns_409_for_illegal_transition():
+    request = create_request("restart_container", "svc-a", "reason", incident_id="inc1")
+    client.post(f"/approvals/{request['id']}/reject")
+
+    response = client.post(f"/approvals/{request['id']}/approve")
+
+    assert response.status_code == 409

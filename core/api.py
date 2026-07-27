@@ -1,16 +1,23 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 from core.health import analyze
 from core.incident_manager import load_incidents
 from core.decision_engine import load_decisions
-from core.approval import load_requests
+from core.approval import load_requests, approve, reject
 from core.remediation import load_remediations
 from core.verification import load_verification_history
 from core.learning import summarize
 from core.memory import load
+from core.lifecycle import InvalidTransition
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
+
+
+class ApprovalAction(BaseModel):
+    operator: str | None = None
+    note: str | None = None
 
 
 @app.get("/health")
@@ -55,3 +62,31 @@ def verifications():
 @app.get("/learning")
 def learning():
     return summarize()
+
+
+@app.post("/approvals/{request_id}/approve")
+def approve_request(request_id: str, action: ApprovalAction = ApprovalAction()):
+
+    try:
+        result = approve(request_id, note=action.note, operator=action.operator)
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+
+    return result
+
+
+@app.post("/approvals/{request_id}/reject")
+def reject_request(request_id: str, action: ApprovalAction = ApprovalAction()):
+
+    try:
+        result = reject(request_id, note=action.note, operator=action.operator)
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+
+    return result

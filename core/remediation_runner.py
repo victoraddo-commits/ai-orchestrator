@@ -2,6 +2,7 @@ from core.approval import load_requests, mark_executed
 from core.remediation import create_remediation, start_remediation, complete_remediation
 from core.docker_actions import execute_action, container_status
 from core.remediation_memory import record_result
+from core.execution_audit import record as record_audit
 
 
 def get_approved():
@@ -44,6 +45,16 @@ def process():
             request["action"],
             result.get("status", "failed")
         )
+
+        record_audit({
+            "operator": request.get("approved_by") or "unknown",
+            "action": request["action"],
+            "service": request["service"],
+            "command": f"{request['action']} on {request['service']}",
+            "result": result.get("status", "failed"),
+            "request_id": request["id"],
+            "remediation_id": remediation["id"]
+        })
 
         results.append({
             "request_id": request["id"],

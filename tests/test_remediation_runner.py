@@ -2,6 +2,7 @@ from core.approval import create_request, load_requests, approve
 from core.remediation import load_remediations
 from core.remediation_memory import get_history
 from core.remediation_runner import process
+from core.execution_audit import history as audit_history
 
 
 NONEXISTENT_SERVICE = "definitely-not-a-real-container-xyz"
@@ -64,3 +65,27 @@ def test_process_ignores_non_approved_requests():
     results = process()
 
     assert results == []
+
+
+def test_process_writes_execution_audit_entry_with_operator_identity():
+    request = create_request("restart_container", NONEXISTENT_SERVICE, "reason", incident_id="inc1")
+    approve(request["id"], operator="alice")
+
+    process()
+
+    entries = audit_history()
+    assert len(entries) == 1
+    assert entries[0]["operator"] == "alice"
+    assert entries[0]["action"] == "restart_container"
+    assert entries[0]["service"] == NONEXISTENT_SERVICE
+    assert entries[0]["request_id"] == request["id"]
+
+
+def test_process_records_system_operator_when_no_human_approved():
+    request = create_request("restart_container", NONEXISTENT_SERVICE, "reason", incident_id="inc1")
+    approve(request["id"])
+
+    process()
+
+    entries = audit_history()
+    assert entries[0]["operator"] == "unknown"

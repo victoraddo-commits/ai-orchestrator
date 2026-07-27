@@ -67,12 +67,31 @@ def transition_request(request_id, new_status, note=None):
     return None
 
 
-def approve(request_id, note=None):
-    return transition_request(request_id, "approved", note=note)
+def _transition_and_tag(request_id, new_status, note, tag_field, operator):
+
+    requests = load_requests()
+
+    for request in requests:
+
+        if request.get("id") == request_id:
+
+            transition(request, new_status, ALLOWED_TRANSITIONS, note=note)
+
+            request[tag_field] = operator
+
+            save_requests(requests)
+
+            return request
+
+    return None
 
 
-def reject(request_id, note=None):
-    return transition_request(request_id, "rejected", note=note)
+def approve(request_id, note=None, operator=None):
+    return _transition_and_tag(request_id, "approved", note, "approved_by", operator)
+
+
+def reject(request_id, note=None, operator=None):
+    return _transition_and_tag(request_id, "rejected", note, "rejected_by", operator)
 
 
 def mark_executed(request_id, note=None):

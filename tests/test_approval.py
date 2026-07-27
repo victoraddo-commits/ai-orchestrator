@@ -72,6 +72,30 @@ def test_get_or_create_request_dedupes_while_pending_or_approved():
     assert third["id"] == first["id"]
 
 
+def test_approve_records_operator_identity():
+    request = create_request("restart_container", "svc", "reason", incident_id="inc1")
+
+    approved = approve(request["id"], operator="alice")
+
+    assert approved["approved_by"] == "alice"
+
+
+def test_reject_records_operator_identity():
+    request = create_request("restart_container", "svc", "reason", incident_id="inc1")
+
+    rejected = reject(request["id"], operator="bob")
+
+    assert rejected["rejected_by"] == "bob"
+
+
+def test_operator_defaults_to_none_when_not_supplied():
+    request = create_request("restart_container", "svc", "reason", incident_id="inc1")
+
+    approved = approve(request["id"])
+
+    assert approved["approved_by"] is None
+
+
 def test_get_or_create_request_makes_new_one_after_executed():
     first = get_or_create_request("restart_container", "svc", "reason", "inc1")
     approve(first["id"])

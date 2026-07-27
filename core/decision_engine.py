@@ -220,7 +220,11 @@ def evaluate_incidents():
         approval_required = policy_requires_approval(analysis["recommended_action"])
 
         if not approval_required and request["status"] == "pending":
-            approve(request["id"], note="auto-approved: low-risk action, autonomous mode enabled")
+            approve(
+                request["id"],
+                note="auto-approved: low-risk action, autonomous mode enabled",
+                operator="system(autonomous)"
+            )
 
         decision = new_object(
             "proposed",

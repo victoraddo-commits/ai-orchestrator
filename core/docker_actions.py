@@ -1,6 +1,8 @@
 import subprocess
 from datetime import datetime
 
+from core.security import enforce_action_is_safe
+
 
 ALLOWED_ACTIONS = (
     "restart_container",
@@ -131,6 +133,8 @@ if __name__ == "__main__":
         )
     )
 def execute_action(action, service):
+
+    enforce_action_is_safe(action, f"{action} on {service}")
 
     if action == "restart_container":
 

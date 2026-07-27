@@ -1,7 +1,8 @@
-import json
 import os
 from pathlib import Path
 from datetime import datetime
+
+from core import memory_manager
 
 
 PRODUCTION_MEMORY_DIR = Path("memory")
@@ -29,17 +30,7 @@ def load(name, directory=None):
 
     directory = directory or MEMORY_DIR
 
-    path = directory / name
-
-    if not path.exists():
-        return {}
-
-    try:
-        with open(path, "r") as file:
-            return json.load(file)
-
-    except json.JSONDecodeError:
-        return {}
+    return memory_manager.read(directory / name, default={})
 
 
 def save(name, data, directory=None):
@@ -52,16 +43,7 @@ def save(name, data, directory=None):
             "Use an isolated memory directory (see tests/conftest.py)."
         )
 
-    directory.mkdir(parents=True, exist_ok=True)
-
-    path = directory / name
-
-    with open(path, "w") as file:
-        json.dump(
-            data,
-            file,
-            indent=2
-        )
+    memory_manager.write(directory / name, data)
 
 
 def update_system_scan():

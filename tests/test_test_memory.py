@@ -20,7 +20,7 @@ def test_create_test_incident_writes_only_to_isolated_test_dir(tmp_path, monkeyp
     after = PRODUCTION_INCIDENTS.read_bytes() if PRODUCTION_INCIDENTS.exists() else None
 
     assert before == after
-    assert json.loads((tmp_path / "incidents.json").read_text()) == [incident]
+    assert json.loads((tmp_path / "incidents.json").read_text())["records"] == [incident]
 
 
 def test_create_test_incident_returns_normalized_incident_shape():

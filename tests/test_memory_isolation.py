@@ -34,3 +34,22 @@ def test_default_save_and_load_round_trip_in_isolated_dir(isolated_memory):
     assert memory.load("incidents.json") == [{"service": "x"}]
     assert (isolated_memory / "incidents.json").exists()
     assert not (Path("memory") / "incidents.json.does-not-exist-marker").exists()
+
+
+def test_save_persists_with_schema_version_envelope_on_disk(isolated_memory):
+    import json
+
+    memory.save("incidents.json", [{"service": "x"}])
+
+    raw = json.loads((isolated_memory / "incidents.json").read_text())
+    assert raw["schema_version"] == 1
+    assert raw["records"] == [{"service": "x"}]
+
+
+def test_load_recovers_from_corrupted_file_via_backup(isolated_memory):
+    memory.save("incidents.json", [{"service": "a"}])
+    memory.save("incidents.json", [{"service": "a"}, {"service": "b"}])
+
+    (isolated_memory / "incidents.json").write_text("{not valid json")
+
+    assert memory.load("incidents.json") == [{"service": "a"}]

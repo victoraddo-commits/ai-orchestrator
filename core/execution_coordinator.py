@@ -2,7 +2,7 @@ from datetime import datetime
 
 from core.execution_queue import get_queue
 from core.memory import save
-from core.autonomous_executor import execute_autonomous_actions
+from core.execution_worker import execute_item
 from core.remediation_memory import record_result
 
 
@@ -44,7 +44,7 @@ def run():
 
         try:
 
-            execution = execute_autonomous_actions()
+            execution = execute_item(item)
 
 
             item["status"] = "completed"

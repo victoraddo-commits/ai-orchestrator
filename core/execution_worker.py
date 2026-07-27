@@ -1,6 +1,7 @@
 from core.actions.container_actions import restart_container
 from core.execution_policy import allowed
 from core.execution_audit import record
+from core.execution_rollback import record_failure
 
 
 SUPPORTED_ACTIONS = [
@@ -34,6 +35,17 @@ def execute_item(item):
                 "result": result.get("status")
             }
         )
+
+        if result.get("status") != "success":
+
+            record_failure(
+                {
+                    "incident": item.get("incident"),
+                    "service": item.get("service"),
+                    "action": action,
+                    "reason": "execution_failed"
+                }
+            )
 
         return result
 

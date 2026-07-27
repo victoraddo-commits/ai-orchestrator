@@ -5,83 +5,108 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def find_lxc_id(service):
-
-    host = os.getenv("PROXMOX_HOST")
+def proxmox_request(method, url):
     token = os.getenv("PROXMOX_TOKEN")
-    node = os.getenv("PROXMOX_NODE")
-
-    url = f"https://{host}:8006/api2/json/nodes/{node}/lxc"
 
     headers = {
         "Authorization": f"PVEAPIToken={token}"
     }
 
-    r = requests.get(
+    return requests.request(
+        method,
         url,
         headers=headers,
-        verify=False,
+        verify=True,
         timeout=10
     )
 
-    data = r.json().get("data", [])
 
-    for container in data:
-        if (
-            container.get("name") == service
-            or container.get("vmid") == service
-        ):
-            return container.get("vmid")
+def proxmox_url(path):
+    host = os.getenv("PROXMOX_HOST")
+    return f"https://{host}:8006/api2/json{path}"
+
+
+def find_lxc_id(service):
+
+    node = os.getenv("PROXMOX_NODE")
+
+    url = proxmox_url(
+        f"/nodes/{node}/lxc"
+    )
+
+    response = proxmox_request(
+        "GET",
+        url
+    )
+
+    if response.status_code != 200:
+        return None
+
+    containers = response.json()["data"]
+
+    for c in containers:
+        if c.get("name") == service:
+            return c.get("vmid")
 
     return None
 
 
-def restart_lxc(service):
+def lxc_action(service, action):
 
-    host = os.getenv("PROXMOX_HOST")
-    token = os.getenv("PROXMOX_TOKEN")
     node = os.getenv("PROXMOX_NODE")
 
     vmid = find_lxc_id(service)
 
     if not vmid:
         return {
-            "status": "failed",
-            "reason": f"lxc_not_found:{service}"
+            "success": False,
+            "error": "Container not found"
         }
 
-
-    url = (
-        f"https://{host}:8006/api2/json/"
-        f"nodes/{node}/lxc/{vmid}/status/restart"
+    url = proxmox_url(
+        f"/nodes/{node}/lxc/{vmid}/status/{action}"
     )
 
-
-    headers = {
-        "Authorization": f"PVEAPIToken={token}"
-    }
-
-
-    response = requests.post(
-        url,
-        headers=headers,
-        verify=False,
-        timeout=10
+    response = proxmox_request(
+        "POST",
+        url
     )
-
-
-    if response.status_code == 200:
-
-        return {
-            "status": "success",
-            "action": "restart_container",
-            "container": service,
-            "vmid": vmid
-        }
-
 
     return {
-        "status": "failed",
-        "code": response.status_code,
-        "reason": response.text
+        "success": response.status_code == 200,
+        "status_code": response.status_code,
+        "response": response.json()
     }
+
+
+def restart_lxc(service):
+    return lxc_action(service, "reboot")
+
+
+def start_lxc(service):
+    return lxc_action(service, "start")
+
+
+def stop_lxc(service):
+    return lxc_action(service, "stop")
+
+
+def get_lxc_status(service):
+
+    node = os.getenv("PROXMOX_NODE")
+
+    vmid = find_lxc_id(service)
+
+    if not vmid:
+        return None
+
+    url = proxmox_url(
+        f"/nodes/{node}/lxc/{vmid}/status/current"
+    )
+
+    response = proxmox_request(
+        "GET",
+        url
+    )
+
+    return response.json()

@@ -27,6 +27,7 @@ def enqueue(decision):
 
     item = {
         "incident": decision.get("incident"),
+        "service": decision.get("service"),
         "action": decision.get("action"),
         "confidence": decision.get("confidence"),
         "created": datetime.now().isoformat(),

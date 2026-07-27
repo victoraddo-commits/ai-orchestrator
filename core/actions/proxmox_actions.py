@@ -1,5 +1,39 @@
 import os
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def find_lxc_id(service):
+
+    host = os.getenv("PROXMOX_HOST")
+    token = os.getenv("PROXMOX_TOKEN")
+    node = os.getenv("PROXMOX_NODE")
+
+    url = f"https://{host}:8006/api2/json/nodes/{node}/lxc"
+
+    headers = {
+        "Authorization": f"PVEAPIToken={token}"
+    }
+
+    r = requests.get(
+        url,
+        headers=headers,
+        verify=False,
+        timeout=10
+    )
+
+    data = r.json().get("data", [])
+
+    for container in data:
+        if (
+            container.get("name") == service
+            or container.get("vmid") == service
+        ):
+            return container.get("vmid")
+
+    return None
 
 
 def restart_lxc(service):
@@ -8,14 +42,19 @@ def restart_lxc(service):
     token = os.getenv("PROXMOX_TOKEN")
     node = os.getenv("PROXMOX_NODE")
 
-    if not all([host, token, node]):
+    vmid = find_lxc_id(service)
+
+    if not vmid:
         return {
             "status": "failed",
-            "reason": "missing_proxmox_environment"
+            "reason": f"lxc_not_found:{service}"
         }
 
 
-    url = f"https://{host}:8006/api2/json/nodes/{node}/lxc/{service}/status/restart"
+    url = (
+        f"https://{host}:8006/api2/json/"
+        f"nodes/{node}/lxc/{vmid}/status/restart"
+    )
 
 
     headers = {
@@ -23,34 +62,26 @@ def restart_lxc(service):
     }
 
 
-    try:
-
-        response = requests.post(
-            url,
-            headers=headers,
-            verify=False,
-            timeout=10
-        )
+    response = requests.post(
+        url,
+        headers=headers,
+        verify=False,
+        timeout=10
+    )
 
 
-        if response.status_code == 200:
-
-            return {
-                "status": "success",
-                "action": "restart_container",
-                "container": service
-            }
-
+    if response.status_code == 200:
 
         return {
-            "status": "failed",
-            "reason": response.text
+            "status": "success",
+            "action": "restart_container",
+            "container": service,
+            "vmid": vmid
         }
 
 
-    except Exception as e:
-
-        return {
-            "status": "failed",
-            "reason": str(e)
-        }
+    return {
+        "status": "failed",
+        "code": response.status_code,
+        "reason": response.text
+    }

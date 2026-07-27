@@ -1,4 +1,6 @@
+from core.memory import load
 from core.risk_decision import evaluate_risk_decisions
+from core.agents.execution_guard import can_execute
 from core.lifecycle_controller import (
     move_to_approved,
     move_to_executing,
@@ -24,6 +26,36 @@ def execute_autonomous_actions():
         incident_id = str(
             item.get("incident")
         )
+
+
+        incident = None
+
+        for candidate in load("incidents.json") or []:
+            if str(candidate.get("id")) == incident_id:
+                incident = candidate
+                break
+
+
+        if not incident:
+            results.append(
+                {
+                    "incident": incident_id,
+                    "status": "blocked",
+                    "reason": "incident_not_found"
+                }
+            )
+            continue
+
+
+        if not can_execute(incident):
+            results.append(
+                {
+                    "incident": incident_id,
+                    "status": "blocked",
+                    "reason": f"invalid_state:{incident.get('status')}"
+                }
+            )
+            continue
 
 
         approval = move_to_approved(

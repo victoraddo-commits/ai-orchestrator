@@ -1,5 +1,6 @@
 from core.actions.container_actions import restart_container
 from core.execution_policy import allowed
+from core.execution_audit import record
 
 
 SUPPORTED_ACTIONS = [
@@ -21,9 +22,20 @@ def execute_item(item):
 
     if action == "restart_container":
 
-        return restart_container(
+        result = restart_container(
             item.get("service")
         )
+
+        record(
+            {
+                "incident": item.get("incident"),
+                "service": item.get("service"),
+                "action": action,
+                "result": result.get("status")
+            }
+        )
+
+        return result
 
 
     return {

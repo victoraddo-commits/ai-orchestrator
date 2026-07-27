@@ -22,6 +22,7 @@ class ObserverAgent(BaseAgent):
 
                 findings.append(
                     {
+                        "incident": service.get("id"),
                         "service": service.get("name"),
                         "issue": service.get("status")
                     }

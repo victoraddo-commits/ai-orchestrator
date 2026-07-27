@@ -12,6 +12,7 @@ def run_agent_cycle():
     context = {
         "services": [
             {
+                "id": "5",
                 "name": "pulse",
                 "status": "unhealthy"
             }

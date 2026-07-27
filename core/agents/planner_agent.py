@@ -26,6 +26,10 @@ class PlannerAgent(BaseAgent):
                 "service"
             )
 
+            incident = assessment.get(
+                "incident"
+            )
+
 
             action = "monitor"
             priority = "low"
@@ -41,6 +45,7 @@ class PlannerAgent(BaseAgent):
 
             plans.append(
                 {
+                    "incident": incident,
                     "service": service,
                     "action": action,
                     "priority": priority,

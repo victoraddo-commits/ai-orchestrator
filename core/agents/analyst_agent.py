@@ -18,6 +18,10 @@ class AnalystAgent(BaseAgent):
 
         for finding in findings:
 
+            incident = finding.get(
+                "incident"
+            )
+
             issue = finding.get(
                 "issue"
             )
@@ -38,6 +42,7 @@ class AnalystAgent(BaseAgent):
 
             analysis.append(
                 {
+                    "incident": incident,
                     "service": finding.get("service"),
                     "severity": severity,
                     "confidence": confidence,

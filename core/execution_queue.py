@@ -17,6 +17,14 @@ def enqueue(decision):
 
     queue = get_queue()
 
+    for existing in queue:
+        if (
+            existing.get("incident") == decision.get("incident")
+            and existing.get("action") == decision.get("action")
+            and existing.get("status") in ["pending", "running"]
+        ):
+            return existing
+
     item = {
         "incident": decision.get("incident"),
         "action": decision.get("action"),

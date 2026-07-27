@@ -1,6 +1,7 @@
 from core.memory import load
 from core.docker_analyzer import analyze_docker
 from core.service_monitor import check_services
+from core.proxmox_health import analyze_proxmox_cluster
 
 
 EXPECTED_SERVICES = (
@@ -81,6 +82,11 @@ def analyze():
         service_findings
     )
 
+    proxmox_findings = analyze_proxmox_cluster()
+
+    findings.extend(
+        proxmox_findings
+    )
 
     return findings
 

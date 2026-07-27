@@ -1,5 +1,8 @@
 import os
 import requests
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,7 +29,7 @@ def api_request(path):
         r = requests.get(
             url,
             headers=headers,
-            verify=True,
+            verify=False,
             timeout=10
         )
 

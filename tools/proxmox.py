@@ -60,11 +60,41 @@ def get_lxc():
     )
 
 
+def get_qemu():
+
+    node = os.getenv("PROXMOX_NODE")
+
+    return api_request(
+        f"/nodes/{node}/qemu"
+    )
+
+
+def get_tasks(limit=50):
+
+    node = os.getenv("PROXMOX_NODE")
+
+    return api_request(
+        f"/nodes/{node}/tasks?limit={limit}"
+    )
+
+
+def get_network():
+
+    node = os.getenv("PROXMOX_NODE")
+
+    return api_request(
+        f"/nodes/{node}/network"
+    )
+
+
 def status():
 
     return {
         "node": get_node_status(),
-        "lxc": get_lxc()
+        "lxc": get_lxc(),
+        "qemu": get_qemu(),
+        "tasks": get_tasks(),
+        "network": get_network()
     }
 
 

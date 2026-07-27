@@ -46,12 +46,16 @@ def run():
 
             execution = execute_item(item)
 
+            item["result"] = execution
 
-            item["status"] = "completed"
+            if execution.get("status") == "success":
+                item["status"] = "completed"
+                result = "success"
+            else:
+                item["status"] = "failed"
+                result = "failure"
+
             item["completed"] = datetime.now().isoformat()
-
-
-            result = "success"
 
 
         except Exception as error:

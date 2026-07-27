@@ -42,7 +42,7 @@ class SupervisorAgent(BaseAgent):
 
 
             decision = {
-                "incident": plan.get("service"),
+                "incident": plan.get("incident"),
                 "action": plan.get("action"),
                 "confidence": adjusted.get("confidence"),
                 "risk": risk

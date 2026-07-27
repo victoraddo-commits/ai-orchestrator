@@ -1,5 +1,5 @@
 from core.docker_analyzer import analyze_docker
-from core.incidents import create_incident
+from core.test_memory import create_test_incident
 
 
 def simulate():
@@ -19,7 +19,7 @@ def simulate():
         finding = findings[0]
 
 
-    incident = create_incident(
+    incident = create_test_incident(
         finding["severity"],
         finding.get("service", "unknown"),
         finding["issue"]
@@ -32,3 +32,8 @@ def simulate():
 if __name__ == "__main__":
 
     print(simulate())
+
+
+# NOTE:
+# Test failures should not write into production memory.
+# Use isolated test fixtures before running failure simulations.

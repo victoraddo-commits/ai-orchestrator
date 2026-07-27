@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import uuid
 
 from core.memory import load, save
 
@@ -81,17 +82,45 @@ def calculate_severity(service, current):
 
 
 
+def find_open_duplicate(incidents, service, issue):
+
+    for incident in reversed(incidents):
+
+        if (
+            incident.get("service") == service
+            and incident.get("issue") == issue
+            and incident.get("status") not in ("closed", "resolved")
+        ):
+
+            return incident
+
+    return None
+
+
+
 def create_incident(service, issue, severity="info"):
 
     incidents = load_incidents()
 
 
-    final_severity = severity
+    existing = find_open_duplicate(incidents, service, issue)
+
+    if existing:
+
+        existing["occurrences"] = existing.get("occurrences", 1) + 1
+
+        existing["timestamp"] = datetime.now().isoformat()
+
+        existing["severity"] = severity
+
+        save_incidents(incidents)
+
+        return existing
 
 
     incident = {
 
-        "id": len(incidents) + 1,
+        "id": str(uuid.uuid4())[:8],
 
         "timestamp":
             datetime.now().isoformat(),
@@ -100,9 +129,11 @@ def create_incident(service, issue, severity="info"):
 
         "issue": issue,
 
-        "severity": final_severity,
+        "severity": severity,
 
-        "occurrences": 1
+        "occurrences": 1,
+
+        "status": "open"
 
     }
 

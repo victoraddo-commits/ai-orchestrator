@@ -49,14 +49,4 @@ def list_incidents():
 
 if __name__ == "__main__":
 
-    print(
-        create_incident(
-            "warning",
-            "test-service",
-            "Test incident created"
-        )
-    )
-
-    print(
-        list_incidents()
-    )
+    print(list_incidents())

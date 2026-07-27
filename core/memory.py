@@ -1,16 +1,35 @@
 import json
+import os
 from pathlib import Path
 from datetime import datetime
 
 
-MEMORY_DIR = Path("memory")
-
-MEMORY_DIR.mkdir(exist_ok=True)
+PRODUCTION_MEMORY_DIR = Path("memory")
 
 
-def load(name):
+class ProductionMemoryWriteBlocked(RuntimeError):
+    """Raised when a test tries to write into the real production memory directory."""
 
-    path = MEMORY_DIR / name
+
+def _default_memory_dir():
+    override = os.environ.get("AI_ORCHESTRATOR_MEMORY_DIR")
+    return Path(override) if override else PRODUCTION_MEMORY_DIR
+
+
+MEMORY_DIR = _default_memory_dir()
+
+MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _running_under_test():
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
+def load(name, directory=None):
+
+    directory = directory or MEMORY_DIR
+
+    path = directory / name
 
     if not path.exists():
         return {}
@@ -23,9 +42,19 @@ def load(name):
         return {}
 
 
-def save(name, data):
+def save(name, data, directory=None):
 
-    path = MEMORY_DIR / name
+    directory = directory or MEMORY_DIR
+
+    if _running_under_test() and directory.resolve() == PRODUCTION_MEMORY_DIR.resolve():
+        raise ProductionMemoryWriteBlocked(
+            f"Refusing to write {name!r} to production memory/ during a test run. "
+            "Use an isolated memory directory (see tests/conftest.py)."
+        )
+
+    directory.mkdir(parents=True, exist_ok=True)
+
+    path = directory / name
 
     with open(path, "w") as file:
         json.dump(

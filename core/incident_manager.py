@@ -86,10 +86,7 @@ def create_incident(service, issue, severity="info"):
     incidents = load_incidents()
 
 
-    final_severity = calculate_severity(
-        service,
-        severity
-    )
+    final_severity = severity
 
 
     incident = {
@@ -105,8 +102,7 @@ def create_incident(service, issue, severity="info"):
 
         "severity": final_severity,
 
-        "occurrences":
-            len(find_recent_failures(service)) + 1
+        "occurrences": 1
 
     }
 

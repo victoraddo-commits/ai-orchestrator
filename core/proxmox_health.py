@@ -67,11 +67,20 @@ def analyze_proxmox_cluster():
         })
 
 
-    findings.append({
-        "severity": "info",
-        "service": "proxmox-health-score",
-        "score": max(health_score, 0)
-    })
+    if health_score < 100:
+        findings.append({
+            "severity": "warning",
+            "service": "proxmox-health-score",
+            "issue": f"Health score degraded: {health_score}",
+            "score": max(health_score, 0)
+        })
+    else:
+        findings.append({
+            "severity": "info",
+            "service": "proxmox-health-score",
+            "issue": "Healthy",
+            "score": 100
+        })
 
 
     return findings

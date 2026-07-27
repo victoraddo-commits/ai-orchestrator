@@ -1,5 +1,5 @@
 from core.memory import load
-from core.risk_decision import evaluate_risk_decisions
+from core.execution_queue import get_pending
 from core.agents.execution_guard import can_execute
 from core.lifecycle_controller import (
     move_to_approved,
@@ -12,7 +12,7 @@ from core.lifecycle_controller import (
 
 def execute_autonomous_actions():
 
-    decisions = evaluate_risk_decisions()
+    decisions = get_pending()
 
     results = []
 

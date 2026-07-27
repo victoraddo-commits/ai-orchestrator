@@ -1,6 +1,7 @@
 from core.agents.base_agent import BaseAgent
 from core.learning_decision import adjust_confidence
 from core.risk_engine import evaluate_risk
+from core.execution_queue import enqueue
 
 
 class SupervisorAgent(BaseAgent):

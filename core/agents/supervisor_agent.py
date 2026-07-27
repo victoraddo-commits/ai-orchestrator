@@ -41,13 +41,20 @@ class SupervisorAgent(BaseAgent):
             )
 
 
+            decision = {
+                "incident": plan.get("service"),
+                "action": plan.get("action"),
+                "confidence": adjusted.get("confidence"),
+                "risk": risk
+            }
+
+
+            if risk.get("auto_execute"):
+                enqueue(decision)
+
+
             results.append(
-                {
-                    "service": plan.get("service"),
-                    "action": plan.get("action"),
-                    "confidence": adjusted.get("confidence"),
-                    "risk": risk
-                }
+                decision
             )
 
 

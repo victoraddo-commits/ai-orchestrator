@@ -3,11 +3,23 @@ from core.remediation import create_remediation, start_remediation, complete_rem
 from core.docker_actions import execute_action, container_status
 from core.remediation_memory import record_result
 from core.execution_audit import record as record_audit
+from core.decision_engine import load_decisions
 
 
 def get_approved():
 
     return [r for r in load_requests() if r.get("status") == "approved"]
+
+
+def find_root_cause(incident_id, action, fallback):
+
+    for decision in load_decisions():
+
+        if decision.get("incident_id") == incident_id and decision.get("recommended_action") == action:
+
+            return decision.get("reason", fallback)
+
+    return fallback
 
 
 def process():
@@ -43,7 +55,9 @@ def process():
         record_result(
             request.get("incident"),
             request["action"],
-            result.get("status", "failed")
+            result.get("status", "failed"),
+            issue=request.get("reason"),
+            root_cause=find_root_cause(request.get("incident"), request["action"], request.get("reason"))
         )
 
         record_audit({

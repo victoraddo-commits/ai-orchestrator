@@ -89,3 +89,34 @@ def test_process_records_system_operator_when_no_human_approved():
 
     entries = audit_history()
     assert entries[0]["operator"] == "unknown"
+
+
+def test_process_records_what_happened_in_remediation_history():
+    create_request(
+        "restart_container", NONEXISTENT_SERVICE,
+        "Repeated critical incident: Container unhealthy", incident_id="inc1"
+    )
+    approve(load_requests()[0]["id"])
+
+    process()
+
+    entry = get_history()[0]
+    assert entry["issue"] == "Repeated critical incident: Container unhealthy"
+
+
+def test_process_records_actual_decision_reasoning_as_root_cause():
+    from core.incident_manager import create_incident
+    from core.decision_engine import evaluate_incidents
+
+    create_incident(NONEXISTENT_SERVICE, "boom", "critical")
+    create_incident(NONEXISTENT_SERVICE, "boom", "critical")
+    incident = create_incident(NONEXISTENT_SERVICE, "boom", "critical")
+
+    decisions = evaluate_incidents()
+    approve(decisions[0]["approval_id"])
+
+    process()
+
+    entry = get_history()[0]
+    assert entry["root_cause"] == decisions[0]["reason"]
+    assert "severity=critical" in entry["root_cause"]

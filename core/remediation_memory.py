@@ -13,7 +13,9 @@ def get_history():
 def record_result(
     incident,
     action,
-    result
+    result,
+    issue=None,
+    root_cause=None
 ):
 
     history = get_history()
@@ -22,6 +24,8 @@ def record_result(
         "incident": incident,
         "action": action,
         "result": result,
+        "issue": issue,
+        "root_cause": root_cause,
         "timestamp": datetime.now().isoformat()
     }
 

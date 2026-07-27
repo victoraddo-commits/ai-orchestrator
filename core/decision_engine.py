@@ -238,7 +238,8 @@ def evaluate_incidents():
             risk_level=risk["risk_level"],
             risk_auto_execute=risk["auto_execute"],
             requires_approval=approval_required,
-            approval_id=request["id"]
+            approval_id=request["id"],
+            reason=analysis["reason"]
         )
 
         decisions.append(decision)

@@ -6,6 +6,7 @@ from core.decision_engine import load_decisions
 from core.approval import load_requests
 from core.remediation import load_remediations
 from core.verification import load_verification_history
+from core.learning import summarize
 from core.memory import load
 
 
@@ -49,3 +50,8 @@ def actions():
 @app.get("/verifications")
 def verifications():
     return load_verification_history()
+
+
+@app.get("/learning")
+def learning():
+    return summarize()

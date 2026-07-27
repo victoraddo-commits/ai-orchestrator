@@ -76,3 +76,16 @@ def test_verifications_endpoint_returns_verification_history():
     verifications = response.json()
     assert len(verifications) == 1
     assert verifications[0]["service"] == "svc-a"
+
+
+def test_learning_endpoint_returns_action_classification():
+    from core.remediation_memory import record_result
+
+    for _ in range(4):
+        record_result("inc1", "restart_container", "success")
+
+    response = client.get("/learning")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["restart_container"]["recommendation"] == "trusted"

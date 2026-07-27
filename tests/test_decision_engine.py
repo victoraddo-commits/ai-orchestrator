@@ -136,6 +136,15 @@ def test_low_risk_action_auto_approves_when_autonomous_mode_enabled(monkeypatch)
     assert load_requests()[0]["status"] == "approved"
 
 
+def test_decision_persists_the_analysis_reasoning():
+    make_critical_incident()
+
+    decisions = evaluate_incidents()
+
+    assert "severity=critical" in decisions[0]["reason"]
+    assert "occurrences=3" in decisions[0]["reason"]
+
+
 def test_cause_probability_reflects_adjusted_confidence():
     for _ in range(4):
         record_result("prior-incident", "restart_container", "success")

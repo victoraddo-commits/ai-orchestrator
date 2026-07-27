@@ -5,10 +5,17 @@ from core.lifecycle import new_object, transition
 ALLOWED_TRANSITIONS = {
     "queued": ["executing"],
     "executing": ["completed", "failed"],
-    "completed": [],
+    "completed": ["rolled_back"],
     "failed": ["executing", "rolled_back"],
     "rolled_back": []
 }
+
+
+ROLLBACK_STRATEGIES = {}
+
+
+def register_rollback(action, strategy):
+    ROLLBACK_STRATEGIES[action] = strategy
 
 
 def load_remediations():
@@ -96,7 +103,7 @@ def complete_remediation(remediation_id, result):
     return remediation
 
 
-def rollback(remediation_id, note=None):
+def attempt_rollback(remediation_id):
 
     remediations = load_remediations()
 
@@ -105,7 +112,34 @@ def rollback(remediation_id, note=None):
     if remediation is None:
         return None
 
-    transition(remediation, "rolled_back", ALLOWED_TRANSITIONS, note=note)
+    strategy = ROLLBACK_STRATEGIES.get(remediation.get("action"))
+
+    if strategy is None:
+
+        remediation["rollback"] = {
+            "attempted": True,
+            "available": False,
+            "reason": f"No rollback strategy registered for action {remediation.get('action')!r}"
+        }
+
+        save_remediations(remediations)
+
+        return remediation
+
+    result = strategy(remediation)
+
+    transition(
+        remediation,
+        "rolled_back",
+        ALLOWED_TRANSITIONS,
+        note="automatic rollback after failed verification"
+    )
+
+    remediation["rollback"] = {
+        "attempted": True,
+        "available": True,
+        "result": result
+    }
 
     save_remediations(remediations)
 

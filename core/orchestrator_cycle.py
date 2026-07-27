@@ -3,6 +3,7 @@ from core.health import analyze
 from core.incident_manager import create_incident
 from core.decision_engine import evaluate_incidents
 from core.remediation_runner import process
+from core.remediation import attempt_rollback
 from core.verification import verify_service
 from core.logger import info
 
@@ -42,12 +43,15 @@ def run_cycle():
 
     for item in remediation:
 
-        verification.append(
-            verify_service(
-                item.get("service"),
-                trace_id=item.get("trace_id")
-            )
+        result = verify_service(
+            item.get("service"),
+            trace_id=item.get("trace_id")
         )
+
+        verification.append(result)
+
+        if result.get("status") == "unresolved":
+            attempt_rollback(item.get("remediation_id"))
 
 
     result = {

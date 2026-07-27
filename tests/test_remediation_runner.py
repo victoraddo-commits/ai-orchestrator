@@ -30,7 +30,9 @@ def test_process_creates_remediation_record_linked_to_incident():
     assert remediations[0]["trace_id"] == "inc1"
     assert remediations[0]["approval_id"] == request["id"]
     assert remediations[0]["status"] == "failed"
-    assert remediations[0]["snapshot"] == {"before": "unknown"}
+    assert remediations[0]["snapshot"]["before"] == "unknown"
+    assert remediations[0]["snapshot"]["command"] == f"restart_container on {NONEXISTENT_SERVICE}"
+    assert remediations[0]["snapshot"]["expected_result"] == "container running"
 
 
 def test_process_marks_approval_executed():

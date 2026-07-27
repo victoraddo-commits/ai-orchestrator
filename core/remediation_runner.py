@@ -24,7 +24,11 @@ def process():
             service=request["service"]
         )
 
-        start_remediation(remediation["id"], snapshot={"before": before})
+        start_remediation(remediation["id"], snapshot={
+            "before": before,
+            "command": f"{request['action']} on {request['service']}",
+            "expected_result": "container running"
+        })
 
         try:
             result = execute_action(request["action"], request["service"])

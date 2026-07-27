@@ -161,18 +161,17 @@ def sync_decision_with_approval(decision, request):
     if request is None:
         return
 
-    if decision["status"] == "proposed":
+    request_status = request["status"]
 
-        if request["status"] == "approved":
-            transition(decision, "approved", DECISION_TRANSITIONS)
+    if decision["status"] == "proposed" and request_status == "rejected":
+        transition(decision, "rejected", DECISION_TRANSITIONS)
+        return
 
-        elif request["status"] == "rejected":
-            transition(decision, "rejected", DECISION_TRANSITIONS)
+    if decision["status"] == "proposed" and request_status in ("approved", "executed"):
+        transition(decision, "approved", DECISION_TRANSITIONS)
 
-    elif decision["status"] == "approved":
-
-        if request["status"] == "executed":
-            transition(decision, "executed", DECISION_TRANSITIONS)
+    if decision["status"] == "approved" and request_status == "executed":
+        transition(decision, "executed", DECISION_TRANSITIONS)
 
 
 def evaluate_incidents():

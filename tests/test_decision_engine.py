@@ -136,6 +136,19 @@ def test_low_risk_action_auto_approves_when_autonomous_mode_enabled(monkeypatch)
     assert load_requests()[0]["status"] == "approved"
 
 
+def test_decision_catches_up_when_approval_skips_straight_to_executed():
+    make_critical_incident()
+
+    decisions = evaluate_incidents()
+    request_id = decisions[0]["approval_id"]
+
+    approve(request_id)
+    mark_executed(request_id)
+
+    decisions = evaluate_incidents()
+    assert decisions[0]["status"] == "executed"
+
+
 def test_decision_persists_the_analysis_reasoning():
     make_critical_incident()
 

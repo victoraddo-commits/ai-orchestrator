@@ -44,7 +44,8 @@ def run_cycle():
 
         verification.append(
             verify_service(
-                item.get("service")
+                item.get("service"),
+                trace_id=item.get("trace_id")
             )
         )
 

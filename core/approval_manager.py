@@ -20,8 +20,7 @@ def existing_request(action, service, incident_id):
             and req.get("incident") == incident_id
             and req.get("status") in (
                 "pending",
-                "approved",
-                "executing"
+                "approved"
             )
         ):
             return req

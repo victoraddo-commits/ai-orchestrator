@@ -1,85 +1,33 @@
-from datetime import datetime, timedelta
-import uuid
-
 from core.memory import load, save
+from core.lifecycle import new_object, transition
+from datetime import datetime
 
 
-WINDOW_MINUTES = 30
-
-
-SEVERITY_LEVELS = {
-    "info": 1,
-    "warning": 2,
-    "critical": 3
+ALLOWED_TRANSITIONS = {
+    "open": ["investigating"],
+    "investigating": ["approved", "closed"],
+    "approved": ["executing", "closed"],
+    "executing": ["verifying", "failed"],
+    "verifying": ["resolved", "failed"],
+    "resolved": ["closed"],
+    "failed": ["investigating", "closed"],
+    "closed": []
 }
 
 
 def load_incidents():
 
-    incidents = load(
-        "incidents.json"
-    )
+    incidents = load("incidents.json")
 
-    if not incidents:
+    if not isinstance(incidents, list):
         incidents = []
 
     return incidents
 
 
-
 def save_incidents(incidents):
 
-    save(
-        "incidents.json",
-        incidents
-    )
-
-
-
-def find_recent_failures(service):
-
-    incidents = load_incidents()
-
-    cutoff = datetime.now() - timedelta(
-        minutes=WINDOW_MINUTES
-    )
-
-
-    return [
-
-        i for i in incidents
-
-        if i.get("service") == service
-        and datetime.fromisoformat(
-            i.get("timestamp")
-        ) > cutoff
-
-    ]
-
-
-
-def calculate_severity(service, current):
-
-    previous = find_recent_failures(
-        service
-    )
-
-
-    count = len(previous) + 1
-
-
-    if count >= 3:
-
-        return "critical"
-
-
-    if count == 2:
-
-        return "warning"
-
-
-    return current
-
+    save("incidents.json", incidents)
 
 
 def find_open_duplicate(incidents, service, issue):
@@ -97,59 +45,93 @@ def find_open_duplicate(incidents, service, issue):
     return None
 
 
-
 def create_incident(service, issue, severity="info"):
 
     incidents = load_incidents()
-
 
     existing = find_open_duplicate(incidents, service, issue)
 
     if existing:
 
         existing["occurrences"] = existing.get("occurrences", 1) + 1
-
-        existing["timestamp"] = datetime.now().isoformat()
-
         existing["severity"] = severity
+
+        now = datetime.now().isoformat()
+        existing["updated"] = now
+        existing.setdefault("history", []).append(
+            {"status": existing["status"], "timestamp": now, "note": "recurrence"}
+        )
 
         save_incidents(incidents)
 
         return existing
 
-
-    incident = {
-
-        "id": str(uuid.uuid4())[:8],
-
-        "timestamp":
-            datetime.now().isoformat(),
-
-        "service": service,
-
-        "issue": issue,
-
-        "severity": severity,
-
-        "occurrences": 1,
-
-        "status": "open"
-
-    }
-
-
-    incidents.append(
-        incident
+    incident = new_object(
+        "open",
+        service=service,
+        issue=issue,
+        severity=severity,
+        occurrences=1
     )
 
+    incidents.append(incident)
 
-    save_incidents(
-        incidents
-    )
-
+    save_incidents(incidents)
 
     return incident
 
+
+def transition_incident(incident_id, new_status, note=None):
+
+    incidents = load_incidents()
+
+    for incident in incidents:
+
+        if str(incident.get("id")) == str(incident_id):
+
+            transition(incident, new_status, ALLOWED_TRANSITIONS, note=note)
+
+            save_incidents(incidents)
+
+            return {"status": "success", "incident": incident}
+
+    return {"status": "not_found"}
+
+
+def mark_investigating(incident_id, note=None):
+    return transition_incident(incident_id, "investigating", note=note)
+
+
+def mark_approved(incident_id, note=None):
+    return transition_incident(incident_id, "approved", note=note)
+
+
+def mark_executing(incident_id, note=None):
+    return transition_incident(incident_id, "executing", note=note)
+
+
+def mark_verifying(incident_id, note=None):
+    return transition_incident(incident_id, "verifying", note=note)
+
+
+def mark_resolved(incident_id, note=None):
+    return transition_incident(incident_id, "resolved", note=note)
+
+
+def mark_failed(incident_id, note=None):
+    return transition_incident(incident_id, "failed", note=note)
+
+
+def mark_closed(incident_id, note=None):
+    return transition_incident(incident_id, "closed", note=note)
+
+
+def get_active_incidents():
+
+    return [
+        i for i in load_incidents()
+        if i.get("status") not in ("closed", "resolved")
+    ]
 
 
 if __name__ == "__main__":

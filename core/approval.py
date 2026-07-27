@@ -1,112 +1,82 @@
-from datetime import datetime
-import uuid
-
 from core.memory import load, save
+from core.lifecycle import new_object, transition
+
+
+ALLOWED_TRANSITIONS = {
+    "pending": ["approved", "rejected"],
+    "approved": ["executed"],
+    "rejected": [],
+    "executed": []
+}
+
+
+def load_requests():
+
+    requests = load("approval_queue.json")
+
+    if not isinstance(requests, list):
+        requests = []
+
+    return requests
+
+
+def save_requests(requests):
+
+    save("approval_queue.json", requests)
 
 
 def create_request(action, service, reason, incident_id=None):
 
-    requests = load(
-        "approval_queue.json"
+    requests = load_requests()
+
+    request = new_object(
+        "pending",
+        trace_id=incident_id,
+        action=action,
+        service=service,
+        reason=reason,
+        incident=incident_id
     )
-
-    if not requests:
-        requests = []
-
-
-    request = {
-
-    "id": str(uuid.uuid4())[:8],
-
-    "action": action,
-
-    "service": service,
-
-    "reason": reason,
-
-    "incident": incident_id,
-
-    "status": "pending",
-
-    "created": datetime.now().isoformat()
-
-}
-
 
     requests.append(request)
 
-
-    save(
-        "approval_queue.json",
-        requests
-    )
-
+    save_requests(requests)
 
     return request
 
 
-
 def list_pending():
 
-    requests = load(
-        "approval_queue.json"
-    )
+    return [r for r in load_requests() if r.get("status") == "pending"]
 
-    return [
-        r for r in requests
-        if r.get("status") == "pending"
-    ]
 
+def transition_request(request_id, new_status, note=None):
+
+    requests = load_requests()
+
+    for request in requests:
+
+        if request.get("id") == request_id:
+
+            transition(request, new_status, ALLOWED_TRANSITIONS, note=note)
+
+            save_requests(requests)
+
+            return request
+
+    return None
 
 
 def approve(request_id):
-
-    requests = load(
-        "approval_queue.json"
-    )
-
-
-    for request in requests:
-
-        if request.get("id") == request_id:
-
-            request["status"] = "approved"
-
-            save(
-                "approval_queue.json",
-                requests
-            )
-
-            return request
-
-
-    return None
-
+    return transition_request(request_id, "approved")
 
 
 def reject(request_id):
-
-    requests = load(
-        "approval_queue.json"
-    )
+    return transition_request(request_id, "rejected")
 
 
-    for request in requests:
-
-        if request.get("id") == request_id:
-
-            request["status"] = "rejected"
-
-            save(
-                "approval_queue.json",
-                requests
-            )
-
-            return request
-
-
-    return None
-
+def mark_executed(request_id):
+    return transition_request(request_id, "executed")
 
 
 if __name__ == "__main__":

@@ -1,94 +1,112 @@
 from core.memory import load, save
-from core.actions import execute
-from core.action_log import record
-from datetime import datetime
+from core.lifecycle import new_object, transition
 
 
-def get_approved_requests():
+ALLOWED_TRANSITIONS = {
+    "queued": ["executing"],
+    "executing": ["completed", "failed"],
+    "completed": [],
+    "failed": ["executing", "rolled_back"],
+    "rolled_back": []
+}
 
-    requests = load(
-        "approval_queue.json"
+
+def load_remediations():
+
+    remediations = load("remediation.json")
+
+    if not isinstance(remediations, list):
+        remediations = []
+
+    return remediations
+
+
+def save_remediations(remediations):
+
+    save("remediation.json", remediations)
+
+
+def create_remediation(approval_id, trace_id, action, service):
+
+    remediations = load_remediations()
+
+    remediation = new_object(
+        "queued",
+        trace_id=trace_id,
+        approval_id=approval_id,
+        action=action,
+        service=service,
+        snapshot=None,
+        result=None
     )
 
-    if not requests:
-        return []
+    remediations.append(remediation)
+
+    save_remediations(remediations)
+
+    return remediation
 
 
-    return [
-        r for r in requests
-        if r.get("status") == "approved"
-    ]
+def _find(remediations, remediation_id):
+
+    for remediation in remediations:
+
+        if remediation.get("id") == remediation_id:
+
+            return remediation
+
+    return None
 
 
+def start_remediation(remediation_id, snapshot=None):
 
-def verify_request(request):
+    remediations = load_remediations()
 
-    required = (
-        "action",
-        "service",
-        "reason"
-    )
+    remediation = _find(remediations, remediation_id)
 
+    if remediation is None:
+        return None
 
-    for field in required:
+    transition(remediation, "executing", ALLOWED_TRANSITIONS)
 
-        if not request.get(field):
+    remediation["snapshot"] = snapshot
 
-            return False
+    save_remediations(remediations)
 
-
-    return True
+    return remediation
 
 
+def complete_remediation(remediation_id, result):
 
-def process_approved():
+    remediations = load_remediations()
 
-    requests = get_approved_requests()
+    remediation = _find(remediations, remediation_id)
 
-    results = []
+    if remediation is None:
+        return None
 
+    new_status = "completed" if result.get("status") == "success" else "failed"
 
-    for request in requests:
+    transition(remediation, new_status, ALLOWED_TRANSITIONS)
 
-        if not verify_request(request):
+    remediation["result"] = result
 
-            results.append(
-                record(
-                    request.get("action"),
-                    request.get("service"),
-                    "validation-failed"
-                )
-            )
+    save_remediations(remediations)
 
-            continue
+    return remediation
 
 
-        result = {
+def rollback(remediation_id, note=None):
 
-            "timestamp": datetime.now().isoformat(),
+    remediations = load_remediations()
 
-            "request_id": request["id"],
+    remediation = _find(remediations, remediation_id)
 
-            "action": request["action"],
+    if remediation is None:
+        return None
 
-            "service": request["service"],
+    transition(remediation, "rolled_back", ALLOWED_TRANSITIONS, note=note)
 
-            "status": "validated",
+    save_remediations(remediations)
 
-            "execution": "dry-run"
-
-        }
-
-
-        results.append(result)
-
-
-    return results
-
-
-
-if __name__ == "__main__":
-
-    print(
-        process_approved()
-    )
+    return remediation

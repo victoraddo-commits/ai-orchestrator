@@ -1,20 +1,19 @@
 import sys
 
-from core.memory import load, save
+from core.approval import load_requests, approve, reject
+from core.lifecycle import InvalidTransition
 
 
 def list_requests():
 
-    requests = load(
-        "approval_queue.json"
-    )
+    requests = load_requests()
 
     if not requests:
         print("No pending approvals")
         return
 
 
-    print("\nPENDING APPROVALS\n")
+    print("\nAPPROVAL QUEUE\n")
 
     print(
         f"{'ID':10} {'ACTION':20} {'SERVICE':20} {'STATUS'}"
@@ -31,39 +30,25 @@ def list_requests():
 
 
 
-def update_request(request_id, status):
+def run_transition(request_id, action, label):
 
-    requests = load(
-        "approval_queue.json"
-    )
+    try:
 
-    updated = False
+        result = action(request_id)
 
+    except InvalidTransition as error:
 
-    for req in requests:
-
-        if req["id"] == request_id:
-
-            req["status"] = status
-            updated = True
+        print(f"Cannot {label} request {request_id}: {error}")
+        return
 
 
-    if updated:
+    if result is None:
 
-        save(
-            "approval_queue.json",
-            requests
-        )
+        print("Request not found")
+        return
 
-        print(
-            f"Request {request_id} marked {status}"
-        )
 
-    else:
-
-        print(
-            "Request not found"
-        )
+    print(f"Request {request_id} marked {result['status']}")
 
 
 
@@ -88,18 +73,12 @@ if __name__ == "__main__":
 
     elif command == "approve":
 
-        update_request(
-            sys.argv[2],
-            "approved"
-        )
+        run_transition(sys.argv[2], approve, "approve")
 
 
     elif command == "reject":
 
-        update_request(
-            sys.argv[2],
-            "rejected"
-        )
+        run_transition(sys.argv[2], reject, "reject")
 
 
     else:

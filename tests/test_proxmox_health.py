@@ -89,7 +89,40 @@ def test_high_cpu_vm_is_detected():
     assert any("cpu" in f["issue"].lower() for f in vm_findings)
 
 
-def test_high_memory_vm_is_detected():
+def test_high_memory_vm_with_real_pressure_is_detected():
+    save("last_scan.json", base_scan(qemu={"data": [
+        {"vmid": 101, "name": "OPNsense", "status": "running", "cpu": 0.1, "mem": 95, "maxmem": 100,
+         "pressurememorysome": 0.5, "pressurememoryfull": 0.1}
+    ]}))
+
+    findings = analyze_proxmox_cluster()
+
+    vm_findings = find(findings, "proxmox-vm")
+    assert any("memory" in f["issue"].lower() for f in vm_findings)
+
+
+def test_high_memory_vm_without_real_pressure_is_not_flagged():
+    # FreeBSD/OPNsense-style guests routinely fill available RAM with disk
+    # cache; with ballooning disabled Proxmox's mem/maxmem ratio never comes
+    # back down even though nothing is actually stalled on memory. PSI
+    # (pressurememorysome/full) is the host's own signal for genuine
+    # contention -- a high ratio with zero pressure is a false positive.
+    save("last_scan.json", base_scan(qemu={"data": [
+        {"vmid": 101, "name": "OPNsense", "status": "running", "cpu": 0.1, "mem": 95, "maxmem": 100,
+         "pressurememorysome": 0, "pressurememoryfull": 0}
+    ]}))
+
+    findings = analyze_proxmox_cluster()
+
+    vm_findings = find(findings, "proxmox-vm")
+    assert not any("memory" in f["issue"].lower() for f in vm_findings)
+
+
+def test_high_memory_vm_missing_pressure_fields_is_not_flagged():
+    # Older Proxmox versions without PSI support simply omit these fields.
+    # Defaulting to "no pressure" (rather than falling back to the raw
+    # ratio) is the conservative choice: it avoids reintroducing the exact
+    # false-positive this logic was fixed for.
     save("last_scan.json", base_scan(qemu={"data": [
         {"vmid": 101, "name": "OPNsense", "status": "running", "cpu": 0.1, "mem": 95, "maxmem": 100}
     ]}))
@@ -97,7 +130,7 @@ def test_high_memory_vm_is_detected():
     findings = analyze_proxmox_cluster()
 
     vm_findings = find(findings, "proxmox-vm")
-    assert any("memory" in f["issue"].lower() for f in vm_findings)
+    assert not any("memory" in f["issue"].lower() for f in vm_findings)
 
 
 def test_failed_backup_is_detected():

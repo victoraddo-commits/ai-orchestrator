@@ -138,7 +138,14 @@ def analyze_proxmox_cluster():
         vm_mem_used = vm.get("mem", 0)
         vm_mem_usage = vm_mem_used / vm_mem_total if vm_mem_total else 0
 
-        if vm_mem_usage > 0.90:
+        # Raw mem/maxmem ratio alone is not reliable: guests without
+        # ballooning (balloon: 0) can sit at a high ratio indefinitely just
+        # from normal OS disk-cache behavior (FreeBSD/OPNsense in particular).
+        # PSI (pressurememorysome/full) is Proxmox's own signal for whether
+        # anything is actually stalled on memory -- require it before alerting.
+        vm_mem_pressure = vm.get("pressurememorysome", 0) or vm.get("pressurememoryfull", 0)
+
+        if vm_mem_usage > 0.90 and vm_mem_pressure > 0:
             health_score -= 10
 
             findings.append({

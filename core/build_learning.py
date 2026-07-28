@@ -6,6 +6,84 @@ from core.memory import load, save
 SUCCESS_STATUSES = {"COMPLETED"}
 TERMINAL_STATUSES = {"COMPLETED", "FAILED", "ROLLED_BACK"}
 
+# Threshold values lifted out of evaluate_template's recommendation ladder so
+# the trusted/observe/avoid pattern is reusable for lessons, not just
+# templates -- per 13F's "no new classification scheme" requirement.
+RECOMMENDATION_TRUSTED_MIN = 80
+RECOMMENDATION_OBSERVE_MIN = 50
+
+# Categories tracked by the 13F lesson store. Plain strings (not an Enum) so
+# they round-trip cleanly through JSON and are easy to filter on.
+LESSON_CATEGORIES = (
+    "preferred_architecture",
+    "common_failure",
+    "successful_solution",
+    "avoided_approach",
+)
+
+LESSONS_FILE = "learning_lessons.json"
+
+
+def _recommend_from_rate(success_rate, total):
+    """Apply the existing trusted/observe/avoid pattern given a percentage.
+
+    The thresholds match evaluate_template's ladder exactly -- anything
+    above (or equal to) the trusted minimum is "trusted", anything above
+    (or equal to) the observe minimum is "observe", everything else is
+    "avoid", and a zero-attempt subject is "insufficient_history".
+    """
+    if total == 0:
+        return "insufficient_history"
+    if success_rate >= RECOMMENDATION_TRUSTED_MIN:
+        return "trusted"
+    if success_rate >= RECOMMENDATION_OBSERVE_MIN:
+        return "observe"
+    return "avoid"
+
+
+def _derive_rollback_root_cause(build):
+    """Dynamically extract a rollback root-cause string from a build.
+
+    No fixed taxonomy -- sources are tried in priority order and the first
+    one with usable detail wins. Designed for the case where
+    ``rollback_deployment`` has just transitioned a build to ROLLED_BACK and
+    the operator (or the next build cycle) wants to know *why* beyond a bare
+    status flag.
+
+    Precedence (highest to lowest):
+      1. ``deployment.rollback.reason``  -- explicit reason captured by the
+         remediation's rollback handler
+      2. The "no rollback strategy registered" message when a build's
+         remediation action has no rollback handler
+      3. ``deployment.rollback.result.error``  -- strategy-execution error
+      4. ``deployment.rollback.result.rolled_back_to``  -- confirmation of
+         what the rollback restored
+      5. ``build.failure_reason``  -- the build's pre-rollback failure
+    """
+    deployment = build.get("deployment") or {}
+
+    rollback = deployment.get("rollback") or {}
+
+    if rollback.get("reason"):
+        return rollback["reason"]
+
+    if rollback.get("attempted") and not rollback.get("available"):
+        action = deployment.get("action") or "deployment"
+        return f"No rollback strategy registered for {action!r}"
+
+    result = rollback.get("result") or {}
+    if isinstance(result, dict):
+        if result.get("error"):
+            return f"Rollback error: {result['error']}"
+        if result.get("rolled_back_to"):
+            return f"Rolled back to {result['rolled_back_to']}"
+
+    failure_reason = build.get("failure_reason")
+    if failure_reason:
+        return f"Build failed: {failure_reason}"
+
+    return "Rollback requested without a recorded cause"
+
 
 def get_build_history():
     return load("build_history.json") or []
@@ -16,17 +94,23 @@ def record_build_outcome(build):
 
     security_report = build.get("security_report") or {}
 
+    status = build.get("status")
     entry = {
         "build_id": build.get("id"),
         "name": build.get("name"),
         "template": build.get("template"),
-        "status": build.get("status"),
+        "status": status,
         "failure_reason": build.get("failure_reason"),
         "security_findings": security_report.get("total_findings"),
         "highest_severity": security_report.get("highest_severity"),
         "commits": len((build.get("generation_result") or {}).get("commits") or []),
         "timestamp": datetime.now().isoformat(),
     }
+
+    if status == "ROLLED_BACK":
+        # Record *why* the rollback happened, not just that it did. Derived
+        # dynamically from whatever data the build has -- no fixed taxonomy.
+        entry["rollback_root_cause"] = _derive_rollback_root_cause(build)
 
     history.append(entry)
     save("build_history.json", history)
@@ -55,12 +139,8 @@ def evaluate_template(template):
 
     if stats["attempts"] == 0:
         stats["recommendation"] = "insufficient_history"
-    elif stats["success_rate"] >= 80:
-        stats["recommendation"] = "trusted"
-    elif stats["success_rate"] >= 50:
-        stats["recommendation"] = "observe"
     else:
-        stats["recommendation"] = "avoid"
+        stats["recommendation"] = _recommend_from_rate(stats["success_rate"], stats["attempts"])
 
     return stats
 
@@ -71,3 +151,157 @@ def summarize_templates():
     templates = {entry["template"] for entry in history if entry.get("template")}
 
     return {template: evaluate_template(template) for template in templates}
+
+
+# --- 13F: lesson store (preferred architectures, common failures,
+#             successful solutions, avoided approaches) ------------------
+
+def get_lessons(category=None):
+    lessons = load(LESSONS_FILE)
+
+    if not isinstance(lessons, list):
+        lessons = []
+
+    if category is None:
+        return lessons
+
+    return [lesson for lesson in lessons if lesson.get("category") == category]
+
+
+def record_lesson(category, subject, source, evidence=None, recommendation=None):
+    if category not in LESSON_CATEGORIES:
+        raise ValueError(f"Unknown lesson category: {category!r}")
+
+    lessons = get_lessons()
+
+    entry = {
+        "category": category,
+        "subject": subject,
+        "source": source,
+        "evidence": evidence or {},
+        "recommendation": recommendation,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    lessons.append(entry)
+    save(LESSONS_FILE, lessons)
+
+    return entry
+
+
+def _lesson_is_positive(lesson):
+    """Whether a single lesson entry is a positive signal for its subject.
+
+    Per-category interpretation (no new classification scheme; the existing
+    trusted/observe/avoid ladder is what summarize_lessons applies):
+      * preferred_architecture  -> positive iff the lesson's recommendation
+        is one of trusted/observe (i.e. the build using this template was
+        considered successful enough to recommend).
+      * successful_solution     -> positive iff the lesson's recommendation
+        is one of trusted/observe.
+      * common_failure          -> each lesson IS a failure, so it is a
+        negative signal by definition.
+      * avoided_approach        -> each lesson IS a rejection (recorded as
+        ``recommendation="avoid"``), so it is a negative signal by
+        definition.
+    """
+    category = lesson.get("category")
+    recommendation = lesson.get("recommendation") or ""
+
+    if category in ("preferred_architecture", "successful_solution"):
+        return recommendation in ("trusted", "observe")
+
+    if category in ("common_failure", "avoided_approach"):
+        return False
+
+    return False
+
+
+def summarize_lessons(category=None):
+    """Aggregate lessons by subject and apply the trusted/observe/avoid pattern.
+
+    For each subject within the requested category (or across all categories
+    if ``category`` is None), compute the positive-evidence ratio and feed
+    it through the same threshold table ``evaluate_template`` already uses.
+    The result is the per-subject recommendation, exactly the same shape
+    callers already know from ``summarize_templates``.
+    """
+    lessons = get_lessons(category)
+
+    by_subject = {}
+    for lesson in lessons:
+        subject = lesson.get("subject")
+        if not subject:
+            continue
+        bucket = by_subject.setdefault(
+            subject,
+            {"category": lesson.get("category"), "attempts": 0, "positive": 0},
+        )
+        bucket["attempts"] += 1
+        if _lesson_is_positive(lesson):
+            bucket["positive"] += 1
+
+    summary = {}
+    for subject, bucket in by_subject.items():
+        total = bucket["attempts"]
+        positives = bucket["positive"]
+        rate = round(positives / total * 100, 2) if total else 0
+        summary[subject] = {
+            "category": bucket["category"],
+            "attempts": total,
+            "positive": positives,
+            "success_rate": rate,
+            "recommendation": _recommend_from_rate(rate, total),
+        }
+
+    return summary
+
+
+def ingest_rejected_proposals():
+    """Read 13C's Improvement Proposal store and record rejected proposals
+    as ``avoided_approach`` lessons.
+
+    The transition note (if any) recorded when the proposal was rejected
+    becomes the lesson's evidence so future cycles can see not just *that*
+    an approach was avoided but *why*.
+    """
+    try:
+        from core.kai.planner import load_proposals
+    except ImportError:
+        return {"ingested": 0, "skipped": "proposal_store_unavailable"}
+
+    proposals = load_proposals()
+    ingested = 0
+    total_rejected = 0
+
+    for proposal in proposals:
+        if proposal.get("status") != "rejected":
+            continue
+
+        total_rejected += 1
+
+        # 13C's lifecycle.transition() appends {"status": ..., "note": ...}
+        # entries to proposal["history"]; the most recent rejection note is
+        # the last entry whose status is "rejected".
+        rejection_note = None
+        for entry in reversed(proposal.get("history") or []):
+            if entry.get("status") == "rejected":
+                rejection_note = entry.get("note")
+                break
+
+        record_lesson(
+            category="avoided_approach",
+            subject=proposal.get("title") or proposal.get("id"),
+            source="improvement_proposal_store",
+            evidence={
+                "proposal_id": proposal.get("id"),
+                "description": proposal.get("description"),
+                "suggested_action": proposal.get("suggested_action"),
+                "rationale": proposal.get("rationale"),
+                "rejection_note": rejection_note,
+            },
+            recommendation="avoid",
+        )
+        ingested += 1
+
+    return {"ingested": ingested, "total_rejected": total_rejected}

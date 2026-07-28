@@ -12,6 +12,7 @@ from core.ai import provider_health
 from core.roadmap_manager import advance_roadmap
 from core.build_learning import get_build_history
 from core.roadmap_engine import get_next_phase
+from core.kai.planner import generate_proposal
 
 
 FAILURE_STATUSES = {"FAILED", "ROLLED_BACK"}
@@ -25,14 +26,6 @@ def _handle_health():
 
 
 def _handle_improvements():
-    # 13C (Improvement Proposal planner) depends on this phase and is not
-    # built yet -- hook in via a safe import so this command starts working
-    # the moment 13C lands, without requiring a change here.
-    try:
-        from core.kai.planner import generate_proposal
-    except ImportError:
-        return {"status": "pending_13c", "message": "13C improvement planner not yet available."}
-
     return generate_proposal()
 
 

@@ -23,19 +23,23 @@ def test_analyze_system_health_is_case_insensitive_and_tolerates_trailing_period
     assert commands.dispatch("kai, ANALYZE system health.")["matched"] is True
 
 
-def test_find_improvements_falls_back_gracefully_when_13c_planner_is_absent():
+def test_find_improvements_delegates_to_the_13c_planner(monkeypatch):
+    monkeypatch.setattr(commands, "generate_proposal", lambda: {"status": "ok", "created": []})
+
     result = commands.dispatch("Kai, find improvements")
 
     assert result["matched"] is True
     assert result["error"] is None
-    assert result["result"]["status"] == "pending_13c"
+    assert result["result"] == {"status": "ok", "created": []}
 
 
-def test_create_an_improvement_proposal_matches_the_same_handler():
+def test_create_an_improvement_proposal_matches_the_same_handler(monkeypatch):
+    monkeypatch.setattr(commands, "generate_proposal", lambda: {"status": "ok", "created": []})
+
     result = commands.dispatch("Kai, create an improvement proposal")
 
     assert result["matched"] is True
-    assert result["result"]["status"] == "pending_13c"
+    assert result["result"]["status"] == "ok"
 
 
 def test_continue_roadmap_advances_the_roadmap(monkeypatch):

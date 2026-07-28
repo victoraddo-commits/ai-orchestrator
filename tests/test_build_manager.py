@@ -267,6 +267,70 @@ def test_rollback_deployment_transitions_to_rolled_back(monkeypatch):
     assert updated["status"] == "ROLLED_BACK"
 
 
+def test_rollback_deployment_stores_rollback_info_on_the_build(monkeypatch):
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+    _force_status(build["id"], "COMPLETED")
+
+    builds = build_manager.load_builds()
+    for b in builds:
+        if b["id"] == build["id"]:
+            b["deployment"] = {"deployed": True, "remediation_id": "r1"}
+    build_manager.save_builds(builds)
+
+    monkeypatch.setattr(
+        build_manager,
+        "attempt_rollback",
+        lambda remediation_id: {
+            "rollback": {
+                "attempted": True,
+                "available": True,
+                "result": {"rolled_back_to": "previous production container"},
+            }
+        },
+    )
+
+    updated = build_manager.rollback_deployment(build["id"])
+
+    assert updated["deployment"]["rollback"]["attempted"] is True
+    assert updated["deployment"]["rollback"]["available"] is True
+    assert updated["deployment"]["rollback"]["result"]["rolled_back_to"] == (
+        "previous production container"
+    )
+
+
+def test_rollback_deployment_records_root_cause_in_build_history(monkeypatch):
+    from core.build_learning import get_build_history
+
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj", template="fastapi")
+    _force_status(build["id"], "COMPLETED")
+
+    builds = build_manager.load_builds()
+    for b in builds:
+        if b["id"] == build["id"]:
+            b["deployment"] = {
+                "deployed": True,
+                "remediation_id": "r1",
+                "rollback": {"attempted": True, "available": False},
+            }
+    build_manager.save_builds(builds)
+
+    monkeypatch.setattr(
+        build_manager,
+        "attempt_rollback",
+        lambda remediation_id: {
+            "rollback": {"attempted": True, "available": False}
+        },
+    )
+
+    build_manager.rollback_deployment(build["id"])
+
+    history = get_build_history()
+    assert len(history) == 1
+    assert history[0]["status"] == "ROLLED_BACK"
+    assert history[0]["template"] == "fastapi"
+    assert "No rollback strategy" in history[0]["rollback_root_cause"]
+
+
 def test_advance_builds_drives_planning_to_waiting_for_user(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
     _force_status(build["id"], "PLANNING")

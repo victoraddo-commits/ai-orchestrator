@@ -83,6 +83,31 @@ def test_get_next_phase_returns_none_when_everything_is_done_or_blocked(isolated
     assert roadmap_engine.get_next_phase() is None
 
 
+def test_get_candidate_phases_returns_all_eligible_phases_not_just_one(isolated_roadmap):
+    _write(isolated_roadmap, [
+        {"id": "A", "status": "completed", "dependencies": [], "priority": 1},
+        {"id": "B", "status": "pending", "dependencies": ["A"], "priority": 3},
+        {"id": "C", "status": "pending", "dependencies": ["A"], "priority": 2},
+        {"id": "D", "status": "pending", "dependencies": ["Z"], "priority": 0},
+    ])
+
+    candidates = {p["id"] for p in roadmap_engine.get_candidate_phases()}
+
+    # B and C are both eligible (dependency A is done); D is excluded even
+    # though it has the lowest priority, since its dependency isn't done.
+    assert candidates == {"B", "C"}
+
+
+def test_get_next_phase_still_picks_lowest_priority_among_candidates(isolated_roadmap):
+    _write(isolated_roadmap, [
+        {"id": "A", "status": "completed", "dependencies": [], "priority": 1},
+        {"id": "B", "status": "pending", "dependencies": ["A"], "priority": 3},
+        {"id": "C", "status": "pending", "dependencies": ["A"], "priority": 2},
+    ])
+
+    assert roadmap_engine.get_next_phase()["id"] == "C"
+
+
 def test_get_next_phase_ignores_in_progress_phases(isolated_roadmap):
     _write(isolated_roadmap, [
         {"id": "A", "status": "in_progress", "dependencies": [], "priority": 1},

@@ -30,14 +30,24 @@ def get_remaining_work():
     return [p for p in load_roadmap()["phases"] if p["status"] != "completed"]
 
 
-def get_next_phase():
+def get_candidate_phases():
+    """Pending phases whose dependencies are all completed -- i.e. everything
+    eligible to start next, before any ordering/selection is applied. Split
+    out from get_next_phase() so callers that need a different selection
+    strategy (e.g. core.roadmap_manager's value-based scoring) can reuse the
+    same eligibility filter instead of duplicating it."""
+
     roadmap = load_roadmap()
     completed_ids = {p["id"] for p in roadmap["phases"] if p["status"] == "completed"}
 
-    candidates = [
+    return [
         p for p in roadmap["phases"]
         if p["status"] == "pending" and all(dep in completed_ids for dep in p.get("dependencies", []))
     ]
+
+
+def get_next_phase():
+    candidates = get_candidate_phases()
 
     if not candidates:
         return None

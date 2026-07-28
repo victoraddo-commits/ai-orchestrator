@@ -22,6 +22,8 @@ from core.build_manager import (
     submit_answer,
     approve_architecture,
     start_generation,
+    approve_deploy,
+    rollback_deployment,
 )
 from core.project_templates import TEMPLATES
 
@@ -253,6 +255,41 @@ def generate_build_endpoint(
         result = start_generation(build_id)
     except InvalidTransition as error:
         raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Build not found")
+
+    return result
+
+
+@app.post("/builds/{build_id}/approve-deploy")
+def approve_deploy_endpoint(
+    build_id: str,
+    action: ApprovalAction = ApprovalAction(),
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        result = approve_deploy(build_id, operator=operator, note=action.note)
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Build not found")
+
+    return result
+
+
+@app.post("/builds/{build_id}/rollback")
+def rollback_build_endpoint(
+    build_id: str,
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        result = rollback_deployment(build_id)
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
     if result is None:
         raise HTTPException(status_code=404, detail="Build not found")

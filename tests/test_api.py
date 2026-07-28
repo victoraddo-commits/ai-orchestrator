@@ -309,3 +309,44 @@ def test_generate_build_endpoint_returns_409_from_wrong_state():
     response = client.post(f"/builds/{created['id']}/generate", headers=auth_headers())
 
     assert response.status_code == 409
+
+
+def test_approve_deploy_endpoint_returns_409_from_wrong_state():
+    created = client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "desc", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(f"/builds/{created['id']}/approve-deploy", headers=auth_headers())
+
+    assert response.status_code == 409
+
+
+def test_rollback_endpoint_returns_400_when_no_deployment_exists():
+    created = client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "desc", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(f"/builds/{created['id']}/rollback", headers=auth_headers())
+
+    assert response.status_code == 400
+
+
+def test_rollback_endpoint_returns_404_for_unknown_build():
+    response = client.post("/builds/does-not-exist/rollback", headers=auth_headers())
+
+    assert response.status_code == 404
+
+
+def test_approve_deploy_and_rollback_endpoints_require_auth():
+    created = client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "desc", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    ).json()
+
+    assert client.post(f"/builds/{created['id']}/approve-deploy").status_code == 401
+    assert client.post(f"/builds/{created['id']}/rollback").status_code == 401

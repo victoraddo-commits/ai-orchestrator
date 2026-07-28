@@ -1,0 +1,197 @@
+import os
+import re
+import subprocess
+import time
+import urllib.error
+import urllib.request
+
+from core.remediation import (
+    create_remediation,
+    start_remediation,
+    complete_remediation,
+    register_rollback,
+)
+
+
+DEPLOY_ACTION = "deploy_build"
+
+
+def _slugify(name):
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "app"
+
+
+def container_name_for(build):
+    return f"aiapp-{_slugify(build['name'])}"
+
+
+def _docker(*args, timeout=60):
+    return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout)
+
+
+def _container_exists(name):
+    return _docker("inspect", name).returncode == 0
+
+
+def _container_running(name):
+    result = _docker("inspect", "-f", "{{.State.Running}}", name)
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _restart_count(name):
+    result = _docker("inspect", "-f", "{{.RestartCount}}", name)
+    return int(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip().isdigit() else 0
+
+
+def _assigned_port(name):
+    result = _docker("port", name)
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    match = re.search(r":(\d+)$", result.stdout.strip().splitlines()[0])
+    return int(match.group(1)) if match else None
+
+
+def _http_check(port):
+    # Best-effort/informational only -- not every deployed container serves
+    # plain HTTP on its exposed port, so this never fails the deployment by
+    # itself (see verify_deployment: only container-running/crash-loop are
+    # hard gates).
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as resp:
+            return resp.status < 500
+    except (urllib.error.URLError, OSError):
+        return None
+
+
+def has_dockerfile(project_path):
+    return os.path.exists(os.path.join(project_path, "Dockerfile"))
+
+
+def build_image(build):
+    name = container_name_for(build)
+    # Plain `docker build` fails under this LXC's AppArmor restrictions
+    # (confirmed live: "apparmor failed to apply profile ... no such file or
+    # directory" on any RUN step) -- buildx with these flags is the same
+    # working pattern already used for this LXC's other Docker builds.
+    result = _docker(
+        "buildx", "build",
+        "--allow", "security.insecure",
+        "--security-opt", "apparmor=unconfined",
+        "--load",
+        "-t", f"{name}:latest",
+        build["project_path"],
+        timeout=600,
+    )
+    log = (result.stdout or "") + (result.stderr or "")
+    return result.returncode == 0, log[-2000:]
+
+
+def run_staging_container(build):
+    name = container_name_for(build)
+    staging_name = f"{name}-staging"
+
+    _docker("rm", "-f", staging_name)
+
+    result = _docker(
+        "run", "-d", "--name", staging_name,
+        "--security-opt", "apparmor=unconfined",
+        "-P",
+        f"{name}:latest",
+    )
+    return result.returncode == 0, staging_name, result.stderr
+
+
+def verify_deployment(container_name, wait_seconds=3):
+    time.sleep(wait_seconds)
+
+    if not _container_running(container_name):
+        logs = _docker("logs", "--tail", "50", container_name).stdout
+        return {"healthy": False, "reason": "container is not running (exited or crashed)", "logs_tail": logs}
+
+    restarts = _restart_count(container_name)
+    if restarts > 0:
+        return {"healthy": False, "reason": f"container restarted {restarts} times (crash loop)"}
+
+    port = _assigned_port(container_name)
+    http_ok = _http_check(port) if port else None
+
+    return {"healthy": True, "port": port, "http_ok": http_ok}
+
+
+def _demote_current_production(name):
+    if _container_exists(name):
+        _docker("rm", "-f", f"{name}-previous")
+        _docker("stop", name)
+        _docker("rename", name, f"{name}-previous")
+
+
+def _promote_staging_to_production(build):
+    name = container_name_for(build)
+    staging_name = f"{name}-staging"
+    _demote_current_production(name)
+    _docker("rename", staging_name, name)
+    return name
+
+
+def _rollback_strategy(remediation):
+    name = remediation["service"]
+    previous = f"{name}-previous"
+
+    _docker("rm", "-f", name)
+
+    if _container_exists(previous):
+        _docker("rename", previous, name)
+        _docker("start", name)
+        return {"rolled_back_to": "previous production container"}
+
+    return {"rolled_back_to": None, "note": "no previous container existed -- production left undeployed"}
+
+
+register_rollback(DEPLOY_ACTION, _rollback_strategy)
+
+
+def deploy_build(build):
+    name = container_name_for(build)
+
+    if not has_dockerfile(build["project_path"]):
+        return {"deployed": False, "reason": "No Dockerfile found in project -- cannot deploy"}
+
+    remediation = create_remediation(
+        approval_id=build["id"], trace_id=build["id"], action=DEPLOY_ACTION, service=name
+    )
+    start_remediation(remediation["id"], snapshot={"command": f"deploy {name}"})
+
+    built, build_log = build_image(build)
+    if not built:
+        complete_remediation(remediation["id"], {"status": "failed", "error": "docker image build failed", "log": build_log})
+        return {"deployed": False, "reason": "Docker image build failed", "log": build_log, "remediation_id": remediation["id"]}
+
+    started, staging_name, run_err = run_staging_container(build)
+    if not started:
+        complete_remediation(remediation["id"], {"status": "failed", "error": f"failed to start staging container: {run_err}"})
+        return {"deployed": False, "reason": f"Failed to start staging container: {run_err}", "remediation_id": remediation["id"]}
+
+    verification = verify_deployment(staging_name)
+
+    if not verification["healthy"]:
+        _docker("rm", "-f", staging_name)
+        complete_remediation(remediation["id"], {"status": "failed", "error": verification.get("reason")})
+        return {
+            "deployed": False,
+            "reason": verification.get("reason"),
+            "verification": verification,
+            "remediation_id": remediation["id"],
+        }
+
+    production_name = _promote_staging_to_production(build)
+    port = _assigned_port(production_name)
+
+    complete_remediation(remediation["id"], {"status": "success", "container": production_name, "port": port})
+
+    return {
+        "deployed": True,
+        "container": production_name,
+        "port": port,
+        "verification": verification,
+        "remediation_id": remediation["id"],
+    }

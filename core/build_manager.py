@@ -4,6 +4,8 @@ from core.coding_bridge import run_coding_task
 from core.repo_manager import create_local_repo
 from core.project_templates import get_template
 from core.security_scanner import run_all_scans
+from core.deployment_manager import deploy_build
+from core.remediation import attempt_rollback
 
 
 # Deliberately a separate store from approval_queue.json -- that queue is
@@ -32,7 +34,10 @@ BUILD_TRANSITIONS = {
     "DEPLOY_APPROVAL": ["DEPLOYING", "FAILED"],
     "DEPLOYING": ["VERIFIED", "FAILED"],
     "VERIFIED": ["COMPLETED", "ROLLED_BACK"],
-    "COMPLETED": [],
+    # A deployed-and-completed build can still be rolled back later (e.g. a
+    # bug surfaces after the fact) -- COMPLETED isn't fully terminal for
+    # builds that reached production.
+    "COMPLETED": ["ROLLED_BACK"],
     "FAILED": [],
     "ROLLED_BACK": [],
 }
@@ -67,6 +72,7 @@ def create_build(name, description, project_path, template=None):
         plan=None,
         generation_result=None,
         security_report=None,
+        deployment=None,
     )
 
     builds.append(build)
@@ -151,6 +157,37 @@ def start_generation(build_id):
     return _update(build_id, mutate)
 
 
+def approve_deploy(build_id, operator=None, note=None):
+    build = get_build(build_id)
+    if build is None:
+        return None
+
+    _require_status(build, "DEPLOY_APPROVAL")
+
+    def mutate(b):
+        transition(b, "DEPLOYING", BUILD_TRANSITIONS, note=note)
+        b["deploy_approved_by"] = operator
+
+    return _update(build_id, mutate)
+
+
+def rollback_deployment(build_id):
+    build = get_build(build_id)
+    if build is None:
+        return None
+
+    deployment = build.get("deployment")
+    if not deployment or not deployment.get("remediation_id"):
+        raise ValueError(f"Build {build_id!r} has no deployment to roll back")
+
+    attempt_rollback(deployment["remediation_id"])
+
+    def mutate(b):
+        transition(b, "ROLLED_BACK", BUILD_TRANSITIONS, note="manual rollback requested")
+
+    return _update(build_id, mutate)
+
+
 def _template_context(build):
     template = get_template(build.get("template"))
     return f"\nTemplate to use as a starting point: {template['base_instruction']}\n" if template else ""
@@ -229,6 +266,18 @@ def _run_generation(build):
     transition(build, "DEPLOY_APPROVAL", BUILD_TRANSITIONS)
 
 
+def _run_deployment(build):
+    result = deploy_build(build)
+    build["deployment"] = result
+
+    if result.get("deployed"):
+        transition(build, "VERIFIED", BUILD_TRANSITIONS)
+        transition(build, "COMPLETED", BUILD_TRANSITIONS)
+    else:
+        transition(build, "FAILED", BUILD_TRANSITIONS)
+        build["failure_reason"] = result.get("reason", "Deployment failed")
+
+
 def advance_builds():
     builds = load_builds()
 
@@ -242,6 +291,8 @@ def advance_builds():
             _run_planning(build)
         elif status == "GENERATING":
             _run_generation(build)
+        elif status == "DEPLOYING":
+            _run_deployment(build)
 
     save_builds(builds)
 

@@ -113,6 +113,13 @@ def test_start_generation_requires_architecture_approved_state():
         build_manager.start_generation(build["id"])
 
 
+def test_approve_deploy_requires_deploy_approval_state():
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+
+    with pytest.raises(InvalidTransition):
+        build_manager.approve_deploy(build["id"], operator="alice")
+
+
 def _force_status(build_id, status):
     # Test helper: jump a build straight to a state without going through
     # advance_builds(), so downstream-endpoint tests don't depend on the
@@ -151,6 +158,79 @@ def test_start_generation_transitions_to_generating():
     updated = build_manager.start_generation(build["id"])
 
     assert updated["status"] == "GENERATING"
+
+
+def test_approve_deploy_transitions_and_tags_operator():
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+    _force_status(build["id"], "DEPLOY_APPROVAL")
+
+    updated = build_manager.approve_deploy(build["id"], operator="cloudcli-plugin")
+
+    assert updated["status"] == "DEPLOYING"
+    assert updated["deploy_approved_by"] == "cloudcli-plugin"
+
+
+def test_advance_builds_drives_deploying_to_completed_on_success(monkeypatch):
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+    _force_status(build["id"], "DEPLOYING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "deploy_build",
+        lambda b: {"deployed": True, "container": "aiapp-todo-app", "port": 32768, "remediation_id": "r1"},
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "COMPLETED"
+    assert updated["deployment"]["port"] == 32768
+
+
+def test_advance_builds_drives_deploying_to_failed_on_unsuccessful_deploy(monkeypatch):
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+    _force_status(build["id"], "DEPLOYING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "deploy_build",
+        lambda b: {"deployed": False, "reason": "container crashed on boot"},
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "FAILED"
+    assert "crashed" in updated["failure_reason"]
+
+
+def test_rollback_deployment_requires_a_prior_deployment():
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+    _force_status(build["id"], "COMPLETED")
+
+    with pytest.raises(ValueError):
+        build_manager.rollback_deployment(build["id"])
+
+
+def test_rollback_deployment_transitions_to_rolled_back(monkeypatch):
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+    _force_status(build["id"], "COMPLETED")
+
+    builds = build_manager.load_builds()
+    for b in builds:
+        if b["id"] == build["id"]:
+            b["deployment"] = {"deployed": True, "remediation_id": "r1"}
+    build_manager.save_builds(builds)
+
+    monkeypatch.setattr(
+        build_manager,
+        "attempt_rollback",
+        lambda remediation_id: {"rollback": {"result": {"rolled_back_to": "previous production container"}}},
+    )
+
+    updated = build_manager.rollback_deployment(build["id"])
+
+    assert updated["status"] == "ROLLED_BACK"
 
 
 def test_advance_builds_drives_planning_to_waiting_for_user(monkeypatch):

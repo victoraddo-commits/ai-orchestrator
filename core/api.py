@@ -38,6 +38,7 @@ from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history
 from core.ai_provider import list_providers
 from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed
+from core.kai.commands import dispatch as kai_dispatch
 from core.roadmap_engine import (
     load_roadmap,
     get_phase,
@@ -240,6 +241,18 @@ def delegate_endpoint(
         return delegate(body.description, task_type=body.task_type, project_path=body.project_path)
     except AllProvidersFailed as error:
         raise HTTPException(status_code=502, detail=str(error))
+
+
+class KaiCommandRequest(BaseModel):
+    text: str
+
+
+@app.post("/kai/command")
+def kai_command_endpoint(
+    body: KaiCommandRequest,
+    operator: str = Depends(require_bridge_token),
+):
+    return kai_dispatch(body.text)
 
 
 @app.get("/roadmap")

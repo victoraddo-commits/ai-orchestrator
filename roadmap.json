@@ -294,7 +294,7 @@
       "id": "K1",
       "name": "Kai Command Interface (entry point)",
       "description": "Validate and commit the existing rule-based dispatcher (core/kai/commands.py, written by the failed-but-actually-successful 13B build) and give it a real external entry point. No NLP -- fixed phrase table, per the original 13B spec.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 1
     },
@@ -302,7 +302,7 @@
       "id": "K2",
       "name": "Kai Command HTTP Endpoint",
       "description": "POST /kai/command on core/api.py, bearer-token gated like every other write endpoint, calling core.kai.commands.dispatch(text). Makes 'talk to Kai' reachable from outside a Python REPL for the first time.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "K1"
       ],

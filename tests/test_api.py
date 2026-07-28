@@ -537,3 +537,37 @@ def test_approve_deploy_and_rollback_endpoints_require_auth():
 
     assert client.post(f"/builds/{created['id']}/approve-deploy").status_code == 401
     assert client.post(f"/builds/{created['id']}/rollback").status_code == 401
+
+
+def test_kai_command_endpoint_requires_auth():
+    response = client.post("/kai/command", json={"text": "Kai, analyze system health"})
+
+    assert response.status_code == 401
+
+
+def test_kai_command_endpoint_dispatches_to_kai_commands(monkeypatch):
+    import core.kai.commands as commands
+
+    monkeypatch.setattr(commands, "advance_roadmap", lambda: {"action": "nothing_to_do"})
+
+    response = client.post(
+        "/kai/command",
+        json={"text": "Kai, continue roadmap"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert body["result"] == {"action": "nothing_to_do"}
+
+
+def test_kai_command_endpoint_returns_200_with_matched_false_for_unknown_phrase():
+    response = client.post(
+        "/kai/command",
+        json={"text": "Kai, do a barrel roll"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["matched"] is False

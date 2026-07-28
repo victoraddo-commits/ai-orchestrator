@@ -17,6 +17,12 @@ from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 # incidents, no longer needs to touch Claude at all in the common case.
 PLANNING_TIMEOUT = 180
 
+# Generation involves real file writes/tool calls/tests, not a quick text
+# response -- confirmed live: 13C's generation hit the 300s wall-clock
+# ceiling (core.coding_bridge's default) while still actively working on a
+# genuinely larger module. Explicit and longer than planning's.
+GENERATION_TIMEOUT = 600
+
 
 # Deliberately a separate store from approval_queue.json -- that queue is
 # swept every cycle by remediation_runner.process(), which calls
@@ -272,7 +278,7 @@ def _run_planning(build):
 def _run_generation(build):
     try:
         _ensure_repo(build)
-        result = run_coding_task(build["project_path"], _generation_prompt(build))
+        result = run_coding_task(build["project_path"], _generation_prompt(build), timeout=GENERATION_TIMEOUT)
     except Exception as error:
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = str(error)

@@ -328,6 +328,32 @@ def test_advance_builds_marks_planning_failed_when_all_providers_fail(monkeypatc
     assert "usage limit reached" in updated["failure_reason"]
 
 
+def test_run_generation_uses_the_longer_generation_timeout_not_the_planning_one(monkeypatch):
+    # Generation involves real file writes/tool calls/tests and legitimately
+    # takes longer than a quick text-only planning response -- confirmed
+    # live tonight (13C's generation hit the 300s wall-clock ceiling while
+    # still actively working on a genuinely larger module).
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "GENERATING")
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        return {
+            "success": True, "aborted": False, "session_id": "s",
+            "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": [],
+        }
+
+    monkeypatch.setattr(build_manager, "run_coding_task", fake_run_coding_task)
+    monkeypatch.setattr(build_manager, "run_all_scans", lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None})
+
+    build_manager.advance_builds()
+
+    assert captured["timeout"] == build_manager.GENERATION_TIMEOUT
+    assert build_manager.GENERATION_TIMEOUT > build_manager.PLANNING_TIMEOUT
+
+
 def test_advance_builds_drives_generating_to_deploy_approval_via_security_review(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
     _force_status(build["id"], "GENERATING")

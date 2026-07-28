@@ -38,6 +38,23 @@ def test_is_self_modifying_false_for_an_unrelated_path(tmp_path):
     assert roadmap_manager.is_self_modifying(str(tmp_path)) is False
 
 
+def test_is_self_modifying_true_for_an_isolated_self_build_clone(tmp_path, monkeypatch):
+    # _create_isolated_self_clone() gives every self-modifying build its own
+    # disposable clone under SELF_BUILD_WORKSPACE_ROOT rather than operating
+    # on SELF_PROJECT_PATH directly (see its docstring) -- so a build's
+    # project_path is never actually equal to SELF_PROJECT_PATH in practice.
+    # is_self_modifying() must recognize those clones too, or every
+    # self-modifying build looks like a normal (non-self-modifying) one to
+    # anything that branches on this check (e.g. deploy_build()).
+    workspace_root = tmp_path / "self-build-workspaces"
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", workspace_root)
+
+    clone_dir = workspace_root / "abc123def456"
+    clone_dir.mkdir(parents=True)
+
+    assert roadmap_manager.is_self_modifying(str(clone_dir)) is True
+
+
 def test_advance_roadmap_does_nothing_when_autonomous_mode_disabled(isolated_roadmap, monkeypatch):
     _write(isolated_roadmap, [{"id": "X", "status": "pending", "dependencies": [], "priority": 1}])
 

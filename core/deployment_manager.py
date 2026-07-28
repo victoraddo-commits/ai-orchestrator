@@ -160,7 +160,47 @@ def _rollback_strategy(remediation):
 register_rollback(DEPLOY_ACTION, _rollback_strategy)
 
 
+def _merge_self_modifying_build(build, live_repo):
+    # A self-modifying build's project_path is a disposable clone of the
+    # live ai-orchestrator repo (core.roadmap_manager._create_isolated_self_
+    # clone), not a deployable app -- there's no Dockerfile and never will
+    # be. "Deploying" it means landing its committed changes on the live
+    # repo instead of building/running a container.
+    branch = f"build-{build['id']}"
+    clone_path = os.path.abspath(build["project_path"])
+
+    fetch = subprocess.run(
+        ["git", "-C", str(live_repo), "fetch", "-q", clone_path, f"{branch}:{branch}"],
+        capture_output=True, text=True,
+    )
+    if fetch.returncode != 0:
+        return {"deployed": False, "reason": f"Failed to fetch build branch: {fetch.stderr.strip()}"}
+
+    merge = subprocess.run(
+        ["git", "-C", str(live_repo), "merge", "--no-ff", "-m", f"Merge {branch}: {build['name']}", branch],
+        capture_output=True, text=True,
+    )
+
+    if merge.returncode != 0:
+        subprocess.run(["git", "-C", str(live_repo), "merge", "--abort"], capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(live_repo), "branch", "-D", branch], capture_output=True, text=True)
+        return {"deployed": False, "reason": f"Merge conflict merging {branch}: {merge.stderr.strip()}"}
+
+    subprocess.run(["git", "-C", str(live_repo), "branch", "-D", branch], capture_output=True, text=True)
+
+    merge_commit = subprocess.run(
+        ["git", "-C", str(live_repo), "rev-parse", "HEAD"], capture_output=True, text=True,
+    ).stdout.strip()
+
+    return {"deployed": True, "merged_branch": branch, "merge_commit": merge_commit}
+
+
 def deploy_build(build):
+    from core.roadmap_manager import is_self_modifying, SELF_PROJECT_PATH
+
+    if is_self_modifying(build["project_path"]):
+        return _merge_self_modifying_build(build, SELF_PROJECT_PATH)
+
     name = container_name_for(build)
 
     if not has_dockerfile(build["project_path"]):

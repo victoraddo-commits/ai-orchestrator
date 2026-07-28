@@ -60,7 +60,20 @@ def disable_autonomous_mode():
 
 def is_self_modifying(project_path):
     try:
-        return Path(project_path).resolve() == SELF_PROJECT_PATH
+        resolved = Path(project_path).resolve()
+    except OSError:
+        return False
+
+    if resolved == SELF_PROJECT_PATH:
+        return True
+
+    # A self-modifying build's project_path is (almost) never actually
+    # SELF_PROJECT_PATH -- _create_isolated_self_clone() deliberately gives
+    # it its own disposable clone instead (see that function's docstring).
+    # Recognize those clones too, or every self-modifying build looks like a
+    # normal one to callers that branch on this (e.g. deploy_build()).
+    try:
+        return resolved.parent == SELF_BUILD_WORKSPACE_ROOT.resolve()
     except OSError:
         return False
 

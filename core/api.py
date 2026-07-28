@@ -27,6 +27,7 @@ from core.build_manager import (
 )
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history
+from core.ai_provider import list_providers
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -188,6 +189,11 @@ def reject_request(
         raise HTTPException(status_code=404, detail="Approval request not found")
 
     return result
+
+
+@app.get("/providers")
+def providers_endpoint():
+    return list_providers()
 
 
 @app.get("/templates")

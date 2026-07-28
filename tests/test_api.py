@@ -202,6 +202,16 @@ def test_build_learning_endpoint_returns_templates_and_history():
     assert "history" in body
 
 
+def test_providers_endpoint_lists_registered_providers():
+    response = client.get("/providers")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "claude" in body
+    assert "local" in body
+    assert "run_coding_task" not in body["claude"]
+
+
 def test_templates_endpoint_lists_available_templates():
     response = client.get("/templates")
 

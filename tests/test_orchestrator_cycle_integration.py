@@ -32,11 +32,17 @@ def test_run_cycle_processes_a_roadmap_created_build_in_the_same_cycle(monkeypat
         '"status": "pending", "dependencies": [], "priority": 1}]}'
     )
     monkeypatch.setattr(roadmap_engine, "ROADMAP_PATH", roadmap_path)
-    # advance_roadmap() creates self-targeting builds against
-    # SELF_PROJECT_PATH -- must not be the real ai-orchestrator repo during
-    # a test, or this would do a real `git checkout` against this actual
-    # working directory (exactly the bug class fixed live tonight).
-    monkeypatch.setattr(roadmap_manager, "SELF_PROJECT_PATH", tmp_path)
+    # advance_roadmap() creates self-targeting builds in an isolated clone
+    # (see core.roadmap_manager._create_isolated_self_clone) rather than
+    # operating on SELF_PROJECT_PATH directly -- must not be the real
+    # ai-orchestrator repo during a test, or this would do a real `git
+    # checkout` against this actual working directory (exactly the bug
+    # class fixed live tonight). Stub the clone step entirely here since
+    # this test is about same-cycle build processing, not the clone itself
+    # (that's covered by tests/test_roadmap_manager.py).
+    fake_clone_dir = tmp_path / "isolated-clone"
+    fake_clone_dir.mkdir()
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: str(fake_clone_dir))
     roadmap_manager.enable_autonomous_mode()
 
     monkeypatch.setattr(

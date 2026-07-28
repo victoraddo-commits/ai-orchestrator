@@ -14,6 +14,8 @@ human action (POST /roadmap/autonomous/enable), not something that
 activates just because this module is imported.
 """
 
+import subprocess
+import uuid
 from pathlib import Path
 
 from core.memory import load, save
@@ -22,6 +24,16 @@ from core.build_manager import create_build, get_build
 
 
 SELF_PROJECT_PATH = Path(__file__).resolve().parent.parent
+
+# Self-modifying builds must never operate directly on SELF_PROJECT_PATH --
+# that's this session's own live working directory. Every self-modifying
+# build tonight that checked out a branch there collided with interactive
+# git commands and service restarts running concurrently (confirmed live:
+# repeated "Read timed out" / "process exited with code 1" failures on
+# builds whose branch happened to be checked out while an unrelated git or
+# systemctl command ran). _create_isolated_self_clone() gives each build its
+# own disposable clone instead; the live repo is only ever read from.
+SELF_BUILD_WORKSPACE_ROOT = Path.home() / ".ai-orchestrator" / "self-build-workspaces"
 
 AUTONOMOUS_MODE_FILE = "autonomous_mode.json"
 
@@ -51,6 +63,16 @@ def is_self_modifying(project_path):
         return Path(project_path).resolve() == SELF_PROJECT_PATH
     except OSError:
         return False
+
+
+def _create_isolated_self_clone():
+    workspace = SELF_BUILD_WORKSPACE_ROOT / uuid.uuid4().hex[:12]
+    workspace.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "clone", "-q", str(SELF_PROJECT_PATH), str(workspace)],
+        check=True,
+    )
+    return str(workspace)
 
 
 def _build_description(phase):
@@ -106,7 +128,7 @@ def advance_roadmap():
     build = create_build(
         name=next_phase["id"],
         description=_build_description(next_phase),
-        project_path=str(SELF_PROJECT_PATH),
+        project_path=_create_isolated_self_clone(),
     )
 
     update_phase(next_phase["id"], status="in_progress", build_id=build["id"])

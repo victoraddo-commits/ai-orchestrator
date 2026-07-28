@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -51,12 +52,15 @@ def test_advance_roadmap_does_nothing_when_autonomous_mode_disabled(isolated_roa
     assert roadmap_engine.get_phase("X")["status"] == "pending"
 
 
-def test_advance_roadmap_creates_a_self_targeting_build_for_the_next_phase(isolated_roadmap, monkeypatch):
+def test_advance_roadmap_creates_a_self_targeting_build_for_the_next_phase(isolated_roadmap, monkeypatch, tmp_path):
     _write(isolated_roadmap, [
         {"id": "X", "name": "Improve logging", "description": "Add structured logs",
          "completion_criteria": ["logs are structured"], "status": "pending", "dependencies": [], "priority": 1},
     ])
     roadmap_manager.enable_autonomous_mode()
+
+    fake_clone_path = str(tmp_path / "isolated-clone")
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: fake_clone_path)
 
     captured = {}
 
@@ -71,11 +75,51 @@ def test_advance_roadmap_creates_a_self_targeting_build_for_the_next_phase(isola
 
     assert result["action"] == "started_phase"
     assert result["phase_id"] == "X"
-    assert captured["project_path"] == str(roadmap_manager.SELF_PROJECT_PATH)
+    assert captured["project_path"] == fake_clone_path
 
     phase = roadmap_engine.get_phase("X")
     assert phase["status"] == "in_progress"
     assert phase["build_id"] == "build-123"
+
+
+def test_advance_roadmap_never_operates_directly_on_the_live_working_directory(isolated_roadmap, monkeypatch, tmp_path):
+    # This is the exact bug behind tonight's repeated build failures: every
+    # self-modifying build checked out a branch in this session's own live
+    # working directory (SELF_PROJECT_PATH), colliding with interactive git
+    # commands and service restarts. create_build must never be called with
+    # that literal path again -- it must always receive an isolated clone.
+    _write(isolated_roadmap, [
+        {"id": "X", "name": "Improve logging", "description": "Add structured logs",
+         "completion_criteria": [], "status": "pending", "dependencies": [], "priority": 1},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: str(tmp_path / "clone"))
+
+    captured = {}
+
+    def fake_create_build(name, description, project_path, template=None):
+        captured["project_path"] = project_path
+        return {"id": "build-123", "status": "REQUESTED"}
+
+    monkeypatch.setattr(roadmap_manager, "create_build", fake_create_build)
+
+    roadmap_manager.advance_roadmap()
+
+    assert captured["project_path"] != str(roadmap_manager.SELF_PROJECT_PATH)
+
+
+def test_create_isolated_self_clone_produces_a_real_working_clone(tmp_path, monkeypatch):
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", tmp_path / "workspaces")
+
+    workspace = roadmap_manager._create_isolated_self_clone()
+
+    assert Path(workspace).is_dir()
+    assert Path(workspace, ".git").exists()
+    assert Path(workspace).resolve() != roadmap_manager.SELF_PROJECT_PATH
+    # A real clone of the live repo -- not an empty scaffold -- so planning
+    # and generation see the actual current codebase, not a blank slate.
+    assert Path(workspace, "core", "roadmap_manager.py").exists()
 
 
 def test_advance_roadmap_marks_phase_completed_when_linked_build_completes(isolated_roadmap, monkeypatch):

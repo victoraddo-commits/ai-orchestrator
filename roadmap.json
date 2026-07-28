@@ -312,7 +312,7 @@
       "id": "K3",
       "name": "Isolate self-modifying build workspace",
       "description": "Self-modifying builds (project_path=SELF_PROJECT_PATH) currently operate directly in /project/ai-orchestrator, the same live directory this interactive session uses. Give them an isolated clone instead -- root cause of tonight's observed generation failures and repeated branch collisions.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 3,
       "build_id": "133a30b0"

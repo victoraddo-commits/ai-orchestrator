@@ -193,6 +193,15 @@ def test_approve_endpoint_returns_409_for_illegal_transition():
     assert response.status_code == 409
 
 
+def test_build_learning_endpoint_returns_templates_and_history():
+    response = client.get("/learning/builds")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "templates" in body
+    assert "history" in body
+
+
 def test_templates_endpoint_lists_available_templates():
     response = client.get("/templates")
 

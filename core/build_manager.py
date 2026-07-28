@@ -6,6 +6,7 @@ from core.project_templates import get_template
 from core.security_scanner import run_all_scans
 from core.deployment_manager import deploy_build
 from core.remediation import attempt_rollback
+from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 
 
 # Deliberately a separate store from approval_queue.json -- that queue is
@@ -184,6 +185,7 @@ def rollback_deployment(build_id):
 
     def mutate(b):
         transition(b, "ROLLED_BACK", BUILD_TRANSITIONS, note="manual rollback requested")
+        _record_if_terminal(b)
 
     return _update(build_id, mutate)
 
@@ -229,6 +231,11 @@ def _ensure_repo(build):
     create_local_repo(build["project_path"], branch=f"build-{build['id']}")
 
 
+def _record_if_terminal(build):
+    if build.get("status") in TERMINAL_STATUSES:
+        record_build_outcome(build)
+
+
 def _run_planning(build):
     try:
         _ensure_repo(build)
@@ -236,6 +243,7 @@ def _run_planning(build):
     except Exception as error:
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = str(error)
+        _record_if_terminal(build)
         return
 
     build["plan"] = result.get("response_text", "")
@@ -249,6 +257,7 @@ def _run_generation(build):
     except Exception as error:
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = str(error)
+        _record_if_terminal(build)
         return
 
     build["generation_result"] = result
@@ -256,6 +265,7 @@ def _run_generation(build):
     if not result.get("success"):
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = "Generation run did not complete successfully"
+        _record_if_terminal(build)
         return
 
     # Security findings are surfaced for a human to review via
@@ -276,6 +286,8 @@ def _run_deployment(build):
     else:
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = result.get("reason", "Deployment failed")
+
+    _record_if_terminal(build)
 
 
 def advance_builds():

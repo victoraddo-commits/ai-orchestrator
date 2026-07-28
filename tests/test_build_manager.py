@@ -212,6 +212,46 @@ def test_rollback_deployment_requires_a_prior_deployment():
         build_manager.rollback_deployment(build["id"])
 
 
+def test_advance_builds_records_learning_outcome_on_generation_failure(monkeypatch):
+    from core.build_learning import get_build_history
+
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj", template="fastapi")
+    _force_status(build["id"], "GENERATING")
+
+    monkeypatch.setattr(
+        build_manager, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "aborted": False, "session_id": "s",
+            "response_text": "", "files_changed": [], "commits": [], "tool_errors": [],
+        },
+    )
+
+    build_manager.advance_builds()
+
+    history = get_build_history()
+    assert len(history) == 1
+    assert history[0]["status"] == "FAILED"
+    assert history[0]["template"] == "fastapi"
+
+
+def test_advance_builds_records_learning_outcome_on_deploy_success(monkeypatch):
+    from core.build_learning import get_build_history
+
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj", template="docker")
+    _force_status(build["id"], "DEPLOYING")
+
+    monkeypatch.setattr(
+        build_manager, "deploy_build",
+        lambda b: {"deployed": True, "container": "aiapp-todo-app", "port": 1234, "remediation_id": "r1"},
+    )
+
+    build_manager.advance_builds()
+
+    history = get_build_history()
+    assert len(history) == 1
+    assert history[0]["status"] == "COMPLETED"
+
+
 def test_rollback_deployment_transitions_to_rolled_back(monkeypatch):
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "COMPLETED")

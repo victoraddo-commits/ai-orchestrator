@@ -26,6 +26,7 @@ from core.build_manager import (
     rollback_deployment,
 )
 from core.project_templates import TEMPLATES
+from core.build_learning import summarize_templates, get_build_history
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -143,6 +144,14 @@ def verifications():
 @app.get("/learning")
 def learning():
     return summarize()
+
+
+@app.get("/learning/builds")
+def build_learning_endpoint():
+    return {
+        "templates": summarize_templates(),
+        "history": get_build_history(),
+    }
 
 
 @app.post("/approvals/{request_id}/approve")

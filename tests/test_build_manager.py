@@ -195,7 +195,7 @@ def test_advance_builds_marks_planning_failed_when_bridge_errors(monkeypatch):
     assert "500" in updated["failure_reason"]
 
 
-def test_advance_builds_drives_generating_to_completed_on_success(monkeypatch):
+def test_advance_builds_drives_generating_to_deploy_approval_via_security_review(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
     _force_status(build["id"], "GENERATING")
 
@@ -212,12 +212,49 @@ def test_advance_builds_drives_generating_to_completed_on_success(monkeypatch):
             "tool_errors": [],
         },
     )
+    monkeypatch.setattr(
+        build_manager,
+        "run_all_scans",
+        lambda project_path: {
+            "scanners": {}, "total_findings": 2, "highest_severity": "medium",
+        },
+    )
 
     build_manager.advance_builds()
 
     updated = build_manager.get_build(build["id"])
-    assert updated["status"] == "COMPLETED"
+    assert updated["status"] == "DEPLOY_APPROVAL"
     assert updated["generation_result"]["commits"] == [{"sha": "abc123", "message": "implement todo app"}]
+    assert updated["security_report"]["total_findings"] == 2
+    assert updated["security_report"]["highest_severity"] == "medium"
+
+
+def test_advance_builds_reaches_deploy_approval_even_with_critical_findings(monkeypatch):
+    # Security findings are surfaced for human review via DEPLOY_APPROVAL,
+    # not auto-blocked -- consistent with every other approval gate in this
+    # system (the human decides, the system doesn't silently decide for them).
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "GENERATING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": True, "aborted": False, "session_id": "s",
+            "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": [],
+        },
+    )
+    monkeypatch.setattr(
+        build_manager,
+        "run_all_scans",
+        lambda project_path: {"scanners": {}, "total_findings": 5, "highest_severity": "critical"},
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "DEPLOY_APPROVAL"
+    assert updated["security_report"]["highest_severity"] == "critical"
 
 
 def test_advance_builds_drives_generating_to_failed_on_unsuccessful_run(monkeypatch):
@@ -324,6 +361,12 @@ def test_full_lifecycle_happy_path(monkeypatch):
             "tool_errors": [],
         },
     )
+    monkeypatch.setattr(
+        build_manager,
+        "run_all_scans",
+        lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
+    )
     build_manager.advance_builds()
     build = build_manager.get_build(build["id"])
-    assert build["status"] == "COMPLETED"
+    assert build["status"] == "DEPLOY_APPROVAL"
+    assert build["security_report"]["total_findings"] == 0

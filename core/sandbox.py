@@ -39,10 +39,11 @@ def _docker_run_args(
     network=True,
     memory=DEFAULT_MEMORY,
     cpus=DEFAULT_CPUS,
+    entrypoint=None,
 ):
     abs_path = os.path.abspath(project_path)
 
-    return [
+    args = [
         "docker", "run", "--rm",
         "--memory", memory,
         "--memory-swap", memory,
@@ -53,14 +54,34 @@ def _docker_run_args(
         "--network", "bridge" if network else "none",
         "--read-only",
         "--tmpfs", "/tmp:rw,size=256m",
+        # $HOME needs to be writable even under --read-only: pip/npm/etc.
+        # write caches, configs, and (for tool self-installs, as opposed to
+        # project dependencies which live under the writable /workspace
+        # mount) the packages themselves to $HOME. Ephemeral tmpfs, not a
+        # host mount -- gone when the container exits either way. `exec` is
+        # required because Docker's tmpfs mounts default to noexec, which
+        # would otherwise block running anything installed there.
+        "--tmpfs", "/root:rw,exec,size=1024m",
         "-v", f"{abs_path}:/workspace:rw",
         "-w", "/workspace",
+    ]
+
+    if entrypoint:
+        # Some images (e.g. aquasec/trivy) set their own ENTRYPOINT, which
+        # would otherwise swallow the `sh -lc "command"` wrapping below --
+        # docker would run `<entrypoint> sh -lc "command"` instead of
+        # `sh -lc "command"`.
+        args += ["--entrypoint", entrypoint]
+
+    args += [
         image,
         # sh, not bash: POSIX sh is present in effectively every image
         # (including minimal ones like alpine, which don't ship bash at
         # all) -- bash is not a safe assumption for an arbitrary sandbox image.
         "sh", "-lc", command,
     ]
+
+    return args
 
 
 def run_in_sandbox(
@@ -71,6 +92,7 @@ def run_in_sandbox(
     memory=DEFAULT_MEMORY,
     cpus=DEFAULT_CPUS,
     timeout=DEFAULT_TIMEOUT,
+    entrypoint=None,
 ):
     """Runs `command` inside a disposable, resource-limited Docker container
     with only `project_path` mounted (read-write, at /workspace) and a
@@ -85,7 +107,8 @@ def run_in_sandbox(
         )
 
     args = _docker_run_args(
-        project_path, command, image=image, network=network, memory=memory, cpus=cpus
+        project_path, command, image=image, network=network, memory=memory, cpus=cpus,
+        entrypoint=entrypoint,
     )
 
     try:

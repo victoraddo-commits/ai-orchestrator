@@ -3,6 +3,7 @@ from core.lifecycle import new_object, transition, InvalidTransition
 from core.coding_bridge import run_coding_task
 from core.repo_manager import create_local_repo
 from core.project_templates import get_template
+from core.security_scanner import run_all_scans
 
 
 # Deliberately a separate store from approval_queue.json -- that queue is
@@ -21,7 +22,11 @@ BUILD_TRANSITIONS = {
     "PLANNING": ["WAITING_FOR_USER", "FAILED"],
     "WAITING_FOR_USER": ["PLANNING", "ARCHITECTURE_APPROVED", "FAILED"],
     "ARCHITECTURE_APPROVED": ["GENERATING", "FAILED"],
-    "GENERATING": ["TESTING", "COMPLETED", "FAILED"],
+    # SECURITY_REVIEW is reachable directly from GENERATING (not only via
+    # TESTING) because TESTING has no automated logic yet -- see Phase 12E's
+    # scoping note. COMPLETED stays reachable too, for the (currently
+    # theoretical) case of a caller that wants to skip security review.
+    "GENERATING": ["TESTING", "SECURITY_REVIEW", "COMPLETED", "FAILED"],
     "TESTING": ["SECURITY_REVIEW", "FAILED"],
     "SECURITY_REVIEW": ["DEPLOY_APPROVAL", "FAILED"],
     "DEPLOY_APPROVAL": ["DEPLOYING", "FAILED"],
@@ -61,6 +66,7 @@ def create_build(name, description, project_path, template=None):
         qa_history=[],
         plan=None,
         generation_result=None,
+        security_report=None,
     )
 
     builds.append(build)
@@ -210,11 +216,17 @@ def _run_generation(build):
 
     build["generation_result"] = result
 
-    if result.get("success"):
-        transition(build, "COMPLETED", BUILD_TRANSITIONS)
-    else:
+    if not result.get("success"):
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = "Generation run did not complete successfully"
+        return
+
+    # Security findings are surfaced for a human to review via
+    # DEPLOY_APPROVAL, never used to silently auto-fail the build -- the
+    # same human-in-the-loop pattern as every other approval gate here.
+    transition(build, "SECURITY_REVIEW", BUILD_TRANSITIONS)
+    build["security_report"] = run_all_scans(build["project_path"])
+    transition(build, "DEPLOY_APPROVAL", BUILD_TRANSITIONS)
 
 
 def advance_builds():

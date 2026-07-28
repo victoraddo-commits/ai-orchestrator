@@ -44,6 +44,23 @@ def test_docker_run_args_is_disposable_and_read_only_root():
     assert "--tmpfs" in args
 
 
+def test_docker_run_args_gives_home_a_writable_tmpfs():
+    # --read-only blocks tools like `pip install`/`npm install -g` from
+    # writing to $HOME (e.g. /root/.local) even though the actual project
+    # workspace is writable -- without this, tool installs fail silently
+    # under a caller's own `|| true` error suppression.
+    args = sandbox._docker_run_args("/proj", "pytest")
+
+    # Docker's tmpfs mounts default to noexec, which would block running
+    # anything pip/npm installed there (confirmed live: "Permission denied"
+    # executing a script from a plain `--tmpfs /root:rw` mount) -- needs an
+    # explicit `exec` mount option.
+    tmpfs_values = [args[i + 1] for i, a in enumerate(args) if a == "--tmpfs"]
+    root_tmpfs = [v for v in tmpfs_values if v.startswith("/root:")]
+    assert root_tmpfs, "no /root tmpfs mount found"
+    assert "exec" in root_tmpfs[0].split(":")[1].split(",")
+
+
 def test_docker_run_args_uses_apapmor_unconfined_per_lxc_convention():
     args = sandbox._docker_run_args("/proj", "pytest")
 
@@ -55,6 +72,23 @@ def test_docker_run_args_runs_command_via_sh_lc():
     args = sandbox._docker_run_args("/proj", "npm test", image="node:22-bookworm")
 
     assert args[-4:] == ["node:22-bookworm", "sh", "-lc", "npm test"]
+
+
+def test_docker_run_args_defaults_to_no_entrypoint_override():
+    args = sandbox._docker_run_args("/proj", "npm test")
+
+    assert "--entrypoint" not in args
+
+
+def test_docker_run_args_can_override_entrypoint_for_images_with_their_own():
+    # e.g. aquasec/trivy's image ENTRYPOINT is ["trivy"], which would break
+    # the usual `sh -lc "command"` wrapping (docker would try to run
+    # `trivy sh -lc "..."`) unless overridden.
+    args = sandbox._docker_run_args("/proj", "trivy fs /workspace", image="aquasec/trivy", entrypoint="/bin/sh")
+
+    idx = args.index("--entrypoint")
+    assert args[idx + 1] == "/bin/sh"
+    assert args[-4:] == ["aquasec/trivy", "sh", "-lc", "trivy fs /workspace"]
 
 
 def test_run_in_sandbox_returns_structured_result_on_success(monkeypatch):

@@ -1,12 +1,21 @@
 from core.memory import load, save
 from core.lifecycle import new_object, transition, InvalidTransition
 from core.coding_bridge import run_coding_task
+from core.ai.ai_router import delegate, AllProvidersFailed
 from core.repo_manager import create_local_repo
 from core.project_templates import get_template
 from core.security_scanner import run_all_scans
 from core.deployment_manager import deploy_build
 from core.remediation import attempt_rollback
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
+
+# Planning tasks are text-in/text-out and don't need Claude's file/tool
+# access -- only actual code generation does. Routing them through the
+# multi-provider AI router (Gemini/OpenRouter/Minimax first, Claude only as
+# the guaranteed-capable last resort) means the step that runs for every
+# roadmap phase attempt, and that caused every one of tonight's Claude-side
+# incidents, no longer needs to touch Claude at all in the common case.
+PLANNING_TIMEOUT = 180
 
 
 # Deliberately a separate store from approval_queue.json -- that queue is
@@ -71,6 +80,7 @@ def create_build(name, description, project_path, template=None):
         template=template,
         qa_history=[],
         plan=None,
+        planned_by=None,
         generation_result=None,
         security_report=None,
         deployment=None,
@@ -239,22 +249,23 @@ def _record_if_terminal(build):
 def _run_planning(build):
     try:
         _ensure_repo(build)
-        result = run_coding_task(build["project_path"], _planning_prompt(build))
+        result = delegate(
+            _planning_prompt(build),
+            task_type="planning",
+            project_path=build["project_path"],
+            timeout=PLANNING_TIMEOUT,
+        )
     except Exception as error:
+        # delegate() already tried every candidate provider (including
+        # Claude as the final fallback) before raising -- this is a genuine
+        # every-provider failure, not just "Claude is unavailable".
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = str(error)
         _record_if_terminal(build)
         return
 
-    if not result.get("success"):
-        errors = result.get("tool_errors") or []
-        detail = "; ".join(e.get("content", "") for e in errors) or "Planning run did not complete successfully"
-        transition(build, "FAILED", BUILD_TRANSITIONS)
-        build["failure_reason"] = detail
-        _record_if_terminal(build)
-        return
-
-    build["plan"] = result.get("response_text", "")
+    build["plan"] = result.get("response", "")
+    build["planned_by"] = result.get("provider")
     transition(build, "WAITING_FOR_USER", BUILD_TRANSITIONS)
 
 

@@ -114,6 +114,14 @@ def _openai_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_openai(prompt, timeout=timeout)
 
 
+def _openrouter_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_openrouter(prompt, timeout=timeout)
+
+
+def _minimax_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_minimax(prompt, timeout=timeout)
+
+
 register_provider(
     "claude",
     run_coding_task=_claude_run_coding_task,
@@ -145,6 +153,22 @@ register_provider(
     available_fn=lambda: bool(os.getenv("OPENAI_API_KEY")),
     kind="cloud",
     description="OpenAI -- available, not currently assigned a primary role",
+)
+
+register_provider(
+    "openrouter",
+    run_text_task=_openrouter_run_text_task,
+    available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
+    kind="cloud",
+    description="OpenRouter (openai/gpt-4o-mini) -- planning/research fallback, reduces Claude-credit usage",
+)
+
+register_provider(
+    "minimax",
+    run_text_task=_minimax_run_text_task,
+    available_fn=lambda: bool(os.getenv("MINIMAX_API_KEY")),
+    kind="cloud",
+    description="MiniMax-M2 -- planning/research fallback (account currently has no usable credits for this model)",
 )
 
 register_provider(

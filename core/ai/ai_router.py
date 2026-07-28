@@ -34,9 +34,9 @@ TASK_TYPE_KEYWORDS = {
 # any task type.
 ROLE_PROVIDERS = {
     "coding": ["claude"],
-    "planning": ["gemini", "claude"],
-    "log_analysis": ["groq", "claude"],
-    "documentation": ["gemini", "groq", "claude"],
+    "planning": ["gemini", "openrouter", "minimax", "claude"],
+    "log_analysis": ["groq", "openrouter", "claude"],
+    "documentation": ["gemini", "groq", "openrouter", "minimax", "claude"],
 }
 
 DEFAULT_TASK_TYPE = "coding"

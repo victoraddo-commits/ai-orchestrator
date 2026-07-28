@@ -61,10 +61,26 @@ def test_register_provider_adds_a_new_entry():
 def test_gemini_groq_openai_providers_are_registered_with_text_task_capability():
     providers = ai_provider.list_providers()
 
-    for name in ("gemini", "groq", "openai"):
+    for name in ("gemini", "groq", "openai", "openrouter", "minimax"):
         assert name in providers
         assert "text_task" in providers[name]["capabilities"]
         assert "coding_agent" not in providers[name]["capabilities"]
+
+
+def test_openrouter_provider_availability_reflects_env_var(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert ai_provider.list_providers()["openrouter"]["available"] is False
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    assert ai_provider.list_providers()["openrouter"]["available"] is True
+
+
+def test_minimax_provider_availability_reflects_env_var(monkeypatch):
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+    assert ai_provider.list_providers()["minimax"]["available"] is False
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "test-key")
+    assert ai_provider.list_providers()["minimax"]["available"] is True
 
 
 def test_claude_provider_has_both_capabilities():

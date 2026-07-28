@@ -20,6 +20,18 @@ import core.ai.provider_health as provider_health
 GEMINI_DEFAULT_MODEL = "gemini-flash-lite-latest"
 GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
+# openai/gpt-4o-mini confirmed working live via OpenRouter. The free-tier
+# models available on this account (google/gemma-4-*:free) returned 429
+# "temporarily rate-limited upstream" when tested live -- unreliable for a
+# fallback role, so defaulting to the cheap, confirmed-working paid model
+# instead of a free one that wasn't actually available at test time.
+OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini"
+# Confirmed live: this account's plan doesn't support MiniMax-Text-01/M1
+# ("your current token plan not support model"); MiniMax-M2 is recognized
+# but this account's usage/credits are currently exhausted for it
+# ("Token Plan usage limit reached") -- same treatment as OPENAI_API_KEY:
+# registered and code-complete, not yet verified on a real success response.
+MINIMAX_DEFAULT_MODEL = "MiniMax-M2"
 
 
 class ProviderUnavailable(Exception):
@@ -96,4 +108,35 @@ def call_openai(prompt, model=OPENAI_DEFAULT_MODEL, timeout=60):
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},
         timeout=timeout,
     )
+    return data["choices"][0]["message"]["content"]
+
+
+def call_openrouter(prompt, model=OPENROUTER_DEFAULT_MODEL, timeout=60):
+    key = _require_key("OPENROUTER_API_KEY")
+
+    data = _post_json(
+        "openrouter",
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+    return data["choices"][0]["message"]["content"]
+
+
+def call_minimax(prompt, model=MINIMAX_DEFAULT_MODEL, timeout=60):
+    key = _require_key("MINIMAX_API_KEY")
+
+    data = _post_json(
+        "minimax",
+        "https://api.minimax.io/v1/text/chatcompletion_v2",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+
+    if not data.get("choices"):
+        status = (data.get("base_resp") or {}).get("status_msg", "unknown error")
+        raise RuntimeError(f"minimax request failed: {status}")
+
     return data["choices"][0]["message"]["content"]

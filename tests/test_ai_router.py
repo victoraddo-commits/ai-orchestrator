@@ -54,8 +54,8 @@ def test_delegate_documentation_task_accepts_gemini_or_groq(monkeypatch):
 def test_delegate_falls_back_when_first_choice_unavailable(monkeypatch):
     import core.ai_provider as ai_provider
 
-    gemini = ai_provider.get_provider("gemini")
-    monkeypatch.setitem(gemini, "available_fn", lambda: False)
+    for name in ("gemini", "openrouter", "minimax"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
@@ -76,6 +76,9 @@ def test_delegate_falls_back_when_first_choice_call_raises(monkeypatch):
     monkeypatch.setitem(gemini, "available_fn", lambda: True)
     monkeypatch.setitem(gemini, "run_text_task", boom)
 
+    for name in ("openrouter", "minimax"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude answered")
@@ -88,7 +91,7 @@ def test_delegate_falls_back_when_first_choice_call_raises(monkeypatch):
 def test_delegate_raises_when_every_candidate_fails(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("gemini", "claude"):
+    for name in ("gemini", "openrouter", "minimax", "claude"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
@@ -121,6 +124,9 @@ def test_delegate_records_usage_on_failure_too(monkeypatch):
     gemini = ai_provider.get_provider("gemini")
     monkeypatch.setitem(gemini, "available_fn", lambda: True)
     monkeypatch.setitem(gemini, "run_text_task", boom)
+
+    for name in ("openrouter", "minimax"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)

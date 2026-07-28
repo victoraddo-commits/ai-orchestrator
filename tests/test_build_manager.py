@@ -2,6 +2,7 @@ import pytest
 
 import core.build_manager as build_manager
 from core.lifecycle import InvalidTransition
+from core.ai.ai_router import AllProvidersFailed
 
 
 def test_create_build_rejects_unknown_template():
@@ -21,11 +22,8 @@ def test_advance_builds_creates_the_repo_before_planning(monkeypatch, tmp_path):
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True, "aborted": False, "session_id": "s",
-            "response_text": "Plan.", "files_changed": [], "commits": [], "tool_errors": [],
-        },
+        "delegate",
+        lambda description, **kwargs: {"provider": "gemini", "task_type": "planning", "response": "Plan.", "duration_ms": 10},
     )
 
     build_manager.advance_builds()
@@ -43,11 +41,8 @@ def test_advance_builds_checks_out_a_dedicated_branch_for_the_build(monkeypatch,
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True, "aborted": False, "session_id": "s",
-            "response_text": "Plan.", "files_changed": [], "commits": [], "tool_errors": [],
-        },
+        "delegate",
+        lambda description, **kwargs: {"provider": "gemini", "task_type": "planning", "response": "Plan.", "duration_ms": 10},
     )
 
     build_manager.advance_builds()
@@ -279,15 +274,11 @@ def test_advance_builds_drives_planning_to_waiting_for_user(monkeypatch):
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True,
-            "aborted": False,
-            "session_id": "sess-1",
-            "response_text": "Plan: use FastAPI + React. Any preference on database?",
-            "files_changed": [],
-            "commits": [],
-            "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning",
+            "response": "Plan: use FastAPI + React. Any preference on database?",
+            "duration_ms": 10,
         },
     )
 
@@ -296,6 +287,7 @@ def test_advance_builds_drives_planning_to_waiting_for_user(monkeypatch):
     updated = build_manager.get_build(build["id"])
     assert updated["status"] == "WAITING_FOR_USER"
     assert "FastAPI" in updated["plan"]
+    assert updated["planned_by"] == "gemini"
     assert any(b["id"] == build["id"] for b in advanced)
 
 
@@ -303,10 +295,10 @@ def test_advance_builds_marks_planning_failed_when_bridge_errors(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
     _force_status(build["id"], "PLANNING")
 
-    def boom(project_path, instruction, **kwargs):
+    def boom(description, **kwargs):
         raise RuntimeError("CloudCLI /api/agent request failed with status 500")
 
-    monkeypatch.setattr(build_manager, "run_coding_task", boom)
+    monkeypatch.setattr(build_manager, "delegate", boom)
 
     build_manager.advance_builds()
 
@@ -315,34 +307,25 @@ def test_advance_builds_marks_planning_failed_when_bridge_errors(monkeypatch):
     assert "500" in updated["failure_reason"]
 
 
-def test_advance_builds_marks_planning_failed_when_bridge_returns_unsuccessful_without_raising(monkeypatch):
-    # Real bug found live: run_coding_task doesn't raise on a crashed Claude
-    # Code process -- it returns {"success": False, "tool_errors": [...]}.
-    # _run_planning previously ignored "success" entirely and proceeded
-    # straight to WAITING_FOR_USER with an empty plan, silently discarding
-    # a genuine failure. _run_generation already checked this; planning
-    # didn't.
+def test_advance_builds_marks_planning_failed_when_all_providers_fail(monkeypatch):
+    # delegate() already tries every candidate provider (Gemini/OpenRouter/
+    # Minimax/Claude for planning) before raising AllProvidersFailed -- this
+    # is a genuine every-provider-failed case, not just "Claude is busy".
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
     _force_status(build["id"], "PLANNING")
 
     monkeypatch.setattr(
-        build_manager, "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": False,
-            "aborted": False,
-            "session_id": "s",
-            "response_text": "",
-            "files_changed": [],
-            "commits": [],
-            "tool_errors": [{"tool": None, "content": "Claude Code process exited with code 1"}],
-        },
+        build_manager, "delegate",
+        lambda description, **kwargs: (_ for _ in ()).throw(
+            AllProvidersFailed("gemini: not available; openrouter: not available; claude: usage limit reached")
+        ),
     )
 
     build_manager.advance_builds()
 
     updated = build_manager.get_build(build["id"])
     assert updated["status"] == "FAILED"
-    assert "exited with code 1" in updated["failure_reason"]
+    assert "usage limit reached" in updated["failure_reason"]
 
 
 def test_advance_builds_drives_generating_to_deploy_approval_via_security_review(monkeypatch):
@@ -453,15 +436,10 @@ def test_advance_builds_drives_freshly_requested_build_to_waiting_for_user(monke
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True,
-            "aborted": False,
-            "session_id": "sess-1",
-            "response_text": "Plan: use FastAPI + React.",
-            "files_changed": [],
-            "commits": [],
-            "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning",
+            "response": "Plan: use FastAPI + React.", "duration_ms": 10,
         },
     )
 
@@ -477,15 +455,10 @@ def test_full_lifecycle_happy_path(monkeypatch):
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True,
-            "aborted": False,
-            "session_id": "sess-1",
-            "response_text": "Plan: FastAPI + SQLite.",
-            "files_changed": [],
-            "commits": [],
-            "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning",
+            "response": "Plan: FastAPI + SQLite.", "duration_ms": 10,
         },
     )
     build_manager.advance_builds()

@@ -224,18 +224,19 @@
       "dependencies": [
         "13B"
       ],
-      "priority": 15
+      "priority": 15,
+      "build_id": null
     },
     {
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13A"
       ],
       "priority": 16,
-      "build_id": null
+      "build_id": "9f6cd1d3"
     },
     {
       "id": "13E",

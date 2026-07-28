@@ -8,7 +8,6 @@ EXPECTED_SERVICES = (
     "pulse",
     "proxdash-backend",
     "proxdash-frontend",
-    "mattermost",
 )
 
 

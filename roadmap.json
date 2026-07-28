@@ -321,7 +321,7 @@
       "id": "K4",
       "name": "Quota-aware AI router ordering",
       "description": "ai_router.delegate() currently tries candidates in a fixed static order per role. Consult provider_health.get_quota_snapshot() (already-collected data) to skip/deprioritize providers known to be quota-exhausted or erroring.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 4
     }

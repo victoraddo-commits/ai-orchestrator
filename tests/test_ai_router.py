@@ -99,6 +99,50 @@ def test_delegate_raises_when_every_candidate_fails(monkeypatch):
         ai_router.delegate("Design an application architecture")
 
 
+def test_delegate_skips_a_candidate_known_to_be_quota_exceeded_without_calling_it(monkeypatch):
+    import core.ai_provider as ai_provider
+    import core.ai.provider_health as provider_health
+
+    provider_health.capture_quota_exceeded("gemini", detail="daily quota exhausted")
+
+    gemini = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(gemini, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        gemini, "run_text_task",
+        lambda p, timeout=60, project_path=None: pytest.fail("gemini should have been skipped, not called"),
+    )
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude answered")
+
+    for name in ("openrouter", "minimax"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    result = ai_router.delegate("Design an application architecture")
+
+    assert result["provider"] == "claude"
+
+
+def test_delegate_still_tries_a_candidate_with_only_a_recorded_error_not_quota_exceeded(monkeypatch):
+    # provider_health deliberately never equates a raw "error" status with
+    # confirmed quota exhaustion (it can't tell a transient network blip
+    # from a real limit) -- only a verified quota_exceeded status should
+    # cause delegate() to skip a call outright.
+    import core.ai_provider as ai_provider
+    import core.ai.provider_health as provider_health
+
+    provider_health.capture_provider_error("gemini", detail="ConnectionError")
+
+    gemini = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(gemini, "available_fn", lambda: True)
+    monkeypatch.setitem(gemini, "run_text_task", lambda p, timeout=60, project_path=None: "gemini recovered")
+
+    result = ai_router.delegate("Design an application architecture")
+
+    assert result["provider"] == "gemini"
+
+
 def test_delegate_records_usage_on_success(monkeypatch):
     import core.ai_provider as ai_provider
 

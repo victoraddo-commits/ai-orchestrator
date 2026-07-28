@@ -106,6 +106,16 @@ def delegate(description, task_type=None, timeout=60, project_path=None):
             failures.append(f"{name}: not available (no credentials configured)")
             continue
 
+        # Only a verified quota_exceeded status skips the call outright --
+        # a plain "error" status is deliberately not treated the same way
+        # (see provider_health.capture_provider_error's docstring: it can't
+        # distinguish a real limit from a transient blip), so those
+        # candidates still get a real attempt.
+        quota = provider_health.get_quota_snapshot(name)
+        if quota and quota.get("status") == "quota_exceeded":
+            failures.append(f"{name}: skipped, known quota_exceeded ({quota.get('detail')})")
+            continue
+
         run_text_task = provider.get("run_text_task")
         if run_text_task is None:
             failures.append(f"{name}: does not support text tasks")

@@ -6,6 +6,7 @@ from core.remediation_runner import process
 from core.remediation import attempt_rollback
 from core.verification import verify_service
 from core.build_manager import advance_builds
+from core.roadmap_manager import advance_roadmap
 from core.logger import info
 
 
@@ -39,6 +40,9 @@ def run_cycle():
     builds = advance_builds()
 
 
+    roadmap_progress = advance_roadmap()
+
+
     remediation = process()
 
 
@@ -69,6 +73,8 @@ def run_cycle():
         "decisions": decisions,
 
         "builds": builds,
+
+        "roadmap_progress": roadmap_progress,
 
         "remediation": remediation,
 

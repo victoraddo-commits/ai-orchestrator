@@ -117,6 +117,23 @@ def test_mark_phase_status_rejects_unknown_status_value(isolated_roadmap):
         roadmap_engine.mark_phase_status("A", "definitely_not_a_real_status")
 
 
+def test_update_phase_merges_arbitrary_fields(isolated_roadmap):
+    _write(isolated_roadmap, [{"id": "A", "status": "pending", "dependencies": [], "priority": 1}])
+
+    updated = roadmap_engine.update_phase("A", status="in_progress", build_id="build-42")
+
+    assert updated["status"] == "in_progress"
+    assert updated["build_id"] == "build-42"
+    assert roadmap_engine.get_phase("A")["build_id"] == "build-42"
+
+
+def test_update_phase_raises_for_unknown_id(isolated_roadmap):
+    _write(isolated_roadmap, [{"id": "A", "status": "pending", "dependencies": [], "priority": 1}])
+
+    with pytest.raises(ValueError):
+        roadmap_engine.update_phase("does-not-exist", status="completed")
+
+
 def test_get_progress_summary_reports_counts_by_status(isolated_roadmap):
     _write(isolated_roadmap, [
         {"id": "A", "status": "completed", "dependencies": [], "priority": 1},

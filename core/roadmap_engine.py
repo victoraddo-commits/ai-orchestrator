@@ -60,6 +60,18 @@ def mark_phase_status(phase_id, status):
     raise ValueError(f"Unknown phase id: {phase_id!r}")
 
 
+def update_phase(phase_id, **fields):
+    roadmap = load_roadmap()
+
+    for phase in roadmap["phases"]:
+        if phase["id"] == phase_id:
+            phase.update(fields)
+            save_roadmap(roadmap)
+            return phase
+
+    raise ValueError(f"Unknown phase id: {phase_id!r}")
+
+
 def get_progress_summary():
     phases = load_roadmap()["phases"]
 

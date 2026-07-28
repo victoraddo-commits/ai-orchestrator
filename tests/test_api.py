@@ -242,6 +242,31 @@ def test_roadmap_progress_endpoint_returns_summary(isolated_roadmap):
     assert response.json()["total"] == 2
 
 
+def test_roadmap_autonomous_status_defaults_to_disabled():
+    response = client.get("/roadmap/autonomous/status")
+
+    assert response.status_code == 200
+    assert response.json()["enabled"] is False
+
+
+def test_roadmap_autonomous_enable_requires_auth():
+    response = client.post("/roadmap/autonomous/enable")
+
+    assert response.status_code == 401
+
+
+def test_roadmap_autonomous_enable_and_disable_roundtrip():
+    enable_response = client.post("/roadmap/autonomous/enable", headers=auth_headers())
+    assert enable_response.status_code == 200
+    assert enable_response.json()["enabled"] is True
+    assert client.get("/roadmap/autonomous/status").json()["enabled"] is True
+
+    disable_response = client.post("/roadmap/autonomous/disable", headers=auth_headers())
+    assert disable_response.status_code == 200
+    assert disable_response.json()["enabled"] is False
+    assert client.get("/roadmap/autonomous/status").json()["enabled"] is False
+
+
 def test_roadmap_status_endpoint_requires_auth(isolated_roadmap):
     response = client.post("/roadmap/B/status", json={"status": "completed"})
 

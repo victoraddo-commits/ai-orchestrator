@@ -6,11 +6,12 @@ def test_run_cycle_completes_without_error_and_has_expected_shape():
     result = run_cycle()
 
     assert set(result) == {
-        "state", "findings", "incidents", "decisions", "builds", "remediation", "verification"
+        "state", "findings", "incidents", "decisions", "builds", "roadmap_progress", "remediation", "verification"
     }
     assert isinstance(result["incidents"], list)
     assert isinstance(result["decisions"], list)
     assert isinstance(result["builds"], list)
+    assert result["roadmap_progress"]["action"] == "disabled"
     assert isinstance(result["remediation"], list)
     assert isinstance(result["verification"], list)
 

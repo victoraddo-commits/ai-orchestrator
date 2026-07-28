@@ -46,6 +46,11 @@ from core.roadmap_engine import (
     get_progress_summary,
     mark_phase_status,
 )
+from core.roadmap_manager import (
+    is_autonomous_mode_enabled,
+    enable_autonomous_mode,
+    disable_autonomous_mode,
+)
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -258,6 +263,23 @@ def roadmap_progress_endpoint():
 
 class PhaseStatusUpdate(BaseModel):
     status: str
+
+
+@app.get("/roadmap/autonomous/status")
+def roadmap_autonomous_status_endpoint():
+    return {"enabled": is_autonomous_mode_enabled()}
+
+
+@app.post("/roadmap/autonomous/enable")
+def roadmap_autonomous_enable_endpoint(operator: str = Depends(require_bridge_token)):
+    enable_autonomous_mode()
+    return {"enabled": True}
+
+
+@app.post("/roadmap/autonomous/disable")
+def roadmap_autonomous_disable_endpoint(operator: str = Depends(require_bridge_token)):
+    disable_autonomous_mode()
+    return {"enabled": False}
 
 
 @app.post("/roadmap/{phase_id}/status")

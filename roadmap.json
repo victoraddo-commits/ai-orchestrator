@@ -208,12 +208,12 @@
       "id": "13B",
       "name": "Kai Command Interface",
       "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
       "priority": 14,
-      "build_id": null
+      "build_id": "17cbe462"
     },
     {
       "id": "13C",
@@ -229,12 +229,12 @@
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
       "priority": 16,
-      "build_id": null
+      "build_id": "59c42bb7"
     },
     {
       "id": "13E",
@@ -289,6 +289,41 @@
         "13H"
       ],
       "priority": 21
+    },
+    {
+      "id": "K1",
+      "name": "Kai Command Interface (entry point)",
+      "description": "Validate and commit the existing rule-based dispatcher (core/kai/commands.py, written by the failed-but-actually-successful 13B build) and give it a real external entry point. No NLP -- fixed phrase table, per the original 13B spec.",
+      "status": "in_progress",
+      "dependencies": [],
+      "priority": 1
+    },
+    {
+      "id": "K2",
+      "name": "Kai Command HTTP Endpoint",
+      "description": "POST /kai/command on core/api.py, bearer-token gated like every other write endpoint, calling core.kai.commands.dispatch(text). Makes 'talk to Kai' reachable from outside a Python REPL for the first time.",
+      "status": "in_progress",
+      "dependencies": [
+        "K1"
+      ],
+      "priority": 2
+    },
+    {
+      "id": "K3",
+      "name": "Isolate self-modifying build workspace",
+      "description": "Self-modifying builds (project_path=SELF_PROJECT_PATH) currently operate directly in /project/ai-orchestrator, the same live directory this interactive session uses. Give them an isolated clone instead -- root cause of tonight's observed generation failures and repeated branch collisions.",
+      "status": "in_progress",
+      "dependencies": [],
+      "priority": 3,
+      "build_id": "133a30b0"
+    },
+    {
+      "id": "K4",
+      "name": "Quota-aware AI router ordering",
+      "description": "ai_router.delegate() currently tries candidates in a fixed static order per role. Consult provider_health.get_quota_snapshot() (already-collected data) to skip/deprioritize providers known to be quota-exhausted or erroring.",
+      "status": "in_progress",
+      "dependencies": [],
+      "priority": 4
     }
   ]
 }

@@ -238,3 +238,44 @@ def test_opencode_provider_available_when_cli_present_and_authenticated(monkeypa
     monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
 
     assert ai_provider.list_providers()["opencode"]["available"] is True
+
+
+def test_opencode_claude_provider_is_registered_with_coding_agent_capability_only():
+    providers = ai_provider.list_providers()
+
+    assert "opencode_claude" in providers
+    assert "coding_agent" in providers["opencode_claude"]["capabilities"]
+    assert "text_task" not in providers["opencode_claude"]["capabilities"]
+
+
+def test_opencode_claude_provider_defaults_to_a_claude_model_via_zen(monkeypatch, tmp_path):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider("opencode_claude")
+    provider["run_coding_task"](str(tmp_path), "build a widget")
+
+    assert "claude" in captured["model"]
+    assert captured["model"].startswith("opencode/")
+
+
+def test_opencode_claude_provider_shares_availability_with_opencode(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    assert ai_provider.list_providers()["opencode_claude"]["available"] is True
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    assert ai_provider.list_providers()["opencode_claude"]["available"] is False

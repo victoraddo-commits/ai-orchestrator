@@ -111,6 +111,19 @@ def _opencode_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# Billed through OpenCode Zen's own account, entirely separate from the
+# CloudCLI/Anthropic subscription -- confirmed useful live: that subscription
+# hit its weekly limit tonight, but Zen's Claude access has its own quota
+# pool and would have kept working. Same availability check as "opencode"
+# (same CLI, same Zen credential) since model choice doesn't affect that.
+OPENCODE_CLAUDE_MODEL = "opencode/claude-sonnet-5"
+
+
+def _opencode_claude_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", OPENCODE_CLAUDE_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
 def _local_not_implemented(*args, **kwargs):
     raise NotImplementedError(
         "The local provider is a Phase 12I architecture placeholder -- no "
@@ -200,6 +213,14 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="OpenCode (MiniMax-m2.7 via OpenCode Zen by default) -- sandboxed coding agent, second code-writing worker alongside Claude",
+)
+
+register_provider(
+    "opencode_claude",
+    run_coding_task=_opencode_claude_run_coding_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="Claude (opencode/claude-sonnet-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits",
 )
 
 register_provider(

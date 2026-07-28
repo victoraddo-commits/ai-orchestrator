@@ -33,11 +33,13 @@ TASK_TYPE_KEYWORDS = {
 # the universal fallback, since it's the one provider guaranteed capable of
 # any task type.
 ROLE_PROVIDERS = {
-    # Claude stays first -- most proven, deepest test/review discipline.
-    # OpenCode (MiniMax-m2.7 via its own sandboxed agent loop) only engages
-    # if Claude fails or is unavailable, per explicit user decision: remove
-    # Claude as a single point of failure without making it secondary.
-    "coding": ["claude", "opencode"],
+    # Claude (CloudCLI/Anthropic subscription) stays first -- most proven,
+    # deepest test/review discipline. OpenCode (MiniMax-m2.7, real
+    # diversification) is the second try. opencode_claude (Claude billed
+    # through OpenCode Zen's separate account) is last -- confirmed useful
+    # live: it survives the exact failure mode that hit tonight (CloudCLI's
+    # subscription quota exhausted), since Zen's billing is independent.
+    "coding": ["claude", "opencode", "opencode_claude"],
     "planning": ["gemini", "openrouter", "minimax", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
     "documentation": ["gemini", "groq", "openrouter", "minimax", "claude"],

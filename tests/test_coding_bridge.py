@@ -29,6 +29,39 @@ def test_parse_sse_data_line(line, expected):
     assert bridge._parse_sse_data_line(line) == expected
 
 
+def test_stream_agent_events_enforces_a_wall_clock_deadline_not_just_inactivity(monkeypatch):
+    # Real incident: requests' `timeout=` on a streamed response is an
+    # inactivity/read timeout between chunks, not a total wall-clock cap --
+    # confirmed live when a build's planning call ran past 10 minutes and
+    # got killed by systemd's watchdog, because CloudCLI kept sending a
+    # trickle of data every 6-40s (well under any per-chunk timeout) while
+    # making almost no real progress. This must be bounded regardless of
+    # how frequently data arrives.
+    class FakeResponse:
+        status_code = 200
+
+        def iter_lines(self, decode_unicode=True):
+            # Yields forever, one line at a time -- if this test ever
+            # actually iterates unboundedly, it hangs the test suite, which
+            # is exactly why this behavior must be fixed.
+            while True:
+                yield 'data: {"kind": "text", "text": "still going"}'
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(bridge.requests, "post", lambda *a, **k: FakeResponse())
+
+    fake_now = [0.0]
+    monkeypatch.setattr(bridge.time, "monotonic", lambda: fake_now[0])
+
+    events = bridge._stream_agent_events("/proj", "do something", timeout=30)
+
+    with pytest.raises(TimeoutError):
+        for _ in events:
+            fake_now[0] += 10
+
+
 def test_run_coding_task_happy_path_reports_file_and_commit(monkeypatch):
     events = [
         {"kind": "session_created", "sessionId": "sess-1"},

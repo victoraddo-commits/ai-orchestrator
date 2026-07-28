@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import requests
@@ -82,7 +83,22 @@ def _stream_agent_events(project_path, instruction, session_id=None, model=None,
             f"CloudCLI /api/agent request failed with status {response.status_code}: {response.text[:500]}"
         )
 
+    # requests' own `timeout=` on a streamed response only bounds gaps
+    # *between* chunks, not the total call -- a slow-but-nonzero trickle of
+    # data (confirmed live: CloudCLI sending activity every 6-40s while
+    # making almost no real progress) can run past it indefinitely.
+    # Confirmed this took down the whole scheduler process via systemd's
+    # watchdog once already. This deadline is a hard wall-clock cap
+    # regardless of how often data arrives.
+    deadline = time.monotonic() + timeout
+
     for raw_line in response.iter_lines(decode_unicode=True):
+        if time.monotonic() > deadline:
+            response.close()
+            raise TimeoutError(
+                f"CloudCLI /api/agent stream exceeded {timeout}s wall-clock timeout"
+            )
+
         event = _parse_sse_data_line(raw_line or "")
         if event is not None:
             yield event

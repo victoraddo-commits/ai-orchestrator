@@ -85,3 +85,17 @@ def dispatch(text):
             return {"matched": True, "description": description, "result": result, "error": None}
 
     return {"matched": False, "description": None, "result": None, "error": f"No matching command pattern for: {text!r}"}
+
+# conversational aliases
+COMMAND_PATTERNS += (
+    (
+        re.compile(r"^(?:kai,\s*)?(?:roadmap status|where are we|what is the roadmap status|current progress)\.?$", re.IGNORECASE),
+        lambda: __import__("core.api", fromlist=["roadmap_endpoint"]).roadmap_endpoint(),
+        "Show current roadmap status.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:what should we do next|next step|what is next)\.?$", re.IGNORECASE),
+        _handle_next_phase,
+        "Show next engineering phase.",
+    ),
+)

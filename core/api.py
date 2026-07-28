@@ -38,6 +38,14 @@ from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history
 from core.ai_provider import list_providers
 from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed
+from core.roadmap_engine import (
+    load_roadmap,
+    get_phase,
+    get_next_phase,
+    get_remaining_work,
+    get_progress_summary,
+    mark_phase_status,
+)
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -226,6 +234,45 @@ def delegate_endpoint(
         return delegate(body.description, task_type=body.task_type, project_path=body.project_path)
     except AllProvidersFailed as error:
         raise HTTPException(status_code=502, detail=str(error))
+
+
+@app.get("/roadmap")
+def roadmap_endpoint():
+    return load_roadmap()
+
+
+@app.get("/roadmap/next")
+def roadmap_next_endpoint():
+    return get_next_phase() or {}
+
+
+@app.get("/roadmap/remaining")
+def roadmap_remaining_endpoint():
+    return get_remaining_work()
+
+
+@app.get("/roadmap/progress")
+def roadmap_progress_endpoint():
+    return get_progress_summary()
+
+
+class PhaseStatusUpdate(BaseModel):
+    status: str
+
+
+@app.post("/roadmap/{phase_id}/status")
+def roadmap_status_endpoint(
+    phase_id: str,
+    body: PhaseStatusUpdate,
+    operator: str = Depends(require_bridge_token),
+):
+    if get_phase(phase_id) is None:
+        raise HTTPException(status_code=404, detail="Phase not found")
+
+    try:
+        return mark_phase_status(phase_id, body.status)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 @app.get("/templates")

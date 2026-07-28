@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "phases": [
+    {
+      "id": "1-11",
+      "name": "Foundation: production-grade autonomous infrastructure operations platform",
+      "description": "Unified lifecycle objects, schema-versioned atomic memory, observability, Proxmox intelligence, decision engine, approval gates, remediation + rollback, security hardening, learning loop, full test suite, documentation.",
+      "status": "completed",
+      "dependencies": [],
+      "completion_criteria": [
+        "144 tests passing",
+        "deployed and running as systemd services",
+        "verified across live scheduler cycles"
+      ],
+      "tests_required": true,
+      "priority": 0
+    },
+    {
+      "id": "12A",
+      "name": "CloudCLI plugin integration",
+      "description": "AI Application Builder plugin (client + server bridge) installed into CloudCLI, bearer-token-authenticated write API on core/api.py.",
+      "status": "completed",
+      "dependencies": [
+        "1-11"
+      ],
+      "completion_criteria": [
+        "Plugin tab renders in live CloudCLI browser session",
+        "Overview/Approvals/Learning tabs show real data, not fixtures"
+      ],
+      "tests_required": true,
+      "priority": 1
+    },
+    {
+      "id": "12B",
+      "name": "Headless Claude Agent SDK bridge",
+      "description": "core/coding_bridge.py drives CloudCLI's existing /api/agent endpoint non-interactively -- no second coding engine.",
+      "status": "completed",
+      "dependencies": [
+        "12A"
+      ],
+      "completion_criteria": [
+        "Real file write + real git commit proven against a disposable repo, not mocked"
+      ],
+      "tests_required": true,
+      "priority": 2
+    },
+    {
+      "id": "12C",
+      "name": "Application Builder Lifecycle",
+      "description": "core/build_manager.py state machine (REQUESTED..COMPLETED/FAILED/ROLLED_BACK) on core/lifecycle.py primitives, own approval queue isolated from the incident/remediation pipeline.",
+      "status": "completed",
+      "dependencies": [
+        "12B"
+      ],
+      "completion_criteria": [
+        "advance_builds() wired into scheduler cycle",
+        "6 bearer-token API endpoints"
+      ],
+      "tests_required": true,
+      "priority": 3
+    },
+    {
+      "id": "12D",
+      "name": "Code generation pipeline",
+      "description": "core/repo_manager.py (idempotent git repo bootstrap, per-build branch) + core/project_templates.py (6 scaffolding prompts, not boilerplate files).",
+      "status": "completed",
+      "dependencies": [
+        "12C"
+      ],
+      "completion_criteria": [
+        "Every build runs on its own build-<id> branch"
+      ],
+      "tests_required": true,
+      "priority": 4
+    },
+    {
+      "id": "12E",
+      "name": "Sandbox execution",
+      "description": "core/sandbox.py -- Docker-based disposable/resource-limited/network-optional command execution. Deliberately not wired into CloudCLI's own coding-agent process (too large a change for one phase); deliberately excludes docker build (socket-mount risk).",
+      "status": "completed",
+      "dependencies": [
+        "12D"
+      ],
+      "completion_criteria": [
+        "Real Docker integration tests: host filesystem isolation and project-dir writability both proven"
+      ],
+      "tests_required": true,
+      "priority": 5
+    },
+    {
+      "id": "12F",
+      "name": "Security intelligence",
+      "description": "core/security_scanner.py -- Bandit, Semgrep, npm audit, Trivy, all run inside the Phase 12E sandbox. Wired into build_manager: GENERATING -> SECURITY_REVIEW -> DEPLOY_APPROVAL.",
+      "status": "completed",
+      "dependencies": [
+        "12E"
+      ],
+      "completion_criteria": [
+        "Real findings (not zero) produced against a deliberately vulnerable fixture"
+      ],
+      "tests_required": true,
+      "priority": 6
+    },
+    {
+      "id": "12G",
+      "name": "Deployment platform with real rollback",
+      "description": "core/deployment_manager.py -- staging/production blue-green swap via Docker, real rollback registered against core/remediation.py's existing (previously unused) ROLLBACK_STRATEGIES extension point.",
+      "status": "completed",
+      "dependencies": [
+        "12F"
+      ],
+      "completion_criteria": [
+        "Real end-to-end deploy proven: file written, container running, HTTP-reachable"
+      ],
+      "tests_required": true,
+      "priority": 7
+    },
+    {
+      "id": "12H",
+      "name": "Learning system expansion",
+      "description": "core/build_learning.py -- template success-rate tracking, same trusted/observe/avoid thresholds as the existing remediation learning_engine.",
+      "status": "completed",
+      "dependencies": [
+        "12C"
+      ],
+      "completion_criteria": [
+        "Wired into every terminal build-state transition"
+      ],
+      "tests_required": true,
+      "priority": 8
+    },
+    {
+      "id": "12I",
+      "name": "Local AI architecture prep",
+      "description": "core/ai_provider.py registry -- extension point only, no local model installed.",
+      "status": "completed",
+      "dependencies": [
+        "12B"
+      ],
+      "completion_criteria": [
+        "\"local\" provider registered, honestly marked unavailable"
+      ],
+      "tests_required": true,
+      "priority": 9
+    },
+    {
+      "id": "12J",
+      "name": "Multi-AI provider router",
+      "description": "core/ai/ai_router.py -- real Gemini/Groq/OpenAI delegation, role-based routing with automatic fallback, honest per-provider quota/health tracking, security-audited credential handling. CloudCLI plugin dashboard tab added.",
+      "status": "completed",
+      "dependencies": [
+        "12I"
+      ],
+      "completion_criteria": [
+        "Live, non-mocked delegation proven for at least 2 of the 3 non-Claude roles",
+        "security checklist verified with real commands"
+      ],
+      "tests_required": true,
+      "priority": 10
+    },
+    {
+      "id": "12K",
+      "name": "Autonomous Roadmap Engine",
+      "description": "roadmap.json + core/roadmap_engine.py -- machine-readable phase/dependency/status tracking so the system itself (not just this session's own task list) can answer \"what remains to be built?\"",
+      "status": "completed",
+      "dependencies": [
+        "12A",
+        "12B",
+        "12C",
+        "12D",
+        "12E",
+        "12F",
+        "12G",
+        "12H",
+        "12I",
+        "12J"
+      ],
+      "completion_criteria": [
+        "get_next_phase() correctly resolves dependency-respecting order",
+        "API endpoints deployed and live-verified"
+      ],
+      "tests_required": true,
+      "priority": 11
+    },
+    {
+      "id": "12L",
+      "name": "Autonomous Engineering Manager",
+      "description": "Given the roadmap, autonomously plan/delegate/implement/test/review/deploy/learn until 'Complete the roadmap' is achieved. Human remains final authority via the existing approval gates (architecture approval, deploy approval) -- explicitly must not remove those.",
+      "status": "pending",
+      "dependencies": [
+        "12K"
+      ],
+      "completion_criteria": [
+        "Not yet defined in detail -- this is the largest remaining architectural/policy decision in the roadmap, deliberately not started without explicit sign-off on autonomy scope"
+      ],
+      "tests_required": true,
+      "priority": 12
+    }
+  ]
+}

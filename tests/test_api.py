@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from core.api import app
@@ -200,6 +201,70 @@ def test_build_learning_endpoint_returns_templates_and_history():
     body = response.json()
     assert "templates" in body
     assert "history" in body
+
+
+import json as _json
+import core.roadmap_engine as roadmap_engine
+
+
+@pytest.fixture
+def isolated_roadmap(tmp_path, monkeypatch):
+    roadmap_path = tmp_path / "roadmap.json"
+    roadmap_path.write_text(_json.dumps({
+        "schema_version": 1,
+        "phases": [
+            {"id": "A", "status": "completed", "dependencies": [], "priority": 1},
+            {"id": "B", "status": "pending", "dependencies": ["A"], "priority": 2},
+        ],
+    }))
+    monkeypatch.setattr(roadmap_engine, "ROADMAP_PATH", roadmap_path)
+    return roadmap_path
+
+
+def test_roadmap_endpoint_returns_phases(isolated_roadmap):
+    response = client.get("/roadmap")
+
+    assert response.status_code == 200
+    assert len(response.json()["phases"]) == 2
+
+
+def test_roadmap_next_endpoint_returns_next_actionable_phase(isolated_roadmap):
+    response = client.get("/roadmap/next")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "B"
+
+
+def test_roadmap_progress_endpoint_returns_summary(isolated_roadmap):
+    response = client.get("/roadmap/progress")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+
+
+def test_roadmap_status_endpoint_requires_auth(isolated_roadmap):
+    response = client.post("/roadmap/B/status", json={"status": "completed"})
+
+    assert response.status_code == 401
+
+
+def test_roadmap_status_endpoint_updates_phase(isolated_roadmap):
+    response = client.post("/roadmap/B/status", json={"status": "completed"}, headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+
+
+def test_roadmap_status_endpoint_returns_404_for_unknown_phase(isolated_roadmap):
+    response = client.post("/roadmap/does-not-exist/status", json={"status": "completed"}, headers=auth_headers())
+
+    assert response.status_code == 404
+
+
+def test_roadmap_status_endpoint_returns_400_for_invalid_status(isolated_roadmap):
+    response = client.post("/roadmap/B/status", json={"status": "not-a-real-status"}, headers=auth_headers())
+
+    assert response.status_code == 400
 
 
 def test_providers_dashboard_endpoint_returns_all_registered_providers():

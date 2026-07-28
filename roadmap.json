@@ -242,7 +242,7 @@
       "id": "13E",
       "name": "Kai Autonomous Development Loop",
       "description": "Upgrade core/roadmap_manager.py's advance_roadmap(): 'highest-value' phase selection (score by risk/expected-benefit from the originating Improvement Proposal, not just priority number), and wire real test execution into the GENERATING step for self-modifying builds specifically (the test command is known and fixed for this repo: .venv/bin/pytest tests/, unlike the generic 'what's the test command for an arbitrary generated app' problem Phase 12E left open). Reuse build_manager/coding_bridge/security_scanner/deployment_manager as-is. Approval gates (ARCHITECTURE_APPROVED, DEPLOY_APPROVAL) remain untouched and mandatory -- this phase must not add any path that bypasses them.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13C",
         "13D"
@@ -254,11 +254,12 @@
       "id": "13F",
       "name": "Kai Memory System",
       "description": "Extend core/build_learning.py: capture rollback root-cause (rollback_deployment currently records ROLLED_BACK as a failure in success-rate math but not why) and rejected-proposal reasons from 13C's Improvement Proposal store. Track preferred architectures, common failures, successful solutions, avoided approaches -- reuses the existing trusted/observe/avoid threshold pattern, no new classification scheme.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13C"
       ],
-      "priority": 18
+      "priority": 18,
+      "build_id": "dba8b3fd"
     },
     {
       "id": "13G",

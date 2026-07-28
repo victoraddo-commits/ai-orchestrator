@@ -36,15 +36,15 @@ def _write_proposal(roadmap_phase_id, **fields):
 
 def _drive_build_to_deploy_approval(project_path):
     # Drives a real build through the real, unmodified BUILD_TRANSITIONS
-    # table up to DEPLOY_APPROVAL -- the same states _run_generation's
-    # normal (reused as-is) success path leaves a build in -- without
-    # invoking the actual AI delegation/security-scan machinery.
+    # table up to WAITING_FOR_DEPLOY_APPROVAL -- the same states
+    # _run_generation's normal (reused as-is) success path leaves a build in
+    # -- without invoking the actual AI delegation/security-scan machinery.
     build = roadmap_manager.create_build(name="X", description="d", project_path=project_path)
 
     builds = load_builds()
     for b in builds:
         if b["id"] == build["id"]:
-            for status in ("PLANNING", "WAITING_FOR_USER", "ARCHITECTURE_APPROVED", "GENERATING", "SECURITY_REVIEW", "DEPLOY_APPROVAL"):
+            for status in ("PLANNING", "WAITING_FOR_ARCHITECTURE_APPROVAL", "ARCHITECTURE_APPROVED", "GENERATING", "SECURITY_REVIEW", "WAITING_FOR_DEPLOY_APPROVAL"):
                 transition(b, status, BUILD_TRANSITIONS)
     save_builds(builds)
 
@@ -384,9 +384,10 @@ def test_advance_roadmap_runs_self_build_tests_once_build_reaches_deploy_approva
 
     updated_build = roadmap_manager.get_build(build_id)
     assert updated_build["self_build_test_result"]["passed"] is True
-    # Still sitting at DEPLOY_APPROVAL -- a passing test run must not itself
-    # advance the build any further; deploy approval is still a human gate.
-    assert updated_build["status"] == "DEPLOY_APPROVAL"
+    # Still sitting at WAITING_FOR_DEPLOY_APPROVAL -- a passing test run must
+    # not itself advance the build any further; deploy approval is still a
+    # human gate.
+    assert updated_build["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
 
 
 def test_advance_roadmap_fails_the_phase_when_self_build_tests_fail(isolated_roadmap, monkeypatch, tmp_path):
@@ -414,6 +415,39 @@ def test_advance_roadmap_fails_the_phase_when_self_build_tests_fail(isolated_roa
     assert updated_build["self_build_test_result"]["passed"] is False
 
     assert roadmap_engine.get_phase("X")["status"] == "failed"
+
+
+def test_advance_roadmap_rejects_a_pending_deploy_approval_when_self_build_tests_fail(isolated_roadmap, monkeypatch, tmp_path):
+    # build_manager._create_deploy_approval runs inside advance_builds(),
+    # which core.orchestrator_cycle.run_cycle() always calls just before
+    # advance_roadmap() -- so a build's deploy Approval can already exist by
+    # the time this self-test gate fails it, in the very same cycle. That
+    # Approval must not be left sitting "pending" in the CloudCLI Approval
+    # Center for a build that's already dead.
+    from core.approval import create_build_approval, load_requests
+
+    project_path = str(tmp_path / "clone")
+    build_id = _drive_build_to_deploy_approval(project_path)
+    approval = create_build_approval(
+        build_id=build_id, phase_id="X", approval_type="deploy",
+        title="Approve deployment for X", description="0 findings", risk=None,
+        requested_action="approve_deploy",
+    )
+
+    _write(isolated_roadmap, [
+        {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": build_id},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    monkeypatch.setattr(
+        roadmap_manager, "_run_self_build_tests",
+        lambda path: {"passed": False, "returncode": 1, "output": "1 failed"},
+    )
+
+    roadmap_manager.advance_roadmap()
+
+    updated = [r for r in load_requests() if r["id"] == approval["id"]][0]
+    assert updated["status"] == "rejected"
 
 
 def test_advance_roadmap_does_not_rerun_self_build_tests_once_recorded(isolated_roadmap, monkeypatch, tmp_path):

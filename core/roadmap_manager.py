@@ -117,11 +117,34 @@ def _apply_self_build_test_result(build_id, result):
             )
             if build["status"] in TERMINAL_STATUSES:
                 record_build_outcome(build)
+            _invalidate_pending_deploy_approval(build_id, build["failure_reason"])
 
         save_builds(builds)
         return build
 
     return None
+
+
+def _invalidate_pending_deploy_approval(build_id, reason):
+    # build_manager._create_deploy_approval runs inside advance_builds(),
+    # which run_cycle() always calls just before advance_roadmap() (see
+    # core.orchestrator_cycle) -- so a build's deploy Approval can already
+    # exist by the time this self-test gate fails it, in the very same
+    # cycle. Reject it directly via transition_request() rather than
+    # core.approval.reject(), which would try to re-transition the build
+    # through reject_deploy() -- already FAILED by this different,
+    # legitimate path -- and raise InvalidTransition. This just keeps the
+    # Approval Center from showing a stale "pending" request for a build
+    # that's already dead.
+    from core.approval import load_requests, transition_request
+
+    for request in load_requests():
+        if (
+            request.get("build_id") == build_id
+            and request.get("approval_type") == "deploy"
+            and request.get("status") == "pending"
+        ):
+            transition_request(request["id"], "rejected", note=reason)
 
 
 # Value-selection keyword vocabulary. Deliberately coarse (substring
@@ -302,17 +325,20 @@ def advance_roadmap():
             continue
 
         # build_manager's own GENERATING handling (_run_generation, reused
-        # as-is) runs generation through to SECURITY_REVIEW/DEPLOY_APPROVAL
-        # in one synchronous call -- there's no separate at-rest GENERATING
-        # state to intercept mid-step without editing build_manager.py
-        # itself. DEPLOY_APPROVAL is the next state this loop actually
-        # observes the build sitting in, so that's where the self-build test
-        # suite runs: once, before a human is ever asked to approve deploy.
-        # A failing run transitions the build straight to FAILED, which the
-        # STOPPING_BUILD_STATUSES check just below then fails the phase for
-        # exactly like any other build failure -- no new path around
-        # ARCHITECTURE_APPROVED/DEPLOY_APPROVAL is added.
-        if build["status"] == "DEPLOY_APPROVAL" and build.get("self_build_test_result") is None:
+        # as-is) runs generation through to SECURITY_REVIEW/
+        # WAITING_FOR_DEPLOY_APPROVAL in one synchronous call -- there's no
+        # separate at-rest GENERATING state to intercept mid-step without
+        # editing build_manager.py itself. WAITING_FOR_DEPLOY_APPROVAL is the
+        # next state this loop actually observes the build sitting in, so
+        # that's where the self-build test suite runs: once, before a human
+        # is ever asked to approve deploy (or, now, before the Approval
+        # Center's own deploy-approval request is even created -- see
+        # build_manager._create_deploy_approval). A failing run transitions
+        # the build straight to FAILED, which the STOPPING_BUILD_STATUSES
+        # check just below then fails the phase for exactly like any other
+        # build failure -- no new path around ARCHITECTURE_APPROVED/
+        # DEPLOY_APPROVAL is added.
+        if build["status"] == "WAITING_FOR_DEPLOY_APPROVAL" and build.get("self_build_test_result") is None:
             test_result = _run_self_build_tests(build["project_path"])
             build = _apply_self_build_test_result(phase["build_id"], test_result) or build
 

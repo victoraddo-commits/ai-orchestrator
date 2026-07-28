@@ -114,6 +114,32 @@ def test_advance_roadmap_marks_phase_failed_when_linked_build_fails_and_does_not
     assert roadmap_engine.get_phase("Y")["status"] == "pending"
 
 
+def test_advance_roadmap_does_not_start_a_new_phase_while_another_is_still_waiting(isolated_roadmap, monkeypatch):
+    # Real bug found live: a phase stuck at WAITING_FOR_USER (not COMPLETED,
+    # not FAILED/ROLLED_BACK) fell through the old loop silently, and
+    # advance_roadmap() went on to start a second, unrelated phase
+    # concurrently -- both self-modifying builds sharing the same working
+    # directory. Confirmed live: this is what crashed the first build's
+    # Claude process (a concurrent git checkout on the same working tree).
+    _write(isolated_roadmap, [
+        {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": "build-1"},
+        {"id": "Y", "status": "pending", "dependencies": [], "priority": 2},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    monkeypatch.setattr(roadmap_manager, "get_build", lambda build_id: {"id": build_id, "status": "WAITING_FOR_USER"})
+    monkeypatch.setattr(
+        roadmap_manager, "create_build",
+        lambda *a, **k: pytest.fail("must not start Y while X is still waiting on a human"),
+    )
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "waiting_on_human"
+    assert result["phase_id"] == "X"
+    assert roadmap_engine.get_phase("Y")["status"] == "pending"
+
+
 def test_advance_roadmap_reports_nothing_to_do_when_roadmap_is_fully_resolved(isolated_roadmap, monkeypatch):
     _write(isolated_roadmap, [{"id": "X", "status": "completed", "dependencies": [], "priority": 1}])
     roadmap_manager.enable_autonomous_mode()

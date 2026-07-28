@@ -70,6 +70,13 @@ def advance_roadmap():
 
     in_progress = [p for p in load_roadmap()["phases"] if p["status"] == "in_progress" and p.get("build_id")]
 
+    # Self-modifying builds all operate on this same repo's live working
+    # directory (SELF_PROJECT_PATH), not an isolated clone -- running more
+    # than one concurrently means two builds fighting over `git checkout`
+    # on the same working tree. Confirmed live: this is what crashed the
+    # first build's Claude process. Only one phase may be in flight at a
+    # time, full stop, regardless of whether the roadmap's dependency graph
+    # would otherwise allow another phase to start.
     for phase in in_progress:
         build = get_build(phase["build_id"])
 
@@ -88,6 +95,8 @@ def advance_roadmap():
                 "build_id": phase["build_id"],
                 "reason": build.get("failure_reason"),
             }
+
+        return {"action": "waiting_on_human", "phase_id": phase["id"], "build_id": phase["build_id"], "build_status": build["status"]}
 
     next_phase = get_next_phase()
 

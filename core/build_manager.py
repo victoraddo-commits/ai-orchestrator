@@ -246,6 +246,14 @@ def _run_planning(build):
         _record_if_terminal(build)
         return
 
+    if not result.get("success"):
+        errors = result.get("tool_errors") or []
+        detail = "; ".join(e.get("content", "") for e in errors) or "Planning run did not complete successfully"
+        transition(build, "FAILED", BUILD_TRANSITIONS)
+        build["failure_reason"] = detail
+        _record_if_terminal(build)
+        return
+
     build["plan"] = result.get("response_text", "")
     transition(build, "WAITING_FOR_USER", BUILD_TRANSITIONS)
 

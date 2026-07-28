@@ -315,6 +315,36 @@ def test_advance_builds_marks_planning_failed_when_bridge_errors(monkeypatch):
     assert "500" in updated["failure_reason"]
 
 
+def test_advance_builds_marks_planning_failed_when_bridge_returns_unsuccessful_without_raising(monkeypatch):
+    # Real bug found live: run_coding_task doesn't raise on a crashed Claude
+    # Code process -- it returns {"success": False, "tool_errors": [...]}.
+    # _run_planning previously ignored "success" entirely and proceeded
+    # straight to WAITING_FOR_USER with an empty plan, silently discarding
+    # a genuine failure. _run_generation already checked this; planning
+    # didn't.
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False,
+            "aborted": False,
+            "session_id": "s",
+            "response_text": "",
+            "files_changed": [],
+            "commits": [],
+            "tool_errors": [{"tool": None, "content": "Claude Code process exited with code 1"}],
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "FAILED"
+    assert "exited with code 1" in updated["failure_reason"]
+
+
 def test_advance_builds_drives_generating_to_deploy_approval_via_security_review(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
     _force_status(build["id"], "GENERATING")

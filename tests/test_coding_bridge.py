@@ -179,6 +179,49 @@ def test_run_coding_task_handles_non_git_directory_without_crashing(monkeypatch)
     assert result["files_changed"] == []
 
 
+def test_run_coding_task_falls_back_to_thinking_content_when_no_text_emitted(monkeypatch):
+    # Real incident: a genuinely successful planning-only run (no crash, no
+    # timeout, CloudCLI reported success) produced an empty response_text --
+    # Claude explored the read-only-allowed codebase and reasoned about it,
+    # but that reasoning apparently came through as "thinking" content with
+    # no separate final "text" message, which run_coding_task discarded
+    # entirely. A plan a human can't read is as useless as no plan.
+    events = [
+        {"kind": "session_created", "sessionId": "sess-1"},
+        {"kind": "thinking", "text": "Looking at the roadmap phase, I should build core/kai/commands.py with..."},
+        {"kind": "thinking", "text": " a small dispatch table mapping phrases to existing functions."},
+        {"kind": "complete", "exitCode": 0, "success": True, "aborted": False},
+    ]
+
+    monkeypatch.setattr(bridge, "_stream_agent_events", lambda **kwargs: iter(events))
+    monkeypatch.setattr(bridge, "_git_head", lambda path: None)
+    monkeypatch.setattr(bridge, "_git_commits_between", lambda path, before, after: [])
+    monkeypatch.setattr(bridge, "_git_uncommitted_files", lambda path: [])
+
+    result = bridge.run_coding_task("/proj", "plan this")
+
+    assert result["success"] is True
+    assert "dispatch table" in result["response_text"]
+
+
+def test_run_coding_task_prefers_real_text_over_thinking_when_both_present(monkeypatch):
+    events = [
+        {"kind": "thinking", "text": "internal reasoning, not the real answer"},
+        {"kind": "text", "text": "Here is the actual plan."},
+        {"kind": "complete", "exitCode": 0, "success": True, "aborted": False},
+    ]
+
+    monkeypatch.setattr(bridge, "_stream_agent_events", lambda **kwargs: iter(events))
+    monkeypatch.setattr(bridge, "_git_head", lambda path: None)
+    monkeypatch.setattr(bridge, "_git_commits_between", lambda path, before, after: [])
+    monkeypatch.setattr(bridge, "_git_uncommitted_files", lambda path: [])
+
+    result = bridge.run_coding_task("/proj", "plan this")
+
+    assert result["response_text"] == "Here is the actual plan."
+    assert "internal reasoning" not in result["response_text"]
+
+
 def test_run_coding_task_deduplicates_repeated_file_writes(monkeypatch):
     events = [
         {"kind": "tool_use", "toolName": "Edit", "toolInput": {"file_path": "app/main.py"}},

@@ -173,6 +173,7 @@ def run_coding_task(project_path, instruction, session_id=None, model=None, time
 
     result_session_id = session_id
     response_text_parts = []
+    thinking_text_parts = []
     files_touched = []
     tool_errors = []
     success = False
@@ -192,6 +193,9 @@ def run_coding_task(project_path, instruction, session_id=None, model=None, time
 
         elif kind == "text":
             response_text_parts.append(event.get("text", ""))
+
+        elif kind == "thinking":
+            thinking_text_parts.append(event.get("text", ""))
 
         elif kind == "tool_use":
             if event.get("toolName") in WRITE_TOOLS:
@@ -222,11 +226,18 @@ def run_coding_task(project_path, instruction, session_id=None, model=None, time
 
     files_changed = sorted(set(files_touched) | set(uncommitted_files))
 
+    # Real incident: a genuinely successful, text-only planning run produced
+    # zero "text" events -- Claude's reasoning apparently only came through
+    # as "thinking" content, with no separate final assistant message. A
+    # blank plan is as useless to a human reviewer as a missing one, so fall
+    # back to thinking content rather than silently return empty.
+    response_text = "".join(response_text_parts) or "".join(thinking_text_parts)
+
     return {
         "success": success,
         "aborted": aborted,
         "session_id": result_session_id,
-        "response_text": "".join(response_text_parts),
+        "response_text": response_text,
         "files_changed": files_changed,
         "commits": commits,
         "tool_errors": tool_errors,

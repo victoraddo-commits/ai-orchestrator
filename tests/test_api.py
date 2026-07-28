@@ -267,6 +267,33 @@ def test_roadmap_autonomous_enable_and_disable_roundtrip():
     assert client.get("/roadmap/autonomous/status").json()["enabled"] is False
 
 
+def test_add_roadmap_phase_endpoint_requires_auth(isolated_roadmap):
+    response = client.post("/roadmap/phases", json={"id": "C", "name": "n", "description": "d", "priority": 3})
+
+    assert response.status_code == 401
+
+
+def test_add_roadmap_phase_endpoint_creates_phase_defaulting_to_proposed(isolated_roadmap):
+    response = client.post(
+        "/roadmap/phases",
+        json={"id": "C", "name": "n", "description": "d", "dependencies": ["A"], "priority": 3},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "proposed"
+
+
+def test_add_roadmap_phase_endpoint_returns_400_for_bad_dependency(isolated_roadmap):
+    response = client.post(
+        "/roadmap/phases",
+        json={"id": "C", "name": "n", "description": "d", "dependencies": ["nope"], "priority": 3},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+
+
 def test_roadmap_status_endpoint_requires_auth(isolated_roadmap):
     response = client.post("/roadmap/B/status", json={"status": "completed"})
 

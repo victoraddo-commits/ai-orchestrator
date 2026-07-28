@@ -45,6 +45,7 @@ from core.roadmap_engine import (
     get_remaining_work,
     get_progress_summary,
     mark_phase_status,
+    add_phase,
 )
 from core.roadmap_manager import (
     is_autonomous_mode_enabled,
@@ -280,6 +281,29 @@ def roadmap_autonomous_enable_endpoint(operator: str = Depends(require_bridge_to
 def roadmap_autonomous_disable_endpoint(operator: str = Depends(require_bridge_token)):
     disable_autonomous_mode()
     return {"enabled": False}
+
+
+class NewPhaseRequest(BaseModel):
+    id: str
+    name: str
+    description: str
+    dependencies: list[str] = []
+    priority: int
+    status: str = "proposed"
+
+
+@app.post("/roadmap/phases")
+def add_roadmap_phase_endpoint(
+    body: NewPhaseRequest,
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        return add_phase(
+            id=body.id, name=body.name, description=body.description,
+            dependencies=body.dependencies, priority=body.priority, status=body.status,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 @app.post("/roadmap/{phase_id}/status")

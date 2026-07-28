@@ -117,6 +117,54 @@ def test_mark_phase_status_rejects_unknown_status_value(isolated_roadmap):
         roadmap_engine.mark_phase_status("A", "definitely_not_a_real_status")
 
 
+def test_add_phase_appends_a_new_phase(isolated_roadmap):
+    _write(isolated_roadmap, [{"id": "A", "status": "completed", "dependencies": [], "priority": 1}])
+
+    new_phase = roadmap_engine.add_phase(
+        id="B", name="New phase", description="desc", status="pending",
+        dependencies=["A"], priority=2,
+    )
+
+    assert new_phase["id"] == "B"
+    assert roadmap_engine.get_phase("B")["status"] == "pending"
+    assert len(roadmap_engine.load_roadmap()["phases"]) == 2
+
+
+def test_add_phase_rejects_duplicate_id(isolated_roadmap):
+    _write(isolated_roadmap, [{"id": "A", "status": "completed", "dependencies": [], "priority": 1}])
+
+    with pytest.raises(ValueError):
+        roadmap_engine.add_phase(id="A", name="dup", description="", status="pending", dependencies=[], priority=2)
+
+
+def test_add_phase_rejects_unresolvable_dependency(isolated_roadmap):
+    _write(isolated_roadmap, [{"id": "A", "status": "completed", "dependencies": [], "priority": 1}])
+
+    with pytest.raises(ValueError):
+        roadmap_engine.add_phase(
+            id="B", name="new", description="", status="pending",
+            dependencies=["does-not-exist"], priority=2,
+        )
+
+
+def test_add_phase_defaults_status_to_proposed_when_not_given(isolated_roadmap):
+    _write(isolated_roadmap, [])
+
+    new_phase = roadmap_engine.add_phase(id="X", name="n", description="d", dependencies=[], priority=1)
+
+    assert new_phase["status"] == "proposed"
+
+
+def test_get_next_phase_never_returns_a_proposed_phase(isolated_roadmap):
+    # "proposed" is deliberately not "pending" -- get_next_phase() (used by
+    # the autonomous manager) must never pick up AI-generated phases until a
+    # human promotes them to "pending". Without this, "AI can propose
+    # roadmap items" would silently become "AI can queue its own work".
+    _write(isolated_roadmap, [{"id": "X", "status": "proposed", "dependencies": [], "priority": 1}])
+
+    assert roadmap_engine.get_next_phase() is None
+
+
 def test_update_phase_merges_arbitrary_fields(isolated_roadmap):
     _write(isolated_roadmap, [{"id": "A", "status": "pending", "dependencies": [], "priority": 1}])
 

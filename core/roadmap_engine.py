@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROADMAP_PATH = Path(__file__).resolve().parent.parent / "roadmap.json"
 
-VALID_STATUSES = {"pending", "in_progress", "completed", "failed", "blocked"}
+VALID_STATUSES = {"proposed", "pending", "in_progress", "completed", "failed", "blocked"}
 
 
 def load_roadmap():
@@ -58,6 +58,39 @@ def mark_phase_status(phase_id, status):
             return phase
 
     raise ValueError(f"Unknown phase id: {phase_id!r}")
+
+
+def add_phase(id, name, description, dependencies, priority, status="proposed", **fields):
+    # Defaults to "proposed", not "pending" -- get_next_phase() only ever
+    # picks up "pending" phases, so a human must explicitly promote a
+    # proposed phase before the autonomous manager will act on it.
+    roadmap = load_roadmap()
+    existing_ids = {p["id"] for p in roadmap["phases"]}
+
+    if id in existing_ids:
+        raise ValueError(f"Phase id already exists: {id!r}")
+
+    unresolved = [dep for dep in dependencies if dep not in existing_ids]
+    if unresolved:
+        raise ValueError(f"Unresolvable dependencies: {unresolved}")
+
+    if status not in VALID_STATUSES:
+        raise ValueError(f"Unknown status {status!r}, expected one of {sorted(VALID_STATUSES)}")
+
+    phase = {
+        "id": id,
+        "name": name,
+        "description": description,
+        "status": status,
+        "dependencies": dependencies,
+        "priority": priority,
+        **fields,
+    }
+
+    roadmap["phases"].append(phase)
+    save_roadmap(roadmap)
+
+    return phase
 
 
 def update_phase(phase_id, **fields):

@@ -208,12 +208,12 @@
       "id": "13B",
       "name": "Kai Command Interface",
       "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13A"
       ],
       "priority": 14,
-      "build_id": null
+      "build_id": "c4e4e628"
     },
     {
       "id": "13C",

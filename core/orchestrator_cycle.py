@@ -37,10 +37,19 @@ def run_cycle():
     decisions = evaluate_incidents()
 
 
-    builds = advance_builds()
+    advance_builds()
 
 
     roadmap_progress = advance_roadmap()
+
+
+    # advance_roadmap() may have just created a build -- process it the same
+    # cycle it's created rather than leaving it at REQUESTED for a full
+    # extra INTERVAL until the next scheduled cycle picks it up. Safe to
+    # call twice: advance_builds() only acts on builds in an immediately
+    # actionable status (REQUESTED/PLANNING/GENERATING/DEPLOYING), so this
+    # is a no-op for anything the first call already carried past that.
+    builds = advance_builds()
 
 
     remediation = process()

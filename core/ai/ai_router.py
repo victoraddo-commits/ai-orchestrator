@@ -43,6 +43,11 @@ ROLE_PROVIDERS = {
     "planning": ["gemini", "openrouter", "minimax", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
     "documentation": ["gemini", "groq", "openrouter", "minimax", "claude"],
+    # Phase 13D: the only task_type that puts OpenAI first -- every other
+    # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
+    # had no route to ever be tried. Falls back to gemini then claude, same
+    # universal-fallback convention as every other role above.
+    "review": ["openai", "gemini", "claude"],
 }
 
 DEFAULT_TASK_TYPE = "coding"

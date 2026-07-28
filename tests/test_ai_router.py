@@ -320,6 +320,32 @@ def test_delegate_accepts_explicit_task_type_override(monkeypatch):
     assert result["task_type"] == "log_analysis"
 
 
+def test_delegate_review_task_type_routes_to_openai(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    openai = ai_provider.get_provider("openai")
+    monkeypatch.setitem(openai, "available_fn", lambda: True)
+    monkeypatch.setitem(openai, "run_text_task", lambda p, timeout=60, project_path=None: "reviewed")
+
+    result = ai_router.delegate("Critique this design", task_type="review")
+
+    assert result["provider"] == "openai"
+
+
+def test_delegate_review_task_type_falls_back_to_gemini_then_claude(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    monkeypatch.setitem(ai_provider.get_provider("openai"), "available_fn", lambda: False)
+
+    gemini = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(gemini, "available_fn", lambda: True)
+    monkeypatch.setitem(gemini, "run_text_task", lambda p, timeout=60, project_path=None: "gemini reviewed")
+
+    result = ai_router.delegate("Critique this design", task_type="review")
+
+    assert result["provider"] == "gemini"
+
+
 def test_get_provider_dashboard_summarizes_last_request_per_provider(monkeypatch):
     import core.ai_provider as ai_provider
 

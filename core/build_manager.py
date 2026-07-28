@@ -1,0 +1,217 @@
+from core.memory import load, save
+from core.lifecycle import new_object, transition, InvalidTransition
+from core.coding_bridge import run_coding_task
+
+
+# Deliberately a separate store from approval_queue.json -- that queue is
+# swept every cycle by remediation_runner.process(), which calls
+# execute_action() (docker-restart only) on every approved request
+# regardless of action name. Build approvals need their own isolated queue
+# so they never collide with that pipeline.
+BUILDS_FILE = "builds.json"
+
+# TESTING/SECURITY_REVIEW/DEPLOY_APPROVAL/DEPLOYING/VERIFIED are defined here
+# for forward compatibility with Phases 12D-12G, which will add the logic
+# that actually drives builds through them. Until then, advance_builds()
+# only ever takes GENERATING to COMPLETED or FAILED directly.
+BUILD_TRANSITIONS = {
+    "REQUESTED": ["PLANNING", "FAILED"],
+    "PLANNING": ["WAITING_FOR_USER", "FAILED"],
+    "WAITING_FOR_USER": ["PLANNING", "ARCHITECTURE_APPROVED", "FAILED"],
+    "ARCHITECTURE_APPROVED": ["GENERATING", "FAILED"],
+    "GENERATING": ["TESTING", "COMPLETED", "FAILED"],
+    "TESTING": ["SECURITY_REVIEW", "FAILED"],
+    "SECURITY_REVIEW": ["DEPLOY_APPROVAL", "FAILED"],
+    "DEPLOY_APPROVAL": ["DEPLOYING", "FAILED"],
+    "DEPLOYING": ["VERIFIED", "FAILED"],
+    "VERIFIED": ["COMPLETED", "ROLLED_BACK"],
+    "COMPLETED": [],
+    "FAILED": [],
+    "ROLLED_BACK": [],
+}
+
+
+def load_builds():
+    builds = load(BUILDS_FILE)
+
+    if not isinstance(builds, list):
+        builds = []
+
+    return builds
+
+
+def save_builds(builds):
+    save(BUILDS_FILE, builds)
+
+
+def create_build(name, description, project_path):
+    builds = load_builds()
+
+    build = new_object(
+        "REQUESTED",
+        name=name,
+        description=description,
+        project_path=project_path,
+        qa_history=[],
+        plan=None,
+        generation_result=None,
+    )
+
+    builds.append(build)
+    save_builds(builds)
+
+    return build
+
+
+def list_builds():
+    return load_builds()
+
+
+def get_build(build_id):
+    for build in load_builds():
+        if build.get("id") == build_id:
+            return build
+
+    return None
+
+
+def _update(build_id, mutate):
+    builds = load_builds()
+
+    for build in builds:
+        if build.get("id") == build_id:
+            mutate(build)
+            save_builds(builds)
+            return build
+
+    return None
+
+
+def _require_status(build, expected):
+    # transition()'s table alone isn't enough of a guard here: several of
+    # these destinations (e.g. PLANNING) are legitimately reachable from more
+    # than one source state depending on which caller is driving the build,
+    # so each entry point must assert its own expected starting state too.
+    if build["status"] != expected:
+        raise InvalidTransition(
+            f"cannot perform this action while build is {build['status']!r} (expected {expected!r})"
+        )
+
+
+def submit_answer(build_id, answer):
+    build = get_build(build_id)
+    if build is None:
+        return None
+
+    _require_status(build, "WAITING_FOR_USER")
+
+    def mutate(b):
+        transition(b, "PLANNING", BUILD_TRANSITIONS)
+        b.setdefault("qa_history", []).append({"answer": answer})
+
+    return _update(build_id, mutate)
+
+
+def approve_architecture(build_id, operator=None, note=None):
+    build = get_build(build_id)
+    if build is None:
+        return None
+
+    _require_status(build, "WAITING_FOR_USER")
+
+    def mutate(b):
+        transition(b, "ARCHITECTURE_APPROVED", BUILD_TRANSITIONS, note=note)
+        b["architecture_approved_by"] = operator
+
+    return _update(build_id, mutate)
+
+
+def start_generation(build_id):
+    build = get_build(build_id)
+    if build is None:
+        return None
+
+    _require_status(build, "ARCHITECTURE_APPROVED")
+
+    def mutate(b):
+        transition(b, "GENERATING", BUILD_TRANSITIONS)
+
+    return _update(build_id, mutate)
+
+
+def _planning_prompt(build):
+    qa_context = "\n".join(
+        f"- Q/A: {entry['answer']}" for entry in build.get("qa_history", [])
+    )
+
+    return (
+        "You are in the planning phase of a new application build. "
+        "Do NOT write, edit, or modify any files, and do NOT run commands that "
+        "change anything -- only read the existing project if useful and respond "
+        "with text.\n\n"
+        f"Requested application: {build['name']}\n"
+        f"Description: {build['description']}\n"
+        + (f"\nPrior clarifications:\n{qa_context}\n" if qa_context else "")
+        + "\nPropose an architecture/implementation plan. If anything is "
+        "ambiguous or you need a decision from the requester, ask for it "
+        "explicitly in your response."
+    )
+
+
+def _generation_prompt(build):
+    return (
+        "The following architecture plan was reviewed and approved by the "
+        "requester. Implement it now: write the code, and commit your work "
+        "with git as you go.\n\n"
+        f"Application: {build['name']}\n"
+        f"Description: {build['description']}\n"
+        f"Approved plan:\n{build.get('plan') or ''}"
+    )
+
+
+def _run_planning(build):
+    try:
+        result = run_coding_task(build["project_path"], _planning_prompt(build))
+    except Exception as error:
+        transition(build, "FAILED", BUILD_TRANSITIONS)
+        build["failure_reason"] = str(error)
+        return
+
+    build["plan"] = result.get("response_text", "")
+    transition(build, "WAITING_FOR_USER", BUILD_TRANSITIONS)
+
+
+def _run_generation(build):
+    try:
+        result = run_coding_task(build["project_path"], _generation_prompt(build))
+    except Exception as error:
+        transition(build, "FAILED", BUILD_TRANSITIONS)
+        build["failure_reason"] = str(error)
+        return
+
+    build["generation_result"] = result
+
+    if result.get("success"):
+        transition(build, "COMPLETED", BUILD_TRANSITIONS)
+    else:
+        transition(build, "FAILED", BUILD_TRANSITIONS)
+        build["failure_reason"] = "Generation run did not complete successfully"
+
+
+def advance_builds():
+    builds = load_builds()
+
+    for build in builds:
+        status = build.get("status")
+
+        if status == "REQUESTED":
+            transition(build, "PLANNING", BUILD_TRANSITIONS)
+            _run_planning(build)
+        elif status == "PLANNING":
+            _run_planning(build)
+        elif status == "GENERATING":
+            _run_generation(build)
+
+    save_builds(builds)
+
+    return builds

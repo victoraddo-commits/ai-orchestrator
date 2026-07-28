@@ -191,3 +191,91 @@ def test_approve_endpoint_returns_409_for_illegal_transition():
     response = client.post(f"/approvals/{request['id']}/approve", headers=auth_headers())
 
     assert response.status_code == 409
+
+
+def test_create_build_endpoint_requires_auth():
+    response = client.post("/builds", json={"name": "a", "description": "b", "project_path": "/tmp/p"})
+
+    assert response.status_code == 401
+
+
+def test_create_build_endpoint_creates_a_build():
+    response = client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "A todo app", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "REQUESTED"
+    assert body["name"] == "todo-app"
+
+
+def test_builds_endpoint_lists_created_builds():
+    client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "desc", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    )
+
+    response = client.get("/builds")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+def test_build_endpoint_returns_404_for_unknown_build():
+    response = client.get("/builds/does-not-exist")
+
+    assert response.status_code == 404
+
+
+def test_build_endpoint_returns_created_build():
+    created = client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "desc", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    ).json()
+
+    response = client.get(f"/builds/{created['id']}")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == created["id"]
+
+
+def test_answer_build_endpoint_returns_409_from_wrong_state():
+    created = client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "desc", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(
+        f"/builds/{created['id']}/answer",
+        json={"answer": "use Postgres"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 409
+
+
+def test_approve_architecture_endpoint_returns_404_for_unknown_build():
+    response = client.post(
+        "/builds/does-not-exist/approve-architecture",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 404
+
+
+def test_generate_build_endpoint_returns_409_from_wrong_state():
+    created = client.post(
+        "/builds",
+        json={"name": "todo-app", "description": "desc", "project_path": "/tmp/proj"},
+        headers=auth_headers(),
+    ).json()
+
+    response = client.post(f"/builds/{created['id']}/generate", headers=auth_headers())
+
+    assert response.status_code == 409

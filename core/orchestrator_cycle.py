@@ -5,6 +5,7 @@ from core.decision_engine import evaluate_incidents
 from core.remediation_runner import process
 from core.remediation import attempt_rollback
 from core.verification import verify_service
+from core.build_manager import advance_builds
 from core.logger import info
 
 
@@ -35,6 +36,9 @@ def run_cycle():
     decisions = evaluate_incidents()
 
 
+    builds = advance_builds()
+
+
     remediation = process()
 
 
@@ -63,6 +67,8 @@ def run_cycle():
         "incidents": incidents,
 
         "decisions": decisions,
+
+        "builds": builds,
 
         "remediation": remediation,
 

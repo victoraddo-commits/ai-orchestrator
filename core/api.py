@@ -15,6 +15,14 @@ from core.verification import load_verification_history
 from core.learning import summarize
 from core.memory import load
 from core.lifecycle import InvalidTransition
+from core.build_manager import (
+    create_build,
+    list_builds,
+    get_build,
+    submit_answer,
+    approve_architecture,
+    start_generation,
+)
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -77,6 +85,16 @@ def require_bridge_token(authorization: str | None = Header(default=None)) -> st
 
 class ApprovalAction(BaseModel):
     note: str | None = None
+
+
+class CreateBuildRequest(BaseModel):
+    name: str
+    description: str
+    project_path: str
+
+
+class AnswerAction(BaseModel):
+    answer: str
 
 
 @app.get("/health")
@@ -155,5 +173,78 @@ def reject_request(
 
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
+
+    return result
+
+
+@app.post("/builds")
+def create_build_endpoint(
+    body: CreateBuildRequest,
+    operator: str = Depends(require_bridge_token),
+):
+    return create_build(body.name, body.description, body.project_path)
+
+
+@app.get("/builds")
+def builds_endpoint():
+    return list_builds()
+
+
+@app.get("/builds/{build_id}")
+def build_endpoint(build_id: str):
+    result = get_build(build_id)
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Build not found")
+
+    return result
+
+
+@app.post("/builds/{build_id}/answer")
+def answer_build_endpoint(
+    build_id: str,
+    body: AnswerAction,
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        result = submit_answer(build_id, body.answer)
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Build not found")
+
+    return result
+
+
+@app.post("/builds/{build_id}/approve-architecture")
+def approve_architecture_endpoint(
+    build_id: str,
+    action: ApprovalAction = ApprovalAction(),
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        result = approve_architecture(build_id, operator=operator, note=action.note)
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Build not found")
+
+    return result
+
+
+@app.post("/builds/{build_id}/generate")
+def generate_build_endpoint(
+    build_id: str,
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        result = start_generation(build_id)
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Build not found")
 
     return result

@@ -181,3 +181,60 @@ def test_claude_provider_availability_reflects_bridge_key_presence(tmp_path, mon
     key_path.write_text("ck_test")
     providers = ai_provider.list_providers()
     assert providers["claude"]["available"] is True
+
+
+def test_opencode_provider_is_registered_with_coding_agent_capability_only():
+    providers = ai_provider.list_providers()
+
+    assert "opencode" in providers
+    assert "coding_agent" in providers["opencode"]["capabilities"]
+    assert "text_task" not in providers["opencode"]["capabilities"]
+
+
+def test_opencode_provider_run_coding_task_wraps_the_bridge_module(monkeypatch, tmp_path):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["project_path"] = project_path
+        captured["instruction"] = instruction
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider("opencode")
+    result = provider["run_coding_task"](str(tmp_path), "build a widget")
+
+    assert result["success"] is True
+    assert captured["project_path"] == str(tmp_path)
+    assert captured["instruction"] == "build a widget"
+
+
+def test_opencode_provider_unavailable_when_cli_missing(monkeypatch):
+    import core.ai_provider as provider_module
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+
+    assert ai_provider.list_providers()["opencode"]["available"] is False
+
+
+def test_opencode_provider_unavailable_when_cli_present_but_not_authenticated(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", tmp_path / "auth.json")
+
+    assert ai_provider.list_providers()["opencode"]["available"] is False
+
+
+def test_opencode_provider_available_when_cli_present_and_authenticated(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    assert ai_provider.list_providers()["opencode"]["available"] is True

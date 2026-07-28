@@ -8,12 +8,19 @@ Claude has "coding_agent" capability.
 """
 
 import os
+import shutil
+import json
+from pathlib import Path
 
 from core.coding_bridge import run_coding_task as _claude_run_coding_task
 import core.coding_bridge as coding_bridge
 import core.llm_clients as llm_clients
 import core.ai.provider_health as provider_health
+import core.opencode_bridge as opencode_bridge
 from core.repo_manager import create_local_repo
+
+
+OPENCODE_AUTH_PATH = Path.home() / ".local" / "share" / "opencode" / "auth.json"
 
 
 _PROVIDERS = {}
@@ -86,6 +93,22 @@ def _claude_run_text_task(prompt, timeout=60, project_path=None):
         raise RuntimeError(f"Claude text task failed: {detail}")
 
     return result.get("response_text", "")
+
+
+def _opencode_available():
+    if shutil.which("opencode") is None:
+        return False
+
+    try:
+        auth = json.loads(OPENCODE_AUTH_PATH.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
+
+    return "opencode" in auth
+
+
+def _opencode_run_coding_task(project_path, instruction, **kwargs):
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
 def _local_not_implemented(*args, **kwargs):
@@ -169,6 +192,14 @@ register_provider(
     available_fn=lambda: bool(os.getenv("MINIMAX_API_KEY")),
     kind="cloud",
     description="MiniMax-M2 -- planning/research fallback (account currently has no usable credits for this model)",
+)
+
+register_provider(
+    "opencode",
+    run_coding_task=_opencode_run_coding_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="OpenCode (MiniMax-m2.7 via OpenCode Zen by default) -- sandboxed coding agent, second code-writing worker alongside Claude",
 )
 
 register_provider(

@@ -56,6 +56,16 @@ def test_capture_quota_exceeded_from_error_records_zero_percent():
     assert "billing" in snapshot["detail"].lower()
 
 
+def test_capture_provider_error_records_raw_detail_without_classifying_it():
+    snapshot = provider_health.capture_provider_error(
+        "claude", detail="Claude usage limit reached. Your limit will reset at 3pm."
+    )
+
+    assert snapshot["status"] == "error"
+    assert snapshot["percent_remaining"] is None
+    assert "usage limit reached" in snapshot["detail"].lower()
+
+
 def test_claude_usage_snapshot_is_self_tracked_and_labeled_as_such(monkeypatch):
     import core.ai.ai_router as ai_router
 

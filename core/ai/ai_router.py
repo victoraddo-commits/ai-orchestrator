@@ -150,8 +150,12 @@ def get_provider_dashboard():
         # Claude's "quota" isn't a provider-verified figure (see
         # provider_health.claude_usage_snapshot's docstring) -- keep it
         # visibly distinct from the other three's real/attempted quota data.
+        # A recorded error (e.g. a failed call, possibly a usage limit) takes
+        # priority over the self-tracked count -- that's more actionable
+        # signal than "N requests logged".
         if name == "claude":
-            quota = provider_health.claude_usage_snapshot()
+            recorded_error = provider_health.get_quota_snapshot("claude")
+            quota = recorded_error if recorded_error and recorded_error.get("status") == "error" else provider_health.claude_usage_snapshot()
         else:
             quota = provider_health.get_quota_snapshot(name) or {
                 "percent_remaining": None,

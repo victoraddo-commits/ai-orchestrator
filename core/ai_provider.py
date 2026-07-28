@@ -12,6 +12,7 @@ import os
 from core.coding_bridge import run_coding_task as _claude_run_coding_task
 import core.coding_bridge as coding_bridge
 import core.llm_clients as llm_clients
+import core.ai.provider_health as provider_health
 from core.repo_manager import create_local_repo
 
 
@@ -72,6 +73,18 @@ def _claude_run_text_task(prompt, timeout=60, project_path=None):
         f"{prompt}"
     )
     result = _claude_run_coding_task(project_path, instruction, timeout=timeout)
+
+    if not result.get("success"):
+        # Surface whatever actually went wrong verbatim -- this is where a
+        # real "usage limit reached" message would show up, but we don't
+        # pattern-match for that specific wording since it's never been
+        # observed/verified from this account; any failure gets recorded
+        # and re-raised so the router's fallback logic engages.
+        errors = result.get("tool_errors") or []
+        detail = "; ".join(e.get("content", "") for e in errors) or "coding_bridge run did not succeed"
+        provider_health.capture_provider_error("claude", detail=detail)
+        raise RuntimeError(f"Claude text task failed: {detail}")
+
     return result.get("response_text", "")
 
 

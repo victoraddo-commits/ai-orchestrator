@@ -189,6 +189,17 @@ def test_get_provider_dashboard_shows_none_percent_when_quota_never_checked():
     assert dashboard["gemini"]["percent_remaining"] is None
 
 
+def test_get_provider_dashboard_surfaces_a_recorded_claude_error(monkeypatch):
+    import core.ai.provider_health as provider_health
+
+    provider_health.capture_provider_error("claude", detail="Claude usage limit reached. Resets at 3pm.")
+
+    dashboard = ai_router.get_provider_dashboard()
+
+    assert dashboard["claude"]["quota_detail"] == "Claude usage limit reached. Resets at 3pm."
+    assert dashboard["claude"]["percent_remaining"] is None
+
+
 def test_get_provider_dashboard_claude_uses_self_tracked_usage_not_quota_state(monkeypatch):
     monkeypatch.setattr(
         ai_router, "get_usage_history",

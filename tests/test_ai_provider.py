@@ -101,6 +101,28 @@ def test_claude_run_text_task_wraps_coding_bridge_without_file_changes(monkeypat
     assert captured["project_path"] == str(tmp_path)
 
 
+def test_claude_run_text_task_surfaces_raw_error_and_raises_on_failure(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+    import core.ai.provider_health as provider_health
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        return {
+            "success": False,
+            "response_text": "",
+            "tool_errors": [{"tool": None, "content": "Claude usage limit reached. Resets at 3pm."}],
+        }
+
+    monkeypatch.setattr(provider_module, "_claude_run_coding_task", fake_run_coding_task)
+
+    claude = provider_module.get_provider("claude")
+    with pytest.raises(RuntimeError):
+        claude["run_text_task"]("quick question", project_path=str(tmp_path))
+
+    snapshot = provider_health.get_quota_snapshot("claude")
+    assert snapshot["status"] == "error"
+    assert "usage limit reached" in snapshot["detail"].lower()
+
+
 def test_claude_run_text_task_uses_a_scratch_workspace_when_no_project_path_given(monkeypatch):
     import core.ai_provider as provider_module
 

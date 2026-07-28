@@ -89,6 +89,14 @@ def capture_quota_exceeded(provider, detail):
     return record_quota_snapshot(provider, status="quota_exceeded", percent_remaining=0, detail=detail)
 
 
+def capture_provider_error(provider, detail):
+    # Deliberately not classified as "quota_exceeded" -- we can't verify the
+    # exact wording Claude Code CLI/CloudCLI uses when a subscription usage
+    # limit is hit (no documented error string to match against), so this
+    # surfaces the raw error verbatim instead of guessing what it means.
+    return record_quota_snapshot(provider, status="error", percent_remaining=None, detail=detail)
+
+
 def claude_usage_snapshot():
     import core.ai.ai_router as ai_router
 

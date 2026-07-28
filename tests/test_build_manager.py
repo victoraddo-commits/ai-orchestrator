@@ -4,6 +4,69 @@ import core.build_manager as build_manager
 from core.lifecycle import InvalidTransition
 
 
+def test_create_build_rejects_unknown_template():
+    with pytest.raises(ValueError):
+        build_manager.create_build("todo-app", "desc", "/tmp/proj", template="cobol-mainframe")
+
+
+def test_create_build_accepts_known_template():
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj", template="fastapi")
+
+    assert build["template"] == "fastapi"
+
+
+def test_advance_builds_creates_the_repo_before_planning(monkeypatch, tmp_path):
+    target = tmp_path / "todo-app"
+    build = build_manager.create_build("todo-app", "Build a todo app", str(target))
+
+    monkeypatch.setattr(
+        build_manager,
+        "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": True, "aborted": False, "session_id": "s",
+            "response_text": "Plan.", "files_changed": [], "commits": [], "tool_errors": [],
+        },
+    )
+
+    build_manager.advance_builds()
+
+    assert target.is_dir()
+    assert (target / ".git").is_dir()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_USER"
+
+
+def test_advance_builds_checks_out_a_dedicated_branch_for_the_build(monkeypatch, tmp_path):
+    target = tmp_path / "todo-app"
+    build = build_manager.create_build("todo-app", "Build a todo app", str(target))
+
+    monkeypatch.setattr(
+        build_manager,
+        "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": True, "aborted": False, "session_id": "s",
+            "response_text": "Plan.", "files_changed": [], "commits": [], "tool_errors": [],
+        },
+    )
+
+    build_manager.advance_builds()
+
+    import subprocess
+    current = subprocess.run(
+        ["git", "branch", "--show-current"], cwd=str(target), capture_output=True, text=True
+    ).stdout.strip()
+    assert current == f"build-{build['id']}"
+
+
+def test_planning_prompt_includes_template_base_instruction():
+    build = build_manager.create_build("api", "desc", "/tmp/proj", template="fastapi")
+
+    prompt = build_manager._planning_prompt(build)
+
+    assert "FastAPI" in prompt
+
+
 def test_create_build_starts_in_requested_state():
     build = build_manager.create_build("todo-app", "A simple todo app", "/tmp/proj")
 

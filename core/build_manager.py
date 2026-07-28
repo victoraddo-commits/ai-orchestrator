@@ -1,6 +1,8 @@
 from core.memory import load, save
 from core.lifecycle import new_object, transition, InvalidTransition
 from core.coding_bridge import run_coding_task
+from core.repo_manager import create_local_repo
+from core.project_templates import get_template
 
 
 # Deliberately a separate store from approval_queue.json -- that queue is
@@ -44,7 +46,10 @@ def save_builds(builds):
     save(BUILDS_FILE, builds)
 
 
-def create_build(name, description, project_path):
+def create_build(name, description, project_path, template=None):
+    if template is not None and get_template(template) is None:
+        raise ValueError(f"Unknown project template: {template!r}")
+
     builds = load_builds()
 
     build = new_object(
@@ -52,6 +57,7 @@ def create_build(name, description, project_path):
         name=name,
         description=description,
         project_path=project_path,
+        template=template,
         qa_history=[],
         plan=None,
         generation_result=None,
@@ -139,6 +145,11 @@ def start_generation(build_id):
     return _update(build_id, mutate)
 
 
+def _template_context(build):
+    template = get_template(build.get("template"))
+    return f"\nTemplate to use as a starting point: {template['base_instruction']}\n" if template else ""
+
+
 def _planning_prompt(build):
     qa_context = "\n".join(
         f"- Q/A: {entry['answer']}" for entry in build.get("qa_history", [])
@@ -151,6 +162,7 @@ def _planning_prompt(build):
         "with text.\n\n"
         f"Requested application: {build['name']}\n"
         f"Description: {build['description']}\n"
+        + _template_context(build)
         + (f"\nPrior clarifications:\n{qa_context}\n" if qa_context else "")
         + "\nPropose an architecture/implementation plan. If anything is "
         "ambiguous or you need a decision from the requester, ask for it "
@@ -165,12 +177,18 @@ def _generation_prompt(build):
         "with git as you go.\n\n"
         f"Application: {build['name']}\n"
         f"Description: {build['description']}\n"
-        f"Approved plan:\n{build.get('plan') or ''}"
+        + _template_context(build)
+        + f"Approved plan:\n{build.get('plan') or ''}"
     )
+
+
+def _ensure_repo(build):
+    create_local_repo(build["project_path"], branch=f"build-{build['id']}")
 
 
 def _run_planning(build):
     try:
+        _ensure_repo(build)
         result = run_coding_task(build["project_path"], _planning_prompt(build))
     except Exception as error:
         transition(build, "FAILED", BUILD_TRANSITIONS)
@@ -183,6 +201,7 @@ def _run_planning(build):
 
 def _run_generation(build):
     try:
+        _ensure_repo(build)
         result = run_coding_task(build["project_path"], _generation_prompt(build))
     except Exception as error:
         transition(build, "FAILED", BUILD_TRANSITIONS)

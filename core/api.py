@@ -23,6 +23,7 @@ from core.build_manager import (
     approve_architecture,
     start_generation,
 )
+from core.project_templates import TEMPLATES
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -91,6 +92,7 @@ class CreateBuildRequest(BaseModel):
     name: str
     description: str
     project_path: str
+    template: str | None = None
 
 
 class AnswerAction(BaseModel):
@@ -177,12 +179,20 @@ def reject_request(
     return result
 
 
+@app.get("/templates")
+def templates_endpoint():
+    return {name: {"label": t["label"]} for name, t in TEMPLATES.items()}
+
+
 @app.post("/builds")
 def create_build_endpoint(
     body: CreateBuildRequest,
     operator: str = Depends(require_bridge_token),
 ):
-    return create_build(body.name, body.description, body.project_path)
+    try:
+        return create_build(body.name, body.description, body.project_path, template=body.template)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
 
 
 @app.get("/builds")

@@ -193,6 +193,36 @@ def test_approve_endpoint_returns_409_for_illegal_transition():
     assert response.status_code == 409
 
 
+def test_templates_endpoint_lists_available_templates():
+    response = client.get("/templates")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "fastapi" in body
+    assert body["fastapi"]["label"]
+
+
+def test_create_build_endpoint_accepts_a_template():
+    response = client.post(
+        "/builds",
+        json={"name": "api", "description": "desc", "project_path": "/tmp/proj", "template": "fastapi"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["template"] == "fastapi"
+
+
+def test_create_build_endpoint_returns_400_for_unknown_template():
+    response = client.post(
+        "/builds",
+        json={"name": "api", "description": "desc", "project_path": "/tmp/proj", "template": "cobol-mainframe"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+
+
 def test_create_build_endpoint_requires_auth():
     response = client.post("/builds", json={"name": "a", "description": "b", "project_path": "/tmp/p"})
 

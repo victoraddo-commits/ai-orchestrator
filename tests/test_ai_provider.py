@@ -58,6 +58,79 @@ def test_register_provider_adds_a_new_entry():
     assert providers["test-provider"]["description"] == "a test provider"
 
 
+def test_gemini_groq_openai_providers_are_registered_with_text_task_capability():
+    providers = ai_provider.list_providers()
+
+    for name in ("gemini", "groq", "openai"):
+        assert name in providers
+        assert "text_task" in providers[name]["capabilities"]
+        assert "coding_agent" not in providers[name]["capabilities"]
+
+
+def test_claude_provider_has_both_capabilities():
+    providers = ai_provider.list_providers()
+
+    assert set(providers["claude"]["capabilities"]) == {"coding_agent", "text_task"}
+
+
+def test_gemini_provider_availability_reflects_env_var(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    assert ai_provider.list_providers()["gemini"]["available"] is False
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    assert ai_provider.list_providers()["gemini"]["available"] is True
+
+
+def test_claude_run_text_task_wraps_coding_bridge_without_file_changes(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["instruction"] = instruction
+        captured["project_path"] = project_path
+        return {"response_text": "some architecture thoughts", "success": True}
+
+    monkeypatch.setattr(provider_module, "_claude_run_coding_task", fake_run_coding_task)
+
+    claude = ai_provider.get_provider("claude")
+    result = claude["run_text_task"]("design a queue system", project_path=str(tmp_path))
+
+    assert result == "some architecture thoughts"
+    assert "do not" in captured["instruction"].lower() or "not modify" in captured["instruction"].lower()
+    assert captured["project_path"] == str(tmp_path)
+
+
+def test_claude_run_text_task_uses_a_scratch_workspace_when_no_project_path_given(monkeypatch):
+    import core.ai_provider as provider_module
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["project_path"] = project_path
+        return {"response_text": "ok", "success": True}
+
+    monkeypatch.setattr(provider_module, "_claude_run_coding_task", fake_run_coding_task)
+
+    claude = ai_provider.get_provider("claude")
+    claude["run_text_task"]("quick question")
+
+    assert captured["project_path"]  # some real path was used, not None
+
+
+def test_gemini_groq_openai_run_text_task_ignores_project_path(monkeypatch):
+    import core.llm_clients as llm_clients
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(llm_clients, "call_gemini", lambda prompt, timeout=60: "response text")
+
+    gemini = ai_provider.get_provider("gemini")
+    # project_path is accepted (uniform contract with claude) but unused
+    result = gemini["run_text_task"]("hello", project_path="/does/not/matter")
+
+    assert result == "response text"
+
+
 def test_claude_provider_availability_reflects_bridge_key_presence(tmp_path, monkeypatch):
     import core.coding_bridge as bridge
 

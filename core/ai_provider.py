@@ -1,26 +1,43 @@
-"""AI coding-provider registry -- Phase 12I: architecture prep only.
+"""AI provider registry.
 
-This defines the extension point Phase 12J's router will actually use to
-pick between providers; it does not do any routing itself, and it
-installs nothing. Every provider entry must expose the same contract
-core.coding_bridge.run_coding_task already has (project_path, instruction,
-session_id=None, model=None, timeout=300) -> dict, so callers never need to
-know which provider they're talking to.
+Phase 12I built this as architecture prep with two placeholder-ish entries
+(claude, local). Phase 12J fills in real text-task providers (gemini, groq,
+openai) -- plain request/response chat-completion calls, never file access
+or tool use, so this still doesn't duplicate CloudCLI's coding engine. Only
+Claude has "coding_agent" capability.
 """
+
+import os
 
 from core.coding_bridge import run_coding_task as _claude_run_coding_task
 import core.coding_bridge as coding_bridge
+import core.llm_clients as llm_clients
+from core.repo_manager import create_local_repo
 
 
 _PROVIDERS = {}
 
+# Ad-hoc text-only Claude calls (e.g. router-delegated planning/review tasks
+# with no build attached) need *some* real directory for CloudCLI's
+# /api/agent to operate against -- this one is created once, lazily, and
+# reused rather than requiring every caller to supply a project.
+_SCRATCH_WORKSPACE = os.path.join(os.path.expanduser("~"), ".ai-orchestrator", "text-task-scratch")
 
-def register_provider(name, run_coding_task, available_fn, kind, description):
+
+def register_provider(name, run_coding_task=None, run_text_task=None, available_fn=None, kind="cloud", description=""):
+    capabilities = []
+    if run_coding_task is not None:
+        capabilities.append("coding_agent")
+    if run_text_task is not None:
+        capabilities.append("text_task")
+
     _PROVIDERS[name] = {
         "run_coding_task": run_coding_task,
+        "run_text_task": run_text_task,
         "available_fn": available_fn,
         "kind": kind,
         "description": description,
+        "capabilities": capabilities,
     }
 
 
@@ -34,6 +51,7 @@ def list_providers():
             "kind": entry["kind"],
             "description": entry["description"],
             "available": bool(entry["available_fn"]()),
+            "capabilities": entry["capabilities"],
         }
         for name, entry in _PROVIDERS.items()
     }
@@ -41,6 +59,20 @@ def list_providers():
 
 def _claude_available():
     return coding_bridge.API_KEY_PATH.exists()
+
+
+def _claude_run_text_task(prompt, timeout=60, project_path=None):
+    if project_path is None:
+        create_local_repo(_SCRATCH_WORKSPACE)
+        project_path = _SCRATCH_WORKSPACE
+
+    instruction = (
+        "Answer the following as text only. Do NOT write, edit, or modify "
+        "any files, and do not run commands that change anything.\n\n"
+        f"{prompt}"
+    )
+    result = _claude_run_coding_task(project_path, instruction, timeout=timeout)
+    return result.get("response_text", "")
 
 
 def _local_not_implemented(*args, **kwargs):
@@ -51,12 +83,55 @@ def _local_not_implemented(*args, **kwargs):
     )
 
 
+# Uniform run_text_task(prompt, timeout=60, project_path=None) contract
+# across every provider -- project_path is accepted but ignored here since
+# plain chat-completion providers never touch a filesystem. Each wrapper
+# looks up its llm_clients function as a live module attribute (not a
+# captured reference) so monkeypatching core.llm_clients.call_* in tests
+# actually takes effect, same pattern as core.build_manager's imports.
+def _gemini_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_gemini(prompt, timeout=timeout)
+
+
+def _groq_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_groq(prompt, timeout=timeout)
+
+
+def _openai_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_openai(prompt, timeout=timeout)
+
+
 register_provider(
     "claude",
     run_coding_task=_claude_run_coding_task,
+    run_text_task=_claude_run_text_task,
     available_fn=_claude_available,
     kind="cloud",
-    description="Claude Agent SDK via CloudCLI's /api/agent (Phase 12B)",
+    description="Claude Agent SDK via CloudCLI's /api/agent (Phase 12B) -- senior engineer: coding, implementation, hard debugging",
+)
+
+register_provider(
+    "gemini",
+    run_text_task=_gemini_run_text_task,
+    available_fn=lambda: bool(os.getenv("GEMINI_API_KEY")),
+    kind="cloud",
+    description="Google Gemini -- planning, architecture review, documentation",
+)
+
+register_provider(
+    "groq",
+    run_text_task=_groq_run_text_task,
+    available_fn=lambda: bool(os.getenv("GROQ_API_KEY")),
+    kind="cloud",
+    description="Groq -- fast log/quick analysis, simple tasks",
+)
+
+register_provider(
+    "openai",
+    run_text_task=_openai_run_text_task,
+    available_fn=lambda: bool(os.getenv("OPENAI_API_KEY")),
+    kind="cloud",
+    description="OpenAI -- available, not currently assigned a primary role",
 )
 
 register_provider(

@@ -3,8 +3,17 @@ import os
 import secrets
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
+
+# Load .env explicitly here rather than relying on tools/proxmox.py's own
+# load_dotenv() call as a side effect of some other import -- this is the
+# API process's true entrypoint, and it doesn't import tools.proxmox at all,
+# so provider API keys (GEMINI_API_KEY etc.) were silently never loaded
+# until this was added (confirmed live: /providers showed them unavailable
+# despite being present and valid in .env).
+load_dotenv()
 
 from core.health import analyze
 from core.incident_manager import load_incidents
@@ -28,6 +37,7 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history
 from core.ai_provider import list_providers
+from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -194,6 +204,28 @@ def reject_request(
 @app.get("/providers")
 def providers_endpoint():
     return list_providers()
+
+
+@app.get("/providers/dashboard")
+def providers_dashboard_endpoint():
+    return get_provider_dashboard()
+
+
+class DelegateRequest(BaseModel):
+    description: str
+    task_type: str | None = None
+    project_path: str | None = None
+
+
+@app.post("/delegate")
+def delegate_endpoint(
+    body: DelegateRequest,
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        return delegate(body.description, task_type=body.task_type, project_path=body.project_path)
+    except AllProvidersFailed as error:
+        raise HTTPException(status_code=502, detail=str(error))
 
 
 @app.get("/templates")

@@ -202,6 +202,57 @@ def test_build_learning_endpoint_returns_templates_and_history():
     assert "history" in body
 
 
+def test_providers_dashboard_endpoint_returns_all_registered_providers():
+    response = client.get("/providers/dashboard")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "claude" in body
+    assert "gemini" in body
+    assert "percent_remaining" in body["groq"]
+
+
+def test_delegate_endpoint_requires_auth():
+    response = client.post("/delegate", json={"description": "Analyze Docker error log"})
+
+    assert response.status_code == 401
+
+
+def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    groq = ai_provider.get_provider("groq")
+    monkeypatch.setitem(groq, "available_fn", lambda: True)
+    monkeypatch.setitem(groq, "run_text_task", lambda p, timeout=60, project_path=None: "log looks fine")
+
+    response = client.post(
+        "/delegate",
+        json={"description": "Analyze Docker error log"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "groq"
+    assert body["response"] == "log looks fine"
+
+
+def test_delegate_endpoint_returns_502_when_all_providers_fail(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ("gemini", "claude"):
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: False)
+
+    response = client.post(
+        "/delegate",
+        json={"description": "Design an application architecture"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 502
+
+
 def test_providers_endpoint_lists_registered_providers():
     response = client.get("/providers")
 

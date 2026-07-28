@@ -2,10 +2,16 @@ import time
 from pathlib import Path
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
+
 try:
     from systemd.daemon import notify
 except ImportError:
     notify = None
+
+# Explicit rather than relying on tools/proxmox.py's own load_dotenv() call
+# as an import-order side effect -- this is the scheduler's true entrypoint.
+load_dotenv()
 
 from core.orchestrator_cycle import run_cycle
 from core.logger import info

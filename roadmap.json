@@ -195,6 +195,98 @@
       ],
       "tests_required": true,
       "priority": 12
+    },
+    {
+      "id": "13A",
+      "name": "Kai Identity Layer",
+      "description": "core/kai/ -- identity.py, mission.py, goals.py, policies.py. Restrictions enforced via source-grep test (no approve_architecture(/approve_deploy( calls anywhere in core/kai/) plus PROTECTED_FILES flagging for approval/audit/security file changes.",
+      "status": "completed",
+      "dependencies": [],
+      "priority": 13
+    },
+    {
+      "id": "13B",
+      "name": "Kai Command Interface",
+      "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
+      "status": "pending",
+      "dependencies": [
+        "13A"
+      ],
+      "priority": 14
+    },
+    {
+      "id": "13C",
+      "name": "Kai Strategic Planner",
+      "description": "core/kai/planner.py. Reviews roadmap (roadmap_engine), system health (core.health.analyze), recent build failures (build_learning.get_build_history), and AI usage/quota (ai_router.get_usage_history, provider_health) to produce Improvement Proposal objects -- a new lifecycle.py-based object type (proposed -> under_review -> approved/rejected -> implemented), stored in memory/improvement_proposals.json. Research/analysis calls route through the existing ai_router.delegate(), not new AI-calling code. Proposals do not auto-create roadmap items or builds -- that requires a separate human or 13B-command action promoting a proposal into a roadmap phase (via add_phase, defaulting to 'proposed' status per 13A's design).",
+      "status": "pending",
+      "dependencies": [
+        "13B"
+      ],
+      "priority": 15
+    },
+    {
+      "id": "13D",
+      "name": "Kai AI Workforce Manager",
+      "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
+      "status": "pending",
+      "dependencies": [
+        "13A"
+      ],
+      "priority": 16
+    },
+    {
+      "id": "13E",
+      "name": "Kai Autonomous Development Loop",
+      "description": "Upgrade core/roadmap_manager.py's advance_roadmap(): 'highest-value' phase selection (score by risk/expected-benefit from the originating Improvement Proposal, not just priority number), and wire real test execution into the GENERATING step for self-modifying builds specifically (the test command is known and fixed for this repo: .venv/bin/pytest tests/, unlike the generic 'what's the test command for an arbitrary generated app' problem Phase 12E left open). Reuse build_manager/coding_bridge/security_scanner/deployment_manager as-is. Approval gates (ARCHITECTURE_APPROVED, DEPLOY_APPROVAL) remain untouched and mandatory -- this phase must not add any path that bypasses them.",
+      "status": "pending",
+      "dependencies": [
+        "13C",
+        "13D"
+      ],
+      "priority": 17
+    },
+    {
+      "id": "13F",
+      "name": "Kai Memory System",
+      "description": "Extend core/build_learning.py: capture rollback root-cause (rollback_deployment currently records ROLLED_BACK as a failure in success-rate math but not why) and rejected-proposal reasons from 13C's Improvement Proposal store. Track preferred architectures, common failures, successful solutions, avoided approaches -- reuses the existing trusted/observe/avoid threshold pattern, no new classification scheme.",
+      "status": "pending",
+      "dependencies": [
+        "13C"
+      ],
+      "priority": 18
+    },
+    {
+      "id": "13G",
+      "name": "Kai Dashboard",
+      "description": "New 'Kai Control Center' tab in the CloudCLI plugin (/project/src/ai-orchestrator-plugin), same tab pattern already used for Overview/Approvals/Learning/AI Providers. Displays Kai status/identity, current goals, active tasks, proposals (13C), delegated AI tasks (ai_router usage history), roadmap progress, pending approvals, completed improvements, lessons learned (13F). Reuses existing read endpoints plus whatever new ones 13B/13C/13F add -- no duplicate UI patterns.",
+      "status": "pending",
+      "dependencies": [
+        "13C",
+        "13F"
+      ],
+      "priority": 19
+    },
+    {
+      "id": "13H",
+      "name": "Kai Controlled Autonomy Levels",
+      "description": "Replace the binary memory/autonomous_mode.json (Phase 12L) with 6 numbered levels (0=manual, 1=observe+report [default], 2=create proposals, 3=create branches/builds, 4=execute through deploy-approval [today's 'enabled: true' behavior], 5=continuously manages roadmap incl. self-generated phases). Deprecate the binary flag outright rather than maintain both. The Overview tab's toggle becomes a 6-position control instead of on/off. Policy tests proving each level only unlocks what it claims to, and that no level ever bypasses ARCHITECTURE_APPROVED/DEPLOY_APPROVAL.",
+      "status": "pending",
+      "dependencies": [
+        "13B",
+        "13C"
+      ],
+      "priority": 20
+    },
+    {
+      "id": "13I",
+      "name": "Kai Future Roadmap Generator",
+      "description": "Kai can create NEW roadmap phases (e.g. Phase 14+) from its own observations, using roadmap_engine.add_phase() (Phase 13A) -- always defaulting to status='proposed', never 'pending', so a human must explicitly promote it before get_next_phase()/advance_roadmap() will ever act on it. This is the mechanism that makes 'AI can propose roadmap items, AI cannot approve its own changes' actually true rather than just documented.",
+      "status": "pending",
+      "dependencies": [
+        "13C",
+        "13H"
+      ],
+      "priority": 21
     }
   ]
 }

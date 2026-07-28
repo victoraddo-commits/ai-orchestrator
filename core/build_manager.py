@@ -241,9 +241,16 @@ def rollback_deployment(build_id):
     if not deployment or not deployment.get("remediation_id"):
         raise ValueError(f"Build {build_id!r} has no deployment to roll back")
 
-    attempt_rollback(deployment["remediation_id"])
+    # Capture the remediation's rollback outcome on the build so
+    # core.build_learning._derive_rollback_root_cause() has something concrete
+    # to read when record_build_outcome runs -- previously a build transitioned
+    # to ROLLED_BACK without any record of *why*.
+    rollback_result = attempt_rollback(deployment["remediation_id"])
+    rollback_info = (rollback_result or {}).get("rollback") or {}
 
     def mutate(b):
+        b_deployment = b.setdefault("deployment", {})
+        b_deployment["rollback"] = rollback_info
         transition(b, "ROLLED_BACK", BUILD_TRANSITIONS, note="manual rollback requested")
         _record_if_terminal(b)
 

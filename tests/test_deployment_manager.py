@@ -31,6 +31,39 @@ def test_deploy_build_fails_cleanly_without_a_dockerfile(tmp_path):
     assert "Dockerfile" in result["reason"]
 
 
+def test_build_image_passes_context_path_after_a_bare_dash_dash(tmp_path, monkeypatch):
+    # build["project_path"] is user-controlled (POST /builds). Without a
+    # `--` separator before it, a value starting with `-` could be parsed
+    # as a docker/buildx flag instead of the build context (argument
+    # injection) -- this is the actual fix, not just a defensive nicety.
+    captured = {}
+
+    def fake_docker(*args, **kwargs):
+        captured["args"] = args
+        return _proc(returncode=0)
+
+    monkeypatch.setattr(deploy_mgr, "_docker", fake_docker)
+
+    deploy_mgr.build_image(_build(project_path=str(tmp_path)))
+
+    args = captured["args"]
+    assert "--" in args
+    dash_dash_index = args.index("--")
+    assert args[dash_dash_index + 1] == str(tmp_path)
+
+
+def test_build_image_rejects_a_project_path_that_does_not_exist(monkeypatch):
+    monkeypatch.setattr(
+        deploy_mgr, "_docker",
+        lambda *a, **k: pytest.fail("docker should not be invoked for a nonexistent project_path"),
+    )
+
+    built, message = deploy_mgr.build_image(_build(project_path="/no/such/path/at/all"))
+
+    assert built is False
+    assert "does not exist" in message
+
+
 def test_deploy_build_fails_cleanly_when_image_build_fails(tmp_path, monkeypatch):
     (tmp_path / "Dockerfile").write_text("FROM scratch")
 

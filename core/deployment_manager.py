@@ -69,6 +69,16 @@ def has_dockerfile(project_path):
 
 def build_image(build):
     name = container_name_for(build)
+
+    # project_path is user-controlled (POST /builds -> create_build).
+    # abspath() plus a hard `--` before it (stopping docker/buildx flag
+    # parsing) closes the argument-injection path a value like
+    # "--privileged" or "-t evil:latest" would otherwise open.
+    project_path = os.path.abspath(build["project_path"])
+
+    if not os.path.isdir(project_path):
+        return False, f"project_path does not exist or is not a directory: {project_path}"
+
     # Plain `docker build` fails under this LXC's AppArmor restrictions
     # (confirmed live: "apparmor failed to apply profile ... no such file or
     # directory" on any RUN step) -- buildx with these flags is the same
@@ -79,7 +89,7 @@ def build_image(build):
         "--security-opt", "apparmor=unconfined",
         "--load",
         "-t", f"{name}:latest",
-        build["project_path"],
+        "--", project_path,
         timeout=600,
     )
     log = (result.stdout or "") + (result.stderr or "")

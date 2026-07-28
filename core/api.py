@@ -1,3 +1,4 @@
+import hmac
 import os
 import secrets
 from pathlib import Path
@@ -33,9 +34,23 @@ def _load_api_token():
     trusted from client-supplied request data."""
 
     if not API_TOKEN_PATH.exists():
-        API_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        API_TOKEN_PATH.write_text(secrets.token_urlsafe(32))
-        API_TOKEN_PATH.chmod(0o600)
+        API_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        API_TOKEN_PATH.parent.chmod(0o700)  # mkdir's mode is umask-affected; force it
+
+        # Create with the final 0600 mode from the very first syscall -- no
+        # window where the file exists with looser (e.g. default 0644)
+        # permissions. O_EXCL also means this raises rather than silently
+        # overwriting if another process won the race to create it first --
+        # in that case just fall through and read what it wrote.
+        try:
+            fd = os.open(API_TOKEN_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            try:
+                os.write(fd, secrets.token_urlsafe(32).encode())
+            finally:
+                os.close(fd)
 
     return API_TOKEN_PATH.read_text().strip()
 
@@ -52,8 +67,9 @@ def require_bridge_token(authorization: str | None = Header(default=None)) -> st
     request body, so a caller cannot forge who performed an action."""
 
     expected = f"Bearer {_load_api_token()}"
+    presented = authorization or ""
 
-    if authorization != expected:
+    if not hmac.compare_digest(presented.encode(), expected.encode()):
         raise HTTPException(status_code=401, detail="Missing or invalid API token")
 
     return BRIDGE_OPERATOR

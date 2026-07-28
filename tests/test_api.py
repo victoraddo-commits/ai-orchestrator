@@ -96,6 +96,22 @@ def auth_headers():
     return {"Authorization": f"Bearer {api_module._load_api_token()}"}
 
 
+def test_token_file_is_created_with_owner_only_permissions(tmp_path, monkeypatch):
+    import stat
+    import core.api as api_module
+
+    token_path = tmp_path / "nested" / "api_token"
+    monkeypatch.setattr(api_module, "API_TOKEN_PATH", token_path)
+
+    api_module._load_api_token()
+
+    file_mode = stat.S_IMODE(token_path.stat().st_mode)
+    dir_mode = stat.S_IMODE(token_path.parent.stat().st_mode)
+
+    assert file_mode == 0o600
+    assert dir_mode == 0o700
+
+
 def test_write_endpoints_reject_requests_with_no_token():
     request = create_request("restart_container", "svc-a", "reason", incident_id="inc1")
 

@@ -5,6 +5,9 @@ import pytest
 
 import core.roadmap_manager as roadmap_manager
 import core.roadmap_engine as roadmap_engine
+from core.kai.planner import load_proposals, save_proposals
+from core.build_manager import BUILD_TRANSITIONS, load_builds, save_builds
+from core.lifecycle import transition
 
 
 @pytest.fixture(autouse=True)
@@ -16,6 +19,36 @@ def isolated_roadmap(tmp_path, monkeypatch):
 
 def _write(path, phases):
     path.write_text(json.dumps({"schema_version": 1, "phases": phases}))
+
+
+def _write_proposal(roadmap_phase_id, **fields):
+    proposals = load_proposals()
+    proposals.append({
+        "id": f"prop-{roadmap_phase_id}",
+        "roadmap_phase_id": roadmap_phase_id,
+        "rationale": "",
+        "description": "",
+        "suggested_action": "",
+        **fields,
+    })
+    save_proposals(proposals)
+
+
+def _drive_build_to_deploy_approval(project_path):
+    # Drives a real build through the real, unmodified BUILD_TRANSITIONS
+    # table up to DEPLOY_APPROVAL -- the same states _run_generation's
+    # normal (reused as-is) success path leaves a build in -- without
+    # invoking the actual AI delegation/security-scan machinery.
+    build = roadmap_manager.create_build(name="X", description="d", project_path=project_path)
+
+    builds = load_builds()
+    for b in builds:
+        if b["id"] == build["id"]:
+            for status in ("PLANNING", "WAITING_FOR_USER", "ARCHITECTURE_APPROVED", "GENERATING", "SECURITY_REVIEW", "DEPLOY_APPROVAL"):
+                transition(b, status, BUILD_TRANSITIONS)
+    save_builds(builds)
+
+    return build["id"]
 
 
 def test_autonomous_mode_defaults_to_disabled():
@@ -191,6 +224,204 @@ def test_advance_roadmap_reports_nothing_to_do_when_roadmap_is_fully_resolved(is
     result = roadmap_manager.advance_roadmap()
 
     assert result["action"] == "nothing_to_do"
+
+
+def test_select_next_phase_prefers_higher_value_over_lower_priority_number(isolated_roadmap):
+    _write(isolated_roadmap, [
+        {"id": "A", "name": "Cosmetic tweak", "description": "A cosmetic, low priority cleanup",
+         "status": "pending", "dependencies": [], "priority": 1},
+        {"id": "B", "name": "Important fix", "description": "placeholder",
+         "status": "pending", "dependencies": [], "priority": 2},
+    ])
+    _write_proposal(
+        "B",
+        rationale="This is high value and high impact, and low risk since it's an isolated, read-only change.",
+    )
+
+    next_phase = roadmap_manager._select_next_phase()
+
+    assert next_phase["id"] == "B"
+
+
+def test_select_next_phase_uses_structured_risk_and_benefit_fields_when_present(isolated_roadmap):
+    _write(isolated_roadmap, [
+        {"id": "A", "status": "pending", "dependencies": [], "priority": 1, "description": ""},
+        {"id": "B", "status": "pending", "dependencies": [], "priority": 2, "description": ""},
+    ])
+    _write_proposal("A", risk_level="high", expected_benefit="low")
+    _write_proposal("B", risk_level="low", expected_benefit="high")
+
+    assert roadmap_manager._select_next_phase()["id"] == "B"
+
+
+def test_select_next_phase_falls_back_to_priority_when_value_scores_tie(isolated_roadmap):
+    _write(isolated_roadmap, [
+        {"id": "A", "status": "pending", "dependencies": [], "priority": 5, "description": "generic work"},
+        {"id": "B", "status": "pending", "dependencies": [], "priority": 2, "description": "generic work"},
+    ])
+
+    assert roadmap_manager._select_next_phase()["id"] == "B"
+
+
+def test_select_next_phase_returns_none_when_no_candidates(isolated_roadmap):
+    _write(isolated_roadmap, [{"id": "A", "status": "completed", "dependencies": [], "priority": 1}])
+
+    assert roadmap_manager._select_next_phase() is None
+
+
+def test_advance_roadmap_starts_the_highest_value_phase_not_just_lowest_priority(isolated_roadmap, monkeypatch, tmp_path):
+    _write(isolated_roadmap, [
+        {"id": "A", "name": "Cosmetic tweak", "description": "A cosmetic, low priority, nice to have tweak",
+         "status": "pending", "dependencies": [], "priority": 1},
+        {"id": "B", "name": "Critical fix", "description": "placeholder",
+         "status": "pending", "dependencies": [], "priority": 2},
+    ])
+    _write_proposal(
+        "B",
+        rationale="This is a critical fix with high impact and low risk since it's an isolated, read-only change.",
+    )
+    roadmap_manager.enable_autonomous_mode()
+
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: str(tmp_path / "clone"))
+    monkeypatch.setattr(
+        roadmap_manager, "create_build",
+        lambda name, description, project_path, template=None: {"id": "build-x", "status": "REQUESTED"},
+    )
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "started_phase"
+    assert result["phase_id"] == "B"
+
+
+def test_run_self_build_tests_uses_the_fixed_pytest_command(monkeypatch, tmp_path):
+    captured = {}
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = "3 passed"
+        stderr = ""
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        captured["cmd"] = cmd
+        captured["cwd"] = cwd
+        return FakeCompleted()
+
+    monkeypatch.setattr(roadmap_manager.subprocess, "run", fake_run)
+
+    result = roadmap_manager._run_self_build_tests(str(tmp_path))
+
+    assert captured["cmd"] == [str(roadmap_manager.SELF_PROJECT_PATH / ".venv" / "bin" / "pytest"), "tests/"]
+    assert captured["cwd"] == str(tmp_path)
+    assert result == {"passed": True, "returncode": 0, "output": "3 passed"}
+
+
+def test_run_self_build_tests_reports_failure_on_nonzero_exit(monkeypatch, tmp_path):
+    class FakeCompleted:
+        returncode = 1
+        stdout = ""
+        stderr = "1 failed, 2 passed"
+
+    monkeypatch.setattr(roadmap_manager.subprocess, "run", lambda *a, **k: FakeCompleted())
+
+    result = roadmap_manager._run_self_build_tests(str(tmp_path))
+
+    assert result["passed"] is False
+    assert result["returncode"] == 1
+    assert "1 failed" in result["output"]
+
+
+def test_run_self_build_tests_handles_a_missing_pytest_executable(monkeypatch, tmp_path):
+    def fake_run(*a, **k):
+        raise FileNotFoundError("no such file or directory")
+
+    monkeypatch.setattr(roadmap_manager.subprocess, "run", fake_run)
+
+    result = roadmap_manager._run_self_build_tests(str(tmp_path))
+
+    assert result["passed"] is False
+    assert result["returncode"] is None
+
+
+def test_advance_roadmap_runs_self_build_tests_once_build_reaches_deploy_approval(isolated_roadmap, monkeypatch, tmp_path):
+    project_path = str(tmp_path / "clone")
+    build_id = _drive_build_to_deploy_approval(project_path)
+
+    _write(isolated_roadmap, [
+        {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": build_id},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    captured = {}
+
+    def fake_run_tests(path):
+        captured["project_path"] = path
+        return {"passed": True, "returncode": 0, "output": "5 passed"}
+
+    monkeypatch.setattr(roadmap_manager, "_run_self_build_tests", fake_run_tests)
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert captured["project_path"] == project_path
+    assert result["action"] == "waiting_on_human"
+
+    updated_build = roadmap_manager.get_build(build_id)
+    assert updated_build["self_build_test_result"]["passed"] is True
+    # Still sitting at DEPLOY_APPROVAL -- a passing test run must not itself
+    # advance the build any further; deploy approval is still a human gate.
+    assert updated_build["status"] == "DEPLOY_APPROVAL"
+
+
+def test_advance_roadmap_fails_the_phase_when_self_build_tests_fail(isolated_roadmap, monkeypatch, tmp_path):
+    project_path = str(tmp_path / "clone")
+    build_id = _drive_build_to_deploy_approval(project_path)
+
+    _write(isolated_roadmap, [
+        {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": build_id},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    monkeypatch.setattr(
+        roadmap_manager, "_run_self_build_tests",
+        lambda path: {"passed": False, "returncode": 1, "output": "1 failed"},
+    )
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "phase_failed"
+    assert result["phase_id"] == "X"
+    assert "Self-build test suite failed" in result["reason"]
+
+    updated_build = roadmap_manager.get_build(build_id)
+    assert updated_build["status"] == "FAILED"
+    assert updated_build["self_build_test_result"]["passed"] is False
+
+    assert roadmap_engine.get_phase("X")["status"] == "failed"
+
+
+def test_advance_roadmap_does_not_rerun_self_build_tests_once_recorded(isolated_roadmap, monkeypatch, tmp_path):
+    project_path = str(tmp_path / "clone")
+    build_id = _drive_build_to_deploy_approval(project_path)
+
+    builds = load_builds()
+    for b in builds:
+        if b["id"] == build_id:
+            b["self_build_test_result"] = {"passed": True, "returncode": 0, "output": "ok"}
+    save_builds(builds)
+
+    _write(isolated_roadmap, [
+        {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": build_id},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    monkeypatch.setattr(
+        roadmap_manager, "_run_self_build_tests",
+        lambda *a, **k: pytest.fail("must not rerun tests once a result is already recorded"),
+    )
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "waiting_on_human"
 
 
 def test_advance_roadmap_never_auto_approves_anything():

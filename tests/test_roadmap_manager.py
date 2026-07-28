@@ -171,7 +171,7 @@ def test_advance_roadmap_does_not_start_a_new_phase_while_another_is_still_waiti
     ])
     roadmap_manager.enable_autonomous_mode()
 
-    monkeypatch.setattr(roadmap_manager, "get_build", lambda build_id: {"id": build_id, "status": "WAITING_FOR_USER"})
+    monkeypatch.setattr(roadmap_manager, "get_build", lambda build_id: {"id": build_id, "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"})
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda *a, **k: pytest.fail("must not start Y while X is still waiting on a human"),

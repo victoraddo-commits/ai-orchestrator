@@ -32,7 +32,7 @@ def test_advance_builds_creates_the_repo_before_planning(monkeypatch, tmp_path):
     assert (target / ".git").is_dir()
 
     updated = build_manager.get_build(build["id"])
-    assert updated["status"] == "WAITING_FOR_USER"
+    assert updated["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
 
 
 def test_advance_builds_checks_out_a_dedicated_branch_for_the_build(monkeypatch, tmp_path):
@@ -128,7 +128,7 @@ def _force_status(build_id, status):
 
 def test_submit_answer_from_waiting_for_user_records_answer_and_returns_to_planning():
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
-    _force_status(build["id"], "WAITING_FOR_USER")
+    _force_status(build["id"], "WAITING_FOR_USER_INPUT")
 
     updated = build_manager.submit_answer(build["id"], "Use Postgres, not SQLite")
 
@@ -138,7 +138,7 @@ def test_submit_answer_from_waiting_for_user_records_answer_and_returns_to_plann
 
 def test_approve_architecture_transitions_and_tags_operator():
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
-    _force_status(build["id"], "WAITING_FOR_USER")
+    _force_status(build["id"], "WAITING_FOR_ARCHITECTURE_APPROVAL")
 
     updated = build_manager.approve_architecture(build["id"], operator="cloudcli-plugin")
 
@@ -157,7 +157,7 @@ def test_start_generation_transitions_to_generating():
 
 def test_approve_deploy_transitions_and_tags_operator():
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
-    _force_status(build["id"], "DEPLOY_APPROVAL")
+    _force_status(build["id"], "WAITING_FOR_DEPLOY_APPROVAL")
 
     updated = build_manager.approve_deploy(build["id"], operator="cloudcli-plugin")
 
@@ -284,7 +284,7 @@ def test_advance_builds_drives_planning_to_waiting_for_user(monkeypatch):
     advanced = build_manager.advance_builds()
 
     updated = build_manager.get_build(build["id"])
-    assert updated["status"] == "WAITING_FOR_USER"
+    assert updated["status"] == "WAITING_FOR_USER_INPUT"
     assert "FastAPI" in updated["plan"]
     assert updated["planned_by"] == "gemini"
     assert any(b["id"] == build["id"] for b in advanced)
@@ -382,7 +382,7 @@ def test_advance_builds_drives_generating_to_deploy_approval_via_security_review
     build_manager.advance_builds()
 
     updated = build_manager.get_build(build["id"])
-    assert updated["status"] == "DEPLOY_APPROVAL"
+    assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["generation_result"]["commits"] == [{"sha": "abc123", "message": "implement todo app"}]
     assert updated["generated_by"] == "claude"
     assert updated["security_report"]["total_findings"] == 2
@@ -413,7 +413,7 @@ def test_advance_builds_reaches_deploy_approval_even_with_critical_findings(monk
     build_manager.advance_builds()
 
     updated = build_manager.get_build(build["id"])
-    assert updated["status"] == "DEPLOY_APPROVAL"
+    assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["security_report"]["highest_severity"] == "critical"
 
 
@@ -467,7 +467,7 @@ def test_advance_builds_drives_freshly_requested_build_to_waiting_for_user(monke
     build_manager.advance_builds()
 
     updated = build_manager.get_build(build["id"])
-    assert updated["status"] == "WAITING_FOR_USER"
+    assert updated["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
 
 
 def test_full_lifecycle_happy_path(monkeypatch):
@@ -484,7 +484,7 @@ def test_full_lifecycle_happy_path(monkeypatch):
     )
     build_manager.advance_builds()
     build = build_manager.get_build(build["id"])
-    assert build["status"] == "WAITING_FOR_USER"
+    assert build["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
 
     build = build_manager.approve_architecture(build["id"], operator="cloudcli-plugin")
     assert build["status"] == "ARCHITECTURE_APPROVED"
@@ -513,5 +513,5 @@ def test_full_lifecycle_happy_path(monkeypatch):
     )
     build_manager.advance_builds()
     build = build_manager.get_build(build["id"])
-    assert build["status"] == "DEPLOY_APPROVAL"
+    assert build["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert build["security_report"]["total_findings"] == 0

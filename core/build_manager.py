@@ -7,6 +7,7 @@ from core.security_scanner import run_all_scans
 from core.deployment_manager import deploy_build
 from core.remediation import attempt_rollback
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
+from core.approval import create_build_approval
 
 # Planning tasks are text-in/text-out and don't need Claude's file/tool
 # access -- only actual code generation does. Routing them through the
@@ -30,14 +31,25 @@ GENERATION_TIMEOUT = 600
 # so they never collide with that pipeline.
 BUILDS_FILE = "builds.json"
 
-# TESTING/SECURITY_REVIEW/DEPLOY_APPROVAL/DEPLOYING/VERIFIED are defined here
-# for forward compatibility with Phases 12D-12G, which will add the logic
-# that actually drives builds through them. Until then, advance_builds()
-# only ever takes GENERATING to COMPLETED or FAILED directly.
+# TESTING/DEPLOYING/VERIFIED are defined here for forward compatibility with
+# Phases 12D-12G, which will add the logic that actually drives builds
+# through them. Until then, advance_builds() only ever takes GENERATING to
+# COMPLETED or FAILED directly.
+#
+# WAITING_FOR_USER_INPUT vs. WAITING_FOR_ARCHITECTURE_APPROVAL /
+# WAITING_FOR_DEPLOY_APPROVAL is a deliberate split (Kai Approval Center
+# integration): free-text clarification (submit_answer, "build answers") only
+# ever happens from WAITING_FOR_USER_INPUT, which loops back to PLANNING.
+# A plan/security-review result that's actually ready for a decision instead
+# goes to one of the WAITING_FOR_*_APPROVAL states, each of which creates a
+# formal Approval object (core.approval.create_build_approval) so the
+# decision surfaces in the CloudCLI Approval Center rather than as a build
+# question -- see _run_planning/_run_generation.
 BUILD_TRANSITIONS = {
     "REQUESTED": ["PLANNING", "FAILED"],
-    "PLANNING": ["WAITING_FOR_USER", "FAILED"],
-    "WAITING_FOR_USER": ["PLANNING", "ARCHITECTURE_APPROVED", "FAILED"],
+    "PLANNING": ["WAITING_FOR_USER_INPUT", "WAITING_FOR_ARCHITECTURE_APPROVAL", "FAILED"],
+    "WAITING_FOR_USER_INPUT": ["PLANNING", "FAILED"],
+    "WAITING_FOR_ARCHITECTURE_APPROVAL": ["ARCHITECTURE_APPROVED", "FAILED"],
     "ARCHITECTURE_APPROVED": ["GENERATING", "FAILED"],
     # SECURITY_REVIEW is reachable directly from GENERATING (not only via
     # TESTING) because TESTING has no automated logic yet -- see Phase 12E's
@@ -45,8 +57,8 @@ BUILD_TRANSITIONS = {
     # theoretical) case of a caller that wants to skip security review.
     "GENERATING": ["TESTING", "SECURITY_REVIEW", "COMPLETED", "FAILED"],
     "TESTING": ["SECURITY_REVIEW", "FAILED"],
-    "SECURITY_REVIEW": ["DEPLOY_APPROVAL", "FAILED"],
-    "DEPLOY_APPROVAL": ["DEPLOYING", "FAILED"],
+    "SECURITY_REVIEW": ["WAITING_FOR_DEPLOY_APPROVAL", "FAILED"],
+    "WAITING_FOR_DEPLOY_APPROVAL": ["DEPLOYING", "FAILED"],
     "DEPLOYING": ["VERIFIED", "FAILED"],
     "VERIFIED": ["COMPLETED", "ROLLED_BACK"],
     # A deployed-and-completed build can still be rolled back later (e.g. a
@@ -138,7 +150,7 @@ def submit_answer(build_id, answer):
     if build is None:
         return None
 
-    _require_status(build, "WAITING_FOR_USER")
+    _require_status(build, "WAITING_FOR_USER_INPUT")
 
     def mutate(b):
         transition(b, "PLANNING", BUILD_TRANSITIONS)
@@ -152,11 +164,27 @@ def approve_architecture(build_id, operator=None, note=None):
     if build is None:
         return None
 
-    _require_status(build, "WAITING_FOR_USER")
+    _require_status(build, "WAITING_FOR_ARCHITECTURE_APPROVAL")
 
     def mutate(b):
         transition(b, "ARCHITECTURE_APPROVED", BUILD_TRANSITIONS, note=note)
         b["architecture_approved_by"] = operator
+
+    return _update(build_id, mutate)
+
+
+def reject_architecture(build_id, operator=None, note=None):
+    build = get_build(build_id)
+    if build is None:
+        return None
+
+    _require_status(build, "WAITING_FOR_ARCHITECTURE_APPROVAL")
+
+    def mutate(b):
+        transition(b, "FAILED", BUILD_TRANSITIONS, note=note)
+        b["failure_reason"] = note or "Architecture approval rejected"
+        b["architecture_rejected_by"] = operator
+        _record_if_terminal(b)
 
     return _update(build_id, mutate)
 
@@ -179,11 +207,27 @@ def approve_deploy(build_id, operator=None, note=None):
     if build is None:
         return None
 
-    _require_status(build, "DEPLOY_APPROVAL")
+    _require_status(build, "WAITING_FOR_DEPLOY_APPROVAL")
 
     def mutate(b):
         transition(b, "DEPLOYING", BUILD_TRANSITIONS, note=note)
         b["deploy_approved_by"] = operator
+
+    return _update(build_id, mutate)
+
+
+def reject_deploy(build_id, operator=None, note=None):
+    build = get_build(build_id)
+    if build is None:
+        return None
+
+    _require_status(build, "WAITING_FOR_DEPLOY_APPROVAL")
+
+    def mutate(b):
+        transition(b, "FAILED", BUILD_TRANSITIONS, note=note)
+        b["failure_reason"] = note or "Deploy approval rejected"
+        b["deploy_rejected_by"] = operator
+        _record_if_terminal(b)
 
     return _update(build_id, mutate)
 
@@ -252,6 +296,52 @@ def _record_if_terminal(build):
         record_build_outcome(build)
 
 
+def _plan_needs_clarification(plan_text):
+    # A plan that's still asking an open question isn't a concrete proposal
+    # yet -- surfacing it as a formal Approval would ask a human to
+    # approve/reject something that isn't actually decided. Only a plan
+    # without an open question reaches the WAITING_FOR_ARCHITECTURE_APPROVAL
+    # gate; a question routes back through the WAITING_FOR_USER_INPUT /
+    # submit_answer loop instead.
+    return "?" in (plan_text or "")
+
+
+def _roadmap_phase_id_for_build(build_id):
+    from core.roadmap_engine import load_roadmap
+
+    for phase in load_roadmap().get("phases", []):
+        if phase.get("build_id") == build_id:
+            return phase["id"]
+
+    return None
+
+
+def _create_architecture_approval(build):
+    create_build_approval(
+        build_id=build["id"],
+        phase_id=_roadmap_phase_id_for_build(build["id"]),
+        approval_type="architecture",
+        title=f"Approve architecture plan for {build['name']}",
+        description=build.get("plan") or "",
+        risk=None,
+        requested_action="approve_architecture",
+    )
+
+
+def _create_deploy_approval(build):
+    security_report = build.get("security_report") or {}
+
+    create_build_approval(
+        build_id=build["id"],
+        phase_id=_roadmap_phase_id_for_build(build["id"]),
+        approval_type="deploy",
+        title=f"Approve deployment for {build['name']}",
+        description=f"{security_report.get('total_findings', 0)} security finding(s) found.",
+        risk=security_report.get("highest_severity"),
+        requested_action="approve_deploy",
+    )
+
+
 def _run_planning(build):
     try:
         _ensure_repo(build)
@@ -272,7 +362,12 @@ def _run_planning(build):
 
     build["plan"] = result.get("response", "")
     build["planned_by"] = result.get("provider")
-    transition(build, "WAITING_FOR_USER", BUILD_TRANSITIONS)
+
+    if _plan_needs_clarification(build["plan"]):
+        transition(build, "WAITING_FOR_USER_INPUT", BUILD_TRANSITIONS)
+    else:
+        transition(build, "WAITING_FOR_ARCHITECTURE_APPROVAL", BUILD_TRANSITIONS)
+        _create_architecture_approval(build)
 
 
 def _run_generation(build):
@@ -305,11 +400,13 @@ def _run_generation(build):
         return
 
     # Security findings are surfaced for a human to review via
-    # DEPLOY_APPROVAL, never used to silently auto-fail the build -- the
-    # same human-in-the-loop pattern as every other approval gate here.
+    # WAITING_FOR_DEPLOY_APPROVAL, never used to silently auto-fail the
+    # build -- the same human-in-the-loop pattern as every other approval
+    # gate here.
     transition(build, "SECURITY_REVIEW", BUILD_TRANSITIONS)
     build["security_report"] = run_all_scans(build["project_path"])
-    transition(build, "DEPLOY_APPROVAL", BUILD_TRANSITIONS)
+    transition(build, "WAITING_FOR_DEPLOY_APPROVAL", BUILD_TRANSITIONS)
+    _create_deploy_approval(build)
 
 
 def _run_deployment(build):

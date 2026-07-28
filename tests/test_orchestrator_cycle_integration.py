@@ -58,7 +58,7 @@ def test_run_cycle_processes_a_roadmap_created_build_in_the_same_cycle(monkeypat
 
     assert result["roadmap_progress"]["action"] == "started_phase"
     assert len(result["builds"]) == 1
-    assert result["builds"][0]["status"] == "WAITING_FOR_USER"
+    assert result["builds"][0]["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
 
 
 def test_run_cycle_advances_pending_builds(monkeypatch):
@@ -76,7 +76,7 @@ def test_run_cycle_advances_pending_builds(monkeypatch):
     result = run_cycle()
 
     assert len(result["builds"]) == 1
-    assert result["builds"][0]["status"] == "WAITING_FOR_USER"
+    assert result["builds"][0]["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
 
 
 def test_run_cycle_incidents_have_unified_lifecycle_fields():

@@ -93,6 +93,22 @@ def record_usage(provider, task_type, description, success, duration_ms, error=N
     return entry
 
 
+# Confirmed live (2026-07-28): Claude Code returns this exact wording when
+# the account's weekly usage limit is hit -- unlike ai_provider.py's
+# _claude_run_text_task, which deliberately never pattern-matches since it
+# had no verified example, this one is real and durable (not transient), so
+# it's worth recording as quota_exceeded so K4's skip-known-quota-exceeded
+# check actually prevents wasted retries for the rest of the reset window.
+_QUOTA_EXCEEDED_MARKERS = ("weekly limit", "usage limit")
+
+
+def _record_coding_failure_health(provider_name, detail):
+    if any(marker in detail.lower() for marker in _QUOTA_EXCEEDED_MARKERS):
+        provider_health.capture_quota_exceeded(provider_name, detail=detail)
+    else:
+        provider_health.capture_provider_error(provider_name, detail=detail)
+
+
 def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task"):
     resolved_type = task_type or classify_task(description)
     candidates = _candidates_for(resolved_type)
@@ -134,6 +150,8 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         except Exception as error:
             duration_ms = int((time.time() - start) * 1000)
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error))
+            if capability == "coding_agent":
+                _record_coding_failure_health(name, str(error))
             failures.append(f"{name}: {error}")
             continue
 
@@ -147,6 +165,7 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             duration_ms = int((time.time() - start) * 1000)
             detail = "; ".join(e.get("content", "") for e in response.get("tool_errors") or []) or "generation did not succeed"
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail)
+            _record_coding_failure_health(name, detail)
             failures.append(f"{name}: {detail}")
             continue
 

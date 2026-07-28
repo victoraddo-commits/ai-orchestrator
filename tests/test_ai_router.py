@@ -246,6 +246,67 @@ def test_delegate_with_coding_agent_capability_falls_back_to_opencode_when_claud
     assert result["response"]["files_changed"] == ["a.py"]
 
 
+def test_delegate_records_a_confirmed_usage_limit_message_as_quota_exceeded(monkeypatch):
+    # Confirmed live: Claude Code returned "You've hit your weekly limit --
+    # resets Jul 29, 1pm" mid-generation. Without this, delegate() would
+    # keep retrying Claude every cycle for the next day despite the failure
+    # being unambiguous and durable, not transient.
+    import core.ai_provider as ai_provider
+    import core.ai.provider_health as provider_health
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "response_text": "", "files_changed": [], "commits": [],
+            "tool_errors": [{"tool": None, "content": "Claude Code returned an error result: You've hit your weekly limit · resets Jul 29, 1pm"}],
+        },
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
+
+    ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    snapshot = provider_health.get_quota_snapshot("claude")
+    assert snapshot["status"] == "quota_exceeded"
+    assert "weekly limit" in snapshot["detail"].lower()
+
+
+def test_delegate_records_a_generic_coding_failure_as_error_not_quota_exceeded(monkeypatch):
+    import core.ai_provider as ai_provider
+    import core.ai.provider_health as provider_health
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "response_text": "", "files_changed": [], "commits": [],
+            "tool_errors": [{"tool": "Bash", "content": "tests failed"}],
+        },
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
+
+    ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    snapshot = provider_health.get_quota_snapshot("claude")
+    assert snapshot["status"] == "error"
+
+
 def test_delegate_accepts_explicit_task_type_override(monkeypatch):
     import core.ai_provider as ai_provider
 

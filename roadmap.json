@@ -208,12 +208,12 @@
       "id": "13B",
       "name": "Kai Command Interface",
       "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13A"
       ],
       "priority": 14,
-      "build_id": "17cbe462"
+      "build_id": null
     },
     {
       "id": "13C",
@@ -229,12 +229,12 @@
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13A"
       ],
       "priority": 16,
-      "build_id": "59c42bb7"
+      "build_id": null
     },
     {
       "id": "13E",

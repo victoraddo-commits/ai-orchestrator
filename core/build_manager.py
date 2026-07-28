@@ -1,6 +1,5 @@
 from core.memory import load, save
 from core.lifecycle import new_object, transition, InvalidTransition
-from core.coding_bridge import run_coding_task
 from core.ai.ai_router import delegate, AllProvidersFailed
 from core.repo_manager import create_local_repo
 from core.project_templates import get_template
@@ -88,6 +87,7 @@ def create_build(name, description, project_path, template=None):
         plan=None,
         planned_by=None,
         generation_result=None,
+        generated_by=None,
         security_report=None,
         deployment=None,
     )
@@ -278,14 +278,25 @@ def _run_planning(build):
 def _run_generation(build):
     try:
         _ensure_repo(build)
-        result = run_coding_task(build["project_path"], _generation_prompt(build), timeout=GENERATION_TIMEOUT)
+        delegated = delegate(
+            _generation_prompt(build),
+            task_type="coding",
+            project_path=build["project_path"],
+            timeout=GENERATION_TIMEOUT,
+            capability="coding_agent",
+        )
     except Exception as error:
+        # delegate() already tried every candidate coding-capable provider
+        # (Claude, then OpenCode) before raising -- a genuine every-provider
+        # failure, not just "Claude is busy".
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = str(error)
         _record_if_terminal(build)
         return
 
+    result = delegated["response"]
     build["generation_result"] = result
+    build["generated_by"] = delegated["provider"]
 
     if not result.get("success"):
         transition(build, "FAILED", BUILD_TRANSITIONS)

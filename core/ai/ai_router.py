@@ -33,7 +33,11 @@ TASK_TYPE_KEYWORDS = {
 # the universal fallback, since it's the one provider guaranteed capable of
 # any task type.
 ROLE_PROVIDERS = {
-    "coding": ["claude"],
+    # Claude stays first -- most proven, deepest test/review discipline.
+    # OpenCode (MiniMax-m2.7 via its own sandboxed agent loop) only engages
+    # if Claude fails or is unavailable, per explicit user decision: remove
+    # Claude as a single point of failure without making it secondary.
+    "coding": ["claude", "opencode"],
     "planning": ["gemini", "openrouter", "minimax", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
     "documentation": ["gemini", "groq", "openrouter", "minimax", "claude"],
@@ -89,7 +93,7 @@ def record_usage(provider, task_type, description, success, duration_ms, error=N
     return entry
 
 
-def delegate(description, task_type=None, timeout=60, project_path=None):
+def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task"):
     resolved_type = task_type or classify_task(description)
     candidates = _candidates_for(resolved_type)
 
@@ -116,14 +120,17 @@ def delegate(description, task_type=None, timeout=60, project_path=None):
             failures.append(f"{name}: skipped, known quota_exceeded ({quota.get('detail')})")
             continue
 
-        run_text_task = provider.get("run_text_task")
-        if run_text_task is None:
-            failures.append(f"{name}: does not support text tasks")
+        run_fn = provider.get("run_coding_task" if capability == "coding_agent" else "run_text_task")
+        if run_fn is None:
+            failures.append(f"{name}: does not support {capability}")
             continue
 
         start = time.time()
         try:
-            response = run_text_task(description, timeout=timeout, project_path=project_path)
+            if capability == "coding_agent":
+                response = run_fn(project_path, description, timeout=timeout)
+            else:
+                response = run_fn(description, timeout=timeout, project_path=project_path)
         except Exception as error:
             duration_ms = int((time.time() - start) * 1000)
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error))
@@ -131,6 +138,18 @@ def delegate(description, task_type=None, timeout=60, project_path=None):
             continue
 
         duration_ms = int((time.time() - start) * 1000)
+
+        # A coding_agent call can return normally (no exception) yet still
+        # represent a failed generation (result["success"] is False) -- that
+        # must fall through to the next candidate too, since a failed
+        # generation is exactly the case that must not stall Kai.
+        if capability == "coding_agent" and isinstance(response, dict) and not response.get("success"):
+            duration_ms = int((time.time() - start) * 1000)
+            detail = "; ".join(e.get("content", "") for e in response.get("tool_errors") or []) or "generation did not succeed"
+            record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail)
+            failures.append(f"{name}: {detail}")
+            continue
+
         record_usage(name, resolved_type, description, success=True, duration_ms=duration_ms)
 
         return {

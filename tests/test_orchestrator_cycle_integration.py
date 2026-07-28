@@ -47,10 +47,10 @@ def test_run_cycle_processes_a_roadmap_created_build_in_the_same_cycle(monkeypat
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True, "aborted": False, "session_id": "s",
-            "response_text": "Plan.", "files_changed": [], "commits": [], "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning", "duration_ms": 10,
+            "response": "Plan.",
         },
     )
 
@@ -66,15 +66,10 @@ def test_run_cycle_advances_pending_builds(monkeypatch):
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True,
-            "aborted": False,
-            "session_id": "sess-1",
-            "response_text": "Plan: FastAPI + SQLite.",
-            "files_changed": [],
-            "commits": [],
-            "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning", "duration_ms": 10,
+            "response": "Plan: FastAPI + SQLite.",
         },
     )
 

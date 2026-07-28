@@ -214,11 +214,10 @@ def test_advance_builds_records_learning_outcome_on_generation_failure(monkeypat
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
-        build_manager, "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": False, "aborted": False, "session_id": "s",
-            "response_text": "", "files_changed": [], "commits": [], "tool_errors": [],
-        },
+        build_manager, "delegate",
+        lambda description, **kwargs: (_ for _ in ()).throw(
+            AllProvidersFailed("claude: generation did not succeed; opencode: not available")
+        ),
     )
 
     build_manager.advance_builds()
@@ -338,14 +337,14 @@ def test_run_generation_uses_the_longer_generation_timeout_not_the_planning_one(
 
     captured = {}
 
-    def fake_run_coding_task(project_path, instruction, **kwargs):
+    def fake_delegate(description, **kwargs):
         captured["timeout"] = kwargs.get("timeout")
         return {
-            "success": True, "aborted": False, "session_id": "s",
-            "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": [],
+            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
         }
 
-    monkeypatch.setattr(build_manager, "run_coding_task", fake_run_coding_task)
+    monkeypatch.setattr(build_manager, "delegate", fake_delegate)
     monkeypatch.setattr(build_manager, "run_all_scans", lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None})
 
     build_manager.advance_builds()
@@ -360,15 +359,16 @@ def test_advance_builds_drives_generating_to_deploy_approval_via_security_review
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True,
-            "aborted": False,
-            "session_id": "sess-2",
-            "response_text": "Done.",
-            "files_changed": ["app/main.py"],
-            "commits": [{"sha": "abc123", "message": "implement todo app"}],
-            "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "response": {
+                "success": True,
+                "response_text": "Done.",
+                "files_changed": ["app/main.py"],
+                "commits": [{"sha": "abc123", "message": "implement todo app"}],
+                "tool_errors": [],
+            },
         },
     )
     monkeypatch.setattr(
@@ -384,6 +384,7 @@ def test_advance_builds_drives_generating_to_deploy_approval_via_security_review
     updated = build_manager.get_build(build["id"])
     assert updated["status"] == "DEPLOY_APPROVAL"
     assert updated["generation_result"]["commits"] == [{"sha": "abc123", "message": "implement todo app"}]
+    assert updated["generated_by"] == "claude"
     assert updated["security_report"]["total_findings"] == 2
     assert updated["security_report"]["highest_severity"] == "medium"
 
@@ -397,10 +398,10 @@ def test_advance_builds_reaches_deploy_approval_even_with_critical_findings(monk
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True, "aborted": False, "session_id": "s",
-            "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(
@@ -422,16 +423,10 @@ def test_advance_builds_drives_generating_to_failed_on_unsuccessful_run(monkeypa
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": False,
-            "aborted": False,
-            "session_id": "sess-3",
-            "response_text": "",
-            "files_changed": [],
-            "commits": [],
-            "tool_errors": [{"tool": "Bash", "content": "tests failed"}],
-        },
+        "delegate",
+        lambda description, **kwargs: (_ for _ in ()).throw(
+            AllProvidersFailed("claude: tests failed; opencode: not available")
+        ),
     )
 
     build_manager.advance_builds()
@@ -446,8 +441,8 @@ def test_advance_builds_leaves_terminal_state_builds_alone(monkeypatch):
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda *a, **k: pytest.fail("run_coding_task should not be called for a COMPLETED build"),
+        "delegate",
+        lambda *a, **k: pytest.fail("delegate should not be called for a COMPLETED build"),
     )
 
     build_manager.advance_builds()
@@ -499,15 +494,16 @@ def test_full_lifecycle_happy_path(monkeypatch):
 
     monkeypatch.setattr(
         build_manager,
-        "run_coding_task",
-        lambda project_path, instruction, **kwargs: {
-            "success": True,
-            "aborted": False,
-            "session_id": "sess-1",
-            "response_text": "Implemented.",
-            "files_changed": ["app/main.py"],
-            "commits": [{"sha": "def456", "message": "implement todo app"}],
-            "tool_errors": [],
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "response": {
+                "success": True,
+                "response_text": "Implemented.",
+                "files_changed": ["app/main.py"],
+                "commits": [{"sha": "def456", "message": "implement todo app"}],
+                "tool_errors": [],
+            },
         },
     )
     monkeypatch.setattr(

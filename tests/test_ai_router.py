@@ -186,6 +186,66 @@ def test_delegate_records_usage_on_failure_too(monkeypatch):
     assert history[1]["success"] is True
 
 
+def test_delegate_with_coding_agent_capability_calls_run_coding_task_not_run_text_task(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_text_task",
+        lambda *a, **k: pytest.fail("run_text_task should not be called for capability=coding_agent"),
+    )
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["project_path"] = project_path
+        captured["instruction"] = instruction
+        return {"success": True, "response_text": "done", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setitem(claude, "run_coding_task", fake_run_coding_task)
+
+    result = ai_router.delegate(
+        "Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent",
+    )
+
+    assert result["provider"] == "claude"
+    assert captured["project_path"] == "/proj"
+    assert captured["instruction"] == "Implement the widget"
+    assert result["response"]["success"] is True
+
+
+def test_delegate_with_coding_agent_capability_falls_back_to_opencode_when_claude_fails(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": False, "response_text": "", "files_changed": [], "commits": [], "tool_errors": [{"tool": None, "content": "boom"}]},
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": ["a.py"], "commits": [], "tool_errors": []},
+    )
+
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
+
+    result = ai_router.delegate(
+        "Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent",
+    )
+
+    # Claude's call "succeeded" at the transport level (no exception) but the
+    # task itself failed -- delegate()'s coding_agent path must fall through
+    # to the next candidate on a result-level failure, not just an exception,
+    # since a failed generation is exactly the case that must not stall Kai.
+    assert result["provider"] == "opencode"
+    assert result["response"]["files_changed"] == ["a.py"]
+
+
 def test_delegate_accepts_explicit_task_type_override(monkeypatch):
     import core.ai_provider as ai_provider
 

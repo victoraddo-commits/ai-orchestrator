@@ -220,18 +220,18 @@
       "id": "13C",
       "name": "Kai Strategic Planner",
       "description": "core/kai/planner.py. Reviews roadmap (roadmap_engine), system health (core.health.analyze), recent build failures (build_learning.get_build_history), and AI usage/quota (ai_router.get_usage_history, provider_health) to produce Improvement Proposal objects -- a new lifecycle.py-based object type (proposed -> under_review -> approved/rejected -> implemented), stored in memory/improvement_proposals.json. Research/analysis calls route through the existing ai_router.delegate(), not new AI-calling code. Proposals do not auto-create roadmap items or builds -- that requires a separate human or 13B-command action promoting a proposal into a roadmap phase (via add_phase, defaulting to 'proposed' status per 13A's design).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13B"
       ],
       "priority": 15,
-      "build_id": null
+      "build_id": "d6a2d245"
     },
     {
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],

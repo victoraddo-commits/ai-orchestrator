@@ -374,6 +374,24 @@
         "No change to the safety-relevant fallback-on-failure behavior"
       ],
       "tests_required": true
+    },
+    {
+      "id": "13M",
+      "name": "OpenRouter Claude coding fallback + OpenRouter text-model rotation",
+      "description": "Implements docs/superpowers/specs/2026-07-28-openrouter-expansion-design.md. Two changes: (1) new coding-capable provider openrouter_claude (core/ai_provider.py) driving openrouter/anthropic/claude-sonnet-4.6 through the opencode CLI, exactly like opencode_claude does for Fable 5, gated on a \"openrouter\" credential in opencode auth.json (add _opencode_credential_available(key) generalizing the existing _opencode_available); (2) core/ai/ai_router.py ROLE_PROVIDERS[\"coding\"] reordered to [\"opencode_claude\", \"openrouter_claude\", \"claude\", \"opencode\"] with only the first two rotating against each other via _rotate_candidates (direct claude and opencode stay a fixed tail, never tried first) so the direct Claude/Anthropic subscription credit is preserved -- delegate() must call _candidates_for directly for task_type==\"coding\" instead of wrapping it in the outer per-role rotation, to avoid double-rotating. Also: core/llm_clients.py OPENROUTER_MODELS list (openai/gpt-4o-mini, z-ai/glm-5, openai/gpt-5, deepseek/deepseek-v4-flash, deepseek/deepseek-v4-pro -- all confirmed live against the real OpenRouter API) with new rotation state (memory/openrouter_model_rotation.json) driving core/ai_provider.py _openrouter_run_text_task, replacing the single hardcoded OPENROUTER_DEFAULT_MODEL used today for the planning/log_analysis/documentation roles. Also add scripts/setup_openrouter_opencode_auth.py (idempotent: reads OPENROUTER_API_KEY from env, writes/merges {\"type\": \"api\", \"key\": ...} under the \"openrouter\" key into ~/.local/share/opencode/auth.json -- \"opencode auth login openrouter\" itself is confirmed broken headlessly in this environment, \"fetch() URL is invalid\"). See the design doc for full code sketches, error handling, and the full test list -- follow it directly rather than re-deriving the approach.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 25,
+      "completion_criteria": [
+        "openrouter_claude registered with coding_agent capability only, using opencode/anthropic/claude-sonnet-4.6 via opencode_bridge.run_coding_task, gated on _opencode_credential_available(\"openrouter\")",
+        "_opencode_available refactored to call _opencode_credential_available(\"opencode\") with identical existing behavior/tests unchanged",
+        "ROLE_PROVIDERS[\"coding\"] fallback order preserves claude and opencode as a fixed last-resort tail; only opencode_claude/openrouter_claude rotate for first-try position; delegate() does not double-rotate this list",
+        "Every other role (planning/log_analysis/documentation/review) rotation behavior is unchanged",
+        "OPENROUTER_MODELS rotation added and used by the openrouter text-task provider; OPENROUTER_DEFAULT_MODEL stays as the default for direct/back-compat callers",
+        "scripts/setup_openrouter_opencode_auth.py is idempotent, merges into an existing auth.json without disturbing other keys, and exits 1 without writing when OPENROUTER_API_KEY is unset",
+        "Full test list from the design doc's Testing section is implemented and passing"
+      ],
+      "tests_required": true
     }
   ]
 }

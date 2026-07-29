@@ -329,6 +329,51 @@
       "status": "completed",
       "dependencies": [],
       "priority": 4
+    },
+    {
+      "id": "13J",
+      "name": "AI Workforce & Build Scheduler Dashboard",
+      "description": "New CloudCLI Kai Control Center panel (extends 13G) showing each AI provider as a worker card -- status, current job, queue depth, health, recent success rate -- plus build-scheduler visibility (waiting/running builds, worker assignment, parallel capacity). Reuses core.ai.ai_router.get_provider_dashboard() and core.build_manager build state; no duplicate provider metadata. Deferred from an Enhancement Proposal (2026-07-28) that also asked for CPU/memory-based dynamic concurrency and a hallucination-rate metric -- both dropped as not measurable/actionable on this system's real signals.",
+      "status": "proposed",
+      "dependencies": [
+        "13G"
+      ],
+      "priority": 22,
+      "completion_criteria": [
+        "Worker cards render real provider_dashboard data, not fixtures",
+        "Build scheduler panel shows real concurrent-build state once parallel execution ships"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13K",
+      "name": "Kai Workforce Voice/Text Commands",
+      "description": "New core.kai.commands.py patterns (\"kai, list AI workers\", \"kai, show AI workforce\", \"kai, worker health\", \"kai, provider statistics\", etc.) that reuse core.ai_provider.list_providers() and core.ai.ai_router.get_provider_dashboard() -- no new provider metadata, same rule-based phrase-matching pattern 13B already established.",
+      "status": "proposed",
+      "dependencies": [
+        "13B"
+      ],
+      "priority": 23,
+      "completion_criteria": [
+        "Each new command pattern dispatches to existing dashboard/provider functions",
+        "No duplicate provider state introduced"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13L",
+      "name": "Provider Performance-Weighted Routing",
+      "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.",
+      "status": "proposed",
+      "dependencies": [
+        "12J"
+      ],
+      "priority": 24,
+      "completion_criteria": [
+        "Routing decisions demonstrably shift toward historically higher-success candidates without starving the others of all traffic",
+        "No change to the safety-relevant fallback-on-failure behavior"
+      ],
+      "tests_required": true
     }
   ]
 }

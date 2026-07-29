@@ -1,6 +1,10 @@
-from core.memory import load, save
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from core.memory import load, save, update
 from core.lifecycle import new_object, transition, InvalidTransition
 from core.ai.ai_router import delegate, AllProvidersFailed
+import core.ai_provider as ai_provider
 from core.repo_manager import create_local_repo
 from core.project_templates import get_template
 from core.security_scanner import run_all_scans
@@ -22,6 +26,33 @@ PLANNING_TIMEOUT = 180
 # ceiling (core.coding_bridge's default) while still actively working on a
 # genuinely larger module. Explicit and longer than planning's.
 GENERATION_TIMEOUT = 600
+
+
+# The code-review step is a plain text-in/text-out Claude call over the
+# build's generation summary -- no file writes or tool use -- so planning's
+# text-task budget is the right scale, not generation's 600s ceiling.
+CODE_REVIEW_TIMEOUT = 180
+
+PROVIDERS_CONFIG_PATH = Path("config") / "providers.yaml"
+
+DEFAULT_MAX_CONCURRENT_BUILDS = 2
+
+
+def _load_max_concurrent_builds():
+    # config/providers.yaml: max_concurrent_builds. Any missing/unreadable/
+    # nonsensical value falls back to the default -- a config problem must
+    # never stop builds from advancing at all.
+    try:
+        import yaml
+
+        config = yaml.safe_load(PROVIDERS_CONFIG_PATH.read_text()) or {}
+        value = int(config.get("max_concurrent_builds", DEFAULT_MAX_CONCURRENT_BUILDS))
+        return value if value >= 1 else DEFAULT_MAX_CONCURRENT_BUILDS
+    except Exception:
+        return DEFAULT_MAX_CONCURRENT_BUILDS
+
+
+MAX_CONCURRENT_BUILDS = _load_max_concurrent_builds()
 
 
 # Deliberately a separate store from approval_queue.json -- that queue is
@@ -51,11 +82,13 @@ BUILD_TRANSITIONS = {
     "WAITING_FOR_USER_INPUT": ["PLANNING", "FAILED"],
     "WAITING_FOR_ARCHITECTURE_APPROVAL": ["ARCHITECTURE_APPROVED", "FAILED"],
     "ARCHITECTURE_APPROVED": ["GENERATING", "FAILED"],
-    # SECURITY_REVIEW is reachable directly from GENERATING (not only via
-    # TESTING) because TESTING has no automated logic yet -- see Phase 12E's
-    # scoping note. COMPLETED stays reachable too, for the (currently
-    # theoretical) case of a caller that wants to skip security review.
-    "GENERATING": ["TESTING", "SECURITY_REVIEW", "COMPLETED", "FAILED"],
+    # 13R: successful generation now goes through CODE_REVIEW (an advisory
+    # Claude review, see _run_code_review) before SECURITY_REVIEW.
+    # SECURITY_REVIEW/COMPLETED are kept as pre-existing theoretical direct
+    # targets from GENERATING (unused by current code either way) -- see
+    # Phase 12E's scoping note on TESTING.
+    "GENERATING": ["CODE_REVIEW", "TESTING", "SECURITY_REVIEW", "COMPLETED", "FAILED"],
+    "CODE_REVIEW": ["SECURITY_REVIEW", "FAILED"],
     "TESTING": ["SECURITY_REVIEW", "FAILED"],
     "SECURITY_REVIEW": ["WAITING_FOR_DEPLOY_APPROVAL", "FAILED"],
     "WAITING_FOR_DEPLOY_APPROVAL": ["DEPLOYING", "FAILED"],
@@ -282,9 +315,22 @@ def _planning_prompt(build):
     )
 
 
+# Prepended to every generation instruction regardless of which provider
+# (claude / opencode / opencode_claude) ends up handling it -- every coding
+# agent Kai dispatches is held to the same "write tests, run them, verify
+# before claiming done" standard this project's own workflow follows.
+GENERATION_DISCIPLINE_PREAMBLE = (
+    "Follow disciplined engineering practice: write tests for new "
+    "behavior before or alongside the implementation, run them, and "
+    "verify they actually pass before considering any part of this "
+    "done. Do not claim something works without having run it.\n\n"
+)
+
+
 def _generation_prompt(build):
     return (
-        "The following architecture plan was reviewed and approved by the "
+        GENERATION_DISCIPLINE_PREAMBLE
+        + "The following architecture plan was reviewed and approved by the "
         "requester. Implement it now: write the code, and commit your work "
         "with git as you go.\n\n"
         f"Application: {build['name']}\n"
@@ -335,6 +381,21 @@ def _create_architecture_approval(build):
     )
 
 
+def _code_review_summary(build):
+    # Surfaced alongside the security report at the deploy-approval human
+    # gate -- purely informational, never used to auto-approve or
+    # auto-block (the human decides, exactly as before 13R).
+    code_review = build.get("code_review")
+
+    if not code_review:
+        return ""
+
+    if code_review.get("skipped"):
+        return f"\n\nCode review skipped: {code_review.get('reason')}."
+
+    return f"\n\nAdvisory code review by {code_review.get('reviewer')}:\n{code_review.get('findings')}"
+
+
 def _create_deploy_approval(build):
     security_report = build.get("security_report") or {}
 
@@ -343,7 +404,8 @@ def _create_deploy_approval(build):
         phase_id=_roadmap_phase_id_for_build(build["id"]),
         approval_type="deploy",
         title=f"Approve deployment for {build['name']}",
-        description=f"{security_report.get('total_findings', 0)} security finding(s) found.",
+        description=f"{security_report.get('total_findings', 0)} security finding(s) found."
+        + _code_review_summary(build),
         risk=security_report.get("highest_severity"),
         requested_action="approve_deploy",
     )
@@ -406,10 +468,81 @@ def _run_generation(build):
         _record_if_terminal(build)
         return
 
-    # Security findings are surfaced for a human to review via
-    # WAITING_FOR_DEPLOY_APPROVAL, never used to silently auto-fail the
-    # build -- the same human-in-the-loop pattern as every other approval
-    # gate here.
+    # Cascade straight into the advisory code review within this same call
+    # -- existing callers and tests rely on one advance_builds() taking a
+    # successful generation all the way to WAITING_FOR_DEPLOY_APPROVAL, not
+    # parking it in CODE_REVIEW for a later dispatch cycle to pick up.
+    transition(build, "CODE_REVIEW", BUILD_TRANSITIONS)
+    _run_code_review(build)
+
+
+def _code_review_prompt(build):
+    result = build.get("generation_result") or {}
+    files_changed = result.get("files_changed") or []
+    commits = result.get("commits") or []
+
+    files_context = "\n".join(f"- {path}" for path in files_changed) or "(none reported)"
+    commits_context = "\n".join(
+        f"- {c.get('sha', '')} {c.get('message', '')}" for c in commits
+    ) or "(none reported)"
+
+    return (
+        "You are performing an advisory code review of work another coding "
+        "agent just generated on this project's current branch. Do NOT "
+        "write, edit, or modify any files, and do NOT run commands that "
+        "change anything -- read the changed files and recent git history "
+        "if useful, and respond with text only.\n\n"
+        f"Application: {build['name']}\n"
+        f"Description: {build['description']}\n"
+        f"Generated by: {build.get('generated_by')}\n\n"
+        f"Files changed:\n{files_context}\n\n"
+        f"Commits:\n{commits_context}\n\n"
+        f"Agent's own summary:\n{result.get('response_text') or '(none)'}\n\n"
+        "Review the diff/generated files for correctness problems, missing "
+        "or unrun tests, and deviations from the approved plan. Your "
+        "findings are advisory only -- a human makes the deploy decision. "
+        "Reply with your findings, or state that you found no issues."
+    )
+
+
+def _claude_code_review(build):
+    # Deliberately calls the claude provider directly rather than
+    # delegate(task_type="review"): the review-role rotation could hand
+    # this to openai/gemini, and the requirement is specifically Claude
+    # oversight of non-Claude-generated work.
+    if build.get("generated_by") == "claude":
+        return {"skipped": True, "reason": "generated by claude"}
+
+    provider = ai_provider.get_provider("claude")
+
+    if provider is None or not provider["available_fn"]():
+        return {"skipped": True, "reason": "claude unavailable"}
+
+    try:
+        findings = provider["run_text_task"](
+            _code_review_prompt(build),
+            timeout=CODE_REVIEW_TIMEOUT,
+            project_path=build["project_path"],
+        )
+    except Exception as error:
+        # Advisory checks must never stall the pipeline -- same "must not
+        # stall Kai" pattern used throughout ai_router.py.
+        return {"skipped": True, "reason": str(error)}
+
+    return {"skipped": False, "reviewer": "claude", "findings": findings}
+
+
+def _run_code_review(build):
+    # Purely advisory Claude oversight of non-Claude-generated work. The
+    # outcome (findings, skip, or failure) is recorded on the build and
+    # surfaced at the WAITING_FOR_DEPLOY_APPROVAL human gate alongside the
+    # security report -- it never auto-approves or auto-blocks anything.
+    build["code_review"] = _claude_code_review(build)
+
+    # What _run_generation used to do inline: security findings are
+    # surfaced for a human to review via WAITING_FOR_DEPLOY_APPROVAL, never
+    # used to silently auto-fail the build -- the same human-in-the-loop
+    # pattern as every other approval gate here.
     transition(build, "SECURITY_REVIEW", BUILD_TRANSITIONS)
     build["security_report"] = run_all_scans(build["project_path"])
     transition(build, "WAITING_FOR_DEPLOY_APPROVAL", BUILD_TRANSITIONS)
@@ -430,10 +563,33 @@ def _run_deployment(build):
     _record_if_terminal(build)
 
 
-def advance_builds():
-    builds = load_builds()
+# CODE_REVIEW is dispatchable as a defensive fallback only -- the normal
+# path cascades GENERATING -> CODE_REVIEW -> ... within one _run_generation
+# call, so a build only sits in CODE_REVIEW if it was persisted mid-cascade
+# (e.g. a crash between transitions).
+_ACTIONABLE_STATUSES = {"REQUESTED", "PLANNING", "GENERATING", "CODE_REVIEW", "DEPLOYING"}
 
-    for build in builds:
+
+def _persist_build(build):
+    # Update just this build's on-disk record by id, atomically (one flock
+    # critical section) -- concurrent workers each persist their own build
+    # without resaving, and clobbering, anyone else's record.
+    def mutate(records):
+        records = records if isinstance(records, list) else []
+
+        for i, existing in enumerate(records):
+            if existing.get("id") == build["id"]:
+                records[i] = build
+                return records
+
+        records.append(build)
+        return records
+
+    update(BUILDS_FILE, mutate)
+
+
+def _advance_one_build(build):
+    try:
         status = build.get("status")
 
         if status == "REQUESTED":
@@ -443,9 +599,36 @@ def advance_builds():
             _run_planning(build)
         elif status == "GENERATING":
             _run_generation(build)
+        elif status == "CODE_REVIEW":
+            _run_code_review(build)
         elif status == "DEPLOYING":
             _run_deployment(build)
+    except Exception as error:
+        # One build's crash must never lose track of another build's
+        # concurrently-computed result inside the same pool.map call --
+        # mark this build failed and persist it like any other outcome.
+        transition(build, "FAILED", BUILD_TRANSITIONS)
+        build["failure_reason"] = f"Unexpected error: {error}"
+        _record_if_terminal(build)
 
-    save_builds(builds)
+    _persist_build(build)
+    return build
 
-    return builds
+
+def advance_builds():
+    builds = load_builds()
+    ready = [b for b in builds if b.get("status") in _ACTIONABLE_STATUSES]
+
+    if not ready:
+        return builds
+
+    # Each ready build advances in its own worker, capped at
+    # MAX_CONCURRENT_BUILDS. Builds are already isolated by design (own git
+    # branch, own sandbox), and the work is I/O-bound (subprocess/HTTP), so
+    # threads give real concurrency. With a single ready build this is
+    # exactly the old sequential behavior. Builds not in `ready` are never
+    # touched or resaved.
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_BUILDS) as pool:
+        list(pool.map(_advance_one_build, ready))
+
+    return load_builds()

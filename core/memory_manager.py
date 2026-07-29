@@ -76,6 +76,33 @@ def write(path, records):
             fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
+def update(path, mutate_fn, default):
+    """Atomically read-modify-write a memory file.
+
+    Reuses the same fcntl.flock critical section as write(), but holds the
+    lock across the *whole* read -> mutate -> write sequence, so two
+    concurrent updaters (threads or processes) can never interleave a
+    load-then-save and lose each other's changes.
+    """
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    lock_path = _lock_path(path)
+
+    with open(lock_path, "w") as lock_file:
+
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+
+        try:
+            current = read(path, default)  # existing read(), reused
+            updated = mutate_fn(current)
+            _write_locked(path, updated)
+            return updated
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
 def _write_locked(path, records):
 
     if path.exists():

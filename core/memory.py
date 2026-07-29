@@ -46,6 +46,27 @@ def save(name, data, directory=None):
     memory_manager.write(directory / name, data)
 
 
+def update(name, mutate_fn, directory=None):
+    """Atomic read-modify-write of a memory file.
+
+    Unlike load() + save() (two separate lock-free steps), the whole
+    read -> mutate_fn -> write sequence runs inside one fcntl.flock
+    critical section (memory_manager.update), so concurrent updaters --
+    threads in the build pool or separate processes like the CloudCLI
+    dashboard -- can never lose each other's changes.
+    """
+
+    directory = directory or MEMORY_DIR
+
+    if _running_under_test() and directory.resolve() == PRODUCTION_MEMORY_DIR.resolve():
+        raise ProductionMemoryWriteBlocked(
+            f"Refusing to write {name!r} to production memory/ during a test run. "
+            "Use an isolated memory directory (see tests/conftest.py)."
+        )
+
+    return memory_manager.update(directory / name, mutate_fn, default={})
+
+
 def update_system_scan():
 
     state = load("system_state.json")

@@ -458,6 +458,50 @@ def test_delegate_rotation_still_falls_through_to_next_candidate_on_failure(monk
     assert [first, second] == ["openai", "claude"]
 
 
+def test_rotate_candidates_is_atomic_under_concurrent_calls():
+    # 13R: with builds dispatched concurrently, two simultaneous
+    # _rotate_candidates calls must never read the same index and land on
+    # the same starting provider. Every concurrent call must get a distinct
+    # rotation slot (the whole read-increment-write is one flock section).
+    import threading
+
+    candidates = ["a", "b", "c", "d", "e"]
+    starts = []
+    lock = threading.Lock()
+
+    def rotate():
+        rotated = ai_router._rotate_candidates("coding", candidates)
+        with lock:
+            starts.append(rotated[0])
+
+    threads = [threading.Thread(target=rotate) for _ in range(len(candidates))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # 5 concurrent calls over 5 candidates: each starting provider exactly once.
+    assert sorted(starts) == sorted(candidates)
+
+
+def test_rotate_candidates_goes_through_memory_update(monkeypatch):
+    calls = {}
+
+    def fake_update(name, mutate_fn, directory=None):
+        calls["name"] = name
+        state = mutate_fn({})
+        calls["state"] = state
+        return state
+
+    monkeypatch.setattr(ai_router, "update", fake_update)
+
+    rotated = ai_router._rotate_candidates("coding", ["a", "b", "c"])
+
+    assert calls["name"] == ai_router.ROTATION_STATE_FILE
+    assert calls["state"] == {"coding": 1}
+    assert rotated == ["a", "b", "c"]
+
+
 def test_get_provider_dashboard_claude_uses_self_tracked_usage_not_quota_state(monkeypatch):
     monkeypatch.setattr(
         ai_router, "get_usage_history",

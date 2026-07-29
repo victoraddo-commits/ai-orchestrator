@@ -26,7 +26,7 @@ from datetime import datetime
 
 import core.ai_provider as ai_provider
 import core.ai.provider_health as provider_health
-from core.memory import load, save
+from core.memory import load, save, update
 
 
 TASK_TYPE_KEYWORDS = {
@@ -96,16 +96,28 @@ ROTATION_STATE_FILE = "provider_rotation.json"
 # its own rotating start position instead: every delegate() call for that
 # role tries the next candidate in line first, still falling through the
 # rest of the (rotated) list on failure exactly as before.
+#
+# 13R: the whole read-increment-write of the rotation index goes through
+# core.memory.update()'s single flock critical section -- with builds now
+# dispatched concurrently (build_manager's thread pool), the previous
+# load-then-save version let two simultaneous delegate() calls read the
+# same index and land on the same starting provider, defeating rotation.
 def _rotate_candidates(task_type, candidates):
     if len(candidates) <= 1:
         return candidates
 
-    state = load(ROTATION_STATE_FILE) or {}
-    start = state.get(task_type, 0) % len(candidates)
+    captured = {}
 
-    state[task_type] = (start + 1) % len(candidates)
-    save(ROTATION_STATE_FILE, state)
+    def mutate(state):
+        state = state if isinstance(state, dict) else {}
+        start = state.get(task_type, 0) % len(candidates)
+        captured["start"] = start
+        state[task_type] = (start + 1) % len(candidates)
+        return state
 
+    update(ROTATION_STATE_FILE, mutate)
+
+    start = captured["start"]
     return candidates[start:] + candidates[:start]
 
 

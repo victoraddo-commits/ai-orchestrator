@@ -576,8 +576,8 @@
     {
       "id": "13Y",
       "name": "Fix _plan_needs_clarification false-positives on rhetorical sign-off questions",
-      "description": "Bug, confirmed live twice 2026-07-29 on 13P's own build (dbee72c6): core.build_manager._plan_needs_clarification(plan_text) is `'?' in (plan_text or '')` -- any question mark anywhere routes a completed plan to WAITING_FOR_USER_INPUT, indistinguishable from a genuine open clarifying question. Planning providers routinely close an otherwise-complete plan with a rhetorical sign-off ('Are there any concerns...?', 'Questions / Clarifications Needed?\\n\\nEverything specified... is clear and actionable. *Are there any objections...?*') that contains zero actual open questions. That single stray '?' parked 13P at WAITING_FOR_USER_INPUT indefinitely -- worse, no distilled question or approval-queue entry was ever created for a human to see and answer (checked live: memory/approval_queue.json had nothing for this build), so the build just sat silently. submit_answer() answering the (nonexistent) question and looping back to PLANNING re-triggered the exact same false positive on the re-generated plan's own closing sign-off the first time; only succeeded on a second attempt after explicitly instructing the planner not to end with a question at all -- not a fix, a workaround, and it required a human (this session) noticing and manually intervening. This is distinct from 13S (which detects garbage/hallucinated non-plan text, not this false-positive on legitimate complete plans, and explicitly preserves the existing '?' check as-is) -- 13S's own fix will not resolve this. Fix: distinguish a genuine open question (the plan explicitly asks the human to pick between concrete unresolved options) from a closing solicitation for sign-off/objections (no real ambiguity, just an invitation for feedback) before routing to WAITING_FOR_USER_INPUT. Also: whenever a plan IS routed to WAITING_FOR_USER_INPUT, a formal, visible record of what's actually being asked should exist somewhere a human can see it (today: nothing -- not builds.json's bare status, not approval_queue.json) -- at minimum log/surface the specific question text distinctly from the full plan.",
-      "status": "pending",
+      "description": "DONE (2026-07-29, direct live fix, not built by Kai -- commit 1d4f8d8) -- 13Y's own build (73e6724b) kept re-triggering the exact bug it existed to fix (any plan discussing '?' detection logic inevitably quotes '?' as example text), making the reprompt-workaround used for 13P unworkable for this specific phase, so it was fixed directly instead. _plan_needs_clarification now only inspects the plan's tail (last heading-demarcated Questions/Clarifications/Decision-Points section, or last paragraph if none) and excludes sentences matching a known rhetorical sign-off phrase list; a genuine open question still routes to WAITING_FOR_USER_INPUT and now populates a new pending_question field on the build record. Regression fixtures use the actual incident text from 13P's two false-positive plans and 13Y's own self-referential one. approval_queue.json untouched -- free-text clarification stays on its own path. 575 tests pass. Build 73e6724b rejected as redundant (its workspace clone predates the fix).",
+      "status": "completed",
       "dependencies": [],
       "priority": 9,
       "completion_criteria": [
@@ -586,7 +586,8 @@
         "Every WAITING_FOR_USER_INPUT build has a distinct, human-readable record of the specific question being asked, not just the full plan text and a bare status",
         "New tests cover: a plan ending in a rhetorical sign-off proceeds without clarification, a plan with a genuine open question still requires it, and 13P's actual two logged plan texts from this incident are used as regression fixtures"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "73e6724b"
     },
     {
       "id": "13Z",

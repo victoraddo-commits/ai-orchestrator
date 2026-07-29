@@ -1,3 +1,6 @@
+# How many ready builds advance_builds() may run at the same time (13R).
+max_concurrent_builds: 2
+
 providers:
 
   claude:

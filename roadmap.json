@@ -265,13 +265,14 @@
       "id": "13G",
       "name": "Kai Dashboard",
       "description": "New 'Kai Control Center' tab in the CloudCLI plugin (/project/src/ai-orchestrator-plugin), same tab pattern already used for Overview/Approvals/Learning/AI Providers. Displays Kai status/identity, current goals, active tasks, proposals (13C), delegated AI tasks (ai_router usage history), roadmap progress, pending approvals, completed improvements, lessons learned (13F). Reuses existing read endpoints plus whatever new ones 13B/13C/13F add -- no duplicate UI patterns.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13C",
-        "13F"
+        "13F",
+        "13Q"
       ],
       "priority": 19,
-      "build_id": "6758bced"
+      "build_id": null
     },
     {
       "id": "13H",
@@ -443,6 +444,21 @@
       ],
       "tests_required": true,
       "build_id": "ca7ff314"
+    },
+    {
+      "id": "13Q",
+      "name": "Self-modifying builds: reach the ai-orchestrator-plugin repo too",
+      "description": "Architecture gap, confirmed live 2026-07-28 via 13G's failed attempt: self-modifying builds only ever clone core.roadmap_manager.SELF_PROJECT_PATH (/project/ai-orchestrator) via _create_isolated_self_clone() -- a plain single-repo 'git clone -q SELF_PROJECT_PATH workspace'. The CloudCLI plugin frontend at /project/src/ai-orchestrator-plugin is its own separate git repository entirely outside that tree (confirmed: 0 files tracked under that path in the ai-orchestrator repo; the plugin dir has its own 'git rev-parse --show-toplevel'). Any phase whose work requires editing the plugin (13G's Kai Control Center tab, 13J's dashboard, 13K's voice commands UI, the proposed 13O) is currently unbuildable: the coding agent's --dir/project_path only ever contains the ai-orchestrator clone, so it silently has no path to the plugin's files at all -- 13G's generation call returned success=True with files_changed=[]/commits=[] because there was nothing in reach for it to change on the frontend half, not because the work was actually done. core/deployment.py's _merge_self_modifying_build/deploy_build are equally single-repo: a plain 'git merge --no-ff' of the build's branch into SELF_PROJECT_PATH, with no equivalent step for a second repo. Fix needs two parts working together: (1) build/workspace creation gives a self-modifying build access to both repos when its work needs the plugin -- e.g. _create_isolated_self_clone() also clones ai-orchestrator-plugin as a sibling directory inside the same workspace root, so a single --dir covers both trees; (2) deploy_build()'s self-modifying path merges each repo's branch back into its own live origin (SELF_PROJECT_PATH and the plugin's own live path) rather than assuming one repo -- a merge conflict or failure in either repo should fail the whole deploy, not partially apply. Phases that never touch the plugin should see no behavior change (single-repo clone/merge exactly as today) -- this should be additive, not a rewrite of the whole self-build path.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 20,
+      "completion_criteria": [
+        "A self-modifying build whose instructions reference the plugin can actually read and write files under ai-orchestrator-plugin, not just ai-orchestrator",
+        "deploy_build() merges each touched repo's branch back into its own live path; a failure in either repo fails the whole deploy rather than partially applying",
+        "Self-modifying builds that never touch the plugin see no behavior change from today's single-repo clone/merge",
+        "New test coverage for both the dual-clone workspace creation and the dual-repo merge/failure path"
+      ],
+      "tests_required": true
     }
   ]
 }

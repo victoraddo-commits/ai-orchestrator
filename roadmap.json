@@ -465,7 +465,7 @@
       "id": "13R",
       "name": "Parallel build execution + Claude oversight",
       "description": "Implements the already-approved design at docs/superpowers/specs/2026-07-28-parallel-build-execution-design.md (Status: Approved, not yet implemented) -- follow it directly rather than re-deriving the approach, it has full code sketches for every part below. High-impact, significant improvement to overall throughput: today build_manager.advance_builds() is a plain sequential for loop (confirmed live 2026-07-28) -- one build advances per scheduler cycle regardless of how many are ready, so every other queued roadmap phase waits in a single file behind whichever build is currently running. Four parts: (1) advance_builds() dispatches every ready build (REQUESTED/PLANNING/GENERATING/CODE_REVIEW/DEPLOYING) into a ThreadPoolExecutor(max_workers=max_concurrent_builds, default 2 from config/providers.yaml), each worker calling the existing _run_planning/_run_generation/_run_deployment functions unchanged -- single-build behavior stays exactly as today when there's only one ready build; (2) a new core.memory.update(name, mutate_fn) primitive (core/memory.py + core/memory_manager.py), reusing the existing fcntl.flock critical section, so read-modify-write state changes are atomic across threads and processes -- core.ai.ai_router._rotate_candidates (still a non-atomic load-then-save today, confirmed live) is rewritten on top of it, closing the race where two concurrently-dispatched builds could land on the same starting provider; _persist_build() likewise updates one build's record by id instead of resaving the whole list; (3) a new CODE_REVIEW build state between GENERATING and SECURITY_REVIEW -- an automated, purely advisory Claude review of non-Claude-generated builds' diffs (skipped when generated_by == 'claude', since there's no value in Claude reviewing its own work; skipped gracefully if Claude is unavailable) -- never auto-approves or auto-blocks, existing human approval gates are untouched; (4) a GENERATION_DISCIPLINE_PREAMBLE prepended to every generation instruction so every provider is held to the same 'write tests, run them, verify before claiming done' standard this project's own workflow follows.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 11,
       "completion_criteria": [
@@ -477,7 +477,8 @@
         "Full test list from the design doc's Testing section is implemented and passing"
       ],
       "tests_required": true,
-      "build_id": "8a402e81"
+      "build_id": "8a402e81",
+      "note": "Merged manually 2026-07-29 -- build object shows FAILED (self-build test gate caught a missing PyYAML dependency, fixed by installing it into the live venv + it was already correctly listed in the generated requirements.txt), but the generated code was fully correct (540/540 tests once PyYAML was available). Manually merged (git fetch + merge --no-ff, same mechanism deploy_build uses) after user sign-off, since the terminal FAILED build object could not reach WAITING_FOR_DEPLOY_APPROVAL on its own. Full live-repo suite passes post-merge (540/540)."
     },
     {
       "id": "13S",

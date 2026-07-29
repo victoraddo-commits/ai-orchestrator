@@ -45,12 +45,26 @@ ROLE_PROVIDERS = {
     # (Claude Fable 5 billed through OpenCode Zen's separate, well-funded
     # account) is the second try -- same model family, independent billing,
     # and deliberately maximizes Zen credit usage per user directive
-    # (2026-07-28). opencode (MiniMax-m2.7, real diversification) is last --
-    # still a useful third option if Zen's Claude route itself is down.
-    "coding": ["claude", "opencode_claude", "opencode"],
-    "planning": ["gemini", "openrouter", "minimax", "claude"],
+    # (2026-07-28). "opencode" (MiniMax-m2.7) is dropped for now -- see the
+    # minimax pause note below, which now extends here too per user
+    # directive (2026-07-28): its only model is minimax-m2.7, so there is no
+    # non-minimax way to use this provider today. Restore once 13T's review
+    # lands, either here (if the coding-agent path proves fine) or with a
+    # different default model.
+    "coding": ["claude", "opencode_claude"],
+    # minimax paused everywhere (2026-07-28, user directive) after two
+    # separate live incidents (builds ca7ff314/13P and 56e6c3d7's first
+    # attempt/13R) where it returned hallucinated <minimax:tool_call>
+    # markup instead of an actual plan on this tools-less text_task path --
+    # initially scoped to just this list, but the user then asked to pause
+    # every minimax route, including "opencode" above (its only model is
+    # minimax-m2.7, via opencode CLI's real tool-use loop -- a materially
+    # different capability that had no evidence of the same failure, but
+    # paused anyway per that directive rather than left running). See 13T,
+    # which will review real usage history before deciding what to restore.
+    "planning": ["gemini", "openrouter", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
-    "documentation": ["gemini", "groq", "openrouter", "minimax", "claude"],
+    "documentation": ["gemini", "groq", "openrouter", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same

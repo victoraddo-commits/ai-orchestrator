@@ -397,6 +397,67 @@ def test_get_provider_dashboard_surfaces_a_recorded_claude_error(monkeypatch):
     assert dashboard["claude"]["percent_remaining"] is None
 
 
+def test_delegate_rotates_starting_candidate_across_successive_calls(monkeypatch):
+    # A strict fallback-only order starves whichever candidate never fails
+    # first (e.g. gemini for planning) -- rotation gives every role
+    # candidate a real turn as the first attempt so idle credits (openrouter,
+    # minimax, ...) actually get used instead of sitting untouched.
+    import core.ai_provider as ai_provider
+
+    for name in ("openai", "gemini", "claude"):
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: True)
+        monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None, n=name: f"from {n}")
+
+    seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(4)]
+
+    assert seen == ["openai", "gemini", "claude", "openai"]
+
+
+def test_delegate_rotation_is_tracked_independently_per_task_type(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ("openai", "gemini", "claude", "groq", "openrouter"):
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: True)
+        monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None, n=name: f"from {n}")
+
+    first = ai_router.delegate("Critique this design", task_type="review")["provider"]
+    log_result = ai_router.delegate("Check the logs", task_type="log_analysis")["provider"]
+    second = ai_router.delegate("Critique this design", task_type="review")["provider"]
+
+    assert [first, second] == ["openai", "gemini"]
+    assert log_result == "groq"
+
+
+def test_delegate_rotation_still_falls_through_to_next_candidate_on_failure(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    openai = ai_provider.get_provider("openai")
+    monkeypatch.setitem(openai, "available_fn", lambda: True)
+    monkeypatch.setitem(openai, "run_text_task", lambda p, timeout=60, project_path=None: "from openai")
+
+    gemini = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(gemini, "available_fn", lambda: True)
+
+    def boom(p, timeout=60, project_path=None):
+        raise RuntimeError("gemini down")
+
+    monkeypatch.setitem(gemini, "run_text_task", boom)
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "from claude")
+
+    # First call rotates to "openai" (index 0) and succeeds there.
+    first = ai_router.delegate("Critique this design", task_type="review")["provider"]
+    # Second call rotates its starting point to "gemini", which fails --
+    # fallback must still walk forward to "claude", not raise.
+    second = ai_router.delegate("Critique this design", task_type="review")["provider"]
+
+    assert [first, second] == ["openai", "claude"]
+
+
 def test_get_provider_dashboard_claude_uses_self_tracked_usage_not_quota_state(monkeypatch):
     monkeypatch.setattr(
         ai_router, "get_usage_history",

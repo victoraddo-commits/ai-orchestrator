@@ -116,7 +116,10 @@ def _opencode_run_coding_task(project_path, instruction, **kwargs):
 # hit its weekly limit tonight, but Zen's Claude access has its own quota
 # pool and would have kept working. Same availability check as "opencode"
 # (same CLI, same Zen credential) since model choice doesn't affect that.
-OPENCODE_CLAUDE_MODEL = "opencode/claude-sonnet-5"
+# Fable 5 chosen deliberately over Sonnet 5 to maximize the Zen account's
+# usage headroom (per-account credit, not shared with the CloudCLI
+# subscription) while still staying on a real Claude model for this route.
+OPENCODE_CLAUDE_MODEL = "opencode/claude-fable-5"
 
 
 def _opencode_claude_run_coding_task(project_path, instruction, **kwargs):
@@ -220,7 +223,7 @@ register_provider(
     run_coding_task=_opencode_claude_run_coding_task,
     available_fn=_opencode_available,
     kind="cloud",
-    description="Claude (opencode/claude-sonnet-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits",
+    description="Claude Fable 5 (opencode/claude-fable-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits",
 )
 
 register_provider(

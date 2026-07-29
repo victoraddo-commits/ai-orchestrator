@@ -26,11 +26,11 @@ OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 # fallback role, so defaulting to the cheap, confirmed-working paid model
 # instead of a free one that wasn't actually available at test time.
 OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini"
-# Confirmed live: this account's plan doesn't support MiniMax-Text-01/M1
-# ("your current token plan not support model"); MiniMax-M2 is recognized
-# but this account's usage/credits are currently exhausted for it
-# ("Token Plan usage limit reached") -- same treatment as OPENAI_API_KEY:
-# registered and code-complete, not yet verified on a real success response.
+# MiniMax-Text-01/M1 isn't supported on this account's plan ("your current
+# token plan not support model"), but MiniMax-M2 is, and is confirmed
+# working live against real API calls with the account's loaded credits
+# (2026-07-28) -- an earlier "exhausted" reading was this account's
+# temporary pre-topup state, not a code or model-choice problem.
 MINIMAX_DEFAULT_MODEL = "MiniMax-M2"
 
 

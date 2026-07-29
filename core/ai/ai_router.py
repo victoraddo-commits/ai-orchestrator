@@ -12,6 +12,13 @@ Falls back through each role's candidate list on unavailability or failure,
 ultimately landing on Claude (the one provider guaranteed capable of
 anything) if every role-specific candidate fails. Every attempt -- success
 or failure -- is recorded to memory/ai_usage_history.json.
+
+Phase 13J: which candidate gets tried *first* now rotates per task_type
+(memory/provider_rotation.json, see _rotate_candidates) instead of always
+starting from index 0 -- otherwise a rarely-failing primary starves every
+other candidate of real usage, leaving paid/loaded credit on providers
+like openrouter/minimax/opencode_claude untouched. Fallback-on-failure
+still walks the rest of the (rotated) list exactly as before.
 """
 
 import time
@@ -34,12 +41,13 @@ TASK_TYPE_KEYWORDS = {
 # any task type.
 ROLE_PROVIDERS = {
     # Claude (CloudCLI/Anthropic subscription) stays first -- most proven,
-    # deepest test/review discipline. OpenCode (MiniMax-m2.7, real
-    # diversification) is the second try. opencode_claude (Claude billed
-    # through OpenCode Zen's separate account) is last -- confirmed useful
-    # live: it survives the exact failure mode that hit tonight (CloudCLI's
-    # subscription quota exhausted), since Zen's billing is independent.
-    "coding": ["claude", "opencode", "opencode_claude"],
+    # deepest test/review discipline. On quota/limit exhaustion, opencode_claude
+    # (Claude Fable 5 billed through OpenCode Zen's separate, well-funded
+    # account) is the second try -- same model family, independent billing,
+    # and deliberately maximizes Zen credit usage per user directive
+    # (2026-07-28). opencode (MiniMax-m2.7, real diversification) is last --
+    # still a useful third option if Zen's Claude route itself is down.
+    "coding": ["claude", "opencode_claude", "opencode"],
     "planning": ["gemini", "openrouter", "minimax", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
     "documentation": ["gemini", "groq", "openrouter", "minimax", "claude"],
@@ -75,6 +83,30 @@ def classify_task(description):
 
 def _candidates_for(task_type):
     return ROLE_PROVIDERS.get(task_type, ["claude"])
+
+
+ROTATION_STATE_FILE = "provider_rotation.json"
+
+
+# ROLE_PROVIDERS order still matters as the *fallback* walk once a call
+# starts -- but always starting from candidates[0] meant a rarely-failing
+# primary (gemini for planning, claude for coding) starved everyone listed
+# after it of real traffic, leaving paid/loaded credit on providers like
+# openrouter, minimax, and opencode_claude untouched. Each task_type gets
+# its own rotating start position instead: every delegate() call for that
+# role tries the next candidate in line first, still falling through the
+# rest of the (rotated) list on failure exactly as before.
+def _rotate_candidates(task_type, candidates):
+    if len(candidates) <= 1:
+        return candidates
+
+    state = load(ROTATION_STATE_FILE) or {}
+    start = state.get(task_type, 0) % len(candidates)
+
+    state[task_type] = (start + 1) % len(candidates)
+    save(ROTATION_STATE_FILE, state)
+
+    return candidates[start:] + candidates[:start]
 
 
 def get_usage_history():
@@ -118,7 +150,7 @@ def _record_coding_failure_health(provider_name, detail):
 
 def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task"):
     resolved_type = task_type or classify_task(description)
-    candidates = _candidates_for(resolved_type)
+    candidates = _rotate_candidates(resolved_type, _candidates_for(resolved_type))
 
     failures = []
 

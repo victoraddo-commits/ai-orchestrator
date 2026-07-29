@@ -265,7 +265,7 @@
       "id": "13G",
       "name": "Kai Dashboard",
       "description": "New 'Kai Control Center' tab in the CloudCLI plugin (/project/src/ai-orchestrator-plugin), same tab pattern already used for Overview/Approvals/Learning/AI Providers. Displays Kai status/identity, current goals, active tasks, proposals (13C), delegated AI tasks (ai_router usage history), roadmap progress, pending approvals, completed improvements, lessons learned (13F). Reuses existing read endpoints plus whatever new ones 13B/13C/13F add -- no duplicate UI patterns.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13C",
         "13F"
@@ -427,6 +427,22 @@
         "Data fetches only on tab open/manual refresh -- no new polling loop introduced"
       ],
       "tests_required": true
+    },
+    {
+      "id": "13P",
+      "name": "Scheduler: periodic systemd watchdog ping during long build cycles",
+      "description": "Bug, confirmed live 2026-07-28: core/scheduler.py's start() loop only calls notify(\"WATCHDOG=1\") once, after run_cycle() returns -- but run_cycle() -> advance_builds() -> _run_generation() blocks synchronously on a single opencode/claude coding-agent subprocess call that can legitimately run many minutes. When that exceeds the systemd unit's WatchdogSec (currently 600s, set in /etc/systemd/system/ai-orchestrator.service.d/override.conf -- outside this repo, not something this phase touches), systemd SIGABRTs the whole service mid-generation. Observed live: build 13G's first generation attempt was killed this way after ~9 minutes, the service auto-restarted (Restart=always), and the new scheduler cycle immediately re-ran generation on the same still-GENERATING build from scratch (a second opencode run against a workspace that already had partial commits from the killed attempt) -- wasteful and confusing, though not data-corrupting since the workspace is an isolated clone. Fix: ping the watchdog periodically *during* a cycle, not just after it completes, so a long-but-still-alive generation call doesn't look indistinguishable from a hang to systemd. A background thread started at the top of the while loop's iteration (before calling run_cycle()) that calls notify(\"WATCHDOG=1\") on a fixed interval well under WatchdogSec (e.g. every 30-60s), stopped once run_cycle() returns, is the natural fix -- no change to run_cycle()/build_manager/ai_router needed, this is purely scheduler.py's own heartbeat granularity.",
+      "status": "in_progress",
+      "dependencies": [],
+      "priority": 28,
+      "completion_criteria": [
+        "scheduler.py pings WATCHDOG=1 on a fixed interval (well under the systemd unit's WatchdogSec) throughout a cycle's execution, not only once after run_cycle() returns",
+        "The periodic ping stops cleanly once the cycle completes or the process is shutting down -- no leaked background thread across loop iterations",
+        "No change to run_cycle(), build_manager.py, or ai_router.py -- fix is contained to scheduler.py",
+        "New test (or documented manual verification note, if systemd/notify can't be meaningfully unit-tested) covers that the heartbeat mechanism starts and stops correctly around a cycle"
+      ],
+      "tests_required": true,
+      "build_id": "ca7ff314"
     }
   ]
 }

@@ -254,7 +254,7 @@
       "id": "13F",
       "name": "Kai Memory System",
       "description": "Extend core/build_learning.py: capture rollback root-cause (rollback_deployment currently records ROLLED_BACK as a failure in success-rate math but not why) and rejected-proposal reasons from 13C's Improvement Proposal store. Track preferred architectures, common failures, successful solutions, avoided approaches -- reuses the existing trusted/observe/avoid threshold pattern, no new classification scheme.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13C"
       ],
@@ -265,12 +265,13 @@
       "id": "13G",
       "name": "Kai Dashboard",
       "description": "New 'Kai Control Center' tab in the CloudCLI plugin (/project/src/ai-orchestrator-plugin), same tab pattern already used for Overview/Approvals/Learning/AI Providers. Displays Kai status/identity, current goals, active tasks, proposals (13C), delegated AI tasks (ai_router usage history), roadmap progress, pending approvals, completed improvements, lessons learned (13F). Reuses existing read endpoints plus whatever new ones 13B/13C/13F add -- no duplicate UI patterns.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13C",
         "13F"
       ],
-      "priority": 19
+      "priority": 19,
+      "build_id": "6758bced"
     },
     {
       "id": "13H",

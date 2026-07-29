@@ -433,7 +433,7 @@
       "id": "13P",
       "name": "Scheduler: periodic systemd watchdog ping during long build cycles",
       "description": "Bug, confirmed live 2026-07-28: core/scheduler.py's start() loop only calls notify(\"WATCHDOG=1\") once, after run_cycle() returns -- but run_cycle() -> advance_builds() -> _run_generation() blocks synchronously on a single opencode/claude coding-agent subprocess call that can legitimately run many minutes. When that exceeds the systemd unit's WatchdogSec (currently 600s, set in /etc/systemd/system/ai-orchestrator.service.d/override.conf -- outside this repo, not something this phase touches), systemd SIGABRTs the whole service mid-generation. Observed live: build 13G's first generation attempt was killed this way after ~9 minutes, the service auto-restarted (Restart=always), and the new scheduler cycle immediately re-ran generation on the same still-GENERATING build from scratch (a second opencode run against a workspace that already had partial commits from the killed attempt) -- wasteful and confusing, though not data-corrupting since the workspace is an isolated clone. Fix: ping the watchdog periodically *during* a cycle, not just after it completes, so a long-but-still-alive generation call doesn't look indistinguishable from a hang to systemd. A background thread started at the top of the while loop's iteration (before calling run_cycle()) that calls notify(\"WATCHDOG=1\") on a fixed interval well under WatchdogSec (e.g. every 30-60s), stopped once run_cycle() returns, is the natural fix -- no change to run_cycle()/build_manager/ai_router needed, this is purely scheduler.py's own heartbeat granularity.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 28,
       "completion_criteria": [
@@ -443,13 +443,13 @@
         "New test (or documented manual verification note, if systemd/notify can't be meaningfully unit-tested) covers that the heartbeat mechanism starts and stops correctly around a cycle"
       ],
       "tests_required": true,
-      "build_id": null
+      "build_id": "dbee72c6"
     },
     {
       "id": "13Q",
       "name": "Self-modifying builds: reach the ai-orchestrator-plugin repo too",
       "description": "Architecture gap, confirmed live 2026-07-28 via 13G's failed attempt: self-modifying builds only ever clone core.roadmap_manager.SELF_PROJECT_PATH (/project/ai-orchestrator) via _create_isolated_self_clone() -- a plain single-repo 'git clone -q SELF_PROJECT_PATH workspace'. The CloudCLI plugin frontend at /project/src/ai-orchestrator-plugin is its own separate git repository entirely outside that tree (confirmed: 0 files tracked under that path in the ai-orchestrator repo; the plugin dir has its own 'git rev-parse --show-toplevel'). Any phase whose work requires editing the plugin (13G's Kai Control Center tab, 13J's dashboard, 13K's voice commands UI, the proposed 13O) is currently unbuildable: the coding agent's --dir/project_path only ever contains the ai-orchestrator clone, so it silently has no path to the plugin's files at all -- 13G's generation call returned success=True with files_changed=[]/commits=[] because there was nothing in reach for it to change on the frontend half, not because the work was actually done. core/deployment.py's _merge_self_modifying_build/deploy_build are equally single-repo: a plain 'git merge --no-ff' of the build's branch into SELF_PROJECT_PATH, with no equivalent step for a second repo. Fix needs two parts working together: (1) build/workspace creation gives a self-modifying build access to both repos when its work needs the plugin -- e.g. _create_isolated_self_clone() also clones ai-orchestrator-plugin as a sibling directory inside the same workspace root, so a single --dir covers both trees; (2) deploy_build()'s self-modifying path merges each repo's branch back into its own live origin (SELF_PROJECT_PATH and the plugin's own live path) rather than assuming one repo -- a merge conflict or failure in either repo should fail the whole deploy, not partially apply. Phases that never touch the plugin should see no behavior change (single-repo clone/merge exactly as today) -- this should be additive, not a rewrite of the whole self-build path.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 20,
       "completion_criteria": [
@@ -459,7 +459,7 @@
         "New test coverage for both the dual-clone workspace creation and the dual-repo merge/failure path"
       ],
       "tests_required": true,
-      "build_id": "e75e4848"
+      "build_id": "c462811c"
     },
     {
       "id": "13R",

@@ -347,7 +347,18 @@ def _generation_prompt(build):
 
 
 def _ensure_repo(build):
-    create_local_repo(build["project_path"], branch=f"build-{build['id']}")
+    # A dual-repo self-build workspace (roadmap_manager._create_isolated_
+    # self_clone(include_plugin=True)) is a plain parent directory holding
+    # two sibling clones -- the build branch must exist in each actual repo,
+    # and the parent itself must never be git-inited (create_local_repo
+    # would happily do so, burying both clones as untracked nested repos).
+    # For every other build, self_build_repo_paths() is just [project_path],
+    # i.e. exactly the old single-repo behavior. Imported lazily:
+    # core.roadmap_manager imports this module at import time.
+    from core.roadmap_manager import self_build_repo_paths
+
+    for repo_path in self_build_repo_paths(build["project_path"]):
+        create_local_repo(repo_path, branch=f"build-{build['id']}")
 
 
 def _record_if_terminal(build):

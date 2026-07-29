@@ -237,6 +237,144 @@ def test_deploy_build_reports_a_merge_conflict_for_a_self_modifying_build(tmp_pa
     assert status.stdout.strip() == ""
 
 
+def _head(repo):
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _clean(repo):
+    status = subprocess.run(
+        ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True
+    )
+    return status.stdout.strip() == ""
+
+
+def _make_dual_workspace(tmp_path, monkeypatch, build_id):
+    """Two live repos + a dual-repo workspace holding a clone of each, with
+    the build branch checked out in both -- the exact layout
+    roadmap_manager._create_isolated_self_clone(include_plugin=True) plus
+    build_manager._ensure_repo produce."""
+    live_orchestrator = tmp_path / "live-orchestrator"
+    _init_repo(live_orchestrator)
+    live_plugin = tmp_path / "live-plugin"
+    _init_repo(live_plugin)
+
+    workspace_root = tmp_path / "self-build-workspaces"
+    monkeypatch.setattr(roadmap_manager, "SELF_PROJECT_PATH", live_orchestrator)
+    monkeypatch.setattr(roadmap_manager, "PLUGIN_PROJECT_PATH", live_plugin)
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", workspace_root)
+
+    workspace = workspace_root / "dualws1"
+    workspace.mkdir(parents=True)
+    orchestrator_clone = workspace / "ai-orchestrator"
+    plugin_clone = workspace / "ai-orchestrator-plugin"
+    subprocess.run(["git", "clone", "-q", str(live_orchestrator), str(orchestrator_clone)], check=True)
+    subprocess.run(["git", "clone", "-q", str(live_plugin), str(plugin_clone)], check=True)
+
+    branch = f"build-{build_id}"
+    for clone in (orchestrator_clone, plugin_clone):
+        subprocess.run(["git", "-C", str(clone), "checkout", "-q", "-b", branch], check=True)
+
+    return live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace
+
+
+def _commit_all(clone, message):
+    subprocess.run(["git", "-C", str(clone), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(clone), "commit", "-q", "-m", message], check=True)
+
+
+def test_deploy_build_merges_both_repos_of_a_dual_workspace(tmp_path, monkeypatch):
+    live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace = (
+        _make_dual_workspace(tmp_path, monkeypatch, "dual1")
+    )
+
+    (orchestrator_clone / "backend_feature.py").write_text("# backend half\n")
+    _commit_all(orchestrator_clone, "backend half")
+    (plugin_clone / "frontend_feature.ts").write_text("// frontend half\n")
+    _commit_all(plugin_clone, "frontend half")
+
+    build = {"id": "dual1", "name": "13G", "project_path": str(workspace)}
+
+    result = deploy_mgr.deploy_build(build)
+
+    assert result["deployed"] is True
+    # Each repo's branch landed on its own live origin.
+    assert (live_orchestrator / "backend_feature.py").exists()
+    assert (live_plugin / "frontend_feature.ts").exists()
+    assert str(live_orchestrator) in result["merged_repos"]
+    assert str(live_plugin) in result["merged_repos"]
+    # Backward-compatible single merge_commit: the orchestrator repo's HEAD.
+    assert result["merge_commit"] == _head(live_orchestrator)
+
+
+def test_deploy_build_rolls_back_the_first_repo_when_the_second_repo_fails(tmp_path, monkeypatch):
+    # Atomicity: a conflict in the plugin repo must fail the whole deploy
+    # and un-apply the already-merged orchestrator half -- never a partial
+    # deploy where the backend landed but the frontend didn't.
+    live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace = (
+        _make_dual_workspace(tmp_path, monkeypatch, "dual2")
+    )
+
+    (orchestrator_clone / "backend_feature.py").write_text("# backend half\n")
+    _commit_all(orchestrator_clone, "backend half")
+
+    (plugin_clone / "README.md").write_text("clone changed this line\n")
+    _commit_all(plugin_clone, "conflicting frontend change")
+    # The live plugin repo moves on the same line after the clone was taken
+    # -- a genuine merge conflict in the second repo only.
+    (live_plugin / "README.md").write_text("live changed this line too\n")
+    subprocess.run(["git", "-C", str(live_plugin), "commit", "-q", "-am", "live plugin change"], check=True)
+
+    orchestrator_head_before = _head(live_orchestrator)
+
+    build = {"id": "dual2", "name": "13G", "project_path": str(workspace)}
+
+    result = deploy_mgr.deploy_build(build)
+
+    assert result["deployed"] is False
+    assert "onflict" in result["reason"]
+    assert result["failed_repo"] == str(live_plugin)
+    assert result["rolled_back_repos"] == [str(live_orchestrator)]
+
+    # The orchestrator merge was rolled back: HEAD restored, file gone.
+    assert _head(live_orchestrator) == orchestrator_head_before
+    assert not (live_orchestrator / "backend_feature.py").exists()
+
+    # Neither live repo is left mid-merge or dirty.
+    assert _clean(live_orchestrator)
+    assert _clean(live_plugin)
+
+
+def test_deploy_build_fails_whole_deploy_when_the_first_repo_fails(tmp_path, monkeypatch):
+    live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace = (
+        _make_dual_workspace(tmp_path, monkeypatch, "dual3")
+    )
+
+    (orchestrator_clone / "README.md").write_text("clone changed this line\n")
+    _commit_all(orchestrator_clone, "conflicting backend change")
+    (live_orchestrator / "README.md").write_text("live changed this line too\n")
+    subprocess.run(["git", "-C", str(live_orchestrator), "commit", "-q", "-am", "live change"], check=True)
+
+    (plugin_clone / "frontend_feature.ts").write_text("// frontend half\n")
+    _commit_all(plugin_clone, "frontend half")
+
+    plugin_head_before = _head(live_plugin)
+
+    build = {"id": "dual3", "name": "13G", "project_path": str(workspace)}
+
+    result = deploy_mgr.deploy_build(build)
+
+    assert result["deployed"] is False
+    assert result["failed_repo"] == str(live_orchestrator)
+
+    # The plugin repo was never touched -- no partial apply from the other side.
+    assert _head(live_plugin) == plugin_head_before
+    assert not (live_plugin / "frontend_feature.ts").exists()
+    assert _clean(live_orchestrator)
+    assert _clean(live_plugin)
+
+
 @pytest.mark.integration
 def test_deploy_build_real_end_to_end(tmp_path):
     (tmp_path / "Dockerfile").write_text(

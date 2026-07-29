@@ -160,46 +160,110 @@ def _rollback_strategy(remediation):
 register_rollback(DEPLOY_ACTION, _rollback_strategy)
 
 
-def _merge_self_modifying_build(build, live_repo):
-    # A self-modifying build's project_path is a disposable clone of the
-    # live ai-orchestrator repo (core.roadmap_manager._create_isolated_self_
-    # clone), not a deployable app -- there's no Dockerfile and never will
-    # be. "Deploying" it means landing its committed changes on the live
-    # repo instead of building/running a container.
-    branch = f"build-{build['id']}"
-    clone_path = os.path.abspath(build["project_path"])
+def _git_head_of(repo):
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True,
+    ).stdout.strip()
 
+
+def _merge_branch_into_live_repo(live_repo, clone_path, branch, build_name):
     fetch = subprocess.run(
         ["git", "-C", str(live_repo), "fetch", "-q", clone_path, f"{branch}:{branch}"],
         capture_output=True, text=True,
     )
     if fetch.returncode != 0:
-        return {"deployed": False, "reason": f"Failed to fetch build branch: {fetch.stderr.strip()}"}
+        return {"merged": False, "reason": f"Failed to fetch build branch: {fetch.stderr.strip()}"}
 
     merge = subprocess.run(
-        ["git", "-C", str(live_repo), "merge", "--no-ff", "-m", f"Merge {branch}: {build['name']}", branch],
+        ["git", "-C", str(live_repo), "merge", "--no-ff", "-m", f"Merge {branch}: {build_name}", branch],
         capture_output=True, text=True,
     )
 
     if merge.returncode != 0:
         subprocess.run(["git", "-C", str(live_repo), "merge", "--abort"], capture_output=True, text=True)
         subprocess.run(["git", "-C", str(live_repo), "branch", "-D", branch], capture_output=True, text=True)
-        return {"deployed": False, "reason": f"Merge conflict merging {branch}: {merge.stderr.strip()}"}
+        return {"merged": False, "reason": f"Merge conflict merging {branch}: {merge.stderr.strip()}"}
 
     subprocess.run(["git", "-C", str(live_repo), "branch", "-D", branch], capture_output=True, text=True)
 
-    merge_commit = subprocess.run(
-        ["git", "-C", str(live_repo), "rev-parse", "HEAD"], capture_output=True, text=True,
-    ).stdout.strip()
+    return {"merged": True, "merge_commit": _git_head_of(live_repo)}
 
-    return {"deployed": True, "merged_branch": branch, "merge_commit": merge_commit}
+
+def _self_modifying_merge_targets(build):
+    # (live_repo, clone_path) pairs: each repo in the build's workspace is
+    # merged back into its own live origin. A single-repo workspace (today's
+    # unchanged common case) is one pair -- the workspace itself into
+    # SELF_PROJECT_PATH. A dual-repo workspace (13Q: phases that touch the
+    # CloudCLI plugin) adds the plugin clone into the plugin's own live repo.
+    from core.roadmap_manager import (
+        SELF_PROJECT_PATH,
+        PLUGIN_PROJECT_PATH,
+        ORCHESTRATOR_CLONE_DIRNAME,
+        PLUGIN_CLONE_DIRNAME,
+        is_dual_repo_workspace,
+    )
+
+    workspace = os.path.abspath(build["project_path"])
+
+    if is_dual_repo_workspace(workspace):
+        return [
+            (str(SELF_PROJECT_PATH), os.path.join(workspace, ORCHESTRATOR_CLONE_DIRNAME)),
+            (str(PLUGIN_PROJECT_PATH), os.path.join(workspace, PLUGIN_CLONE_DIRNAME)),
+        ]
+
+    return [(str(SELF_PROJECT_PATH), workspace)]
+
+
+def _merge_self_modifying_build(build):
+    # A self-modifying build's project_path is a disposable workspace of
+    # clones of the live repo(s) (core.roadmap_manager._create_isolated_
+    # self_clone), not a deployable app -- there's no Dockerfile and never
+    # will be. "Deploying" it means landing its committed changes on each
+    # live repo instead of building/running a container.
+    branch = f"build-{build['id']}"
+    targets = _self_modifying_merge_targets(build)
+
+    merged = []  # (live_repo, pre_merge_head) -- for rollback on a later failure
+    repo_merge_commits = {}
+
+    for live_repo, clone_path in targets:
+        pre_merge_head = _git_head_of(live_repo)
+        result = _merge_branch_into_live_repo(live_repo, clone_path, branch, build["name"])
+
+        if not result["merged"]:
+            # Atomicity: a merge conflict or failure in either repo fails
+            # the whole deploy. Any repo already merged is reset back to its
+            # pre-merge HEAD so the live system is never left half-deployed.
+            for merged_repo, previous_head in reversed(merged):
+                subprocess.run(
+                    ["git", "-C", merged_repo, "reset", "--hard", previous_head],
+                    capture_output=True, text=True,
+                )
+            return {
+                "deployed": False,
+                "reason": f"{result['reason']} (repo: {live_repo})",
+                "failed_repo": live_repo,
+                "rolled_back_repos": [repo for repo, _ in merged],
+            }
+
+        merged.append((live_repo, pre_merge_head))
+        repo_merge_commits[live_repo] = result["merge_commit"]
+
+    return {
+        "deployed": True,
+        "merged_branch": branch,
+        # Backward-compatible single value: the primary (orchestrator)
+        # repo's merge commit, exactly what this key meant before 13Q.
+        "merge_commit": repo_merge_commits[targets[0][0]],
+        "merged_repos": repo_merge_commits,
+    }
 
 
 def deploy_build(build):
-    from core.roadmap_manager import is_self_modifying, SELF_PROJECT_PATH
+    from core.roadmap_manager import is_self_modifying
 
     if is_self_modifying(build["project_path"]):
-        return _merge_self_modifying_build(build, SELF_PROJECT_PATH)
+        return _merge_self_modifying_build(build)
 
     name = container_name_for(build)
 

@@ -127,6 +127,28 @@ def _opencode_claude_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# Escalation tier above Fable 5: same Zen credential/billing, confirmed live
+# via `opencode models` to be valid model strings (2026-07-29, user directive
+# after Claude's weekly subscription limit hit mid-session). Fable 5 stays
+# the first Zen attempt (cheapest, maximizes account headroom per the
+# existing directive above) -- these are for when Fable 5 itself is also
+# unavailable/failing, before falling all the way to a non-Claude model
+# (plain "opencode"/DeepSeek). See ai.ai_router.ROLE_PROVIDERS["coding"]
+# for the actual fallback order.
+OPENCODE_CLAUDE_SONNET_MODEL = "opencode/claude-sonnet-5"
+OPENCODE_CLAUDE_OPUS_MODEL = "opencode/claude-opus-5"
+
+
+def _opencode_claude_sonnet_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", OPENCODE_CLAUDE_SONNET_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
+def _opencode_claude_opus_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", OPENCODE_CLAUDE_OPUS_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
 def _local_not_implemented(*args, **kwargs):
     raise NotImplementedError(
         "The local provider is a Phase 12I architecture placeholder -- no "
@@ -224,6 +246,22 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="Claude Fable 5 (opencode/claude-fable-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits",
+)
+
+register_provider(
+    "opencode_claude_sonnet",
+    run_coding_task=_opencode_claude_sonnet_run_coding_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="Claude Sonnet 5 (opencode/claude-sonnet-5 via OpenCode Zen) -- escalation above Fable 5 when it's also unavailable/failing, same separate Zen billing",
+)
+
+register_provider(
+    "opencode_claude_opus",
+    run_coding_task=_opencode_claude_opus_run_coding_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="Claude Opus 5 (opencode/claude-opus-5 via OpenCode Zen) -- top escalation tier above Fable 5/Sonnet 5, same separate Zen billing",
 )
 
 register_provider(

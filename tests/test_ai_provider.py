@@ -279,3 +279,62 @@ def test_opencode_claude_provider_shares_availability_with_opencode(monkeypatch,
 
     monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
     assert ai_provider.list_providers()["opencode_claude"]["available"] is False
+
+
+@pytest.mark.parametrize(
+    "provider_name,expected_model_fragment",
+    [
+        ("opencode_claude_sonnet", "claude-sonnet-5"),
+        ("opencode_claude_opus", "claude-opus-5"),
+    ],
+)
+def test_opencode_claude_escalation_tiers_are_registered_with_coding_agent_capability_only(
+    provider_name, expected_model_fragment
+):
+    providers = ai_provider.list_providers()
+
+    assert provider_name in providers
+    assert "coding_agent" in providers[provider_name]["capabilities"]
+    assert "text_task" not in providers[provider_name]["capabilities"]
+
+
+@pytest.mark.parametrize(
+    "provider_name,expected_model_fragment",
+    [
+        ("opencode_claude_sonnet", "claude-sonnet-5"),
+        ("opencode_claude_opus", "claude-opus-5"),
+    ],
+)
+def test_opencode_claude_escalation_tiers_use_the_correct_zen_model(
+    monkeypatch, tmp_path, provider_name, expected_model_fragment
+):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider(provider_name)
+    provider["run_coding_task"](str(tmp_path), "build a widget")
+
+    assert captured["model"] == f"opencode/{expected_model_fragment}"
+
+
+@pytest.mark.parametrize("provider_name", ["opencode_claude_sonnet", "opencode_claude_opus"])
+def test_opencode_claude_escalation_tiers_share_availability_with_opencode(monkeypatch, tmp_path, provider_name):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    assert ai_provider.list_providers()[provider_name]["available"] is True
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    assert ai_provider.list_providers()[provider_name]["available"] is False

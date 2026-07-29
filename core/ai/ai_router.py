@@ -45,15 +45,21 @@ ROLE_PROVIDERS = {
     # (Claude Fable 5 billed through OpenCode Zen's separate, well-funded
     # account) is the second try -- same model family, independent billing,
     # and deliberately maximizes Zen credit usage per user directive
-    # (2026-07-28). "opencode" was dropped 2026-07-28 while its only model
-    # was minimax-m2.7 (paused, see below); restored 2026-07-29 now that
-    # core.opencode_bridge.OPENCODE_DEFAULT_MODEL points at deepseek-v4-pro
-    # instead, via a dedicated OpenCode Zen credential confirmed live
-    # (2026-07-29) to have full account access, not narrowly scoped to
-    # DeepSeek -- it authenticates fine for opencode/claude-fable-5 too, so
-    # swapping it into the shared "opencode" auth.json slot didn't risk
-    # opencode_claude above.
-    "coding": ["claude", "opencode_claude", "opencode"],
+    # (2026-07-28). If Fable 5 is *also* unavailable/failing (confirmed live
+    # 2026-07-29: the CloudCLI subscription hit its weekly limit mid-session),
+    # escalate within the same Zen account to Sonnet 5 then Opus 5 before
+    # giving up on "a real Claude model" entirely -- per user directive
+    # (2026-07-29). Only after all three Claude-family options are exhausted
+    # does the list fall through to "opencode" (DeepSeek V4 Pro, a different
+    # model family) as the last resort. "opencode" was dropped 2026-07-28
+    # while its only model was minimax-m2.7 (paused, see below); restored
+    # 2026-07-29 now that core.opencode_bridge.OPENCODE_DEFAULT_MODEL points
+    # at deepseek-v4-pro instead, via a dedicated OpenCode Zen credential
+    # confirmed live (2026-07-29) to have full account access, not narrowly
+    # scoped to DeepSeek -- it authenticates fine for the claude-fable-5/
+    # sonnet-5/opus-5 routes too, so swapping it into the shared "opencode"
+    # auth.json slot didn't risk any of them.
+    "coding": ["claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "opencode"],
     # minimax paused everywhere (2026-07-28, user directive) after two
     # separate live incidents (builds ca7ff314/13P and 56e6c3d7's first
     # attempt/13R) where it returned hallucinated <minimax:tool_call>

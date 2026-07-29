@@ -1,3 +1,4 @@
+import threading
 import time
 from pathlib import Path
 from datetime import datetime, timezone
@@ -24,6 +25,72 @@ from core.logger import info
 # reads (Proxmox/Docker checks) at 5x the frequency cost effectively nothing.
 INTERVAL = 60
 
+# 13P: run_cycle() blocks synchronously on coding-agent subprocess calls that
+# can legitimately run many minutes. The systemd unit's WatchdogSec is 600s,
+# and pinging only *after* run_cycle() returns meant a long-but-healthy
+# generation looked identical to a hang -- systemd SIGABRTed the service
+# mid-generation (observed live on build 13G). Ping on a fixed interval well
+# under WatchdogSec for the whole duration of a cycle instead.
+WATCHDOG_PING_INTERVAL = 30
+
+
+class WatchdogHeartbeat:
+    """Pings systemd's watchdog on a fixed interval from a background thread.
+
+    Started before run_cycle() and stopped once it returns (success or
+    failure), so a long-running-but-alive cycle keeps the watchdog fed
+    without any change to run_cycle() itself. Usable as a context manager.
+    """
+
+    def __init__(self, interval=None, notify_fn=None):
+        self.interval = interval if interval is not None else WATCHDOG_PING_INTERVAL
+        # Default resolved at start() time so tests (and the ImportError
+        # fallback) see the current module-level notify.
+        self.notify_fn = notify_fn
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        fn = self.notify_fn if self.notify_fn is not None else notify
+
+        if fn is None:
+            return
+
+        self._stop.clear()
+        self._thread = threading.Thread(
+            target=self._run,
+            args=(fn,),
+            name="watchdog-heartbeat",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self, fn):
+        while not self._stop.is_set():
+            try:
+                fn("WATCHDOG=1")
+            except Exception:
+                # A failed ping must never kill the heartbeat loop; the
+                # next interval gets another chance.
+                pass
+
+            self._stop.wait(self.interval)
+
+    def stop(self):
+        self._stop.set()
+
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            self._thread = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.stop()
+        return False
+
 
 def start():
 
@@ -34,6 +101,10 @@ def start():
 
 
     while True:
+
+        heartbeat = WatchdogHeartbeat()
+
+        heartbeat.start()
 
         try:
 
@@ -69,6 +140,10 @@ def start():
             info(
                 f"scheduler error: {str(e)}"
             )
+
+        finally:
+
+            heartbeat.stop()
 
 
         time.sleep(INTERVAL)

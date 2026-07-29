@@ -24,8 +24,14 @@ PLANNING_TIMEOUT = 180
 # Generation involves real file writes/tool calls/tests, not a quick text
 # response -- confirmed live: 13C's generation hit the 300s wall-clock
 # ceiling (core.coding_bridge's default) while still actively working on a
-# genuinely larger module. Explicit and longer than planning's.
-GENERATION_TIMEOUT = 600
+# genuinely larger module, so it was raised to 600s. Confirmed live again
+# 2026-07-29: 13Q's opencode_claude and opencode attempts both ran out the
+# clock at 600s while still actively touching files (5+ files, repeated
+# format/test iterations) -- a genuinely large architecture change, not a
+# stuck/broken provider. Raised again; safe under the systemd unit's
+# WatchdogSec=1800 (see /etc/systemd/system/ai-orchestrator.service.d/
+# override.conf, outside this repo) with headroom to spare.
+GENERATION_TIMEOUT = 1200
 
 
 # The code-review step is a plain text-in/text-out Claude call over the

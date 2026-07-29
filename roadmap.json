@@ -510,6 +510,66 @@
         "No change made based on the single 13P incident alone -- must be backed by the broader usage-history review"
       ],
       "tests_required": true
+    },
+    {
+      "id": "13U",
+      "name": "Register DeepSeek as a real provider",
+      "description": "PARTIALLY DONE ALREADY (2026-07-29, direct live fix, not built by Kai) -- coding capability is done: core.opencode_bridge.OPENCODE_DEFAULT_MODEL now points at opencode/deepseek-v4-pro (was opencode/minimax-m2.7), using the dedicated DEEPSEEK_OPENCODE_ZEN_API_KEY credential (confirmed live to have full OpenCode Zen account access, not narrowly scoped -- also authenticates for opencode/claude-fable-5, so swapping it into the shared 'opencode' auth.json slot didn't risk opencode_claude), and ai_router.ROLE_PROVIDERS['coding'] is back to [claude, opencode_claude, opencode], 3 options again. Remaining scope for this phase: text-task capability only (planning/documentation/review, matching 'Planning: YES, Documentation: YES, Review: YES'). New provider 'deepseek' (or similar name distinct from the existing coding-only 'opencode' route), following the existing llm_clients.py + ai_provider.py pattern (NOT a separate per-provider file -- rejected as inconsistent with how every other provider here is structured). New llm_clients.call_deepseek(prompt, model='deepseek/deepseek-v4-pro') posting directly to https://openrouter.ai/api/v1/chat/completions using DEEPSEEK_OPENROUTER_API_KEY (already in .env, confirmed live -- its own dedicated key, not the shared OPENROUTER_API_KEY the existing 'openrouter' provider uses), registered with run_text_task, added to ROLE_PROVIDERS for planning/documentation/review. Mark cost_tier='free_or_low_cost' wherever the registry gains a cost_tier field (see 13W). DEEPSEEK_OPENCODE_ZEN_API_KEY is now in active use (see above) -- no longer an unresolved credential.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 13,
+      "completion_criteria": [
+        "deepseek provider registered with text_task capability via DEEPSEEK_OPENROUTER_API_KEY, added to planning/documentation/review ROLE_PROVIDERS lists",
+        "deepseek coding-agent route added via opencode CLI (model openrouter/deepseek/deepseek-v4-pro) reusing the existing shared openrouter auth.json credential -- no new credential-collision risk introduced",
+        "DEEPSEEK_OPENCODE_ZEN_API_KEY is not wired into anything that could collide with or override the existing opencode Zen credential",
+        "Tests cover: availability reflects DEEPSEEK_OPENROUTER_API_KEY presence, text_task call uses the dedicated key not the shared OPENROUTER_API_KEY, coding-agent path uses the correct model string"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13V",
+      "name": "Chief Architect redundancy: named fallback chain + dedicated history log",
+      "description": "The 'planning' role already has automatic multi-provider fallback (ai_router.ROLE_PROVIDERS['planning'], currently [gemini, openrouter, claude] post-minimax-pause -- see 13T for when/whether minimax returns), but there's no dedicated 'Chief Architect' framing distinct from general planning, and DeepSeek / a Claude-specific OpenRouter route aren't in that chain. Add a named priority list: Claude (primary) -> Gemini -> DeepSeek (once 13U lands) -> OpenRouter Claude Sonnet (once 13M's openrouter_claude-equivalent text-capable route exists, or reuse the existing plain 'openrouter' provider pinned to anthropic/claude-sonnet-4.6 if that's simpler) -> OpenAI. Failover triggers: quota exceeded, timeout, unavailable, or degraded health -- all already-detectable via provider_health.get_quota_snapshot()/capture_quota_exceeded(), reuse that, don't reimplement health signals. New memory/chief_architect_history.json, one entry per architecture-planning delegate() call: {task, primary, fallback_used, reason, result}, exactly the shape the user specified -- e.g. {\"task\": \"architecture planning\", \"primary\": \"claude\", \"fallback_used\": \"gemini\", \"reason\": \"claude quota exhausted\", \"result\": \"success\"}. Implementation should be a thin wrapper around the existing ai_router.delegate() (e.g. a new task_type='architecture' entry in ROLE_PROVIDERS, or a dedicated delegate_chief_architect() convenience function) that additionally records to chief_architect_history.json -- do not duplicate delegate()'s fallback-walking logic.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 14,
+      "completion_criteria": [
+        "A dedicated architecture-planning fallback chain (Claude -> Gemini -> DeepSeek -> OpenRouter Claude -> OpenAI) exists, reusing ai_router.delegate() rather than duplicating its fallback logic",
+        "memory/chief_architect_history.json gets one entry per call in the exact {task, primary, fallback_used, reason, result} shape specified",
+        "Failover reasons (quota/timeout/unavailable/degraded health) are captured accurately from existing provider_health signals, not guessed",
+        "Tests cover: primary success (no fallback recorded), one-level fallback, and full-chain exhaustion"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13W",
+      "name": "Cost tracking: cost_tier field + real cost estimates in usage history",
+      "description": "No cost_tier field or cost estimation exists anywhere today (confirmed: no references to 'cost_tier' anywhere in core/). Two parts: (1) add a cost_tier field ('free', 'low_cost', 'paid', or similar) to each provider's registration in ai_provider.py -- a static classification, not computed, e.g. groq/gemini free-tier as 'free', minimax/deepseek as 'free_or_low_cost' per the user's own labeling request, openai/claude as 'paid'. Surface it in list_providers()/get_provider_dashboard() output. (2) Real per-call cost estimates in ai_usage_history.json entries where available -- OpenRouter's chat-completions responses already include actual cost data (confirmed live: opencode CLI's own step_finish events carry a real 'cost' field, e.g. cost: 0.0139422, when routed through OpenRouter/Zen), so capture that into record_usage() as a new optional 'cost' field rather than estimating from token counts -- use the real figure when the provider's response includes one, leave it null otherwise (never fabricate a number for a provider that doesn't report one). get_provider_dashboard() (or a new aggregation function reusing it) should surface per-provider cost totals and average completion time (duration_ms is already recorded per call, just needs aggregating) alongside the existing attempts/success counts -- this is the 'AI Workforce Analytics' data the dashboard needs; no new UI is required by this phase, just the underlying data (13J/13O already cover surfacing it visually).",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 15,
+      "completion_criteria": [
+        "Every registered provider has a cost_tier field, surfaced via list_providers()",
+        "record_usage() captures a real cost figure when the provider's response includes one, null otherwise -- never a fabricated estimate",
+        "get_provider_dashboard() (or an equivalent aggregation) surfaces per-provider cost totals and average duration_ms",
+        "Tests cover: cost_tier present for every registered provider, cost field correctly captured/omitted depending on response shape"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13X",
+      "name": "Real chat interface with Kai (POST /kai/chat)",
+      "description": "POST /kai/command (13B) is explicitly a fixed rule-based phrase-matcher -- 'Deliberately not an LLM intent classifier' per its own module docstring -- not free-form conversation. This phase adds genuine open-ended chat: POST /kai/chat, bearer-token gated like every other write endpoint. Design: try core.kai.commands.dispatch(text) first (the existing fixed patterns still handle their exact phrasings for free); if it doesn't match, fall back to core.ai.ai_router.delegate() for an open-ended conversational response grounded in the same signals core.kai.planner._gather_signals() already assembles (roadmap state, health, recent failures, provider quota) so Kai can answer 'what are you doing?' / 'which AI is working?' accurately rather than hallucinating. Critical constraint, must not regress core/kai/policies.py's enforced restrictions: chat is a UI surface for the HUMAN operator to act through, not a new autonomous action path. 'Approve architecture plan' spoken in chat must resolve to the existing core.approval.approve() call with the real authenticated operator attributed (same as any other Approval Center action) -- it must NOT let Kai itself decide to approve based on interpreting the conversation, since core/kai/policies.py's own test (tests/test_kai_identity.py) greps every module under core/kai/ for calls to approve_architecture/approve_deploy and fails if one appears; this endpoint's approval-intent handling likely needs to live in core/api.py alongside the other approval endpoints, not core/kai/, to keep that guarantee structurally enforced rather than just documented. Reuse the existing planner/approval system as explicitly requested -- no new approval mechanism.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 16,
+      "completion_criteria": [
+        "POST /kai/chat exists, bearer-token gated, tries the existing command patterns first before falling back to open-ended delegate()",
+        "Any approval-intent expressed via chat resolves through the existing core.approval.approve()/reject() with a real attributed operator -- never a new Kai-internal approval path",
+        "tests/test_kai_identity.py's grep-based restriction check still passes -- no approve_architecture/approve_deploy call appears anywhere under core/kai/",
+        "Open-ended responses are grounded in real current state (roadmap/health/provider data), not fabricated"
+      ],
+      "tests_required": true
     }
   ]
 }

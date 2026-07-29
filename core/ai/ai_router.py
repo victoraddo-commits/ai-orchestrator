@@ -45,13 +45,15 @@ ROLE_PROVIDERS = {
     # (Claude Fable 5 billed through OpenCode Zen's separate, well-funded
     # account) is the second try -- same model family, independent billing,
     # and deliberately maximizes Zen credit usage per user directive
-    # (2026-07-28). "opencode" (MiniMax-m2.7) is dropped for now -- see the
-    # minimax pause note below, which now extends here too per user
-    # directive (2026-07-28): its only model is minimax-m2.7, so there is no
-    # non-minimax way to use this provider today. Restore once 13T's review
-    # lands, either here (if the coding-agent path proves fine) or with a
-    # different default model.
-    "coding": ["claude", "opencode_claude"],
+    # (2026-07-28). "opencode" was dropped 2026-07-28 while its only model
+    # was minimax-m2.7 (paused, see below); restored 2026-07-29 now that
+    # core.opencode_bridge.OPENCODE_DEFAULT_MODEL points at deepseek-v4-pro
+    # instead, via a dedicated OpenCode Zen credential confirmed live
+    # (2026-07-29) to have full account access, not narrowly scoped to
+    # DeepSeek -- it authenticates fine for opencode/claude-fable-5 too, so
+    # swapping it into the shared "opencode" auth.json slot didn't risk
+    # opencode_claude above.
+    "coding": ["claude", "opencode_claude", "opencode"],
     # minimax paused everywhere (2026-07-28, user directive) after two
     # separate live incidents (builds ca7ff314/13P and 56e6c3d7's first
     # attempt/13R) where it returned hallucinated <minimax:tool_call>

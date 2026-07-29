@@ -8,10 +8,16 @@ server process to manage, no shared-workspace risk, since `--dir` scopes
 every invocation to a specific directory (the same isolated-clone pattern
 core.roadmap_manager already uses for Claude, see K3).
 
-Deliberately defaults to a MiniMax model (opencode/minimax-m2.7) rather than
-a Claude model available through the same OpenCode Zen gateway -- routing
-"OpenCode" tasks to Claude-through-a-different-door would add zero real
-diversification and defeat the point of reducing Claude-credit dependency.
+Deliberately defaults to a non-Claude model rather than a Claude model
+available through the same OpenCode Zen gateway -- routing "OpenCode" tasks
+to Claude-through-a-different-door would add zero real diversification and
+defeat the point of reducing Claude-credit dependency. Was minimax-m2.7 until
+2026-07-29 (paused after two live incidents of hallucinated tool-call markup
+on the unrelated text_task path -- see core.ai.ai_router's ROLE_PROVIDERS
+comment; this coding-agent path never actually showed that failure, but was
+paused right alongside it per user directive). Replaced with deepseek-v4-pro,
+confirmed live against the same OpenCode Zen credential (full account access,
+not narrowly scoped -- also authenticated fine for opencode/claude-fable-5).
 """
 
 import json
@@ -19,7 +25,7 @@ import shutil
 import subprocess
 
 
-OPENCODE_DEFAULT_MODEL = "opencode/minimax-m2.7"
+OPENCODE_DEFAULT_MODEL = "opencode/deepseek-v4-pro"
 DEFAULT_TIMEOUT = 600
 
 

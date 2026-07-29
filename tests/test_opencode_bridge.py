@@ -25,7 +25,7 @@ def test_run_coding_task_reports_file_write_and_commit(monkeypatch):
     assert "abc123" in result["commits"][0]["message"]
 
 
-def test_run_coding_task_uses_the_minimax_default_model(monkeypatch):
+def test_run_coding_task_uses_the_default_model(monkeypatch):
     captured = {}
 
     def fake_run(project_path, instruction, model, timeout):
@@ -37,7 +37,7 @@ def test_run_coding_task_uses_the_minimax_default_model(monkeypatch):
     opencode_bridge.run_coding_task("/proj", "do something")
 
     assert captured["model"] == opencode_bridge.OPENCODE_DEFAULT_MODEL
-    assert "minimax" in opencode_bridge.OPENCODE_DEFAULT_MODEL
+    assert "minimax" not in opencode_bridge.OPENCODE_DEFAULT_MODEL
 
 
 def test_run_coding_task_surfaces_tool_errors_and_marks_unsuccessful(monkeypatch):

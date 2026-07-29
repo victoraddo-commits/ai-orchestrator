@@ -215,7 +215,7 @@ register_provider(
     run_coding_task=_opencode_run_coding_task,
     available_fn=_opencode_available,
     kind="cloud",
-    description="OpenCode (MiniMax-m2.7 via OpenCode Zen by default) -- sandboxed coding agent, second code-writing worker alongside Claude",
+    description="OpenCode (DeepSeek V4 Pro via OpenCode Zen by default, was MiniMax-m2.7 until 2026-07-29) -- sandboxed coding agent, second code-writing worker alongside Claude",
 )
 
 register_provider(

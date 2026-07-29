@@ -641,6 +641,151 @@
         "New tests cover: a dual-repo deploy that fails on the second repo, with pre-existing uncommitted changes present in the live orchestrator repo beforehand, ends with those changes intact (or the deploy is refused upfront, per whichever approach is chosen)"
       ],
       "tests_required": true
+    },
+    {
+      "id": "15A",
+      "name": "Kai platform auth foundation: local accounts + capability-based permissions",
+      "description": "Foundation for the 'Kai Enterprise Platform' initiative (user proposal 2026-07-29, trimmed after review). Scope, deliberately narrow: local username/password accounts (no external OAuth) plus a capability-based permission check -- capabilities like deploy.build, approve.architecture, chat.use, roadmap.create, provider.configure, each independently checkable in code -- mapped to exactly two initial roles: 'operator' (every capability, i.e. what the single existing bridge-token operator already has today) and 'viewer' (read-only: dashboard/chat reads, no write capabilities). Capability checks must live in one shared module (e.g. core/authz.py) that every write endpoint in core/api.py calls, not duplicated per-endpoint logic. Explicitly deferred from the original proposal, and why: full OAuth (Google/Microsoft/GitHub) + MFA + service accounts was scoped for a system with exactly one real user today -- add a second auth provider only when a real second person needs one, not speculatively. A 6-role taxonomy (Owner/Architect/Developer/Analyst/Customer/Guest) was cut to 2 roles for the same reason -- the capability model means adding a narrower role later is a mapping change, not a redesign, so there is no lock-in cost to starting minimal. The 'Customer' role scoped to assigned projects implied a multi-tenant customer-facing product pivot that was never a stated goal -- if that direction is wanted later it needs its own explicit decision, not a permissions bullet. Multi-organization support (isolated users/projects/learning/providers per org) was cut entirely: there is one organization. None of these are permanently ruled out, just not built until a real need exists -- a future roadmap phase should re-propose them with a concrete driving need, not reintroduce them speculatively.",
+      "status": "pending",
+      "dependencies": [
+        "13H"
+      ],
+      "priority": 30,
+      "completion_criteria": [
+        "core/authz.py (or equivalent) defines named capabilities and a single check_capability(operator, capability) function used by every write endpoint in core/api.py",
+        "Local account storage (username + hashed password) exists; login issues a session/token distinct from the existing bridge token",
+        "Exactly two roles exist ('operator', 'viewer') each mapping to a fixed capability set; the existing bridge-token operator continues to work unchanged with full ('operator') capabilities",
+        "A 'viewer'-role account can read dashboard/chat endpoints but is rejected (403, not silently ignored) on any write endpoint",
+        "No OAuth provider integration, no MFA, no service accounts, no additional roles beyond the two above, no multi-org support -- explicitly out of scope for this phase",
+        "Tests cover: operator retains full access, viewer is rejected on every write capability, a capability check with no matching role denies by default (fail closed)"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "15B",
+      "name": "Self-modification guardrail: mandatory review for auth/security-critical code",
+      "description": "Direct consequence of adding 15A's multi-user auth: once more than one identity can request builds, a self-modifying build touching authz/RBAC/credential-handling code (core/authz.py, account storage, core/security.py, provider credential loading, the API token/bridge-token mechanism itself) must never be treated like an ordinary code change -- a 'viewer'-capability user asking Kai to 'fix a bug' in core/authz.py must not be able to quietly widen their own or anyone else's permissions and sail through the normal architecture-approval flow unnoticed. Add a fixed, explicit path/module allowlist (auth/RBAC/credential files) checked in build_manager._run_planning or _create_architecture_approval: when a plan's generated diff touches any listed path, the architecture-approval request is flagged (distinct risk marker, e.g. risk='security-critical') and requires the 'operator' role specifically -- never auto-approved by any lower-privileged automation, regardless of who originally requested the build. This mirrors the existing core/kai/policies.py pattern (grep-enforced restriction that Kai itself can never call approve_architecture/approve_deploy) but for a different boundary: which class of change requires the highest-privilege human, not whether Kai can self-approve at all.",
+      "status": "pending",
+      "dependencies": [
+        "15A"
+      ],
+      "priority": 31,
+      "completion_criteria": [
+        "A fixed path allowlist for auth/RBAC/credential-handling files exists in one place (not scattered)",
+        "A build whose generated diff touches any allowlisted path is flagged risk='security-critical' on its deploy/architecture approval request",
+        "A security-critical approval request can only be approved by an account with full ('operator') capabilities -- rejected if attempted by any other role, with a clear error, not a silent no-op",
+        "Tests cover: a diff touching an allowlisted file is flagged and blocked for a non-operator approver; a diff touching only unrelated files is unaffected; the allowlist check does not regress any existing architecture/deploy approval behavior for non-security-critical builds"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "15C",
+      "name": "Kai platform audit log",
+      "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
+      "status": "pending",
+      "dependencies": [
+        "15A"
+      ],
+      "priority": 32,
+      "completion_criteria": [
+        "GET /audit merges existing build/approval/decision/incident history into one chronological feed, no duplicate storage of data that already exists elsewhere",
+        "Supports filtering by user, action type, and date range; supports CSV and JSON export",
+        "Records the authenticated user (from 15A) and source IP on every write endpoint going forward, surfaced in the merged feed",
+        "Read-only for all roles including 'viewer' -- an audit log editable by any user defeats its purpose",
+        "Tests cover: a build approval, a deploy approval, and an incident all appear correctly attributed in the merged feed; filtering and export produce correct subsets"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "15D",
+      "name": "Real-time update infrastructure for the Kai dashboard",
+      "description": "Everything the dashboard reads today is pull/poll-based (plain GET endpoints, no push). The original proposal's 'dashboard must update in near real-time' is its own sub-project, not a checkbox on 15E -- this phase decides and implements the actual mechanism (Server-Sent Events is the natural fit: one-way server-to-browser push, no new bidirectional protocol needed, works through the existing CloudCLI plugin proxy) and defines exactly which state changes trigger a push (build status transitions, new approval requests, roadmap phase completions) versus what stays poll-on-tab-open (static/rarely-changing data). Reuses existing state -- this phase adds a push transport on top of data that's already computed elsewhere, it does not recompute anything new.",
+      "status": "pending",
+      "dependencies": [
+        "13G"
+      ],
+      "priority": 33,
+      "completion_criteria": [
+        "One documented push mechanism (SSE) is implemented and exposed via a new endpoint (e.g. GET /events)",
+        "A defined, minimal list of triggering state changes (build status transition, new pending approval, roadmap phase completion) push an event within a few seconds of occurring",
+        "Falls back gracefully to the existing poll-based behavior if the push connection drops -- no dashboard functionality regresses if SSE is unavailable",
+        "Tests cover: a build status transition produces a push event with correct payload; a dropped connection does not crash the dashboard or lose state on reconnect"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "15E",
+      "name": "Kai Enterprise Dashboard: consolidate system health, provider health, usage, and notifications",
+      "description": "Extends 13G's Kai Dashboard and 13J's AI Workforce & Build Scheduler Dashboard rather than replacing them -- adds the remaining panels from the original proposal that don't already exist: system health summary, provider health (already partly surfaced via /providers/dashboard, needs a dedicated panel), usage statistics, and a notifications panel (surfacing anything currently requiring human attention -- pending approvals, WAITING_FOR_USER_INPUT builds -- as the visual equivalent of the Telegram alerts 13Z sends). Reuses 15D's push infrastructure for live updates rather than polling. Reuses existing APIs throughout (/health, /incidents, /decisions, /approvals, /learning, /roadmap/progress, /providers/dashboard) -- no new data computation, purely presentation and layout.",
+      "status": "pending",
+      "dependencies": [
+        "13G",
+        "13J",
+        "15D"
+      ],
+      "priority": 34,
+      "completion_criteria": [
+        "Dashboard shows: system health, roadmap progress, active builds, pending approvals, build history, learning summary, provider health, usage statistics, notifications, scheduler status, Telegram status, API status -- each backed by an existing endpoint, none newly computed",
+        "Updates live via 15D's push mechanism, not full-page polling",
+        "No duplicate panel/functionality already present in 13G's Kai Dashboard or 13J's workforce dashboard -- extends them, does not fork a competing dashboard",
+        "Read access respects 15A roles ('viewer' can see it, cannot trigger any action from it)"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "15F",
+      "name": "Kai Chat: multi-user, project-aware, conversation history",
+      "description": "Extends 13X's POST /kai/chat rather than replacing it. Adds: persisted conversation history per authenticated user (15A), project-aware context (conversations scoped to a project once multi-project workspaces exist -- see 15H), markdown/code-block rendering on the frontend, streaming responses, and conversation search. Every constraint 13X already established stays load-bearing and unchanged here: chat is a UI surface for an authenticated human to act through, never a new autonomous action path -- an approval-intent expressed in chat still resolves through core.approval.approve()/reject() with the real authenticated user attributed as operator, and tests/test_kai_identity.py's grep-based restriction (no approve_architecture/approve_deploy call anywhere under core/kai/) must still pass. A 'viewer'-role user can chat and ask questions but any approval/deploy intent expressed in chat is rejected by 15A's capability check exactly as it would be via the API directly -- chat must not become a side channel around the permission system.",
+      "status": "pending",
+      "dependencies": [
+        "13X",
+        "15A"
+      ],
+      "priority": 35,
+      "completion_criteria": [
+        "Conversation history persists per authenticated user and is retrievable/searchable",
+        "Streaming responses work end to end (backend to frontend)",
+        "Markdown and code blocks render correctly in the frontend",
+        "An approval/deploy intent expressed in chat by a 'viewer'-role account is rejected via the same 15A capability check as the direct API, not silently allowed",
+        "tests/test_kai_identity.py's existing restriction still passes unchanged",
+        "File upload is deferred to a later phase if not already trivial given the existing chat transport -- do not block this phase's completion on image/file support"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "15G",
+      "name": "AI Workforce Center: dedicated per-worker view",
+      "description": "The Kai Control Center tab (13G's build, plugin repo commit a873340) already has a renderKaiDelegatedTasksCard summarizing per-provider delegation counts and success rates. This phase promotes that into a dedicated page/tab with the full per-worker detail the original proposal asked for: name, role (planning/coding/review/documentation/testing), provider, model, health, availability, current task, queue length, success rate, failure rate, average completion time. Sourced from existing provider-rotation/quota data (core/ai_provider.py, memory/provider_rotation.json, memory/ai_usage_history.json) -- no new tracking infrastructure. New providers/models must appear automatically as they're used, without a UI code change, matching how provider rotation itself already works without hardcoded provider lists.",
+      "status": "pending",
+      "dependencies": [
+        "13J"
+      ],
+      "priority": 36,
+      "completion_criteria": [
+        "Dedicated view lists every provider/model that has been delegated to at least once, with all fields from the description",
+        "A newly-used provider/model appears automatically on next data refresh with no UI code change required",
+        "Queue length and current-task fields reflect real in-flight state, not stale/cached data",
+        "Data is sourced entirely from existing provider-rotation/usage records -- no duplicate tracking added"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "15H",
+      "name": "Multi-project workspaces",
+      "description": "Support more than one project inside Kai, each with its own conversations (15F), roadmap, builds, documentation, learning, approvals, and deployments, switchable without leaving the chat/dashboard. This is scoped to multiple projects for the single existing operator -- not multi-tenancy and not multi-organization (15A's deferred-scope note applies here too: isolating data between organizations is a separate, not-yet-justified phase). Existing self-modifying-build machinery (core.roadmap_manager's SELF_PROJECT_PATH handling) must remain a distinct, special-cased project -- ordinary projects use the existing isolated-clone/template flow (core/project_templates.py, core/repo_manager.py) unchanged, this phase only adds the ability to hold several of them and switch context between them.",
+      "status": "pending",
+      "dependencies": [
+        "15A",
+        "15F"
+      ],
+      "priority": 37,
+      "completion_criteria": [
+        "A user can create/switch between multiple projects without a new login or losing chat context",
+        "Each project's conversations, roadmap, builds, and approvals are isolated from every other project's",
+        "The self-modifying ai-orchestrator project itself continues to work exactly as today -- not folded into the generic multi-project mechanism in a way that risks its special-cased handling",
+        "Tests cover: switching projects returns the correct isolated data for each; no cross-project data leakage in any listing endpoint"
+      ],
+      "tests_required": true
     }
   ]
 }

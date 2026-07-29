@@ -1,3 +1,4 @@
+import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -137,6 +138,7 @@ def create_build(name, description, project_path, template=None):
         qa_history=[],
         plan=None,
         planned_by=None,
+        pending_question=None,
         generation_result=None,
         generated_by=None,
         security_report=None,
@@ -194,6 +196,7 @@ def submit_answer(build_id, answer):
     def mutate(b):
         transition(b, "PLANNING", BUILD_TRANSITIONS)
         b.setdefault("qa_history", []).append({"answer": answer})
+        b["pending_question"] = None
 
     return _update(build_id, mutate)
 
@@ -366,6 +369,50 @@ def _record_if_terminal(build):
         record_build_outcome(build)
 
 
+# Confirmed live 2026-07-29 (13P, then again on 13Y's own plan -- a plan
+# that discusses this exact detection logic inevitably quotes '?' as
+# example text): a bare "'?' in plan_text" false-positives on any rhetorical
+# closing solicitation ("any objections?") and on any '?' appearing as
+# illustrative/quoted text anywhere in the document, not just a genuine
+# request for human input. A real open question is the plan's actual closing
+# ask, not an example quoted earlier in the document -- so only the tail
+# (the last heading-demarcated section, if the plan has one, else the last
+# paragraph) is inspected, and within that tail a sentence matching a known
+# rhetorical sign-off phrase is excluded. Deliberately no "does it offer a
+# concrete alternative" check -- an earlier version tried gating on the
+# presence of the word "or", but that matches filler ("objections or final
+# check") just as readily as a real choice ("database A or database B"),
+# which is worse than not checking at all.
+_SIGNOFF_PATTERNS = re.compile(
+    r"any objections|any concerns|any (?:other |additional )?edge cases"
+    r"|shall we proceed|does this look good|let me know if"
+    r"|ready to proceed|ready for implementation|before proceeding"
+    r"|before coding begins|before implementation"
+    r"|that we need to account for|need to account for",
+    re.IGNORECASE,
+)
+
+# Tolerates the heading variants actually observed live: a bare "Questions
+# Needed?", a numbered "#### 4. Questions / Clarifications for the
+# Requester", and 13P's own "Decision Points (if applicable)".
+_CLARIFICATION_HEADING = re.compile(
+    r"^#{0,6}.{0,24}?\b(?:questions?|clarifications?|decisions?\s+needed|decision\s+points?)\b.*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _tail_for_clarification_check(plan_text):
+    heading_match = None
+    for match in _CLARIFICATION_HEADING.finditer(plan_text):
+        heading_match = match
+
+    if heading_match is not None:
+        return plan_text[heading_match.end():]
+
+    paragraphs = [p for p in re.split(r"\n\s*\n", plan_text) if p.strip()]
+    return paragraphs[-1] if paragraphs else plan_text
+
+
 def _plan_needs_clarification(plan_text):
     # A plan that's still asking an open question isn't a concrete proposal
     # yet -- surfacing it as a formal Approval would ask a human to
@@ -373,7 +420,22 @@ def _plan_needs_clarification(plan_text):
     # without an open question reaches the WAITING_FOR_ARCHITECTURE_APPROVAL
     # gate; a question routes back through the WAITING_FOR_USER_INPUT /
     # submit_answer loop instead.
-    return "?" in (plan_text or "")
+    return _extract_pending_question(plan_text) is not None
+
+
+def _extract_pending_question(plan_text):
+    tail = _tail_for_clarification_check(plan_text or "")
+
+    for sentence in re.split(r"(?<=[.?!])\s+", tail):
+        if "?" not in sentence:
+            continue
+
+        if _SIGNOFF_PATTERNS.search(sentence):
+            continue
+
+        return sentence.strip()
+
+    return None
 
 
 def _roadmap_phase_id_for_build(build_id):
@@ -449,7 +511,10 @@ def _run_planning(build):
     build["plan"] = result.get("response", "")
     build["planned_by"] = result.get("provider")
 
-    if _plan_needs_clarification(build["plan"]):
+    pending_question = _extract_pending_question(build["plan"])
+
+    if pending_question is not None:
+        build["pending_question"] = pending_question
         transition(build, "WAITING_FOR_USER_INPUT", BUILD_TRANSITIONS)
     else:
         transition(build, "WAITING_FOR_ARCHITECTURE_APPROVAL", BUILD_TRANSITIONS)

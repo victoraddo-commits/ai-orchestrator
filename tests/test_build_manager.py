@@ -985,3 +985,115 @@ def test_full_lifecycle_happy_path(monkeypatch):
     build = build_manager.get_build(build["id"])
     assert build["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert build["security_report"]["total_findings"] == 0
+
+
+# 13Y: _plan_needs_clarification's bare "'?' in plan_text" false-positived
+# live on 13P's own plan twice (2026-07-29) -- once on a rhetorical closing
+# sign-off, and again on a self-referential plan (about this exact bug) that
+# quoted '?' characters as illustrative examples. These fixtures are the
+# actual incident text (see roadmap phase 13Y).
+
+_13P_DECISION_POINTS_PLAN = """Here is the proposed architecture and implementation plan for phase 13P.
+
+#### Decision Points (if applicable)
+- Interval Configuration: Confirm whether the fixed interval for the heartbeat should be set to 30, 45, or 60 seconds. A lower value could reduce the risk of being flagged as hung, but it would come at the cost of slightly more frequent notifications.
+- Threading Limitations: Discuss potential issues or limitations of using threads in the current scheduling environment. Are there concerns about thread safety or shared resources that we need to account for?
+
+By following this architecture plan, we will be able to address the identified bug effectively."""
+
+_13P_SIGNOFF_PLAN = """Here is the proposed architecture plan.
+
+### Questions / Clarifications Needed?
+Everything specified in the prompt and prior clarifications is clear and actionable.
+
+Are there any objections or final check you would like to make on this plan before proceeding to code modification?"""
+
+_13Y_SELF_REFERENTIAL_PLAN = """Plan discusses core.build_manager._plan_needs_clarification(plan_text) uses '?' in plan_text to detect open questions.
+
+Example genuine question: Should we use database A or database B for persistence?
+Example rhetorical: Are there any concerns...?
+
+### 4. Questions / Clarifications for the Requester
+Everything specified in the roadmap phase and prior clarifications is clear and actionable. Are there any objections or additional edge cases you would like considered before coding begins?"""
+
+
+@pytest.mark.parametrize("plan_text", [
+    _13P_DECISION_POINTS_PLAN,
+    _13P_SIGNOFF_PLAN,
+    _13Y_SELF_REFERENTIAL_PLAN,
+])
+def test_plan_needs_clarification_false_positives_from_13p_and_13y_incidents_are_fixed(plan_text):
+    assert build_manager._plan_needs_clarification(plan_text) is False
+    assert build_manager._extract_pending_question(plan_text) is None
+
+
+def test_plan_needs_clarification_still_catches_a_genuine_open_question():
+    plan_text = "Architecture: use FastAPI. Should we use database A or database B for persistence?"
+
+    assert build_manager._plan_needs_clarification(plan_text) is True
+    assert "database A or database B" in build_manager._extract_pending_question(plan_text)
+
+
+def test_plan_needs_clarification_still_catches_a_genuine_question_with_no_heading():
+    plan_text = "Plan: use FastAPI + React. Any preference on database?"
+
+    assert build_manager._plan_needs_clarification(plan_text) is True
+    assert build_manager._extract_pending_question(plan_text) == "Any preference on database?"
+
+
+def test_advance_builds_proceeds_to_architecture_approval_when_plan_only_has_a_signoff_question(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning",
+            "response": _13P_SIGNOFF_PLAN,
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
+    assert updated.get("pending_question") is None
+
+
+def test_advance_builds_populates_pending_question_for_a_genuine_open_question(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning",
+            "response": "Plan: use FastAPI + React. Any preference on database?",
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_USER_INPUT"
+    assert updated["pending_question"] == "Any preference on database?"
+
+
+def test_submit_answer_clears_pending_question():
+    build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
+    _force_status(build["id"], "WAITING_FOR_USER_INPUT")
+
+    builds = build_manager.load_builds()
+    for b in builds:
+        if b["id"] == build["id"]:
+            b["pending_question"] = "Any preference on database?"
+    build_manager.save_builds(builds)
+
+    updated = build_manager.submit_answer(build["id"], "SQLite")
+
+    assert updated["pending_question"] is None
+    assert updated["status"] == "PLANNING"

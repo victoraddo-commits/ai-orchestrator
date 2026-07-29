@@ -93,6 +93,45 @@ def test_read_returns_default_when_both_primary_and_backup_are_corrupt(tmp_path)
     assert mm.read(path, default=[]) == []
 
 
+def test_update_applies_mutation_and_returns_result(tmp_path):
+    path = tmp_path / "counter.json"
+    mm.write(path, {"count": 1})
+
+    result = mm.update(path, lambda state: {**state, "count": state["count"] + 1}, default={})
+
+    assert result == {"count": 2}
+    assert mm.read(path, default={}) == {"count": 2}
+
+
+def test_update_uses_default_when_file_does_not_exist(tmp_path):
+    path = tmp_path / "missing.json"
+
+    result = mm.update(path, lambda records: records + [{"id": "a"}], default=[])
+
+    assert result == [{"id": "a"}]
+    assert mm.read(path, default=[]) == [{"id": "a"}]
+
+
+def test_update_has_no_lost_updates_across_interleaved_read_modify_writes(tmp_path):
+    # The exact race update() exists to close: N concurrent increments via
+    # load-then-save can drop updates; via update() every one must land.
+    import threading
+
+    path = tmp_path / "counter.json"
+    mm.write(path, {"count": 0})
+
+    def increment():
+        mm.update(path, lambda state: {**state, "count": state.get("count", 0) + 1}, default={})
+
+    threads = [threading.Thread(target=increment) for _ in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert mm.read(path, default={})["count"] == 20
+
+
 def test_concurrent_writes_never_corrupt_the_file(tmp_path):
     import threading
 

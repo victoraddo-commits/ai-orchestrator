@@ -264,15 +264,15 @@
     {
       "id": "13G",
       "name": "Kai Dashboard",
-      "description": "New 'Kai Control Center' tab in the CloudCLI plugin (/project/src/ai-orchestrator-plugin), same tab pattern already used for Overview/Approvals/Learning/AI Providers. Displays Kai status/identity, current goals, active tasks, proposals (13C), delegated AI tasks (ai_router usage history), roadmap progress, pending approvals, completed improvements, lessons learned (13F). Reuses existing read endpoints plus whatever new ones 13B/13C/13F add -- no duplicate UI patterns.",
-      "status": "pending",
+      "description": "New 'Kai Control Center' tab in the CloudCLI plugin (/project/src/ai-orchestrator-plugin), same tab pattern already used for Overview/Approvals/Learning/AI Providers. Displays Kai status/identity, current goals, active tasks, proposals (13C), delegated AI tasks (ai_router usage history), roadmap progress, pending approvals, completed improvements, lessons learned (13F). Reuses existing read endpoints plus whatever new ones 13B/13C/13F add -- no duplicate UI patterns. DONE (2026-07-29) -- code was already correct and merged to main in the plugin repo (commit a873340) since 2026-07-28; the build (6758bced) only failed on an unrelated roadmap.json merge conflict during its own deploy step on the orchestrator side, never on the plugin code itself. Deployed to the live CloudCLI plugin dir this session (as part of an unrelated Approval Center UI fix that rebuilt and redeployed the same plugin) and verified live: renderKaiControlCenter delivers identity/mission/capabilities, delegated AI task history, 13C proposals, roadmap progress, pending approvals (linking to the Approval Center rather than duplicating its buttons), and 13F lessons learned -- matching this phase's description in full.",
+      "status": "completed",
       "dependencies": [
         "13C",
         "13F",
         "13Q"
       ],
       "priority": 19,
-      "build_id": null
+      "build_id": "6758bced"
     },
     {
       "id": "13H",
@@ -501,7 +501,7 @@
       "id": "13T",
       "name": "Determine minimax's actual strengths from real usage data, adjust routing",
       "description": "Follow-on to the 'minimax' common_failure lesson recorded 2026-07-28 (memory/learning_lessons.json) -- that incident showed minimax performs poorly on the plain text_task path (planning/log_analysis/documentation roles in core.ai.ai_router.ROLE_PROVIDERS, backed by core.llm_clients.call_minimax, a tools-less chat-completion call), but this should not be read as 'minimax is bad' broadly -- it's used in a completely different, already-real capacity too: the 'opencode' provider's default model is opencode/minimax-m2.7, run through opencode CLI's actual agentic tool-use loop (core/opencode_bridge.py) for real coding_agent tasks, where it has genuine tools to call rather than hallucinating them. Task: review memory/ai_usage_history.json's existing 'opencode' provider entries (its only model has always been minimax-m2.7, so this data already is minimax's coding-agent track record) alongside its text_task entries under the 'minimax' provider name, and produce an evidence-based recommendation: which roles/task_types minimax is actually reliable for versus not, backed by real success/failure counts rather than the single bad text_task incident. Apply the result to core.ai.ai_router.ROLE_PROVIDERS and/or core.build_learning lesson records (e.g. record a preferred_architecture or successful_solution lesson for whatever roles the data actually supports) -- do not just remove minimax everywhere based on one incident, and do not keep it in the planning/log_analysis/documentation text_task rotation if the data doesn't support it there.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13S"
       ],
@@ -512,7 +512,8 @@
         "A lesson recorded via core.build_learning.record_lesson capturing the finding for future reference",
         "No change made based on the single 13P incident alone -- must be backed by the broader usage-history review"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "fc08dd77"
     },
     {
       "id": "13U",
@@ -594,7 +595,7 @@
       "id": "13Z",
       "name": "Kai <-> Telegram status updates and Q&A bridge",
       "description": "User directive 2026-07-29: Kai should be reachable on the same Telegram bot already configured for interactive Claude Code sessions (bot token at /root/.claude/channels/telegram/.env, allowlisted chat 612786480, dmPolicy=allowlist in /root/.claude/channels/telegram/access.json) -- reusing that bot/chat rather than provisioning a separate one. core/scheduler.py is a plain long-running Python daemon (systemd unit ai-orchestrator.service), not a Claude Code session, so it has no access to the mcp__plugin_telegram_telegram MCP tools -- it must call the Telegram Bot HTTP API directly (https://api.telegram.org/bot<token>/sendMessage and /getUpdates), following the existing llm_clients.py pattern of a thin requests-based client function per external service (see call_gemini/call_groq/call_openrouter) rather than a new per-provider file. Two directions: (1) OUTBOUND -- periodic, human-readable status updates (not raw JSON/log dumps) covering roadmap progress, build state changes, and anything requiring human attention (a build reaching WAITING_FOR_USER_INPUT, WAITING_FOR_ARCHITECTURE_APPROVAL, or WAITING_FOR_DEPLOY_APPROVAL), sent from within run_cycle() or advance_roadmap() when state actually changes -- not spammed every 60s cycle regardless of whether anything happened, confirmed live: this project's own orchestrator.log already shows 'findings=1 incidents=1 decisions=0' logged on every single cycle for hours with nothing to report, the same failure mode must not repeat on Telegram. (2) INBOUND -- polling GET /getUpdates once per scheduler cycle (fits the existing ~60s cadence, no new webhook/listener process needed) for replies to a pending question, matched to the specific build/phase currently awaiting input (see 13Y's requirement for a distinct visible question record) and fed into core.build_manager.submit_answer()/approve_architecture()/approve_deploy() with the real Telegram user attributed as operator, exactly as the CloudCLI plugin's existing approval flows already attribute a human operator -- this is a new caller of the same existing functions, not a new approval mechanism (mirrors 13X's own guardrail: chat/messaging is a surface for the HUMAN to act through, never a path for Kai to decide its own approvals).",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13Y"
       ],

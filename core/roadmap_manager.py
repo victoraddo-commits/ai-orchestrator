@@ -41,6 +41,26 @@ SELF_PROJECT_PATH = Path(__file__).resolve().parent.parent
 # own disposable clone instead; the live repo is only ever read from.
 SELF_BUILD_WORKSPACE_ROOT = Path.home() / ".ai-orchestrator" / "self-build-workspaces"
 
+# The CloudCLI plugin frontend is its own separate git repository, entirely
+# outside SELF_PROJECT_PATH's tree (confirmed live 2026-07-28 via 13G's
+# failed attempt: 0 files tracked under this path in the ai-orchestrator
+# repo). Phases whose work touches the plugin get a dual-repo workspace --
+# both repos cloned as siblings under one parent directory -- so a single
+# --dir/project_path covers both trees. See _create_isolated_self_clone().
+PLUGIN_PROJECT_PATH = Path("/project/src/ai-orchestrator-plugin")
+
+# Fixed directory names of the two sibling clones inside a dual-repo
+# workspace. deployment_manager and build_manager rely on this layout (via
+# is_dual_repo_workspace/self_build_repo_paths) to find each repo again.
+ORCHESTRATOR_CLONE_DIRNAME = "ai-orchestrator"
+PLUGIN_CLONE_DIRNAME = "ai-orchestrator-plugin"
+
+# Fallback detection keyword: a phase with no explicit requires_plugin flag
+# still gets a dual-repo workspace if its text mentions the plugin repo by
+# name -- historical/implicit phases (13G, 13J, 13K, ...) all reference
+# "ai-orchestrator-plugin" in their descriptions without carrying the flag.
+PLUGIN_KEYWORD = "ai-orchestrator-plugin"
+
 AUTONOMOUS_MODE_FILE = "autonomous_mode.json"
 
 # A failed phase is never retried automatically -- it stops the loop for
@@ -75,10 +95,14 @@ def _self_test_executable():
 
 
 def _run_self_build_tests(project_path):
+    # A dual-repo workspace's project_path is the parent directory holding
+    # both clones -- this repo's own test suite lives in the orchestrator
+    # clone, so that's where pytest must run. Single-repo workspaces are the
+    # repo root already (unchanged behavior).
     try:
         completed = subprocess.run(
             [str(_self_test_executable())] + SELF_TEST_ARGS,
-            cwd=project_path,
+            cwd=orchestrator_repo_path(project_path),
             capture_output=True,
             text=True,
             timeout=SELF_TEST_TIMEOUT,
@@ -284,11 +308,89 @@ def is_self_modifying(project_path):
         return False
 
 
-def _create_isolated_self_clone():
+def phase_requires_plugin(phase):
+    """Whether a self-modifying phase's work needs the CloudCLI plugin repo
+    too. Explicit `requires_plugin: true` on the phase wins; otherwise fall
+    back to a case-insensitive scan of the phase's own text for the plugin
+    repo's name -- so historical/implicit phases (13G's Control Center tab,
+    13J's dashboard, ...) get the dual-repo workspace without anyone
+    hand-editing roadmap.json."""
+
+    if phase.get("requires_plugin") is True:
+        return True
+
+    text = " ".join([
+        str(phase.get("name", "")),
+        str(phase.get("description", "")),
+        " ".join(str(c) for c in phase.get("completion_criteria") or []),
+    ])
+
+    return PLUGIN_KEYWORD in text.lower()
+
+
+def is_dual_repo_workspace(project_path):
+    """True when `project_path` is a dual-repo workspace parent: a plain
+    directory holding both the ai-orchestrator and ai-orchestrator-plugin
+    clones as siblings (the layout _create_isolated_self_clone(include_
+    plugin=True) produces)."""
+
+    workspace = Path(project_path)
+    return (
+        (workspace / ORCHESTRATOR_CLONE_DIRNAME / ".git").exists()
+        and (workspace / PLUGIN_CLONE_DIRNAME / ".git").exists()
+    )
+
+
+def self_build_repo_paths(project_path):
+    """The actual git repositories inside a build workspace. A single-repo
+    workspace is itself the (only) repo; a dual-repo workspace contributes
+    both sibling clones. Callers that operate per-repo (branch checkout,
+    merge-back) iterate this instead of assuming project_path is a repo."""
+
+    if is_dual_repo_workspace(project_path):
+        return [
+            str(Path(project_path) / ORCHESTRATOR_CLONE_DIRNAME),
+            str(Path(project_path) / PLUGIN_CLONE_DIRNAME),
+        ]
+
+    return [str(project_path)]
+
+
+def orchestrator_repo_path(project_path):
+    """Where the ai-orchestrator codebase itself lives inside a build
+    workspace -- the workspace root for single-repo builds, the
+    ai-orchestrator sibling clone for dual-repo ones."""
+
+    if is_dual_repo_workspace(project_path):
+        return str(Path(project_path) / ORCHESTRATOR_CLONE_DIRNAME)
+
+    return str(project_path)
+
+
+def _create_isolated_self_clone(include_plugin=False):
     workspace = SELF_BUILD_WORKSPACE_ROOT / uuid.uuid4().hex[:12]
     workspace.parent.mkdir(parents=True, exist_ok=True)
+
+    if not include_plugin:
+        # Single-repo workspace: exactly today's behavior -- the workspace
+        # itself is the clone, and project_path/--dir points straight at it.
+        subprocess.run(
+            ["git", "clone", "-q", str(SELF_PROJECT_PATH), str(workspace)],
+            check=True,
+        )
+        return str(workspace)
+
+    # Dual-repo workspace: the workspace is a plain parent directory with
+    # both repos cloned as siblings, so a single --dir/project_path gives
+    # the coding agent simultaneous read/write access to both trees. The
+    # parent itself is deliberately NOT a git repo.
+    workspace.mkdir()
     subprocess.run(
-        ["git", "clone", "-q", str(SELF_PROJECT_PATH), str(workspace)],
+        ["git", "clone", "-q", str(SELF_PROJECT_PATH), str(workspace / ORCHESTRATOR_CLONE_DIRNAME)],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "clone", "-q", str(PLUGIN_PROJECT_PATH), str(workspace / PLUGIN_CLONE_DIRNAME)],
         check=True,
     )
     return str(workspace)
@@ -296,11 +398,22 @@ def _create_isolated_self_clone():
 
 def _build_description(phase):
     criteria = "\n".join(f"- {c}" for c in phase.get("completion_criteria", []))
-    return (
+    description = (
         f"{phase.get('description', '')}\n\n"
         f"This is a self-modifying change to the ai-orchestrator project itself "
         f"(roadmap phase {phase['id']}). Completion criteria:\n{criteria}"
     )
+
+    if phase_requires_plugin(phase):
+        description += (
+            f"\n\nThis build's working directory contains two sibling git "
+            f"repositories: {ORCHESTRATOR_CLONE_DIRNAME}/ (the orchestrator "
+            f"backend) and {PLUGIN_CLONE_DIRNAME}/ (the CloudCLI plugin "
+            f"frontend). Make your changes in whichever repositories the work "
+            f"requires and commit in each repository you touch."
+        )
+
+    return description
 
 
 def advance_roadmap():
@@ -365,7 +478,7 @@ def advance_roadmap():
     build = create_build(
         name=next_phase["id"],
         description=_build_description(next_phase),
-        project_path=_create_isolated_self_clone(),
+        project_path=_create_isolated_self_clone(include_plugin=phase_requires_plugin(next_phase)),
     )
 
     update_phase(next_phase["id"], status="in_progress", build_id=build["id"])

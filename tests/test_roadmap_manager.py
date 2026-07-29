@@ -110,7 +110,7 @@ def test_advance_roadmap_creates_a_self_targeting_build_for_the_next_phase(isola
     roadmap_manager.enable_autonomous_mode()
 
     fake_clone_path = str(tmp_path / "isolated-clone")
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: fake_clone_path)
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda **kwargs: fake_clone_path)
 
     captured = {}
 
@@ -144,7 +144,7 @@ def test_advance_roadmap_never_operates_directly_on_the_live_working_directory(i
     ])
     roadmap_manager.enable_autonomous_mode()
 
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: str(tmp_path / "clone"))
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda **kwargs: str(tmp_path / "clone"))
 
     captured = {}
 
@@ -170,6 +170,179 @@ def test_create_isolated_self_clone_produces_a_real_working_clone(tmp_path, monk
     # A real clone of the live repo -- not an empty scaffold -- so planning
     # and generation see the actual current codebase, not a blank slate.
     assert Path(workspace, "core", "roadmap_manager.py").exists()
+
+
+def _init_git_repo(path, marker_filename):
+    import subprocess
+
+    path.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "Test"], check=True)
+    (path / marker_filename).write_text("marker\n")
+    subprocess.run(["git", "-C", str(path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(path), "commit", "-q", "-m", "initial"], check=True)
+    return path
+
+
+def test_phase_requires_plugin_with_explicit_flag():
+    assert roadmap_manager.phase_requires_plugin(
+        {"requires_plugin": True, "description": "backend-only wording"}
+    ) is True
+
+
+def test_phase_requires_plugin_via_keyword_in_description():
+    # Case-insensitive fallback: historical phases (13G, 13J, 13K, ...) all
+    # reference the plugin repo by name without carrying the explicit flag.
+    phase = {"description": "New tab in the CloudCLI plugin (/project/src/AI-Orchestrator-Plugin)"}
+    assert roadmap_manager.phase_requires_plugin(phase) is True
+
+
+def test_phase_requires_plugin_via_keyword_in_completion_criteria():
+    phase = {
+        "description": "frontend work",
+        "completion_criteria": ["files under ai-orchestrator-plugin can be edited"],
+    }
+    assert roadmap_manager.phase_requires_plugin(phase) is True
+
+
+def test_phase_requires_plugin_false_without_flag_or_keyword():
+    phase = {
+        "description": "Backend-only refactor of the scheduler",
+        "completion_criteria": ["scheduler is faster"],
+    }
+    assert roadmap_manager.phase_requires_plugin(phase) is False
+
+
+def test_create_isolated_self_clone_with_plugin_produces_sibling_clones(tmp_path, monkeypatch):
+    live_orchestrator = _init_git_repo(tmp_path / "live-orchestrator", "orchestrator_marker.py")
+    live_plugin = _init_git_repo(tmp_path / "live-plugin", "plugin_marker.ts")
+
+    workspace_root = tmp_path / "workspaces"
+    monkeypatch.setattr(roadmap_manager, "SELF_PROJECT_PATH", live_orchestrator)
+    monkeypatch.setattr(roadmap_manager, "PLUGIN_PROJECT_PATH", live_plugin)
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", workspace_root)
+
+    workspace = Path(roadmap_manager._create_isolated_self_clone(include_plugin=True))
+
+    # Both repos are real sibling clones under one parent, so a single
+    # --dir/project_path covers both trees.
+    assert (workspace / "ai-orchestrator" / ".git").exists()
+    assert (workspace / "ai-orchestrator" / "orchestrator_marker.py").exists()
+    assert (workspace / "ai-orchestrator-plugin" / ".git").exists()
+    assert (workspace / "ai-orchestrator-plugin" / "plugin_marker.ts").exists()
+
+    # The parent workspace itself is NOT a git repo -- it's just a directory.
+    assert not (workspace / ".git").exists()
+
+    # Everything downstream must still recognize this workspace.
+    assert roadmap_manager.is_self_modifying(str(workspace)) is True
+    assert roadmap_manager.is_dual_repo_workspace(str(workspace)) is True
+    assert roadmap_manager.self_build_repo_paths(str(workspace)) == [
+        str(workspace / "ai-orchestrator"),
+        str(workspace / "ai-orchestrator-plugin"),
+    ]
+    assert roadmap_manager.orchestrator_repo_path(str(workspace)) == str(workspace / "ai-orchestrator")
+
+
+def test_single_repo_workspace_layout_is_unchanged_without_plugin(tmp_path, monkeypatch):
+    # Phases that never touch the plugin must see no behavior change: the
+    # workspace itself is the clone, not a parent of sibling clones.
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", tmp_path / "workspaces")
+
+    workspace = roadmap_manager._create_isolated_self_clone()
+
+    assert Path(workspace, ".git").exists()
+    assert roadmap_manager.is_dual_repo_workspace(workspace) is False
+    assert roadmap_manager.self_build_repo_paths(workspace) == [workspace]
+    assert roadmap_manager.orchestrator_repo_path(workspace) == workspace
+
+
+def test_advance_roadmap_requests_a_dual_repo_workspace_for_plugin_phases(isolated_roadmap, monkeypatch, tmp_path):
+    _write(isolated_roadmap, [
+        {"id": "X", "name": "Control Center tab", "description": "Add a tab to ai-orchestrator-plugin",
+         "completion_criteria": [], "status": "pending", "dependencies": [], "priority": 1},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    captured = {}
+
+    def fake_clone(include_plugin=False):
+        captured["include_plugin"] = include_plugin
+        return str(tmp_path / "workspace")
+
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", fake_clone)
+    monkeypatch.setattr(
+        roadmap_manager, "create_build",
+        lambda name, description, project_path, template=None: {"id": "build-x", "status": "REQUESTED"},
+    )
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "started_phase"
+    assert captured["include_plugin"] is True
+
+
+def test_advance_roadmap_requests_a_single_repo_workspace_for_non_plugin_phases(isolated_roadmap, monkeypatch, tmp_path):
+    _write(isolated_roadmap, [
+        {"id": "X", "name": "Improve logging", "description": "Add structured logs",
+         "completion_criteria": [], "status": "pending", "dependencies": [], "priority": 1},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    captured = {}
+
+    def fake_clone(include_plugin=False):
+        captured["include_plugin"] = include_plugin
+        return str(tmp_path / "workspace")
+
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", fake_clone)
+    monkeypatch.setattr(
+        roadmap_manager, "create_build",
+        lambda name, description, project_path, template=None: {"id": "build-x", "status": "REQUESTED"},
+    )
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "started_phase"
+    assert captured["include_plugin"] is False
+
+
+def test_build_description_explains_the_dual_repo_layout_for_plugin_phases():
+    phase = {
+        "id": "X", "description": "Add a tab to ai-orchestrator-plugin",
+        "completion_criteria": ["tab exists"],
+    }
+
+    description = roadmap_manager._build_description(phase)
+
+    assert "ai-orchestrator/" in description
+    assert "ai-orchestrator-plugin/" in description
+
+
+def test_run_self_build_tests_runs_in_the_orchestrator_repo_of_a_dual_workspace(monkeypatch, tmp_path):
+    # tests/ lives in the orchestrator clone, not the workspace parent --
+    # pytest must run there or every dual-repo build would fail its gate.
+    (tmp_path / "ai-orchestrator" / ".git").mkdir(parents=True)
+    (tmp_path / "ai-orchestrator-plugin" / ".git").mkdir(parents=True)
+
+    captured = {}
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = "3 passed"
+        stderr = ""
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        captured["cwd"] = cwd
+        return FakeCompleted()
+
+    monkeypatch.setattr(roadmap_manager.subprocess, "run", fake_run)
+
+    result = roadmap_manager._run_self_build_tests(str(tmp_path))
+
+    assert captured["cwd"] == str(tmp_path / "ai-orchestrator")
+    assert result["passed"] is True
 
 
 def test_advance_roadmap_marks_phase_completed_when_linked_build_completes(isolated_roadmap, monkeypatch):
@@ -299,7 +472,7 @@ def test_advance_roadmap_starts_the_highest_value_phase_not_just_lowest_priority
     )
     roadmap_manager.enable_autonomous_mode()
 
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: str(tmp_path / "clone"))
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda **kwargs: str(tmp_path / "clone"))
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda name, description, project_path, template=None: {"id": "build-x", "status": "REQUESTED"},

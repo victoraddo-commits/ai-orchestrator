@@ -42,7 +42,7 @@ def test_run_cycle_processes_a_roadmap_created_build_in_the_same_cycle(monkeypat
     # (that's covered by tests/test_roadmap_manager.py).
     fake_clone_dir = tmp_path / "isolated-clone"
     fake_clone_dir.mkdir()
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda: str(fake_clone_dir))
+    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda **kwargs: str(fake_clone_dir))
     roadmap_manager.enable_autonomous_mode()
 
     monkeypatch.setattr(

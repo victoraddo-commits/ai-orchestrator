@@ -35,6 +35,51 @@ def test_advance_builds_creates_the_repo_before_planning(monkeypatch, tmp_path):
     assert updated["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
 
 
+def test_ensure_repo_creates_the_build_branch_in_both_repos_of_a_dual_workspace(tmp_path):
+    # A dual-repo self-build workspace is a plain parent directory holding
+    # two sibling clones (see roadmap_manager._create_isolated_self_clone).
+    # The build branch must be created in each actual repo -- and the parent
+    # itself must never be git-inited, which would bury both clones as
+    # untracked nested repos.
+    import subprocess
+
+    for name in ("ai-orchestrator", "ai-orchestrator-plugin"):
+        repo = tmp_path / name
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.email", "t@e.com"], check=True)
+        subprocess.run(["git", "-C", str(repo), "config", "user.name", "T"], check=True)
+        subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "initial"], check=True)
+
+    build_manager._ensure_repo({"id": "b9", "project_path": str(tmp_path)})
+
+    for name in ("ai-orchestrator", "ai-orchestrator-plugin"):
+        branch = subprocess.run(
+            ["git", "-C", str(tmp_path / name), "branch", "--show-current"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        assert branch == "build-b9", f"expected build branch in {name}, got {branch!r}"
+
+    assert not (tmp_path / ".git").exists()
+
+
+def test_ensure_repo_single_repo_behavior_is_unchanged(tmp_path):
+    # Ordinary builds (and single-repo self-builds) still get exactly the
+    # old behavior: project_path itself is the repo, branch checked out there.
+    import subprocess
+
+    target = tmp_path / "todo-app"
+
+    build_manager._ensure_repo({"id": "b7", "project_path": str(target)})
+
+    assert (target / ".git").is_dir()
+    branch = subprocess.run(
+        ["git", "-C", str(target), "branch", "--show-current"],
+        capture_output=True, text=True,
+    ).stdout.strip()
+    assert branch == "build-b7"
+
+
 def test_advance_builds_checks_out_a_dedicated_branch_for_the_build(monkeypatch, tmp_path):
     target = tmp_path / "todo-app"
     build = build_manager.create_build("todo-app", "Build a todo app", str(target))

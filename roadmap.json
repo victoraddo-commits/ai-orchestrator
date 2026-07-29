@@ -433,7 +433,7 @@
       "id": "13P",
       "name": "Scheduler: periodic systemd watchdog ping during long build cycles",
       "description": "Bug, confirmed live 2026-07-28: core/scheduler.py's start() loop only calls notify(\"WATCHDOG=1\") once, after run_cycle() returns -- but run_cycle() -> advance_builds() -> _run_generation() blocks synchronously on a single opencode/claude coding-agent subprocess call that can legitimately run many minutes. When that exceeds the systemd unit's WatchdogSec (currently 600s, set in /etc/systemd/system/ai-orchestrator.service.d/override.conf -- outside this repo, not something this phase touches), systemd SIGABRTs the whole service mid-generation. Observed live: build 13G's first generation attempt was killed this way after ~9 minutes, the service auto-restarted (Restart=always), and the new scheduler cycle immediately re-ran generation on the same still-GENERATING build from scratch (a second opencode run against a workspace that already had partial commits from the killed attempt) -- wasteful and confusing, though not data-corrupting since the workspace is an isolated clone. Fix: ping the watchdog periodically *during* a cycle, not just after it completes, so a long-but-still-alive generation call doesn't look indistinguishable from a hang to systemd. A background thread started at the top of the while loop's iteration (before calling run_cycle()) that calls notify(\"WATCHDOG=1\") on a fixed interval well under WatchdogSec (e.g. every 30-60s), stopped once run_cycle() returns, is the natural fix -- no change to run_cycle()/build_manager/ai_router needed, this is purely scheduler.py's own heartbeat granularity.",
-      "status": "in_progress",
+      "status": "pending",
       "dependencies": [],
       "priority": 28,
       "completion_criteria": [
@@ -443,7 +443,7 @@
         "New test (or documented manual verification note, if systemd/notify can't be meaningfully unit-tested) covers that the heartbeat mechanism starts and stops correctly around a cycle"
       ],
       "tests_required": true,
-      "build_id": "ca7ff314"
+      "build_id": null
     },
     {
       "id": "13Q",
@@ -457,6 +457,57 @@
         "deploy_build() merges each touched repo's branch back into its own live path; a failure in either repo fails the whole deploy rather than partially applying",
         "Self-modifying builds that never touch the plugin see no behavior change from today's single-repo clone/merge",
         "New test coverage for both the dual-clone workspace creation and the dual-repo merge/failure path"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13R",
+      "name": "Parallel build execution + Claude oversight",
+      "description": "Implements the already-approved design at docs/superpowers/specs/2026-07-28-parallel-build-execution-design.md (Status: Approved, not yet implemented) -- follow it directly rather than re-deriving the approach, it has full code sketches for every part below. High-impact, significant improvement to overall throughput: today build_manager.advance_builds() is a plain sequential for loop (confirmed live 2026-07-28) -- one build advances per scheduler cycle regardless of how many are ready, so every other queued roadmap phase waits in a single file behind whichever build is currently running. Four parts: (1) advance_builds() dispatches every ready build (REQUESTED/PLANNING/GENERATING/CODE_REVIEW/DEPLOYING) into a ThreadPoolExecutor(max_workers=max_concurrent_builds, default 2 from config/providers.yaml), each worker calling the existing _run_planning/_run_generation/_run_deployment functions unchanged -- single-build behavior stays exactly as today when there's only one ready build; (2) a new core.memory.update(name, mutate_fn) primitive (core/memory.py + core/memory_manager.py), reusing the existing fcntl.flock critical section, so read-modify-write state changes are atomic across threads and processes -- core.ai.ai_router._rotate_candidates (still a non-atomic load-then-save today, confirmed live) is rewritten on top of it, closing the race where two concurrently-dispatched builds could land on the same starting provider; _persist_build() likewise updates one build's record by id instead of resaving the whole list; (3) a new CODE_REVIEW build state between GENERATING and SECURITY_REVIEW -- an automated, purely advisory Claude review of non-Claude-generated builds' diffs (skipped when generated_by == 'claude', since there's no value in Claude reviewing its own work; skipped gracefully if Claude is unavailable) -- never auto-approves or auto-blocks, existing human approval gates are untouched; (4) a GENERATION_DISCIPLINE_PREAMBLE prepended to every generation instruction so every provider is held to the same 'write tests, run them, verify before claiming done' standard this project's own workflow follows.",
+      "status": "in_progress",
+      "dependencies": [],
+      "priority": 10,
+      "completion_criteria": [
+        "advance_builds() runs multiple ready builds concurrently via ThreadPoolExecutor, capped at max_concurrent_builds",
+        "Single-ready-build behavior (the common case today) is unchanged -- no regression for sequential operation",
+        "core.memory.update() is atomic (fcntl.flock-based) and _rotate_candidates/_persist_build use it, closing the read-then-write race",
+        "New CODE_REVIEW state: Claude reviews non-Claude-generated builds only, never auto-approves/blocks, degrades gracefully if Claude is unavailable",
+        "GENERATION_DISCIPLINE_PREAMBLE applied to every generation instruction regardless of provider",
+        "Full test list from the design doc's Testing section is implemented and passing"
+      ],
+      "tests_required": true,
+      "build_id": "56e6c3d7"
+    },
+    {
+      "id": "13S",
+      "name": "Validate plan text before presenting it for architecture approval",
+      "description": "Bug, confirmed live 2026-07-28: build_manager._plan_needs_clarification(plan_text) is the only gate between a planning provider's raw text response and WAITING_FOR_ARCHITECTURE_APPROVAL -- it's a single naive check, '?' in (plan_text or ''), meant to detect an open clarifying question. It has no concept of whether the text is a plan at all. When phase 13P's planning step landed on minimax (via ai_router's planning-role rotation) and minimax returned hallucinated <minimax:tool_call> markup instead of an actual plan (see the 'minimax' common_failure lesson just recorded in memory/learning_lessons.json for the full incident), that garbage contained no '?' character, so it sailed straight through to WAITING_FOR_ARCHITECTURE_APPROVAL and would have been presented to a human as a real plan to approve -- caught manually this time, but the gate should catch it itself. Fix: _plan_needs_clarification (or a new check alongside it in _run_planning) should also reject/route-back plan text that isn't usable -- at minimum: empty/near-empty text, and text containing tool-call-style markup (e.g. '<minimax:tool_call>', or similar XML/JSON tool-invocation syntax leaking into what should be plain prose per _planning_prompt's own 'respond with text' instruction) rather than prose. When a plan fails this check, route it back through the same WAITING_FOR_USER_INPUT retry path clarifying questions already use, or straight back to another _run_planning attempt -- do not fail the whole build outright for a single bad response, since (per ai_router's own rotation) a retry will very likely land on a different provider.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 11,
+      "completion_criteria": [
+        "A plan response containing tool-call-style markup (not prose) is detected and never reaches WAITING_FOR_ARCHITECTURE_APPROVAL",
+        "An empty or near-empty plan response is likewise caught",
+        "A caught bad plan routes back to another planning attempt (not an outright FAILED build) so rotation gets a chance to pick a different provider",
+        "Existing '?' clarifying-question detection is preserved, not replaced",
+        "New tests cover: tool-call-markup text rejected, empty text rejected, a normal prose plan still passes through unchanged"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13T",
+      "name": "Determine minimax's actual strengths from real usage data, adjust routing",
+      "description": "Follow-on to the 'minimax' common_failure lesson recorded 2026-07-28 (memory/learning_lessons.json) -- that incident showed minimax performs poorly on the plain text_task path (planning/log_analysis/documentation roles in core.ai.ai_router.ROLE_PROVIDERS, backed by core.llm_clients.call_minimax, a tools-less chat-completion call), but this should not be read as 'minimax is bad' broadly -- it's used in a completely different, already-real capacity too: the 'opencode' provider's default model is opencode/minimax-m2.7, run through opencode CLI's actual agentic tool-use loop (core/opencode_bridge.py) for real coding_agent tasks, where it has genuine tools to call rather than hallucinating them. Task: review memory/ai_usage_history.json's existing 'opencode' provider entries (its only model has always been minimax-m2.7, so this data already is minimax's coding-agent track record) alongside its text_task entries under the 'minimax' provider name, and produce an evidence-based recommendation: which roles/task_types minimax is actually reliable for versus not, backed by real success/failure counts rather than the single bad text_task incident. Apply the result to core.ai.ai_router.ROLE_PROVIDERS and/or core.build_learning lesson records (e.g. record a preferred_architecture or successful_solution lesson for whatever roles the data actually supports) -- do not just remove minimax everywhere based on one incident, and do not keep it in the planning/log_analysis/documentation text_task rotation if the data doesn't support it there.",
+      "status": "pending",
+      "dependencies": [
+        "13S"
+      ],
+      "priority": 12,
+      "completion_criteria": [
+        "Analysis of existing ai_usage_history.json entries for 'opencode' (minimax coding-agent performance) and 'minimax' (text_task performance) providers, with real success/failure counts, not guesses",
+        "A concrete routing change (or explicit documented decision not to change routing, if the data doesn't support one) grounded in that analysis -- e.g. removing/keeping minimax in specific ROLE_PROVIDERS entries",
+        "A lesson recorded via core.build_learning.record_lesson capturing the finding for future reference",
+        "No change made based on the single 13P incident alone -- must be backed by the broader usage-history review"
       ],
       "tests_required": true
     }

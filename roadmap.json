@@ -449,7 +449,7 @@
       "id": "13Q",
       "name": "Self-modifying builds: reach the ai-orchestrator-plugin repo too",
       "description": "Architecture gap, confirmed live 2026-07-28 via 13G's failed attempt: self-modifying builds only ever clone core.roadmap_manager.SELF_PROJECT_PATH (/project/ai-orchestrator) via _create_isolated_self_clone() -- a plain single-repo 'git clone -q SELF_PROJECT_PATH workspace'. The CloudCLI plugin frontend at /project/src/ai-orchestrator-plugin is its own separate git repository entirely outside that tree (confirmed: 0 files tracked under that path in the ai-orchestrator repo; the plugin dir has its own 'git rev-parse --show-toplevel'). Any phase whose work requires editing the plugin (13G's Kai Control Center tab, 13J's dashboard, 13K's voice commands UI, the proposed 13O) is currently unbuildable: the coding agent's --dir/project_path only ever contains the ai-orchestrator clone, so it silently has no path to the plugin's files at all -- 13G's generation call returned success=True with files_changed=[]/commits=[] because there was nothing in reach for it to change on the frontend half, not because the work was actually done. core/deployment.py's _merge_self_modifying_build/deploy_build are equally single-repo: a plain 'git merge --no-ff' of the build's branch into SELF_PROJECT_PATH, with no equivalent step for a second repo. Fix needs two parts working together: (1) build/workspace creation gives a self-modifying build access to both repos when its work needs the plugin -- e.g. _create_isolated_self_clone() also clones ai-orchestrator-plugin as a sibling directory inside the same workspace root, so a single --dir covers both trees; (2) deploy_build()'s self-modifying path merges each repo's branch back into its own live origin (SELF_PROJECT_PATH and the plugin's own live path) rather than assuming one repo -- a merge conflict or failure in either repo should fail the whole deploy, not partially apply. Phases that never touch the plugin should see no behavior change (single-repo clone/merge exactly as today) -- this should be additive, not a rewrite of the whole self-build path.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 20,
       "completion_criteria": [
@@ -458,13 +458,14 @@
         "Self-modifying builds that never touch the plugin see no behavior change from today's single-repo clone/merge",
         "New test coverage for both the dual-clone workspace creation and the dual-repo merge/failure path"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "e75e4848"
     },
     {
       "id": "13R",
       "name": "Parallel build execution + Claude oversight",
       "description": "Implements the already-approved design at docs/superpowers/specs/2026-07-28-parallel-build-execution-design.md (Status: Approved, not yet implemented) -- follow it directly rather than re-deriving the approach, it has full code sketches for every part below. High-impact, significant improvement to overall throughput: today build_manager.advance_builds() is a plain sequential for loop (confirmed live 2026-07-28) -- one build advances per scheduler cycle regardless of how many are ready, so every other queued roadmap phase waits in a single file behind whichever build is currently running. Four parts: (1) advance_builds() dispatches every ready build (REQUESTED/PLANNING/GENERATING/CODE_REVIEW/DEPLOYING) into a ThreadPoolExecutor(max_workers=max_concurrent_builds, default 2 from config/providers.yaml), each worker calling the existing _run_planning/_run_generation/_run_deployment functions unchanged -- single-build behavior stays exactly as today when there's only one ready build; (2) a new core.memory.update(name, mutate_fn) primitive (core/memory.py + core/memory_manager.py), reusing the existing fcntl.flock critical section, so read-modify-write state changes are atomic across threads and processes -- core.ai.ai_router._rotate_candidates (still a non-atomic load-then-save today, confirmed live) is rewritten on top of it, closing the race where two concurrently-dispatched builds could land on the same starting provider; _persist_build() likewise updates one build's record by id instead of resaving the whole list; (3) a new CODE_REVIEW build state between GENERATING and SECURITY_REVIEW -- an automated, purely advisory Claude review of non-Claude-generated builds' diffs (skipped when generated_by == 'claude', since there's no value in Claude reviewing its own work; skipped gracefully if Claude is unavailable) -- never auto-approves or auto-blocks, existing human approval gates are untouched; (4) a GENERATION_DISCIPLINE_PREAMBLE prepended to every generation instruction so every provider is held to the same 'write tests, run them, verify before claiming done' standard this project's own workflow follows.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 11,
       "completion_criteria": [

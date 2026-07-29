@@ -413,6 +413,38 @@ def _tail_for_clarification_check(plan_text):
     return paragraphs[-1] if paragraphs else plan_text
 
 
+# Tool-call-style markup patterns that signal a provider hallucinated its
+# native tool/invocation syntax instead of responding with prose.  Covers
+# both XML-style tags (<minimax:tool_call>) and bare JSON tool shapes
+# ({"tool_calls": [...]}) that may leak into a text response from the
+# planning provider.
+_TOOL_CALL_LEAK = re.compile(
+    r"<\s*/?\s*[a-zA-Z0-9_-]+\s*:\s*tool_call\b|"
+    r'"[a-zA-Z0-9_-]*tool_calls?"\s*:\s*',
+    re.IGNORECASE,
+)
+
+# Anything shorter than this (after stripping whitespace) is considered
+# near-empty and not a usable plan.
+_MIN_PLAN_LENGTH = 10
+
+# Three consecutive unusable responses from any provider(s) is a systemic
+# failure -- the ai_router rotation has had three shots at this plan and
+# every one returned garbage.  Failing the build at that point is a sane
+# upper bound rather than letting it bounce forever.
+_MAX_CONSECUTIVE_REJECTIONS = 3
+
+
+def _looks_like_tool_call_leak(text):
+    if not text or len(text.strip()) < _MIN_PLAN_LENGTH:
+        return True
+
+    if _TOOL_CALL_LEAK.search(text):
+        return True
+
+    return False
+
+
 def _plan_needs_clarification(plan_text):
     # A plan that's still asking an open question isn't a concrete proposal
     # yet -- surfacing it as a formal Approval would ask a human to
@@ -510,6 +542,20 @@ def _run_planning(build):
 
     build["plan"] = result.get("response", "")
     build["planned_by"] = result.get("provider")
+
+    if _looks_like_tool_call_leak(build["plan"]):
+        rejections = build.get("_consecutive_planning_rejections", 0) + 1
+        build["_consecutive_planning_rejections"] = rejections
+
+        if rejections >= _MAX_CONSECUTIVE_REJECTIONS:
+            transition(build, "FAILED", BUILD_TRANSITIONS)
+            build["failure_reason"] = (
+                f"{rejections} consecutive unusable planning responses"
+            )
+            _record_if_terminal(build)
+        return
+
+    build["_consecutive_planning_rejections"] = 0
 
     pending_question = _extract_pending_question(build["plan"])
 

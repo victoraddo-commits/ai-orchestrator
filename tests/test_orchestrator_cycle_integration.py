@@ -50,7 +50,7 @@ def test_run_cycle_processes_a_roadmap_created_build_in_the_same_cycle(monkeypat
         "delegate",
         lambda description, **kwargs: {
             "provider": "gemini", "task_type": "planning", "duration_ms": 10,
-            "response": "Plan.",
+            "response": "Plan: do the thing that was requested.",
         },
     )
 

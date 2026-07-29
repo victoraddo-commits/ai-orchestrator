@@ -23,7 +23,7 @@ def test_advance_builds_creates_the_repo_before_planning(monkeypatch, tmp_path):
     monkeypatch.setattr(
         build_manager,
         "delegate",
-        lambda description, **kwargs: {"provider": "gemini", "task_type": "planning", "response": "Plan.", "duration_ms": 10},
+        lambda description, **kwargs: {"provider": "gemini", "task_type": "planning", "response": "Architecture: FastAPI + React", "duration_ms": 10},
     )
 
     build_manager.advance_builds()
@@ -87,7 +87,7 @@ def test_advance_builds_checks_out_a_dedicated_branch_for_the_build(monkeypatch,
     monkeypatch.setattr(
         build_manager,
         "delegate",
-        lambda description, **kwargs: {"provider": "gemini", "task_type": "planning", "response": "Plan.", "duration_ms": 10},
+        lambda description, **kwargs: {"provider": "gemini", "task_type": "planning", "response": "Architecture: FastAPI + React", "duration_ms": 10},
     )
 
     build_manager.advance_builds()
@@ -1097,3 +1097,311 @@ def test_submit_answer_clears_pending_question():
 
     assert updated["pending_question"] is None
     assert updated["status"] == "PLANNING"
+
+
+# -- 13S: plan validation (tool-call leak / empty-plan detection) -----------
+
+_MINIMAX_TOOL_CALL_LEAK = """<minimax:tool_call>
+{"name": "bash", "arguments": {"command": "echo hello"}}
+</minimax:tool_call>"""
+
+_OPENROUTER_TOOL_CALL_LEAK = """The plan is:
+<openrouter:tool_call id="123">{"action": "read_file"}</openrouter:tool_call>
+then proceed with implementation."""
+
+_JSON_TOOL_CALL_LEAK = """Here is the plan:
+{"tool_calls": [{"type": "function", "name": "create_file"}]}
+This is the architecture."""
+
+_VALID_PROSE_PLAN = "Architecture: use FastAPI + React with a PostgreSQL database."
+
+_EMPTY_STRING = ""
+
+_WHITESPACE_ONLY = "   \n\n   "
+
+_VERY_SHORT = "OK."
+
+
+class TestLooksLikeToolCallLeak:
+    def test_tool_call_markup_tag_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(_MINIMAX_TOOL_CALL_LEAK) is True
+
+    def test_tool_call_markup_tag_with_namespace_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(_OPENROUTER_TOOL_CALL_LEAK) is True
+
+    def test_json_tool_call_shape_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(_JSON_TOOL_CALL_LEAK) is True
+
+    def test_empty_text_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(_EMPTY_STRING) is True
+
+    def test_none_text_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(None) is True
+
+    def test_whitespace_only_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(_WHITESPACE_ONLY) is True
+
+    def test_very_short_text_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(_VERY_SHORT) is True
+
+    def test_normal_prose_plan_passes(self):
+        assert build_manager._looks_like_tool_call_leak(_VALID_PROSE_PLAN) is False
+
+    def test_plan_with_question_passes(self):
+        assert build_manager._looks_like_tool_call_leak(
+            "Plan: use FastAPI + React. Any preference on database?"
+        ) is False
+
+    def test_minimax_closing_tag_is_matched(self):
+        # closing tag </minimax:tool_call> should also be caught
+        assert build_manager._looks_like_tool_call_leak(
+            "The plan for the project.</minimax:tool_call>"
+        ) is True
+
+
+def test_bad_plan_stays_in_planning_and_does_not_reach_approval(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "minimax", "task_type": "planning",
+            "response": _MINIMAX_TOOL_CALL_LEAK,
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "PLANNING"
+    assert updated["planned_by"] == "minimax"
+    assert updated.get("_consecutive_planning_rejections") == 1
+
+
+def test_empty_plan_stays_in_planning_and_does_not_reach_approval(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning",
+            "response": "",
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "PLANNING"
+    assert updated.get("_consecutive_planning_rejections") == 1
+
+
+def test_consecutive_bad_plans_increment_counter(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "minimax", "task_type": "planning",
+            "response": _MINIMAX_TOOL_CALL_LEAK,
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+    assert build_manager.get_build(build["id"])["_consecutive_planning_rejections"] == 1
+
+    build_manager.advance_builds()
+    assert build_manager.get_build(build["id"])["_consecutive_planning_rejections"] == 2
+
+
+def test_three_consecutive_bad_plans_fail_the_build(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "minimax", "task_type": "planning",
+            "response": _MINIMAX_TOOL_CALL_LEAK,
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+    assert build_manager.get_build(build["id"])["status"] == "PLANNING"
+
+    build_manager.advance_builds()
+    assert build_manager.get_build(build["id"])["status"] == "PLANNING"
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "FAILED"
+    assert "3 consecutive unusable planning responses" in updated["failure_reason"]
+
+
+def test_counter_resets_after_a_valid_prose_plan(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    call_count = [0]
+
+    def alternating_delegate(description, **kwargs):
+        call_count[0] += 1
+        if call_count[0] <= 2:
+            return {
+                "provider": "minimax", "task_type": "planning",
+                "response": _MINIMAX_TOOL_CALL_LEAK,
+                "duration_ms": 10,
+            }
+        return {
+            "provider": "gemini", "task_type": "planning",
+            "response": _VALID_PROSE_PLAN,
+            "duration_ms": 10,
+        }
+
+    monkeypatch.setattr(build_manager, "delegate", alternating_delegate)
+
+    build_manager.advance_builds()
+    assert build_manager.get_build(build["id"])["_consecutive_planning_rejections"] == 1
+
+    build_manager.advance_builds()
+    assert build_manager.get_build(build["id"])["_consecutive_planning_rejections"] == 2
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
+    assert updated["_consecutive_planning_rejections"] == 0
+
+
+def test_clarifying_question_still_works_after_prior_rejections(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    call_count = [0]
+
+    def delegate_sequence(description, **kwargs):
+        call_count[0] += 1
+        if call_count[0] <= 1:
+            return {
+                "provider": "minimax", "task_type": "planning",
+                "response": _MINIMAX_TOOL_CALL_LEAK,
+                "duration_ms": 10,
+            }
+        return {
+            "provider": "gemini", "task_type": "planning",
+            "response": "Plan: use FastAPI + React. Any preference on database?",
+            "duration_ms": 10,
+        }
+
+    monkeypatch.setattr(build_manager, "delegate", delegate_sequence)
+
+    build_manager.advance_builds()
+    assert build_manager.get_build(build["id"])["_consecutive_planning_rejections"] == 1
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_USER_INPUT"
+    assert updated["pending_question"] == "Any preference on database?"
+    assert updated["_consecutive_planning_rejections"] == 0
+
+
+def test_plan_with_json_tool_call_shape_is_rejected_and_retries(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "openrouter", "task_type": "planning",
+            "response": _JSON_TOOL_CALL_LEAK,
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "PLANNING"
+    assert updated.get("_consecutive_planning_rejections") == 1
+
+
+def test_normal_prose_plan_proceeds_to_architecture_approval_via_new_gate(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "PLANNING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning",
+            "response": _VALID_PROSE_PLAN,
+            "duration_ms": 10,
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
+    assert updated["_consecutive_planning_rejections"] == 0
+
+
+def test_advance_from_requested_with_bad_plan_retries_via_planning_path(monkeypatch):
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    assert build["status"] == "REQUESTED"
+
+    call_count = [0]
+
+    def delegate_sequence(description, **kwargs):
+        call_count[0] += 1
+        if call_count[0] <= 1:
+            return {
+                "provider": "minimax", "task_type": "planning",
+                "response": _MINIMAX_TOOL_CALL_LEAK,
+                "duration_ms": 10,
+            }
+        return {
+            "provider": "gemini", "task_type": "planning",
+            "response": _VALID_PROSE_PLAN,
+            "duration_ms": 10,
+        }
+
+    monkeypatch.setattr(build_manager, "delegate", delegate_sequence)
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "PLANNING"
+    assert updated["_consecutive_planning_rejections"] == 1
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
+    assert updated["_consecutive_planning_rejections"] == 0
+
+
+def test_plan_needs_clarification_is_preserved_with_tool_call_leak_rejected():
+    # A plan with both a '?' AND tool-call markup should be caught by
+    # _looks_like_tool_call_leak first (the leak check comes before the
+    # question check in _run_planning), so it never reaches
+    # _plan_needs_clarification.  Regardless, _plan_needs_clarification
+    # behavior on normal plans is unchanged.
+    assert build_manager._plan_needs_clarification(_VALID_PROSE_PLAN) is False
+    assert build_manager._plan_needs_clarification(
+        "Plan: use FastAPI + React. Any preference on database?"
+    ) is True

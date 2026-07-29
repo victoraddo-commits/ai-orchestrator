@@ -392,6 +392,41 @@
         "Full test list from the design doc's Testing section is implemented and passing"
       ],
       "tests_required": true
+    },
+    {
+      "id": "13N",
+      "name": "Fix remediation_runner sweeping up build approvals",
+      "description": "Bug, confirmed live 2026-07-28: core/remediation_runner.py get_approved() (\"[r for r in load_requests() if r.get('status') == 'approved']\") returns every status==\"approved\" record from memory/approval_queue.json with no filter -- including build architecture/deploy approvals created by core.approval.create_build_approval (build_id/phase_id/approval_type set, incident=None), not just genuine incident-remediation approvals created by core.approval.create_request (incident_id set, no build_id). Build 13G's own architecture-approval request got swept into process()'s Docker-remediation execution loop this way: treated approve_architecture as a container action (harmlessly rejected as status: \"blocked\" by docker_actions.execute_action since it is not in ALLOWED_ACTIONS, no real container was touched), then mark_executed() unconditionally flipped it to \"executed\" with a bogus remediation record attached -- silently corrupting approval-queue history for every build/deploy approval, not just this one, and this record's \"executed\" status is misleading (a build architecture approval is never \"executed\" the way a Docker remediation is). Fix: get_approved() must exclude any request with a build_id set (the field only create_build_approval ever sets, and the natural, already-existing discriminator between the two request shapes) so only genuine incident-remediation requests ever reach process()/execute_action.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 26,
+      "completion_criteria": [
+        "get_approved() in core/remediation_runner.py excludes any approval_queue.json record with a build_id set, returning only genuine incident-remediation requests",
+        "No change to core.approval.create_request()/create_build_approval()'s existing shapes -- the fix is filtering in get_approved() only",
+        "New test confirms an approved build-type request (build_id set) is never returned by get_approved() and never reaches execute_action/mark_executed",
+        "Existing remediation_runner tests continue to pass unchanged",
+        "No change to how build_manager/approval.py's own architecture/deploy approval flow works"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "13O",
+      "name": "Kai Command Center (expand Kai Control Center into full ops dashboard)",
+      "description": "Improvement Proposal (user, 2026-07-28), deferred to run after 13G lands since it expands the same tab 13G is actively generating right now rather than replacing it. Renames \"Kai Control Center\" to \"Kai Command Center\" and grows it from a status page into the primary operational dashboard, strictly reusing existing backend services/registries/workflows -- no duplicate business logic or parallel data sources. New sections: (1) AI Workforce panel -- every registered worker from ai_provider.py's registry (provider/worker name, model, roles, coding capability, availability, live status idle/busy/waiting/offline, current build assignment, routing priority, success rate, avg execution time, queue length) via ai_router.get_provider_dashboard()/provider_health, never hardcoded; (2) Live Build Queue -- all active builds (id, phase, assigned worker, status, start time, elapsed, roadmap phase), grouped running/waiting/waiting-for-approval/failed/recently-completed, from existing build APIs; (3) Provider Health Dashboard, extending the current one with cooldown timer, last failure, consecutive failures, quota state, health score, avg latency; (4) Kai Status panel -- current objective/build/roadmap phase/task/waiting-on/next planned action/last completed action, high-level state only, explicitly not chain-of-thought; (5) Human Approval Feed -- live summary of architecture/deploy approvals and clarification/manual-intervention requests (build id, type, timestamp, status), selecting an item navigates to the existing Approval Center, no duplicate approve/reject actions; (6) Workforce Utilization -- per-worker usage bars from existing execution history; (7) Worker Performance -- tasks completed, success/failure rate, avg runtime, avg retries, last execution, from existing learning/execution history; (8) Build Timeline -- per-build stage progress (planning/generating/testing/security review/deploy approval) from existing build history timestamps; (9) expand the existing Learning Summary widget with preferred architectures, successful patterns, common failures, rejected-proposal trends, avoided approaches (Phase 13F data); (10) Emergency Controls -- design-only placeholders for pause/resume scheduler, retry/cancel build, disable provider, force provider selection, no functionality yet, must eventually integrate with the existing approval framework rather than acting directly. Design constraints: single-column layout reusing 13G's existing stat cards/helpers/API wrapper/styling, no duplicate UI framework; backend adds only lightweight wrapper endpoints where a read genuinely isn't exposed yet, never duplicating provider/approval/roadmap/learning logic; fetch on open only, no new polling loop, matching 13G's own non-polling convention. Long-term vision: this becomes the single dashboard for monitoring AI workforce, active builds, roadmap progress, provider health, human approvals, learning, scheduler, and deployment without needing terminal access -- this phase should keep that in mind but only needs to deliver the sections listed above.",
+      "status": "proposed",
+      "dependencies": [
+        "13G"
+      ],
+      "priority": 27,
+      "completion_criteria": [
+        "Kai Control Center tab is renamed Kai Command Center",
+        "AI Workforce, Live Build Queue, Provider Health, Kai Status, Human Approval Feed, Workforce Utilization, Worker Performance, Build Timeline, and expanded Learning Summary sections all render from existing backend data with no hardcoded worker/provider lists",
+        "No duplicated provider, approval, roadmap, or learning business logic -- only thin read wrapper endpoints added where genuinely missing",
+        "No approve/reject or other mutating actions added to this tab -- Approval Center remains the single place actions happen",
+        "Emergency Controls render as inert placeholders only, wired to nothing",
+        "Data fetches only on tab open/manual refresh -- no new polling loop introduced"
+      ],
+      "tests_required": true
     }
   ]
 }

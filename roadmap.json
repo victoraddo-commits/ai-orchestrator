@@ -483,8 +483,8 @@
     {
       "id": "13S",
       "name": "Validate plan text before presenting it for architecture approval",
-      "description": "Bug, confirmed live 2026-07-28: build_manager._plan_needs_clarification(plan_text) is the only gate between a planning provider's raw text response and WAITING_FOR_ARCHITECTURE_APPROVAL -- it's a single naive check, '?' in (plan_text or ''), meant to detect an open clarifying question. It has no concept of whether the text is a plan at all. When phase 13P's planning step landed on minimax (via ai_router's planning-role rotation) and minimax returned hallucinated <minimax:tool_call> markup instead of an actual plan (see the 'minimax' common_failure lesson just recorded in memory/learning_lessons.json for the full incident), that garbage contained no '?' character, so it sailed straight through to WAITING_FOR_ARCHITECTURE_APPROVAL and would have been presented to a human as a real plan to approve -- caught manually this time, but the gate should catch it itself. Fix: _plan_needs_clarification (or a new check alongside it in _run_planning) should also reject/route-back plan text that isn't usable -- at minimum: empty/near-empty text, and text containing tool-call-style markup (e.g. '<minimax:tool_call>', or similar XML/JSON tool-invocation syntax leaking into what should be plain prose per _planning_prompt's own 'respond with text' instruction) rather than prose. When a plan fails this check, route it back through the same WAITING_FOR_USER_INPUT retry path clarifying questions already use, or straight back to another _run_planning attempt -- do not fail the whole build outright for a single bad response, since (per ai_router's own rotation) a retry will very likely land on a different provider.",
-      "status": "pending",
+      "description": "DONE (2026-07-29, direct live fix, not deployed by Kai -- commit 4c69637) -- build db7d5562 generated the correct fix (_looks_like_tool_call_leak: rejects empty/near-empty plan text and tool-call markup leaking into prose, 3-strike retry cap, existing ? check preserved) but its own self-build test run failed on one unrelated pre-existing test (test_orchestrator_cycle_integration.py used a 5-char \"Plan.\" mock, under this change's new 10-char minimum) -- applied the build's commit directly plus the one-line test fix instead of re-running the pipeline for an already-correct change. 595 tests pass. Build db7d5562 left FAILED as the record of the self-test rejection; its workspace clone reproduces the same fix and was not reused further.",
+      "status": "completed",
       "dependencies": [],
       "priority": 10,
       "completion_criteria": [
@@ -494,7 +494,8 @@
         "Existing '?' clarifying-question detection is preserved, not replaced",
         "New tests cover: tool-call-markup text rejected, empty text rejected, a normal prose plan still passes through unchanged"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "db7d5562"
     },
     {
       "id": "13T",
@@ -593,7 +594,7 @@
       "id": "13Z",
       "name": "Kai <-> Telegram status updates and Q&A bridge",
       "description": "User directive 2026-07-29: Kai should be reachable on the same Telegram bot already configured for interactive Claude Code sessions (bot token at /root/.claude/channels/telegram/.env, allowlisted chat 612786480, dmPolicy=allowlist in /root/.claude/channels/telegram/access.json) -- reusing that bot/chat rather than provisioning a separate one. core/scheduler.py is a plain long-running Python daemon (systemd unit ai-orchestrator.service), not a Claude Code session, so it has no access to the mcp__plugin_telegram_telegram MCP tools -- it must call the Telegram Bot HTTP API directly (https://api.telegram.org/bot<token>/sendMessage and /getUpdates), following the existing llm_clients.py pattern of a thin requests-based client function per external service (see call_gemini/call_groq/call_openrouter) rather than a new per-provider file. Two directions: (1) OUTBOUND -- periodic, human-readable status updates (not raw JSON/log dumps) covering roadmap progress, build state changes, and anything requiring human attention (a build reaching WAITING_FOR_USER_INPUT, WAITING_FOR_ARCHITECTURE_APPROVAL, or WAITING_FOR_DEPLOY_APPROVAL), sent from within run_cycle() or advance_roadmap() when state actually changes -- not spammed every 60s cycle regardless of whether anything happened, confirmed live: this project's own orchestrator.log already shows 'findings=1 incidents=1 decisions=0' logged on every single cycle for hours with nothing to report, the same failure mode must not repeat on Telegram. (2) INBOUND -- polling GET /getUpdates once per scheduler cycle (fits the existing ~60s cadence, no new webhook/listener process needed) for replies to a pending question, matched to the specific build/phase currently awaiting input (see 13Y's requirement for a distinct visible question record) and fed into core.build_manager.submit_answer()/approve_architecture()/approve_deploy() with the real Telegram user attributed as operator, exactly as the CloudCLI plugin's existing approval flows already attribute a human operator -- this is a new caller of the same existing functions, not a new approval mechanism (mirrors 13X's own guardrail: chat/messaging is a surface for the HUMAN to act through, never a path for Kai to decide its own approvals).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13Y"
       ],
@@ -605,7 +606,8 @@
         "Bot token is read from the existing /root/.claude/channels/telegram/.env location (or an equivalent env var), not duplicated/hardcoded",
         "Tests cover: outbound formatting for a few representative state transitions, inbound reply correctly matched to the build awaiting it, and that an unrelated/unmatched Telegram message is safely ignored rather than misapplied to the wrong build"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "d15b28fa"
     },
     {
       "id": "14A",

@@ -245,6 +245,42 @@ def test_create_isolated_self_clone_with_plugin_produces_sibling_clones(tmp_path
     assert roadmap_manager.orchestrator_repo_path(str(workspace)) == str(workspace / "ai-orchestrator")
 
 
+def test_create_isolated_self_clone_copies_memory_snapshot(tmp_path, monkeypatch):
+    # memory/ is gitignored, so a plain `git clone` leaves it empty -- a
+    # phase whose task is to analyze real memory state (e.g. 13T reading
+    # ai_usage_history.json) fails outright without a snapshot. Confirmed
+    # live 2026-07-29.
+    live_repo = _init_git_repo(tmp_path / "live-orchestrator", "marker.py")
+    (live_repo / "memory").mkdir()
+    (live_repo / "memory" / "ai_usage_history.json").write_text('{"schema_version": 1, "records": []}')
+
+    monkeypatch.setattr(roadmap_manager, "SELF_PROJECT_PATH", live_repo)
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", tmp_path / "workspaces")
+
+    workspace = Path(roadmap_manager._create_isolated_self_clone())
+
+    copied = workspace / "memory" / "ai_usage_history.json"
+    assert copied.exists()
+    assert copied.read_text() == '{"schema_version": 1, "records": []}'
+
+
+def test_create_isolated_self_clone_copies_memory_snapshot_into_plugin_workspace_orchestrator_leg(tmp_path, monkeypatch):
+    live_orchestrator = _init_git_repo(tmp_path / "live-orchestrator", "orchestrator_marker.py")
+    live_plugin = _init_git_repo(tmp_path / "live-plugin", "plugin_marker.ts")
+    (live_orchestrator / "memory").mkdir()
+    (live_orchestrator / "memory" / "learning_lessons.json").write_text('{"schema_version": 1, "records": {}}')
+
+    monkeypatch.setattr(roadmap_manager, "SELF_PROJECT_PATH", live_orchestrator)
+    monkeypatch.setattr(roadmap_manager, "PLUGIN_PROJECT_PATH", live_plugin)
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", tmp_path / "workspaces")
+
+    workspace = Path(roadmap_manager._create_isolated_self_clone(include_plugin=True))
+
+    assert (workspace / "ai-orchestrator" / "memory" / "learning_lessons.json").exists()
+    # The plugin repo has no memory/ concept -- nothing should be copied there.
+    assert not (workspace / "ai-orchestrator-plugin" / "memory").exists()
+
+
 def test_single_repo_workspace_layout_is_unchanged_without_plugin(tmp_path, monkeypatch):
     # Phases that never touch the plugin must see no behavior change: the
     # workspace itself is the clone, not a parent of sibling clones.

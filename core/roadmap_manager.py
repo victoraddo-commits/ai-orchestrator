@@ -14,6 +14,7 @@ human action (POST /roadmap/autonomous/enable), not something that
 activates just because this module is imported.
 """
 
+import shutil
 import subprocess
 import uuid
 from pathlib import Path
@@ -367,6 +368,25 @@ def orchestrator_repo_path(project_path):
     return str(project_path)
 
 
+def _copy_memory_snapshot(repo_dir):
+    # memory/ is entirely gitignored (mutable runtime state -- tracking it
+    # would cause spurious diffs/merge conflicts on every build), so a plain
+    # `git clone` leaves a self-build workspace with no memory/*.json files
+    # at all. Confirmed live 2026-07-29: 13T's task was to analyze
+    # memory/ai_usage_history.json and record a lesson in
+    # memory/learning_lessons.json -- with neither file present, every
+    # coding-capable provider failed on "File not found" before even
+    # attempting the task. Copy a point-in-time snapshot of the live repo's
+    # memory/ into the fresh clone so read/analyze tasks have real data to
+    # work with. Still gitignored inside the clone (the cloned .gitignore
+    # already excludes it), so this can never leak into a build's own
+    # diff/commit -- purely a read-time convenience, not a live/writable
+    # link back to the real state store.
+    src = SELF_PROJECT_PATH / "memory"
+    if src.is_dir():
+        shutil.copytree(src, Path(repo_dir) / "memory", dirs_exist_ok=True)
+
+
 def _create_isolated_self_clone(include_plugin=False):
     workspace = SELF_BUILD_WORKSPACE_ROOT / uuid.uuid4().hex[:12]
     workspace.parent.mkdir(parents=True, exist_ok=True)
@@ -378,6 +398,7 @@ def _create_isolated_self_clone(include_plugin=False):
             ["git", "clone", "-q", str(SELF_PROJECT_PATH), str(workspace)],
             check=True,
         )
+        _copy_memory_snapshot(workspace)
         return str(workspace)
 
     # Dual-repo workspace: the workspace is a plain parent directory with
@@ -389,6 +410,7 @@ def _create_isolated_self_clone(include_plugin=False):
         ["git", "clone", "-q", str(SELF_PROJECT_PATH), str(workspace / ORCHESTRATOR_CLONE_DIRNAME)],
         check=True,
     )
+    _copy_memory_snapshot(workspace / ORCHESTRATOR_CLONE_DIRNAME)
     subprocess.run(
         ["git", "clone", "-q", str(PLUGIN_PROJECT_PATH), str(workspace / PLUGIN_CLONE_DIRNAME)],
         check=True,

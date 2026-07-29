@@ -5,9 +5,42 @@ from core.decision_engine import evaluate_incidents
 from core.remediation_runner import process
 from core.remediation import attempt_rollback
 from core.verification import verify_service
-from core.build_manager import advance_builds
+from core.build_manager import advance_builds, load_builds
 from core.roadmap_manager import advance_roadmap
 from core.logger import info
+from core.telegram_bridge import (
+    detect_state_changes,
+    poll_updates,
+    route_inbound_reply,
+    send_message,
+)
+
+
+def _safe_send(message_text):
+    try:
+        send_message(message_text)
+    except Exception as error:
+        info(f"telegram outbound failed: {type(error).__name__}")
+
+
+def _safe_process_inbound():
+    try:
+        updates = poll_updates()
+    except Exception as error:
+        info(f"telegram inbound poll failed: {type(error).__name__}")
+        return
+
+    for msg in updates:
+        try:
+            result = route_inbound_reply(msg)
+        except Exception as error:
+            info(f"telegram inbound routing error: {type(error).__name__}")
+            continue
+
+        reply_text = result.get("reply")
+
+        if reply_text:
+            _safe_send(reply_text)
 
 
 def run_cycle():
@@ -37,18 +70,21 @@ def run_cycle():
     decisions = evaluate_incidents()
 
 
+    # Poll and route any inbound Telegram replies before advancing builds,
+    # so a human-answered question or approval is already applied when
+    # advance_builds() decides what to do this cycle.
+    _safe_process_inbound()
+
+
+    builds_before = load_builds()
+
+
     advance_builds()
 
 
     roadmap_progress = advance_roadmap()
 
 
-    # advance_roadmap() may have just created a build -- process it the same
-    # cycle it's created rather than leaving it at REQUESTED for a full
-    # extra INTERVAL until the next scheduled cycle picks it up. Safe to
-    # call twice: advance_builds() only acts on builds in an immediately
-    # actionable status (REQUESTED/PLANNING/GENERATING/DEPLOYING), so this
-    # is a no-op for anything the first call already carried past that.
     builds = advance_builds()
 
 
@@ -69,6 +105,10 @@ def run_cycle():
 
         if result.get("status") == "unresolved":
             attempt_rollback(item.get("remediation_id"))
+
+
+    for message_text in detect_state_changes(builds_before, builds):
+        _safe_send(message_text)
 
 
     result = {

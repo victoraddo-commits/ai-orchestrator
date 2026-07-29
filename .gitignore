@@ -31,3 +31,6 @@ __pycache__/
 *.backup.*
 *.bak
 *.old
+
+# Git worktrees
+.worktrees/

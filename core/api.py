@@ -6,6 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
+from starlette.responses import HTMLResponse, RedirectResponse
 
 # Load .env explicitly here rather than relying on tools/proxmox.py's own
 # load_dotenv() call as a side effect of some other import -- this is the
@@ -56,6 +57,20 @@ from core.roadmap_manager import (
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
+
+
+_DASHBOARD_PATH = Path(__file__).resolve().parent / "kai" / "dashboard.html"
+_DASHBOARD_HTML = _DASHBOARD_PATH.read_text()
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    return _DASHBOARD_HTML
+
+
+@app.get("/")
+def root_redirect():
+    return RedirectResponse(url="/dashboard")
 
 
 API_TOKEN_PATH = Path(

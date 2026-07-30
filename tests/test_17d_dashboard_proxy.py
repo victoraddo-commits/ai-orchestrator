@@ -1,16 +1,21 @@
 """Phase 17D: Standalone dashboard tabbed UI + server-side proxy tests.
 
+Upgraded same day from a single shared passphrase to a real username/
+password login (user directive: "gate it with a login page, username Kai
+password Kai-Enzo... admin can change the password anytime").
+
 Covers:
 - Token never leaks to the browser bundle or proxy responses
-- Dashboard passphrase management (creation, validation, access gate)
-- Proxy routes reject requests without / with wrong passphrase (401)
-- Proxy routes accept correct passphrase and forward to backend
+- Dashboard credentials management (creation, defaults, change-password)
+- Proxy routes reject requests without / with wrong login (401)
+- Proxy routes accept correct login and forward to backend
 - Chat send + history round-trip through the proxy
 - Approve / reject actions through the proxy with correct operator attribution
 - Dashboard HTML has real tab navigation
-- Dashboard passphrase file created with secure permissions (0600/0700)
+- Dashboard credentials file created with secure permissions (0600/0700)
 """
 
+import base64
 import stat
 import pytest
 import httpx
@@ -46,49 +51,131 @@ def wire_proxy_to_asgi(monkeypatch):
 client = TestClient(app)
 
 
-def proxy_headers(passphrase: str | None = None) -> dict:
+def _basic_auth_header(username: str, password: str) -> str:
+    return "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
+
+
+def proxy_headers(username: str | None = None, password: str | None = None) -> dict:
     """Headers for a /dashboard/api/proxy/* request."""
-    from core.api import _load_dashboard_passphrase
-    pp = passphrase if passphrase is not None else _load_dashboard_passphrase()
-    return {"X-Dashboard-Passphrase": pp}
+    from core.api import _load_dashboard_credentials
+
+    creds = _load_dashboard_credentials()
+    u = username if username is not None else creds["username"]
+    p = password if password is not None else creds["password"]
+    return {"Authorization": _basic_auth_header(u, p)}
 
 
-# ── Passphrase file security ──────────────────────────────────────────────────
+# ── Credentials file security ─────────────────────────────────────────────────
 
 
-def test_dashboard_passphrase_file_created_with_owner_only_permissions(tmp_path, monkeypatch):
+def test_dashboard_credentials_file_created_with_owner_only_permissions(tmp_path, monkeypatch):
     import core.api as api_module
 
-    passphrase_path = tmp_path / "nested" / "dashboard_passphrase"
-    monkeypatch.setattr(api_module, "DASHBOARD_PASSPHRASE_PATH", passphrase_path)
+    creds_path = tmp_path / "nested" / "dashboard_credentials.json"
+    monkeypatch.setattr(api_module, "DASHBOARD_CREDENTIALS_PATH", creds_path)
 
-    api_module._load_dashboard_passphrase()
+    api_module._load_dashboard_credentials()
 
-    file_mode = stat.S_IMODE(passphrase_path.stat().st_mode)
-    dir_mode = stat.S_IMODE(passphrase_path.parent.stat().st_mode)
+    file_mode = stat.S_IMODE(creds_path.stat().st_mode)
+    dir_mode = stat.S_IMODE(creds_path.parent.stat().st_mode)
 
     assert file_mode == 0o600, f"Expected 0o600, got {oct(file_mode)}"
     assert dir_mode == 0o700, f"Expected 0o700, got {oct(dir_mode)}"
 
 
-def test_dashboard_passphrase_is_non_empty():
-    from core.api import _load_dashboard_passphrase
-    pp = _load_dashboard_passphrase()
-    assert len(pp) >= 8
+def test_dashboard_credentials_default_username_and_password():
+    from core.api import _load_dashboard_credentials, DEFAULT_DASHBOARD_USERNAME, DEFAULT_DASHBOARD_PASSWORD
+
+    creds = _load_dashboard_credentials()
+    # Only true on first-ever creation; if a prior test in this run already
+    # changed the password, this just confirms the *shape*, not the value.
+    assert set(creds.keys()) == {"username", "password"}
+    assert creds["username"]
+    assert creds["password"]
+    assert DEFAULT_DASHBOARD_USERNAME == "Kai"
+    assert DEFAULT_DASHBOARD_PASSWORD == "Kai-Enzo"
 
 
-def test_dashboard_passphrase_stable_across_calls():
+def test_dashboard_credentials_stable_across_calls():
     """Two consecutive reads return the same value."""
-    from core.api import _load_dashboard_passphrase
-    pp1 = _load_dashboard_passphrase()
-    pp2 = _load_dashboard_passphrase()
-    assert pp1 == pp2
+    from core.api import _load_dashboard_credentials
+    c1 = _load_dashboard_credentials()
+    c2 = _load_dashboard_credentials()
+    assert c1 == c2
 
 
-def test_dashboard_passphrase_not_same_as_bridge_token():
-    """Passphrase and bridge token must be distinct secrets."""
-    from core.api import _load_api_token, _load_dashboard_passphrase
-    assert _load_api_token() != _load_dashboard_passphrase()
+def test_dashboard_password_not_same_as_bridge_token():
+    """Dashboard password and bridge token must be distinct secrets."""
+    from core.api import _load_api_token, _load_dashboard_credentials
+    assert _load_api_token() != _load_dashboard_credentials()["password"]
+
+
+# ── Change password ────────────────────────────────────────────────────────────
+
+
+def test_change_password_requires_current_login():
+    response = client.post("/dashboard/api/change-password", json={"new_password": "whatever"})
+    assert response.status_code == 401
+
+
+def test_change_password_updates_credentials_and_old_password_stops_working(tmp_path, monkeypatch):
+    import core.api as api_module
+
+    creds_path = tmp_path / "dashboard_credentials.json"
+    monkeypatch.setattr(api_module, "DASHBOARD_CREDENTIALS_PATH", creds_path)
+    api_module._load_dashboard_credentials()
+
+    old_headers = proxy_headers()
+
+    response = client.post(
+        "/dashboard/api/change-password",
+        json={"new_password": "a-new-strong-password"},
+        headers=old_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+    # Old password no longer works.
+    stale = client.get("/dashboard/api/proxy/health", headers=old_headers)
+    assert stale.status_code == 401
+
+    # New password works.
+    fresh = client.get(
+        "/dashboard/api/proxy/health",
+        headers={"Authorization": _basic_auth_header("Kai", "a-new-strong-password")},
+    )
+    assert fresh.status_code == 200
+
+
+def test_change_password_can_also_change_username(tmp_path, monkeypatch):
+    import core.api as api_module
+
+    creds_path = tmp_path / "dashboard_credentials.json"
+    monkeypatch.setattr(api_module, "DASHBOARD_CREDENTIALS_PATH", creds_path)
+    api_module._load_dashboard_credentials()
+
+    response = client.post(
+        "/dashboard/api/change-password",
+        json={"new_password": "new-pass-123", "new_username": "operator"},
+        headers=proxy_headers(),
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "operator"
+
+    fresh = client.get(
+        "/dashboard/api/proxy/health",
+        headers={"Authorization": _basic_auth_header("operator", "new-pass-123")},
+    )
+    assert fresh.status_code == 200
+
+
+def test_change_password_rejects_empty_new_password():
+    response = client.post(
+        "/dashboard/api/change-password",
+        json={"new_password": ""},
+        headers=proxy_headers(),
+    )
+    assert response.status_code == 400
 
 
 # ── Token never leaks to the browser ─────────────────────────────────────────
@@ -105,15 +192,15 @@ def test_dashboard_html_does_not_contain_bridge_token():
     assert token not in response.text
 
 
-def test_dashboard_html_does_not_contain_passphrase():
-    """The passphrase itself also must not be embedded in the HTML
+def test_dashboard_html_does_not_contain_dashboard_password():
+    """The dashboard password itself also must not be embedded in the HTML
     (the user enters it; it is stored in localStorage; never in the bundle)."""
-    from core.api import _load_dashboard_passphrase
+    from core.api import _load_dashboard_credentials
 
     response = client.get("/dashboard")
 
-    pp = _load_dashboard_passphrase()
-    assert pp not in response.text
+    password = _load_dashboard_credentials()["password"]
+    assert password not in response.text
 
 
 def test_proxy_response_does_not_contain_bridge_token_in_health():
@@ -149,10 +236,11 @@ def test_dashboard_has_chat_panel():
     assert "chat-input" in html or "chat-history" in html
 
 
-def test_dashboard_has_passphrase_modal():
+def test_dashboard_has_login_modal():
     response = client.get("/dashboard")
     html = response.text
-    assert "passphrase" in html.lower()
+    assert "login-username-input" in html
+    assert "passphrase-input" in html  # password field id, kept for minimal diff
 
 
 def test_dashboard_proxy_path_in_js():
@@ -164,20 +252,31 @@ def test_dashboard_proxy_path_in_js():
 # ── Proxy access gate ─────────────────────────────────────────────────────────
 
 
-def test_proxy_requires_passphrase():
+def test_proxy_requires_login():
     response = client.get("/dashboard/api/proxy/health")
     assert response.status_code == 401
 
 
-def test_proxy_rejects_wrong_passphrase():
+def test_proxy_rejects_wrong_password():
     response = client.get(
         "/dashboard/api/proxy/health",
-        headers={"X-Dashboard-Passphrase": "definitely-wrong-passphrase"},
+        headers={"Authorization": _basic_auth_header("Kai", "definitely-wrong-password")},
     )
     assert response.status_code == 401
 
 
-def test_proxy_accepts_correct_passphrase():
+def test_proxy_rejects_wrong_username():
+    from core.api import _load_dashboard_credentials
+
+    correct_password = _load_dashboard_credentials()["password"]
+    response = client.get(
+        "/dashboard/api/proxy/health",
+        headers={"Authorization": _basic_auth_header("not-kai", correct_password)},
+    )
+    assert response.status_code == 401
+
+
+def test_proxy_accepts_correct_login():
     response = client.get("/dashboard/api/proxy/health", headers=proxy_headers())
     assert response.status_code == 200
 
@@ -256,8 +355,8 @@ def test_proxy_chat_history_contains_assistant_reply(monkeypatch):
     assert any("Proxy stub reply" in m.get("content", "") for m in assistant_msgs)
 
 
-def test_proxy_chat_requires_passphrase():
-    """Chat endpoint should be blocked without the passphrase."""
+def test_proxy_chat_requires_login():
+    """Chat endpoint should be blocked without the dashboard login."""
     response = client.post("/dashboard/api/proxy/kai/chat", json={"text": "hi"})
     assert response.status_code == 401
 
@@ -299,34 +398,32 @@ def test_proxy_reject_action_with_correct_operator():
     assert body["rejected_by"] == "cloudcli-plugin"
 
 
-def test_proxy_approve_requires_passphrase():
+def test_proxy_approve_requires_login():
     req = create_request("restart_container", "svc-dashboard", "auth test", incident_id="inc-d3")
 
     response = client.post(f"/dashboard/api/proxy/approvals/{req['id']}/approve")
     assert response.status_code == 401
 
 
-def test_proxy_approve_wrong_passphrase_is_rejected():
+def test_proxy_approve_wrong_password_is_rejected():
     req = create_request("restart_container", "svc-dashboard", "auth test 2", incident_id="inc-d4")
 
     response = client.post(
         f"/dashboard/api/proxy/approvals/{req['id']}/approve",
-        headers={"X-Dashboard-Passphrase": "attacker-passphrase"},
+        headers={"Authorization": _basic_auth_header("Kai", "attacker-password")},
     )
     assert response.status_code == 401
 
 
 def test_browser_cannot_forge_operator_via_proxy():
-    """A browser caller cannot influence operator attribution by including
-    an Authorization header -- the proxy strips and replaces it."""
+    """A browser caller cannot influence operator attribution -- the proxy
+    strips any client-supplied Authorization and replaces it with the real
+    bridge token, regardless of what the dashboard login header claimed."""
     req = create_request("restart_container", "svc-dashboard", "forge test", incident_id="inc-d5")
 
     response = client.post(
         f"/dashboard/api/proxy/approvals/{req['id']}/approve",
-        headers={
-            **proxy_headers(),
-            "Authorization": "Bearer attacker-token-attempt",
-        },
+        headers=proxy_headers(),
     )
 
     assert response.status_code == 200
@@ -423,5 +520,3 @@ def test_proxy_forwards_post_body_correctly(monkeypatch):
     body = response.json()
     # The reply envelope must come back correctly (matched or response key)
     assert "matched" in body or "response" in body
-
-

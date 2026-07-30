@@ -256,16 +256,18 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
 </head>
 <body>
 
-<!-- Passphrase modal: shown if localStorage has no valid passphrase -->
+<!-- Login modal: shown if localStorage has no valid login -->
 <div class="modal-overlay" id="passphrase-modal">
   <div class="modal-box">
-    <h2>Dashboard Access</h2>
-    <p>Enter the dashboard passphrase to enable interactive features.
-       The passphrase is stored in your browser until you clear it.</p>
+    <h2>Kai Dashboard Login</h2>
+    <p>Sign in to enable interactive features. Your login is stored in this
+       browser until you clear it.</p>
+    <input class="modal-input" id="login-username-input" type="text"
+           placeholder="Username" autocomplete="username" style="margin-bottom:8px" />
     <input class="modal-input" id="passphrase-input" type="password"
-           placeholder="Dashboard passphrase" autocomplete="current-password" />
+           placeholder="Password" autocomplete="current-password" />
     <div class="modal-error hidden" id="passphrase-error"></div>
-    <button class="btn" id="passphrase-submit" style="width:100%">Unlock</button>
+    <button class="btn" id="passphrase-submit" style="width:100%">Sign in</button>
   </div>
 </div>
 
@@ -401,15 +403,23 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
 (function() {
   "use strict";
 
-  // ── Passphrase management ─────────────────────────────────────────────
-  const PASSPHRASE_KEY = "kai_dashboard_passphrase";
-  let _passphrase = localStorage.getItem(PASSPHRASE_KEY) || "";
+  // ── Login management ─────────────────────────────────────────────────
+  // The dashboard login (username/password) is stored as a pre-built HTTP
+  // Basic Authorization header value, so every proxy request just attaches
+  // it directly -- no separate encoding step scattered through the code.
+  const LOGIN_KEY = "kai_dashboard_login";
+  let _authHeader = localStorage.getItem(LOGIN_KEY) || "";
 
-  function getPassphrase() { return _passphrase; }
+  function getAuthHeader() { return _authHeader; }
 
-  function setPassphrase(p) {
-    _passphrase = p;
-    localStorage.setItem(PASSPHRASE_KEY, p);
+  function setLogin(username, password) {
+    _authHeader = "Basic " + btoa(username + ":" + password);
+    localStorage.setItem(LOGIN_KEY, _authHeader);
+  }
+
+  function clearLogin() {
+    _authHeader = "";
+    localStorage.removeItem(LOGIN_KEY);
   }
 
   // ── API helpers ───────────────────────────────────────────────────────
@@ -421,18 +431,18 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
     return res.json();
   }
 
-  /** Fetch through the dashboard proxy (requires valid passphrase). */
+  /** Fetch through the dashboard proxy (requires a valid login). */
   async function proxyFetch(method, path, body) {
     const opts = {
       method: method,
       headers: {
-        "X-Dashboard-Passphrase": getPassphrase(),
+        "Authorization": getAuthHeader(),
         "Content-Type": "application/json",
       },
     };
     if (body !== undefined) opts.body = JSON.stringify(body);
     const res = await fetch("/dashboard/api/proxy/" + path, opts);
-    if (res.status === 401) throw new Error("Invalid passphrase – please re-enter it.");
+    if (res.status === 401) throw new Error("Invalid login – please sign in again.");
     if (!res.ok) {
       let detail = res.status;
       try { const d = await res.json(); detail = d.detail || detail; } catch {}
@@ -456,45 +466,48 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
 
   function $(id) { return document.getElementById(id); }
 
-  // ── Passphrase modal ──────────────────────────────────────────────────
+  // ── Login modal ────────────────────────────────────────────────────────
 
   const modal = $("passphrase-modal");
+  const usernameInput = $("login-username-input");
   const passphraseInput = $("passphrase-input");
   const passphraseSubmit = $("passphrase-submit");
   const passphraseError = $("passphrase-error");
 
-  let _passphraseResolve = null;
+  let _loginResolve = null;
 
-  function promptPassphrase() {
+  function promptLogin() {
     return new Promise(resolve => {
-      _passphraseResolve = resolve;
+      _loginResolve = resolve;
       modal.classList.remove("hidden");
+      usernameInput.value = "";
       passphraseInput.value = "";
       passphraseError.classList.add("hidden");
-      passphraseInput.focus();
+      usernameInput.focus();
     });
   }
 
-  async function submitPassphrase() {
-    const val = passphraseInput.value.trim();
-    if (!val) {
-      passphraseError.textContent = "Please enter the passphrase.";
+  async function submitLogin() {
+    const username = usernameInput.value.trim();
+    const password = passphraseInput.value;
+    if (!username || !password) {
+      passphraseError.textContent = "Please enter both username and password.";
       passphraseError.classList.remove("hidden");
       return;
     }
     passphraseSubmit.disabled = true;
     try {
       // Validate by attempting a cheap proxy call.
-      const tmpHeaders = { "X-Dashboard-Passphrase": val, "Content-Type": "application/json" };
-      const r = await fetch("/dashboard/api/proxy/health", { headers: tmpHeaders });
+      const tmpAuth = "Basic " + btoa(username + ":" + password);
+      const r = await fetch("/dashboard/api/proxy/health", { headers: { "Authorization": tmpAuth } });
       if (r.status === 401) {
-        passphraseError.textContent = "Incorrect passphrase. Try again.";
+        passphraseError.textContent = "Incorrect username or password. Try again.";
         passphraseError.classList.remove("hidden");
         return;
       }
-      setPassphrase(val);
+      setLogin(username, password);
       modal.classList.add("hidden");
-      if (_passphraseResolve) { _passphraseResolve(val); _passphraseResolve = null; }
+      if (_loginResolve) { _loginResolve(); _loginResolve = null; }
     } catch (e) {
       passphraseError.textContent = "Validation failed: " + e.message;
       passphraseError.classList.remove("hidden");
@@ -503,19 +516,20 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
     }
   }
 
-  passphraseSubmit.addEventListener("click", submitPassphrase);
-  passphraseInput.addEventListener("keydown", e => { if (e.key === "Enter") submitPassphrase(); });
+  passphraseSubmit.addEventListener("click", submitLogin);
+  passphraseInput.addEventListener("keydown", e => { if (e.key === "Enter") submitLogin(); });
+  usernameInput.addEventListener("keydown", e => { if (e.key === "Enter") passphraseInput.focus(); });
 
   /**
-   * Ensure we have a passphrase that works; shows the modal if not.
+   * Ensure we have a login that works; shows the modal if not.
    * Once validated, calls initAll() to (re-)populate all tabs.
    */
   async function ensurePassphrase() {
-    if (_passphrase) {
-      // Quick check if stored passphrase is still valid.
+    if (_authHeader) {
+      // Quick check if the stored login is still valid.
       try {
         const r = await fetch("/dashboard/api/proxy/health", {
-          headers: { "X-Dashboard-Passphrase": _passphrase }
+          headers: { "Authorization": _authHeader }
         });
         if (r.status !== 401) {
           modal.classList.add("hidden");
@@ -523,9 +537,10 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
           return;
         }
       } catch {}
+      clearLogin();
     }
-    // No passphrase or invalid – prompt.
-    await promptPassphrase();
+    // No login or invalid – prompt.
+    await promptLogin();
     initAll();
   }
 

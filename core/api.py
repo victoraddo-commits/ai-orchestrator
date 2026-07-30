@@ -1,3 +1,4 @@
+import base64
 import hmac
 import json
 import os
@@ -137,58 +138,116 @@ def require_bridge_token(authorization: str | None = Header(default=None)) -> st
     return BRIDGE_OPERATOR
 
 
-# ── Dashboard passphrase (Phase 17D) ─────────────────────────────────────────
+# ── Dashboard login (Phase 17D, upgraded to username/password same day) ─────
 # The standalone dashboard is served on 0.0.0.0 so anyone on the LAN can load
 # it.  The proxy routes below forward requests with the real bridge token, so
 # they must gate on something the LAN operator knows but anonymous LAN visitors
-# do not.  A lightweight shared passphrase fills that role: the operator enters
-# it once in the UI, it is stored in localStorage, and every proxy request
-# carries it in the X-Dashboard-Passphrase header.  The passphrase itself never
-# grants access to the backend -- that still requires the bridge token, which
-# the proxy injects server-side.
+# do not.  A username/password pair fills that role: the operator logs in once
+# in the UI, the browser stores the credentials (as a pre-built HTTP Basic
+# Authorization header) in localStorage, and every proxy request carries it.
+# The credentials themselves never grant access to the backend -- that still
+# requires the bridge token, which the proxy injects server-side and which
+# unconditionally overwrites whatever Authorization header the browser sent
+# (see dashboard_proxy below), so a dashboard login can never be replayed as
+# the real bridge token.
 
-DASHBOARD_PASSPHRASE_PATH = Path(
+DASHBOARD_CREDENTIALS_PATH = Path(
     os.environ.get(
-        "AI_ORCHESTRATOR_DASHBOARD_PASSPHRASE_PATH",
-        str(Path.home() / ".ai-orchestrator" / "dashboard_passphrase"),
+        "AI_ORCHESTRATOR_DASHBOARD_CREDENTIALS_PATH",
+        str(Path.home() / ".ai-orchestrator" / "dashboard_credentials.json"),
     )
 )
 
 DASHBOARD_PROXY_OPERATOR = "dashboard-proxy"
 
+DEFAULT_DASHBOARD_USERNAME = "Kai"
+DEFAULT_DASHBOARD_PASSWORD = "Kai-Enzo"
 
-def _load_dashboard_passphrase() -> str:
-    """Return the dashboard passphrase, creating one on first use (same
-    security hygiene as _load_api_token: 0600 file, 0700 parent dir)."""
-    if not DASHBOARD_PASSPHRASE_PATH.exists():
-        DASHBOARD_PASSPHRASE_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        DASHBOARD_PASSPHRASE_PATH.parent.chmod(0o700)
+
+def _load_dashboard_credentials() -> dict:
+    """Return {"username": ..., "password": ...}, creating the file with the
+    default credentials on first use (same security hygiene as
+    _load_api_token: 0600 file, 0700 parent dir). The admin can change the
+    password (or username) anytime via POST /dashboard/api/change-password,
+    or by editing this file directly -- it's plain JSON, not encrypted, since
+    it protects a same-LAN convenience gate, not the real bridge token."""
+    if not DASHBOARD_CREDENTIALS_PATH.exists():
+        DASHBOARD_CREDENTIALS_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        DASHBOARD_CREDENTIALS_PATH.parent.chmod(0o700)
         try:
-            fd = os.open(DASHBOARD_PASSPHRASE_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            fd = os.open(DASHBOARD_CREDENTIALS_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError:
             pass
         else:
             try:
-                os.write(fd, secrets.token_urlsafe(24).encode())
+                os.write(
+                    fd,
+                    json.dumps(
+                        {"username": DEFAULT_DASHBOARD_USERNAME, "password": DEFAULT_DASHBOARD_PASSWORD}
+                    ).encode(),
+                )
             finally:
                 os.close(fd)
-    return DASHBOARD_PASSPHRASE_PATH.read_text().strip()
+    return json.loads(DASHBOARD_CREDENTIALS_PATH.read_text())
 
 
-# Ensure the passphrase file exists on startup (same reasoning as the bridge
-# token: the dashboard page's JS needs it to be available before the first
-# interactive request).
-_load_dashboard_passphrase()
+def _save_dashboard_credentials(username: str, password: str) -> None:
+    DASHBOARD_CREDENTIALS_PATH.write_text(json.dumps({"username": username, "password": password}))
+    DASHBOARD_CREDENTIALS_PATH.chmod(0o600)
 
 
-def _require_dashboard_passphrase(
-    x_dashboard_passphrase: str | None = Header(default=None),
+# Ensure the credentials file exists on startup (same reasoning as the bridge
+# token: the dashboard page's JS needs the login gate to be live before the
+# first interactive request).
+_load_dashboard_credentials()
+
+
+def _parse_basic_auth(authorization: str | None) -> tuple[str, str] | None:
+    if not authorization or not authorization.lower().startswith("basic "):
+        return None
+    try:
+        decoded = base64.b64decode(authorization[6:]).decode("utf-8")
+        username, _, password = decoded.partition(":")
+    except Exception:
+        return None
+    return username, password
+
+
+def _require_dashboard_login(
+    authorization: str | None = Header(default=None),
 ) -> None:
-    """FastAPI dependency: enforces X-Dashboard-Passphrase on proxy routes."""
-    expected = _load_dashboard_passphrase()
-    presented = x_dashboard_passphrase or ""
-    if not hmac.compare_digest(presented.encode(), expected.encode()):
-        raise HTTPException(status_code=401, detail="Missing or invalid dashboard passphrase")
+    """FastAPI dependency: enforces HTTP Basic username/password (checked
+    against DASHBOARD_CREDENTIALS_PATH) on proxy routes."""
+    creds = _load_dashboard_credentials()
+    parsed = _parse_basic_auth(authorization)
+    if parsed is None:
+        raise HTTPException(status_code=401, detail="Missing or invalid dashboard login")
+    username, password = parsed
+    username_ok = hmac.compare_digest(username.encode(), creds["username"].encode())
+    password_ok = hmac.compare_digest(password.encode(), creds["password"].encode())
+    if not (username_ok and password_ok):
+        raise HTTPException(status_code=401, detail="Missing or invalid dashboard login")
+
+
+class DashboardChangePasswordRequest(BaseModel):
+    new_password: str
+    new_username: str | None = None
+
+
+@app.post("/dashboard/api/change-password")
+def dashboard_change_password(
+    body: DashboardChangePasswordRequest,
+    _: None = Depends(_require_dashboard_login),
+):
+    """Admin can change the dashboard password (and optionally username)
+    anytime, gated on already knowing the current login -- not the real
+    bridge token, this only ever governs the same-LAN convenience gate."""
+    if not body.new_password:
+        raise HTTPException(status_code=400, detail="new_password must not be empty")
+    creds = _load_dashboard_credentials()
+    new_username = body.new_username or creds["username"]
+    _save_dashboard_credentials(new_username, body.new_password)
+    return {"ok": True, "username": new_username}
 
 
 # ── Dashboard same-origin proxy (Phase 17D) ──────────────────────────────────
@@ -225,8 +284,11 @@ def _get_proxy_client() -> httpx.AsyncClient:
 _HOP_BY_HOP = frozenset([
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
     "te", "trailers", "transfer-encoding", "upgrade",
-    # Our own passphrase header is stripped before forwarding.
-    "x-dashboard-passphrase",
+    # The caller's own Authorization header (the dashboard login, HTTP
+    # Basic) is stripped before forwarding -- it is unconditionally replaced
+    # with the real bridge token below regardless, this just makes that
+    # intent explicit rather than relying solely on the later overwrite.
+    "authorization",
 ])
 
 
@@ -237,14 +299,15 @@ _HOP_BY_HOP = frozenset([
 async def dashboard_proxy(
     path: str,
     request: Request,
-    _: None = Depends(_require_dashboard_passphrase),
+    _: None = Depends(_require_dashboard_login),
 ):
     """Phase 17D: server-side proxy for the standalone dashboard.
 
-    Validates the caller knows the dashboard passphrase, then forwards the
-    request to the backend with the real bridge token injected.  The token
-    never travels to the browser -- only the passphrase does, and the
-    passphrase only guards access to this proxy, not to the backend directly.
+    Validates the caller is logged in (dashboard username/password), then
+    forwards the request to the backend with the real bridge token injected.
+    The token never travels to the browser -- only the dashboard login does,
+    and that login only guards access to this proxy, not to the backend
+    directly.
     """
     token = _load_api_token()
     client = _get_proxy_client()

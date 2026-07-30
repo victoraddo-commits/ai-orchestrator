@@ -572,7 +572,7 @@
       "id": "13X",
       "name": "Real chat interface with Kai (POST /kai/chat)",
       "description": "POST /kai/command (13B) is explicitly a fixed rule-based phrase-matcher -- 'Deliberately not an LLM intent classifier' per its own module docstring -- not free-form conversation. This phase adds genuine open-ended chat: POST /kai/chat, bearer-token gated like every other write endpoint. Design: try core.kai.commands.dispatch(text) first (the existing fixed patterns still handle their exact phrasings for free); if it doesn't match, fall back to core.ai.ai_router.delegate() for an open-ended conversational response grounded in the same signals core.kai.planner._gather_signals() already assembles (roadmap state, health, recent failures, provider quota) so Kai can answer 'what are you doing?' / 'which AI is working?' accurately rather than hallucinating. Critical constraint, must not regress core/kai/policies.py's enforced restrictions: chat is a UI surface for the HUMAN operator to act through, not a new autonomous action path. 'Approve architecture plan' spoken in chat must resolve to the existing core.approval.approve() call with the real authenticated operator attributed (same as any other Approval Center action) -- it must NOT let Kai itself decide to approve based on interpreting the conversation, since core/kai/policies.py's own test (tests/test_kai_identity.py) greps every module under core/kai/ for calls to approve_architecture/approve_deploy and fails if one appears; this endpoint's approval-intent handling likely needs to live in core/api.py alongside the other approval endpoints, not core/kai/, to keep that guarantee structurally enforced rather than just documented. Reuse the existing planner/approval system as explicitly requested -- no new approval mechanism. User directive 2026-07-30: this is the essential, high-impact, high-priority deliverable -- the top-priority item on the roadmap, ahead of all other pending work. Low risk / non-breaking / backward-compatible: it reuses the existing planner and approval system exactly as specified, adds no new approval mechanism, and introduces no unsupervised action path.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 15,
       "completion_criteria": [
@@ -583,7 +583,8 @@
         "Single-user conversation continuity: multi-turn context persists within and across sessions for the one operator (e.g. memory/kai_chat_history.json or equivalent, no auth/roles required) -- this must ship as part of 13X, NOT wait on 15A/15F which are multi-user-only extensions now deferred"
       ],
       "tests_required": true,
-      "note": "Re-prioritized 2026-07-30 per user directive: direct Kai chat is now Priority 1 overall, ahead of all multi-user/enterprise work (Phase 15, deferred). This is the MVP chat interface -- the fastest path is the existing 13G CloudCLI-embedded Kai Control Center tab plus this endpoint, not the standalone dashboard (16A tracks that separately, no longer blocking)."
+      "note": "Re-prioritized 2026-07-30 per user directive: direct Kai chat is now Priority 1 overall, ahead of all multi-user/enterprise work (Phase 15, deferred). This is the MVP chat interface -- the fastest path is the existing 13G CloudCLI-embedded Kai Control Center tab plus this endpoint, not the standalone dashboard (16A tracks that separately, no longer blocking).",
+      "build_id": "d8155580"
     },
     {
       "id": "13Y",
@@ -804,7 +805,7 @@
       "id": "16A",
       "name": "Standalone Kai dashboard, decoupled from CloudCLI's lifecycle",
       "description": "Confirmed live 2026-07-30: the only existing Kai UI (13G's Kai Control Center) is embedded as a CloudCLI plugin tab -- it inherits CloudCLI's own hosting, auth, and lifecycle. The user hit this directly: the dashboard showed 'Failed to load: RPC error 404' coinciding with a routine ai-orchestrator-api.service restart, and separately CloudCLI itself had an unrelated host-level update prompt that looked related but wasn't. Kai and CloudCLI are conceptually separate systems; the dashboard should not go down because the other one is restarting, updating, or simply not running. Add a standalone dashboard: a small static HTML/JS page served directly by core.api (e.g. GET /dashboard) at its own URL, reachable independent of CloudCLI entirely. Reuses every existing read endpoint as-is (/health, /roadmap/progress, /approvals, /providers/dashboard, /learning, /builds) -- no new backend logic, this is presentation only. Deliberately READ-ONLY for this phase: core.api's GET endpoints require no auth today (only POST/write endpoints check the bridge token), so a browser-servable page can safely call them directly -- but embedding the bridge token itself into browser-facing JS to support write actions (approve/reject) would leak it to anyone who can load the page, bypassing CloudCLI's proxy entirely. Approve/reject actions stay on the existing CloudCLI-embedded tab until 15A's real auth exists; this phase does not attempt to solve write-auth early.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13G"
       ],
@@ -894,6 +895,25 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 per user request, deliberately low priority -- this is a throughput/efficiency improvement, not a blocker for the current top priority (13X/16A/13H, direct Kai chat). Revisit after those ship."
+    },
+    {
+      "id": "17B",
+      "name": "Wire a chat panel into the CloudCLI-embedded Kai Control Center tab, calling POST /kai/chat",
+      "description": "Direct follow-on to 13X (POST /kai/chat) -- shipping the backend endpoint alone leaves nowhere safe to actually type into it. The standalone dashboard (16A) deliberately does not hold the bridge token (embedding it in browser JS would leak it to anyone who loads the page, since there is no per-user auth yet -- write auth is explicitly deferred to 15A), so it cannot call 13X's endpoint on its own. The existing CloudCLI-embedded Kai Control Center tab (13G, completed, /project/src/ai-orchestrator-plugin) already has a server-side Node.js proxy (dist/server.js) that holds the bridge token securely and proxies authenticated write calls on the operator's behalf -- the same pattern already used for the tab's existing Approve/Reject buttons. Add a simple chat panel to that tab: a text input, a send button, and a scrolling message history, POSTing through the plugin's existing server-side proxy to POST /kai/chat (never embedding the bridge token client-side). This is the concrete answer to \"where do I actually type to Kai\" -- reliability over visual polish, per the user's explicit MVP framing for the chat experience.",
+      "status": "pending",
+      "dependencies": [
+        "13X"
+      ],
+      "priority": 16,
+      "completion_criteria": [
+        "A chat panel (input box, send button, scrolling history) exists in the Kai Control Center tab",
+        "Messages route through the plugin's existing server-side bridge-token proxy -- the token is never sent to or embedded in browser-facing code",
+        "Conversation history displayed in the panel matches what POST /kai/chat persists (13X's memory/kai_chat_history.json)",
+        "Sending a message and receiving a real, non-fabricated response works end to end against a running backend",
+        "No new approval mechanism and no write capability added beyond what already existed in the tab -- this only adds a transport for 13X's existing endpoint"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-30 per user request, immediately after 13X in priority -- this closes the gap between \"the chat backend exists\" and \"I can actually open something and type to Kai,\" which is the exact milestone the user has been asking for."
     }
   ]
 }

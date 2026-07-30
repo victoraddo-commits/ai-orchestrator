@@ -72,6 +72,7 @@ def run_coding_task(project_path, instruction, model=None, timeout=DEFAULT_TIMEO
             "files_changed": [],
             "commits": [],
             "tool_errors": [{"tool": None, "content": f"opencode run exceeded {timeout}s wall-clock timeout"}],
+            "cost": None,
         }
 
     events = _parse_events(result.stdout)
@@ -80,6 +81,12 @@ def run_coding_task(project_path, instruction, model=None, timeout=DEFAULT_TIMEO
     files_changed = []
     commits = []
     tool_errors = []
+    # 13W: real per-call cost. OpenCode's step_finish events carry the actual
+    # billed cost per step (confirmed live, e.g. cost: 0.0139422, and in the
+    # CLI's own session store where every step-finish part has a top-level
+    # "cost") -- sum them for the run's total. Stays None if no step reported
+    # one: never fabricated from token counts.
+    cost = None
 
     for event in events:
         etype = event.get("type")
@@ -87,6 +94,14 @@ def run_coding_task(project_path, instruction, model=None, timeout=DEFAULT_TIMEO
 
         if etype == "text":
             response_text_parts.append(part.get("text", ""))
+            continue
+
+        # The stream and the session store spell part types differently
+        # (tool_use vs tool), so accept both separators for step finish.
+        if etype in ("step_finish", "step-finish") or part.get("type") == "step-finish":
+            step_cost = part.get("cost", event.get("cost"))
+            if isinstance(step_cost, (int, float)) and not isinstance(step_cost, bool):
+                cost = (cost or 0.0) + step_cost
             continue
 
         if etype != "tool_use":
@@ -119,4 +134,5 @@ def run_coding_task(project_path, instruction, model=None, timeout=DEFAULT_TIMEO
         "files_changed": files_changed,
         "commits": commits,
         "tool_errors": tool_errors,
+        "cost": cost,
     }

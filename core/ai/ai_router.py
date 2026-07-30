@@ -213,9 +213,13 @@ def get_usage_history():
     return load(USAGE_HISTORY_FILE) or []
 
 
-def record_usage(provider, task_type, description, success, duration_ms, error=None):
+def record_usage(provider, task_type, description, success, duration_ms, error=None, cost=None):
     history = get_usage_history()
 
+    # 13W: cost is the *provider-reported* figure only (e.g. OpenCode's
+    # step_finish events, which carry OpenRouter/Zen's real billed cost).
+    # Providers that don't report one record null -- a number is never
+    # estimated/fabricated from token counts here.
     entry = {
         "provider": provider,
         "task_type": task_type,
@@ -223,6 +227,7 @@ def record_usage(provider, task_type, description, success, duration_ms, error=N
         "success": success,
         "duration_ms": duration_ms,
         "error": error,
+        "cost": cost,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -246,6 +251,18 @@ def _record_coding_failure_health(provider_name, detail):
         provider_health.capture_quota_exceeded(provider_name, detail=detail)
     else:
         provider_health.capture_provider_error(provider_name, detail=detail)
+
+
+# 13W: pull the provider-reported cost out of a response, if any. Only
+# coding-agent responses (dicts from opencode_bridge/coding_bridge) can carry
+# one today; text_task responses are plain strings and yield None.
+def _response_cost(response):
+    if not isinstance(response, dict):
+        return None
+    cost = response.get("cost")
+    if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        return cost
+    return None
 
 
 def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task"):
@@ -303,12 +320,14 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         if capability == "coding_agent" and isinstance(response, dict) and not response.get("success"):
             duration_ms = int((time.time() - start) * 1000)
             detail = "; ".join(e.get("content", "") for e in response.get("tool_errors") or []) or "generation did not succeed"
-            record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail)
+            # A failed generation still incurred whatever cost the provider
+            # reported for it -- record that too.
+            record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail, cost=_response_cost(response))
             _record_coding_failure_health(name, detail)
             failures.append(f"{name}: {detail}")
             continue
 
-        record_usage(name, resolved_type, description, success=True, duration_ms=duration_ms)
+        record_usage(name, resolved_type, description, success=True, duration_ms=duration_ms, cost=_response_cost(response))
 
         return {
             "provider": name,
@@ -334,6 +353,16 @@ def get_provider_dashboard():
         attempts = [e for e in history if e["provider"] == name]
         successes = [e for e in attempts if e["success"]]
 
+        # 13W: AI Workforce Analytics aggregates. total_cost sums only
+        # provider-reported cost figures (entries recorded before 13W, or
+        # from providers that report no cost, have cost=None and are simply
+        # absent from the sum) -- it stays None, not 0.0, when no attempt
+        # ever carried a real figure, so "no cost data" is never displayed
+        # as "free". average_duration_ms covers every attempt, success or
+        # failure, since duration_ms is recorded for both.
+        costs = [e["cost"] for e in attempts if isinstance(e.get("cost"), (int, float)) and not isinstance(e.get("cost"), bool)]
+        durations = [e["duration_ms"] for e in attempts if e.get("duration_ms") is not None]
+
         # Claude's "quota" isn't a provider-verified figure (see
         # provider_health.claude_usage_snapshot's docstring) -- keep it
         # visibly distinct from the other three's real/attempted quota data.
@@ -352,12 +381,16 @@ def get_provider_dashboard():
         dashboard[name] = {
             "status": "connected" if info["available"] else "not_configured",
             "description": info["description"],
+            "cost_tier": info["cost_tier"],
             "last_task_type": last_entry["task_type"] if last_entry else None,
             "last_success": last_entry["success"] if last_entry else None,
             "last_response_time_ms": last_entry["duration_ms"] if last_entry else None,
             "last_request_at": last_entry["timestamp"] if last_entry else None,
             "total_attempts": len(attempts),
             "total_successes": len(successes),
+            "total_cost": sum(costs) if costs else None,
+            "cost_reported_calls": len(costs),
+            "average_duration_ms": (sum(durations) / len(durations)) if durations else None,
             "percent_remaining": quota.get("percent_remaining"),
             "quota_detail": quota.get("detail"),
         }

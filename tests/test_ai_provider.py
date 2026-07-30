@@ -468,6 +468,55 @@ def test_opencode_deepseek_provider_shares_availability_with_opencode(monkeypatc
     assert ai_provider.list_providers()["opencode_deepseek"]["available"] is False
 
 
+# --- 13W: static cost_tier classification per provider ----------------------
+
+def test_every_registered_provider_has_a_valid_cost_tier():
+    providers = ai_provider.list_providers()
+
+    assert providers  # sanity: the registry is not empty
+    for name, info in providers.items():
+        assert "cost_tier" in info, name
+        assert info["cost_tier"] in ai_provider.COST_TIERS, name
+
+
+@pytest.mark.parametrize(
+    "provider_name,expected_tier",
+    [
+        # free-tier API keys
+        ("gemini", "free"),
+        ("groq", "free"),
+        ("local", "free"),
+        # cheap/credit-pool models, per the user's own labeling request
+        ("minimax", "free_or_low_cost"),
+        ("deepseek", "free_or_low_cost"),
+        ("opencode", "free_or_low_cost"),
+        ("opencode_claude", "free_or_low_cost"),
+        ("opencode_minimax", "free_or_low_cost"),
+        ("opencode_deepseek", "free_or_low_cost"),
+        # real per-call billing / materially expensive models
+        ("claude", "paid"),
+        ("openai", "paid"),
+        ("openrouter", "paid"),
+        ("opencode_claude_sonnet", "paid"),
+        ("opencode_claude_opus", "paid"),
+    ],
+)
+def test_provider_cost_tier_matches_the_static_classification(provider_name, expected_tier):
+    assert ai_provider.list_providers()[provider_name]["cost_tier"] == expected_tier
+
+
+def test_register_provider_rejects_an_unknown_cost_tier():
+    with pytest.raises(ValueError, match="cost_tier"):
+        ai_provider.register_provider(
+            "bad-tier-provider",
+            run_text_task=lambda *a, **k: "",
+            available_fn=lambda: False,
+            cost_tier="expensive",
+        )
+
+    assert ai_provider.get_provider("bad-tier-provider") is None
+
+
 def test_deepseek_run_text_task_does_not_use_the_shared_OPENROUTER_API_KEY(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "shared-key")
     monkeypatch.delenv("DEEPSEEK_OPENROUTER_API_KEY", raising=False)

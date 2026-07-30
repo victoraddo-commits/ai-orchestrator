@@ -236,6 +236,10 @@ def _openrouter_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_openrouter(prompt, timeout=timeout)
 
 
+def _openrouter_claude_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_openrouter_claude(prompt, timeout=timeout)
+
+
 def _minimax_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_minimax(prompt, timeout=timeout)
 
@@ -287,6 +291,22 @@ register_provider(
     available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
     kind="cloud",
     description="OpenRouter (openai/gpt-4o-mini) -- planning/research fallback, reduces Claude-credit usage",
+    cost_tier="paid",
+)
+
+# 13V: text-capable Claude Sonnet route via OpenRouter, for the Chief
+# Architect fallback chain (see ai.ai_router.ROLE_PROVIDERS["architecture"]).
+# Same OPENROUTER_API_KEY as "openrouter" but a distinct provider key, so its
+# health/quota snapshots and usage history don't blend with the gpt-4o-mini
+# route. This is the 13V-approved "reuse the plain openrouter provider pinned
+# to anthropic/claude-sonnet-4.6" option -- 13M's opencode-CLI coding route
+# can still land separately later.
+register_provider(
+    "openrouter_claude",
+    run_text_task=_openrouter_claude_run_text_task,
+    available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
+    kind="cloud",
+    description="Claude Sonnet 4.6 (anthropic/claude-sonnet-4.6 via OpenRouter) -- Chief Architect chain fallback, Claude-family answers surviving the Anthropic subscription's quota",
     cost_tier="paid",
 )
 

@@ -38,6 +38,13 @@ MINIMAX_DEFAULT_MODEL = "MiniMax-M2"
 # rather than calling DeepSeek's own API directly, reusing the infrastructure
 # already proven for gpt-4o-mini (same endpoint, same response format).
 DEEPSEEK_DEFAULT_MODEL = "deepseek/deepseek-v4-pro"
+# 13V: Claude Sonnet through OpenRouter's text-completion API, on the shared
+# OPENROUTER_API_KEY -- a Claude-family fallback for the Chief Architect
+# chain that survives the CloudCLI/Anthropic subscription's own quota. Kept
+# as its own provider key (not a model swap on "openrouter") so
+# provider_health tracks its quota/errors separately from the gpt-4o-mini
+# route and ai_router can order the two independently.
+OPENROUTER_CLAUDE_MODEL = "anthropic/claude-sonnet-4.6"
 
 
 class ProviderUnavailable(Exception):
@@ -122,6 +129,19 @@ def call_openrouter(prompt, model=OPENROUTER_DEFAULT_MODEL, timeout=60):
 
     data = _post_json(
         "openrouter",
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+    return data["choices"][0]["message"]["content"]
+
+
+def call_openrouter_claude(prompt, model=OPENROUTER_CLAUDE_MODEL, timeout=60):
+    key = _require_key("OPENROUTER_API_KEY")
+
+    data = _post_json(
+        "openrouter_claude",
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},

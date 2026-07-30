@@ -137,6 +137,16 @@ ROLE_PROVIDERS = {
     # planning evidence carries. The registry entry stays registered; only
     # the routing is withheld.
     "planning": ["gemini", "openrouter", "deepseek", "claude"],
+    # 13V: the Chief Architect chain -- a *named priority list* distinct from
+    # general "planning": Claude's judgment is the product here, so unlike
+    # every other role this one never rotates its starting candidate (see
+    # FIXED_ORDER_TASK_TYPES): claude is always the primary, and the rest are
+    # redundancy in strict preference order (Claude-family via OpenRouter
+    # before OpenAI, Gemini/DeepSeek in between for cost). Reached only by
+    # explicit task_type="architecture" (classify_task maps the word
+    # "architecture" to "planning"); core.ai.chief_architect wraps this and
+    # records each call to memory/chief_architect_history.json.
+    "architecture": ["claude", "gemini", "deepseek", "openrouter_claude", "openai"],
     "log_analysis": ["groq", "openrouter", "claude"],
     "documentation": ["gemini", "groq", "openrouter", "deepseek", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
@@ -148,12 +158,28 @@ ROLE_PROVIDERS = {
 
 DEFAULT_TASK_TYPE = "coding"
 
+# 13V: task types whose ROLE_PROVIDERS order is a strict priority list --
+# 13J's rotation (spread first-try traffic across candidates) is exactly
+# wrong for a chain whose whole point is "this provider is the primary,
+# the rest are redundancy".
+FIXED_ORDER_TASK_TYPES = frozenset({"architecture"})
+
 USAGE_HISTORY_FILE = "ai_usage_history.json"
 MAX_DESCRIPTION_LENGTH = 200
 
 
 class AllProvidersFailed(Exception):
-    """Raised when every candidate provider for a task type is unavailable or fails."""
+    """Raised when every candidate provider for a task type is unavailable or fails.
+
+    Carries the structured per-candidate attempt log (same shape delegate()
+    returns under "attempts" when return_attempts=True) so callers like
+    core.ai.chief_architect can report *why* the chain was exhausted without
+    parsing the message string.
+    """
+
+    def __init__(self, message, attempts=None):
+        super().__init__(message)
+        self.attempts = attempts or []
 
 
 def classify_task(description):
@@ -253,6 +279,37 @@ def _record_coding_failure_health(provider_name, detail):
         provider_health.capture_provider_error(provider_name, detail=detail)
 
 
+# 13V: classify a *call* failure (the candidate was tried and failed) into
+# the failover-reason vocabulary {quota_exceeded, timeout, degraded_health,
+# error} using existing provider_health signals rather than guessing:
+#
+#   * delegate() never calls a candidate whose snapshot already says
+#     quota_exceeded (it's skipped beforehand), so a quota_exceeded snapshot
+#     observed *after* the call must have been captured during it (e.g.
+#     llm_clients._post_json's 429 handler or
+#     _record_coding_failure_health) -- a verified, fresh quota signal.
+#   * the confirmed-live _QUOTA_EXCEEDED_MARKERS wording counts too (same
+#     markers _record_coding_failure_health uses to record the signal).
+#   * timeouts surface as exception text ("...request failed: ReadTimeout",
+#     "timed out after Ns") -- matched on wording, since requests exceptions
+#     are re-raised type-name-only by llm_clients.
+#   * an "error" snapshot (capture_provider_error) is provider_health's
+#     degraded-but-not-verified-quota state.
+def _classify_failure_reason(provider_name, detail):
+    snapshot = provider_health.get_quota_snapshot(provider_name)
+    status = (snapshot or {}).get("status")
+
+    lowered = detail.lower()
+
+    if status == "quota_exceeded" or any(marker in lowered for marker in _QUOTA_EXCEEDED_MARKERS):
+        return "quota_exceeded"
+    if "timeout" in lowered or "timed out" in lowered:
+        return "timeout"
+    if status == "error":
+        return "degraded_health"
+    return "error"
+
+
 # 13W: pull the provider-reported cost out of a response, if any. Only
 # coding-agent responses (dicts from opencode_bridge/coding_bridge) can carry
 # one today; text_task responses are plain strings and yield None.
@@ -265,21 +322,32 @@ def _response_cost(response):
     return None
 
 
-def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task"):
+def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task", return_attempts=False):
+    # 13V: return_attempts=True adds an "attempts" key to the result -- the
+    # structured log of every candidate that failed before the winner, each
+    # {"provider", "error_type", "error"} with error_type in
+    # {quota_exceeded, timeout, unavailable, degraded_health, error}. The
+    # default return shape is unchanged. On full exhaustion the same log
+    # rides on AllProvidersFailed.attempts regardless of the flag.
     resolved_type = task_type or classify_task(description)
-    candidates = _rotate_candidates(resolved_type, _candidates_for(resolved_type))
+    candidates = _candidates_for(resolved_type)
+    if resolved_type not in FIXED_ORDER_TASK_TYPES:
+        candidates = _rotate_candidates(resolved_type, candidates)
 
-    failures = []
+    attempts = []
+
+    def record_failure(name, error_type, detail):
+        attempts.append({"provider": name, "error_type": error_type, "error": detail})
 
     for name in candidates:
         provider = ai_provider.get_provider(name)
 
         if provider is None:
-            failures.append(f"{name}: not registered")
+            record_failure(name, "unavailable", "not registered")
             continue
 
         if not provider["available_fn"]():
-            failures.append(f"{name}: not available (no credentials configured)")
+            record_failure(name, "unavailable", "not available (no credentials configured)")
             continue
 
         # Only a verified quota_exceeded status skips the call outright --
@@ -289,12 +357,12 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         # candidates still get a real attempt.
         quota = provider_health.get_quota_snapshot(name)
         if quota and quota.get("status") == "quota_exceeded":
-            failures.append(f"{name}: skipped, known quota_exceeded ({quota.get('detail')})")
+            record_failure(name, "quota_exceeded", f"skipped, known quota_exceeded ({quota.get('detail')})")
             continue
 
         run_fn = provider.get("run_coding_task" if capability == "coding_agent" else "run_text_task")
         if run_fn is None:
-            failures.append(f"{name}: does not support {capability}")
+            record_failure(name, "unavailable", f"does not support {capability}")
             continue
 
         start = time.time()
@@ -308,7 +376,7 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error))
             if capability == "coding_agent":
                 _record_coding_failure_health(name, str(error))
-            failures.append(f"{name}: {error}")
+            record_failure(name, _classify_failure_reason(name, str(error)), str(error))
             continue
 
         duration_ms = int((time.time() - start) * 1000)
@@ -324,20 +392,25 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             # reported for it -- record that too.
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail, cost=_response_cost(response))
             _record_coding_failure_health(name, detail)
-            failures.append(f"{name}: {detail}")
+            record_failure(name, _classify_failure_reason(name, detail), detail)
             continue
 
         record_usage(name, resolved_type, description, success=True, duration_ms=duration_ms, cost=_response_cost(response))
 
-        return {
+        result = {
             "provider": name,
             "task_type": resolved_type,
             "response": response,
             "duration_ms": duration_ms,
         }
+        if return_attempts:
+            result["attempts"] = attempts
+        return result
 
     raise AllProvidersFailed(
-        f"No available provider could handle task_type={resolved_type!r}: " + "; ".join(failures)
+        f"No available provider could handle task_type={resolved_type!r}: "
+        + "; ".join(f"{a['provider']}: {a['error']}" for a in attempts),
+        attempts=attempts,
     )
 
 

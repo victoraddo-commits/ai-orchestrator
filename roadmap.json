@@ -283,7 +283,8 @@
         "13B",
         "13C"
       ],
-      "priority": 20
+      "priority": 17,
+      "note": "Re-prioritized 2026-07-30 per user directive: autonomy levels are how Kai decides what it can execute unsupervised when driven through the new chat interface (13X) -- this is the users stated Priority 3 (\"Kai autonomous operations through that interface\"). Existing approval gates (architecture/deploy) are unaffected -- this phase governs the space of actions Kai can take BEFORE those gates, not a bypass."
     },
     {
       "id": "13I",
@@ -294,7 +295,7 @@
         "13C",
         "13H"
       ],
-      "priority": 21
+      "priority": 19
     },
     {
       "id": "K1",
@@ -339,7 +340,7 @@
       "dependencies": [
         "13G"
       ],
-      "priority": 22,
+      "priority": 20,
       "completion_criteria": [
         "Worker cards render real provider_dashboard data, not fixtures",
         "Build scheduler panel shows real concurrent-build state once parallel execution ships"
@@ -354,7 +355,7 @@
       "dependencies": [
         "13B"
       ],
-      "priority": 23,
+      "priority": 21,
       "completion_criteria": [
         "Each new command pattern dispatches to existing dashboard/provider functions",
         "No duplicate provider state introduced"
@@ -369,7 +370,7 @@
       "dependencies": [
         "12J"
       ],
-      "priority": 24,
+      "priority": 22,
       "completion_criteria": [
         "Routing decisions demonstrably shift toward historically higher-success candidates without starving the others of all traffic",
         "No change to the safety-relevant fallback-on-failure behavior"
@@ -382,7 +383,7 @@
       "description": "Implements docs/superpowers/specs/2026-07-28-openrouter-expansion-design.md. Two changes: (1) new coding-capable provider openrouter_claude (core/ai_provider.py) driving openrouter/anthropic/claude-sonnet-4.6 through the opencode CLI, exactly like opencode_claude does for Fable 5, gated on a \"openrouter\" credential in opencode auth.json (add _opencode_credential_available(key) generalizing the existing _opencode_available); (2) core/ai/ai_router.py ROLE_PROVIDERS[\"coding\"] reordered to [\"opencode_claude\", \"openrouter_claude\", \"claude\", \"opencode\"] with only the first two rotating against each other via _rotate_candidates (direct claude and opencode stay a fixed tail, never tried first) so the direct Claude/Anthropic subscription credit is preserved -- delegate() must call _candidates_for directly for task_type==\"coding\" instead of wrapping it in the outer per-role rotation, to avoid double-rotating. Also: core/llm_clients.py OPENROUTER_MODELS list (openai/gpt-4o-mini, z-ai/glm-5, openai/gpt-5, deepseek/deepseek-v4-flash, deepseek/deepseek-v4-pro -- all confirmed live against the real OpenRouter API) with new rotation state (memory/openrouter_model_rotation.json) driving core/ai_provider.py _openrouter_run_text_task, replacing the single hardcoded OPENROUTER_DEFAULT_MODEL used today for the planning/log_analysis/documentation roles. Also add scripts/setup_openrouter_opencode_auth.py (idempotent: reads OPENROUTER_API_KEY from env, writes/merges {\"type\": \"api\", \"key\": ...} under the \"openrouter\" key into ~/.local/share/opencode/auth.json -- \"opencode auth login openrouter\" itself is confirmed broken headlessly in this environment, \"fetch() URL is invalid\"). See the design doc for full code sketches, error handling, and the full test list -- follow it directly rather than re-deriving the approach.",
       "status": "pending",
       "dependencies": [],
-      "priority": 25,
+      "priority": 23,
       "completion_criteria": [
         "openrouter_claude registered with coding_agent capability only, using opencode/anthropic/claude-sonnet-4.6 via opencode_bridge.run_coding_task, gated on _opencode_credential_available(\"openrouter\")",
         "_opencode_available refactored to call _opencode_credential_available(\"opencode\") with identical existing behavior/tests unchanged",
@@ -400,7 +401,7 @@
       "description": "Bug, confirmed live 2026-07-28: core/remediation_runner.py get_approved() (\"[r for r in load_requests() if r.get('status') == 'approved']\") returns every status==\"approved\" record from memory/approval_queue.json with no filter -- including build architecture/deploy approvals created by core.approval.create_build_approval (build_id/phase_id/approval_type set, incident=None), not just genuine incident-remediation approvals created by core.approval.create_request (incident_id set, no build_id). Build 13G's own architecture-approval request got swept into process()'s Docker-remediation execution loop this way: treated approve_architecture as a container action (harmlessly rejected as status: \"blocked\" by docker_actions.execute_action since it is not in ALLOWED_ACTIONS, no real container was touched), then mark_executed() unconditionally flipped it to \"executed\" with a bogus remediation record attached -- silently corrupting approval-queue history for every build/deploy approval, not just this one, and this record's \"executed\" status is misleading (a build architecture approval is never \"executed\" the way a Docker remediation is). Fix: get_approved() must exclude any request with a build_id set (the field only create_build_approval ever sets, and the natural, already-existing discriminator between the two request shapes) so only genuine incident-remediation requests ever reach process()/execute_action.",
       "status": "pending",
       "dependencies": [],
-      "priority": 26,
+      "priority": 24,
       "completion_criteria": [
         "get_approved() in core/remediation_runner.py excludes any approval_queue.json record with a build_id set, returning only genuine incident-remediation requests",
         "No change to core.approval.create_request()/create_build_approval()'s existing shapes -- the fix is filtering in get_approved() only",
@@ -418,7 +419,7 @@
       "dependencies": [
         "13G"
       ],
-      "priority": 27,
+      "priority": 25,
       "completion_criteria": [
         "Kai Control Center tab is renamed Kai Command Center",
         "AI Workforce, Live Build Queue, Provider Health, Kai Status, Human Approval Feed, Workforce Utilization, Worker Performance, Build Timeline, and expanded Learning Summary sections all render from existing backend data with no hardcoded worker/provider lists",
@@ -571,14 +572,16 @@
       "description": "POST /kai/command (13B) is explicitly a fixed rule-based phrase-matcher -- 'Deliberately not an LLM intent classifier' per its own module docstring -- not free-form conversation. This phase adds genuine open-ended chat: POST /kai/chat, bearer-token gated like every other write endpoint. Design: try core.kai.commands.dispatch(text) first (the existing fixed patterns still handle their exact phrasings for free); if it doesn't match, fall back to core.ai.ai_router.delegate() for an open-ended conversational response grounded in the same signals core.kai.planner._gather_signals() already assembles (roadmap state, health, recent failures, provider quota) so Kai can answer 'what are you doing?' / 'which AI is working?' accurately rather than hallucinating. Critical constraint, must not regress core/kai/policies.py's enforced restrictions: chat is a UI surface for the HUMAN operator to act through, not a new autonomous action path. 'Approve architecture plan' spoken in chat must resolve to the existing core.approval.approve() call with the real authenticated operator attributed (same as any other Approval Center action) -- it must NOT let Kai itself decide to approve based on interpreting the conversation, since core/kai/policies.py's own test (tests/test_kai_identity.py) greps every module under core/kai/ for calls to approve_architecture/approve_deploy and fails if one appears; this endpoint's approval-intent handling likely needs to live in core/api.py alongside the other approval endpoints, not core/kai/, to keep that guarantee structurally enforced rather than just documented. Reuse the existing planner/approval system as explicitly requested -- no new approval mechanism.",
       "status": "pending",
       "dependencies": [],
-      "priority": 16,
+      "priority": 15,
       "completion_criteria": [
         "POST /kai/chat exists, bearer-token gated, tries the existing command patterns first before falling back to open-ended delegate()",
         "Any approval-intent expressed via chat resolves through the existing core.approval.approve()/reject() with a real attributed operator -- never a new Kai-internal approval path",
         "tests/test_kai_identity.py's grep-based restriction check still passes -- no approve_architecture/approve_deploy call appears anywhere under core/kai/",
-        "Open-ended responses are grounded in real current state (roadmap/health/provider data), not fabricated"
+        "Open-ended responses are grounded in real current state (roadmap/health/provider data), not fabricated",
+        "Single-user conversation continuity: multi-turn context persists within and across sessions for the one operator (e.g. memory/kai_chat_history.json or equivalent, no auth/roles required) -- this must ship as part of 13X, NOT wait on 15A/15F which are multi-user-only extensions now deferred"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "note": "Re-prioritized 2026-07-30 per user directive: direct Kai chat is now Priority 1 overall, ahead of all multi-user/enterprise work (Phase 15, deferred). This is the MVP chat interface -- the fastest path is the existing 13G CloudCLI-embedded Kai Control Center tab plus this endpoint, not the standalone dashboard (16A tracks that separately, no longer blocking)."
     },
     {
       "id": "13Y",
@@ -623,7 +626,7 @@
       "dependencies": [
         "13Z"
       ],
-      "priority": 17,
+      "priority": 18,
       "completion_criteria": [
         "A phase that revisits the same status/status-pair beyond a defined threshold is flagged as stuck (visible in build/roadmap state), distinct from healthy in-progress work",
         "Judgment-call clarifying questions can be answered by Fable/opencode_claude via the existing submit_answer() path with no change to the approval boundary -- tests/test_kai_identity.py's grep-based check still passes with zero approve_architecture/approve_deploy calls anywhere under core/kai/",
@@ -657,7 +660,7 @@
       "dependencies": [
         "13H"
       ],
-      "priority": 30,
+      "priority": 50,
       "completion_criteria": [
         "core/authz.py (or equivalent) defines named capabilities and a single check_capability(operator, capability) function used by every write endpoint in core/api.py",
         "Local account storage (username + hashed password) exists; login issues a session/token distinct from the existing bridge token",
@@ -666,7 +669,8 @@
         "No OAuth provider integration, no MFA, no service accounts, no additional roles beyond the two above, no multi-org support -- explicitly out of scope for this phase",
         "Tests cover: operator retains full access, viewer is rejected on every write capability, a capability check with no matching role denies by default (fail closed)"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "note": "Deferred 2026-07-30 per user directive: multi-user/enterprise features (15A-15H) are explicitly out of scope until the single-user Kai chat experience (13X, 16A) is complete and proven. Kai has exactly one operator for now. Revisit this whole phase group after 13X/16A/13H ship -- do not spend build effort preparing for multiple users before then."
     },
     {
       "id": "15B",
@@ -676,7 +680,7 @@
       "dependencies": [
         "15A"
       ],
-      "priority": 31,
+      "priority": 51,
       "completion_criteria": [
         "A fixed path allowlist for auth/RBAC/credential-handling files exists in one place (not scattered)",
         "A build whose generated diff touches any allowlisted path is flagged risk='security-critical' on its deploy/architecture approval request",
@@ -693,7 +697,7 @@
       "dependencies": [
         "15A"
       ],
-      "priority": 32,
+      "priority": 52,
       "completion_criteria": [
         "GET /audit merges existing build/approval/decision/incident history into one chronological feed, no duplicate storage of data that already exists elsewhere",
         "Supports filtering by user, action type, and date range; supports CSV and JSON export",
@@ -711,7 +715,7 @@
       "dependencies": [
         "13G"
       ],
-      "priority": 33,
+      "priority": 53,
       "completion_criteria": [
         "One documented push mechanism (SSE) is implemented and exposed via a new endpoint (e.g. GET /events)",
         "A defined, minimal list of triggering state changes (build status transition, new pending approval, roadmap phase completion) push an event within a few seconds of occurring",
@@ -730,7 +734,7 @@
         "13J",
         "15D"
       ],
-      "priority": 34,
+      "priority": 54,
       "completion_criteria": [
         "Dashboard shows: system health, roadmap progress, active builds, pending approvals, build history, learning summary, provider health, usage statistics, notifications, scheduler status, Telegram status, API status -- each backed by an existing endpoint, none newly computed",
         "Updates live via 15D's push mechanism, not full-page polling",
@@ -748,7 +752,7 @@
         "13X",
         "15A"
       ],
-      "priority": 35,
+      "priority": 55,
       "completion_criteria": [
         "Conversation history persists per authenticated user and is retrievable/searchable",
         "Streaming responses work end to end (backend to frontend)",
@@ -767,7 +771,7 @@
       "dependencies": [
         "13J"
       ],
-      "priority": 36,
+      "priority": 56,
       "completion_criteria": [
         "Dedicated view lists every provider/model that has been delegated to at least once, with all fields from the description",
         "A newly-used provider/model appears automatically on next data refresh with no UI code change required",
@@ -785,7 +789,7 @@
         "15A",
         "15F"
       ],
-      "priority": 37,
+      "priority": 57,
       "completion_criteria": [
         "A user can create/switch between multiple projects without a new login or losing chat context",
         "Each project's conversations, roadmap, builds, and approvals are isolated from every other project's",
@@ -802,7 +806,7 @@
       "dependencies": [
         "13G"
       ],
-      "priority": 38,
+      "priority": 16,
       "completion_criteria": [
         "GET /dashboard (or similar) serves a self-contained HTML/JS page directly from core.api, reachable without CloudCLI running",
         "Page displays system health, roadmap progress, active builds, pending approvals (read-only display, no action buttons), provider health/cost, and learning summary -- reusing existing GET endpoints only, no new data computation",
@@ -810,7 +814,8 @@
         "Page continues to load and display data correctly with CloudCLI's cloudcli.service stopped (proves the decoupling)",
         "Tests cover: the route serves valid HTML, and a smoke test confirms it doesn't import/require anything from the CloudCLI plugin bridge"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "note": "Re-prioritized 2026-07-30 per user directive: pulled forward from Phase 16 to sit right behind 13X. Only dependency is 13G (already complete), so it can build in parallel with or immediately after 13X. Still read-only per its original scope -- write actions stay on the existing embedded tab until real auth exists, which is fine since multi-user auth (15A) is deferred, not needed for this decision."
     },
     {
       "id": "16B",
@@ -820,7 +825,7 @@
       "dependencies": [
         "14A"
       ],
-      "priority": 39,
+      "priority": 26,
       "completion_criteria": [
         "A build stuck oscillating WAITING_FOR_USER_INPUT/PLANNING (14A's detection) gets one automated recovery attempt before human escalation",
         "systemd Restart= policy for ai-orchestrator.service and ai-orchestrator-api.service is verified/confirmed configured correctly (or fixed if it isn't) -- not assumed",
@@ -840,7 +845,7 @@
         "13I",
         "13W"
       ],
-      "priority": 40,
+      "priority": 27,
       "completion_criteria": [
         "A scheduled (or Kai-command-triggered) analysis run answers each of: best-performing provider per role, most-failed roadmap phases + root cause pattern, flaky tests (if any evidenced), and token/cost waste hotspots",
         "Every proposal it files goes through roadmap_engine.add_phase() with status='proposed', never 'pending' -- reuses 13I's existing mechanism, does not add a second proposal pathway",
@@ -859,7 +864,7 @@
         "13W",
         "13Z"
       ],
-      "priority": 41,
+      "priority": 28,
       "completion_criteria": [
         "A configurable budget limit (at least a total daily/monthly ceiling) is checked against 13W's existing real cost aggregates -- no new cost computation",
         "Crossing the limit sends a Telegram alert via 13Z's bridge with the actual spend figures, not a generic message",

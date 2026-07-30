@@ -298,8 +298,10 @@ def _merge_self_modifying_build(build):
 
     # Which files did this deploy actually land on the orchestrator's own
     # live repo? Drives the post-deploy service-restart decision (17C):
-    # only the primary repo's changes matter -- the plugin repo is not
-    # code either orchestrator service imports.
+    # only the primary repo's changes matter here -- the plugin repo is
+    # not code either orchestrator service imports. The plugin repo's own
+    # changed files are derived separately by core.plugin_deployer (17H)
+    # from "merged_repos" below, driving the CloudCLI bundle rebuild.
     primary_repo = targets[0][0]
     changed_files = _changed_files_of_merge(primary_repo, repo_merge_commits[primary_repo])
 

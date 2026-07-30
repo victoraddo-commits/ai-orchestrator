@@ -304,6 +304,73 @@ def test_advance_builds_never_restarts_services_after_a_failed_deploy(monkeypatc
     assert restart_calls == []
 
 
+def test_advance_builds_redeploys_the_plugin_bundle_before_restarting_services(monkeypatch):
+    # 17H: a merged self-modifying deploy that landed plugin source leaves
+    # CloudCLI serving a stale compiled bundle until npm run build runs and
+    # the output is copied+served -- the deploy pipeline itself must trigger
+    # that, and it must happen BEFORE the 17C service restarts (the queued
+    # scheduler restart kills the very process that would run npm).
+    build = build_manager.create_build("17H", "desc", "/tmp/proj")
+    _force_status(build["id"], "DEPLOYING")
+
+    deploy_result = {
+        "deployed": True,
+        "merged_branch": f"build-{build['id']}",
+        "merge_commit": "abc123",
+        "merged_repos": {
+            "/project/src/ai-orchestrator": "abc123",
+            "/project/src/ai-orchestrator-plugin": "def456",
+        },
+        "changed_files": ["roadmap.json"],
+    }
+    monkeypatch.setattr(build_manager, "deploy_build", lambda b: deploy_result)
+
+    calls = []
+    monkeypatch.setattr(
+        build_manager,
+        "redeploy_plugin_if_needed",
+        lambda b, result: calls.append(("plugin", b["id"], result)),
+    )
+    monkeypatch.setattr(
+        build_manager,
+        "restart_services_if_needed",
+        lambda b, result: calls.append(("services", b["id"], result)),
+    )
+
+    build_manager.advance_builds()
+
+    assert [(kind, build_id) for kind, build_id, _ in calls] == [
+        ("plugin", build["id"]),
+        ("services", build["id"]),
+    ]
+    # Both hooks see the same deploy result, including merged_repos --
+    # what the plugin redeploy scopes its decision by.
+    assert calls[0][2]["merged_repos"]["/project/src/ai-orchestrator-plugin"] == "def456"
+
+
+def test_advance_builds_never_redeploys_the_plugin_after_a_failed_deploy(monkeypatch):
+    build = build_manager.create_build("17H", "desc", "/tmp/proj")
+    _force_status(build["id"], "DEPLOYING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "deploy_build",
+        lambda b: {"deployed": False, "reason": "Merge conflict merging build-x"},
+    )
+
+    redeploy_calls = []
+    monkeypatch.setattr(
+        build_manager,
+        "redeploy_plugin_if_needed",
+        lambda b, result: redeploy_calls.append(b["id"]),
+    )
+
+    build_manager.advance_builds()
+
+    assert build_manager.get_build(build["id"])["status"] == "FAILED"
+    assert redeploy_calls == []
+
+
 def test_rollback_deployment_requires_a_prior_deployment():
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "COMPLETED")

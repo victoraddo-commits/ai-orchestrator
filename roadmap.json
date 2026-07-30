@@ -955,6 +955,51 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 per explicit user choice among three options -- this one keeps the same security model 16A was originally built around (no token in browser JS) rather than trading it away for speed. Essential, high-value, but not urgent-blocking -- the CloudCLI tab already has working chat today via 17B."
+    },
+    {
+      "id": "17E",
+      "name": "Multi-node Proxmox registry + full inventory discovery (Proxmox A + B, extensible)",
+      "description": "User directive 2026-07-30 (trimmed from a larger charter -- multi-Proxmox management without clustering, matching the users own explicit \"never cluster, treat each node independently\" requirement, consistent with the earlier decision to cancel a full 14-phase enterprise buildout in favor of scoped, real needs). core.health.analyze_proxmox() already exists but is narrow -- single node (Proxmox A only, via memory/last_scan.json proxmox.node.data), CPU/memory thresholds only. This phase: (1) a node registry (e.g. memory/proxmox_nodes.json or similar, schema_version/records convention) so nodes are config-driven, not hardcoded -- Proxmox A (192.168.99.2, API token via existing proxdash credential or a dedicated one) and Proxmox B (10.8.0.102, reachable now via the WireGuard tunnel fixed 2026-07-30, API token already provided by the user -- this needs to move from floating in conversation context into the ai-orchestrator's own credential storage, not remain dependent on a human re-supplying it each session); (2) full inventory per node via the Proxmox REST API (already sufficient for everything requested -- version, CPU, RAM, storage, VMs, containers, networks, and disk/SMART health via /nodes/{node}/disks/list -- SSH is NOT required for any of this and should not be added as a second credential/attack-surface unless a concrete gap is found); (3) a simple generated topology doc (markdown + a mermaid diagram) from the live inventory, saved to /uploads or docs/, regenerable on demand not just once. Explicitly NOT in scope: cluster creation/joining (user has repeatedly and explicitly ruled this out), replication-status monitoring (no replication is configured between any nodes today -- would be permanent noise; add only once real replication exists), SSH-based management.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 20,
+      "completion_criteria": [
+        "A node registry exists, config-driven (adding a new node does not require code changes)",
+        "Proxmox A and Proxmox B both return full inventory (version, CPU, RAM, storage, VMs, CTs, networks, disk/SMART health) via their REST APIs",
+        "Credentials are stored in the orchestrators own persistent storage, not dependent on being resupplied by a human each session",
+        "A regenerable topology doc (markdown + mermaid) is produced from live inventory data",
+        "Tests cover: registry CRUD, inventory parsing for both real node shapes already observed live, graceful handling of an unreachable node (reported, not a crash)"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "17F",
+      "name": "Multi-node Proxmox continuous monitoring + alerting via the existing health/incident/remediation pipeline",
+      "description": "Direct follow-on to 17E. Extends the EXISTING core.health / core.incident_manager / core.decision_engine / core.remediation_runner pipeline (already running every orchestrator cycle, already wired to Telegram via 13Z, already has the approval-gate pattern for anything higher-stakes) to cover every registered Proxmox node, rather than building a second, parallel monitoring system. core.health.analyze_proxmox() generalizes from one hardcoded node to iterate the 17E registry. Monitor per the users charter: node availability, VPN/tunnel connectivity (peer-status/handshake-age, already queryable via the OPNsense API pattern established live 2026-07-30), CPU, memory, storage, SMART health, and backup-job status (only if a backup job is actually configured on that node -- report \"not configured\" rather than treating absence as a failure). Alerts reuse the existing incident/decision/Telegram path -- no new notification mechanism. Any remediation this system might ever propose for a Proxmox node must go through the existing approval system exactly like self-build deploys do (explain the action, show the command/API call, wait for approval) -- never a new unsupervised action path for a different class of infrastructure. Low risk / additive: reuses existing monitoring and approval machinery rather than introducing new mechanisms. Config drift / security-issue detection on a newly-registered node reuses this same incident pipeline, not a new one.",
+      "status": "pending",
+      "dependencies": [
+        "17E"
+      ],
+      "priority": 21,
+      "completion_criteria": [
+        "core.health.analyze_proxmox() (or its replacement) iterates the full node registry, not one hardcoded node",
+        "VPN/tunnel connectivity per node is monitored using the OPNsense API pattern already confirmed live, alerting via the existing Telegram bridge on state change",
+        "Any proposed remediation action for a Proxmox node goes through the existing approval system -- no new unsupervised action path",
+        "Backup-job monitoring correctly reports \"not configured\" rather than a false failure when no backup job exists on a node",
+        "Tests cover: multi-node iteration, connectivity-loss alerting, and that a remediation proposal for a Proxmox node is blocked pending approval exactly like existing self-build gates"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "17G",
+      "name": "UI/UX polish pass: Proxdash and the Kai Dashboard(s)",
+      "description": "User directive 2026-07-30: improve the UI/UX of both Proxdash (the existing proxdash-backend/proxdash-frontend Docker app already running in this container, a Proxmox monitoring dashboard -- see /project/src/proxdash) and Kai's own dashboard(s) (the CloudCLI-embedded Kai Control Center tab, and the standalone dashboard once 17D ships real tabs). Scope deliberately left open for design judgment rather than over-specified here -- reuse the frontend-design conventions already established in this codebase (the plain-TypeScript el()-helper + theme-color-object pattern used throughout ai-orchestrator-plugin, confirmed live 2026-07-30 during 17B). Should be sequenced after 17D (no point polishing the standalone dashboard's current single-scroll layout before it becomes a real tabbed interface).",
+      "status": "pending",
+      "dependencies": [
+        "17D"
+      ],
+      "priority": 24,
+      "tests_required": false
     }
   ]
 }

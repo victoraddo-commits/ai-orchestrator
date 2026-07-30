@@ -61,7 +61,7 @@ def test_register_provider_adds_a_new_entry():
 def test_gemini_groq_openai_providers_are_registered_with_text_task_capability():
     providers = ai_provider.list_providers()
 
-    for name in ("gemini", "groq", "openai", "openrouter", "minimax"):
+    for name in ("gemini", "groq", "openai", "openrouter", "minimax", "deepseek"):
         assert name in providers
         assert "text_task" in providers[name]["capabilities"]
         assert "coding_agent" not in providers[name]["capabilities"]
@@ -392,3 +392,88 @@ def test_minimax_text_provider_is_still_registered_but_text_only():
 
     assert "text_task" in providers["minimax"]["capabilities"]
     assert "coding_agent" not in providers["minimax"]["capabilities"]
+
+
+# --- 13U: deepseek text-task provider + opencode_deepseek coding route ------
+
+def test_deepseek_provider_availability_reflects_env_var(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_OPENROUTER_API_KEY", raising=False)
+    assert ai_provider.list_providers()["deepseek"]["available"] is False
+
+    monkeypatch.setenv("DEEPSEEK_OPENROUTER_API_KEY", "test-key")
+    assert ai_provider.list_providers()["deepseek"]["available"] is True
+
+
+def test_deepseek_run_text_task_calls_llm_clients_call_deepseek(monkeypatch):
+    import core.llm_clients as llm_clients
+
+    monkeypatch.setenv("DEEPSEEK_OPENROUTER_API_KEY", "test-key")
+    captured = {}
+
+    def fake_call_deepseek(prompt, timeout=60):
+        captured["prompt"] = prompt
+        return "deepseek response"
+
+    monkeypatch.setattr(llm_clients, "call_deepseek", fake_call_deepseek)
+
+    provider = ai_provider.get_provider("deepseek")
+    result = provider["run_text_task"]("hello")
+    assert result == "deepseek response"
+    assert captured["prompt"] == "hello"
+
+
+def test_deepseek_provider_has_text_task_capability_only():
+    providers = ai_provider.list_providers()
+    assert "deepseek" in providers
+    assert "text_task" in providers["deepseek"]["capabilities"]
+    assert "coding_agent" not in providers["deepseek"]["capabilities"]
+
+
+def test_opencode_deepseek_provider_is_registered_with_coding_agent_capability_only():
+    providers = ai_provider.list_providers()
+    assert "opencode_deepseek" in providers
+    assert "coding_agent" in providers["opencode_deepseek"]["capabilities"]
+    assert "text_task" not in providers["opencode_deepseek"]["capabilities"]
+
+
+def test_opencode_deepseek_provider_defaults_to_correct_model(monkeypatch, tmp_path):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider("opencode_deepseek")
+    provider["run_coding_task"](str(tmp_path), "build a widget")
+
+    assert captured["model"] == "openrouter/deepseek/deepseek-v4-pro"
+
+
+def test_opencode_deepseek_provider_shares_availability_with_opencode(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    assert ai_provider.list_providers()["opencode_deepseek"]["available"] is True
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    assert ai_provider.list_providers()["opencode_deepseek"]["available"] is False
+
+
+def test_deepseek_run_text_task_does_not_use_the_shared_OPENROUTER_API_KEY(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "shared-key")
+    monkeypatch.delenv("DEEPSEEK_OPENROUTER_API_KEY", raising=False)
+
+    assert ai_provider.list_providers()["deepseek"]["available"] is False
+
+    import core.llm_clients as llm_clients
+    with pytest.raises(llm_clients.ProviderUnavailable, match="DEEPSEEK_OPENROUTER_API_KEY"):
+        ai_provider.get_provider("deepseek")["run_text_task"]("hello")

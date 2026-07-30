@@ -3,7 +3,7 @@
 Deliberately NOT a second coding engine: these are single request/response
 chat-completion calls only, no tool use, no file access, no agent loop.
 Only Claude (via core.coding_bridge / CloudCLI's Agent SDK) can write files
-or run commands -- these three exist for the text-in/text-out roles (review,
+or run commands -- these exist for the text-in/text-out roles (review,
 planning, docs, log analysis) the Phase 12J AI-team model assigns them.
 """
 
@@ -32,6 +32,12 @@ OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini"
 # (2026-07-28) -- an earlier "exhausted" reading was this account's
 # temporary pre-topup state, not a code or model-choice problem.
 MINIMAX_DEFAULT_MODEL = "MiniMax-M2"
+# deepseek/deepseek-v4-pro confirmed live via OpenRouter using the dedicated
+# DEEPSEEK_OPENROUTER_API_KEY (separate from the shared OPENROUTER_API_KEY
+# the existing 'openrouter' provider uses) -- routing through OpenRouter
+# rather than calling DeepSeek's own API directly, reusing the infrastructure
+# already proven for gpt-4o-mini (same endpoint, same response format).
+DEEPSEEK_DEFAULT_MODEL = "deepseek/deepseek-v4-pro"
 
 
 class ProviderUnavailable(Exception):
@@ -116,6 +122,19 @@ def call_openrouter(prompt, model=OPENROUTER_DEFAULT_MODEL, timeout=60):
 
     data = _post_json(
         "openrouter",
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+    return data["choices"][0]["message"]["content"]
+
+
+def call_deepseek(prompt, model=DEEPSEEK_DEFAULT_MODEL, timeout=60):
+    key = _require_key("DEEPSEEK_OPENROUTER_API_KEY")
+
+    data = _post_json(
+        "deepseek",
         "https://openrouter.ai/api/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},

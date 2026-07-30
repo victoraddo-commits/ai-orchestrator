@@ -60,6 +60,13 @@ ROLE_PROVIDERS = {
     # sonnet-5/opus-5 routes too, so swapping it into the shared "opencode"
     # auth.json slot didn't risk any of them.
     #
+    # 13U (2026-07-30) appends "opencode_deepseek" (openrouter/deepseek/
+    # deepseek-v4-pro via the opencode CLI's shared openrouter auth slot,
+    # not the Zen credential) between the Claude-family Zen tiers and the
+    # generic Zen "opencode" route, plus "deepseek" (llm_clients.call_deepseek,
+    # its own dedicated DEEPSEEK_OPENROUTER_API_KEY) on the planning/
+    # documentation/review text_task roles.
+    #
     # 13T (2026-07-29) appends "opencode_minimax" (opencode/minimax-m2.7,
     # pinned in ai_provider) -- the half of the 2026-07-28 blanket minimax
     # pause the usage history does *not* support. Reviewed via
@@ -102,6 +109,7 @@ ROLE_PROVIDERS = {
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
+        "opencode_deepseek",
         "opencode",
         "opencode_minimax",
     ],
@@ -128,14 +136,14 @@ ROLE_PROVIDERS = {
     # tools wired up), which is the established cause of the failure, so the
     # planning evidence carries. The registry entry stays registered; only
     # the routing is withheld.
-    "planning": ["gemini", "openrouter", "claude"],
+    "planning": ["gemini", "openrouter", "deepseek", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
-    "documentation": ["gemini", "groq", "openrouter", "claude"],
+    "documentation": ["gemini", "groq", "openrouter", "deepseek", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
-    "review": ["openai", "gemini", "claude"],
+    "review": ["openai", "gemini", "deepseek", "claude"],
 }
 
 DEFAULT_TASK_TYPE = "coding"

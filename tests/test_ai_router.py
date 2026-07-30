@@ -54,7 +54,7 @@ def test_delegate_documentation_task_accepts_gemini_or_groq(monkeypatch):
 def test_delegate_falls_back_when_first_choice_unavailable(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("gemini", "openrouter", "minimax"):
+    for name in ("gemini", "openrouter", "deepseek", "minimax"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -76,7 +76,7 @@ def test_delegate_falls_back_when_first_choice_call_raises(monkeypatch):
     monkeypatch.setitem(gemini, "available_fn", lambda: True)
     monkeypatch.setitem(gemini, "run_text_task", boom)
 
-    for name in ("openrouter", "minimax"):
+    for name in ("openrouter", "deepseek", "minimax"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -91,7 +91,7 @@ def test_delegate_falls_back_when_first_choice_call_raises(monkeypatch):
 def test_delegate_raises_when_every_candidate_fails(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("gemini", "openrouter", "minimax", "claude"):
+    for name in ("gemini", "openrouter", "deepseek", "minimax", "claude"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
@@ -116,7 +116,7 @@ def test_delegate_skips_a_candidate_known_to_be_quota_exceeded_without_calling_i
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude answered")
 
-    for name in ("openrouter", "minimax"):
+    for name in ("openrouter", "deepseek", "minimax"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     result = ai_router.delegate("Design an application architecture")
@@ -169,7 +169,7 @@ def test_delegate_records_usage_on_failure_too(monkeypatch):
     monkeypatch.setitem(gemini, "available_fn", lambda: True)
     monkeypatch.setitem(gemini, "run_text_task", boom)
 
-    for name in ("openrouter", "minimax"):
+    for name in ("openrouter", "deepseek", "minimax"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -336,6 +336,7 @@ def test_delegate_review_task_type_falls_back_to_gemini_then_claude(monkeypatch)
     import core.ai_provider as ai_provider
 
     monkeypatch.setitem(ai_provider.get_provider("openai"), "available_fn", lambda: False)
+    monkeypatch.setitem(ai_provider.get_provider("deepseek"), "available_fn", lambda: False)
 
     gemini = ai_provider.get_provider("gemini")
     monkeypatch.setitem(gemini, "available_fn", lambda: True)
@@ -404,14 +405,15 @@ def test_delegate_rotates_starting_candidate_across_successive_calls(monkeypatch
     # minimax, ...) actually get used instead of sitting untouched.
     import core.ai_provider as ai_provider
 
-    for name in ("openai", "gemini", "claude"):
+    review_candidates = ["openai", "gemini", "deepseek", "claude"]
+    for name in review_candidates:
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: True)
         monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None, n=name: f"from {n}")
 
-    seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(4)]
+    seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(5)]
 
-    assert seen == ["openai", "gemini", "claude", "openai"]
+    assert seen == review_candidates + ["openai"]
 
 
 def test_delegate_rotation_is_tracked_independently_per_task_type(monkeypatch):
@@ -445,6 +447,8 @@ def test_delegate_rotation_still_falls_through_to_next_candidate_on_failure(monk
 
     monkeypatch.setitem(gemini, "run_text_task", boom)
 
+    monkeypatch.setitem(ai_provider.get_provider("deepseek"), "available_fn", lambda: False)
+
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "from claude")
@@ -452,7 +456,7 @@ def test_delegate_rotation_still_falls_through_to_next_candidate_on_failure(monk
     # First call rotates to "openai" (index 0) and succeeds there.
     first = ai_router.delegate("Critique this design", task_type="review")["provider"]
     # Second call rotates its starting point to "gemini", which fails --
-    # fallback must still walk forward to "claude", not raise.
+    # fallback must still walk forward past unavailable deepseek to "claude", not raise.
     second = ai_router.delegate("Critique this design", task_type="review")["provider"]
 
     assert [first, second] == ["openai", "claude"]
@@ -600,3 +604,97 @@ def test_delegate_falls_through_to_opencode_minimax_when_the_others_fail(monkeyp
     result = ai_router.delegate("Build a widget", capability="coding_agent", project_path="/tmp/x")
 
     assert result["provider"] == "opencode_minimax"
+
+
+# --- 13U: deepseek text-task + opencode_deepseek coding-agent routing ------
+
+def test_delegate_planning_task_includes_deepseek_as_a_candidate(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ("gemini", "openrouter"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    deepseek = ai_provider.get_provider("deepseek")
+    monkeypatch.setitem(deepseek, "available_fn", lambda: True)
+    monkeypatch.setitem(deepseek, "run_text_task", lambda p, timeout=60, project_path=None: "deepseek planned")
+
+    result = ai_router.delegate("Design an application architecture")
+
+    assert result["provider"] == "deepseek"
+
+
+def test_delegate_documentation_task_includes_deepseek_as_a_candidate(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ("gemini", "groq", "openrouter"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    deepseek = ai_provider.get_provider("deepseek")
+    monkeypatch.setitem(deepseek, "available_fn", lambda: True)
+    monkeypatch.setitem(deepseek, "run_text_task", lambda p, timeout=60, project_path=None: "deepseek documented")
+
+    result = ai_router.delegate("Generate README documentation")
+
+    assert result["provider"] == "deepseek"
+
+
+def test_delegate_review_task_includes_deepseek_as_a_candidate(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    monkeypatch.setitem(ai_provider.get_provider("openai"), "available_fn", lambda: False)
+    monkeypatch.setitem(ai_provider.get_provider("gemini"), "available_fn", lambda: False)
+
+    deepseek = ai_provider.get_provider("deepseek")
+    monkeypatch.setitem(deepseek, "available_fn", lambda: True)
+    monkeypatch.setitem(deepseek, "run_text_task", lambda p, timeout=60, project_path=None: "deepseek reviewed")
+
+    result = ai_router.delegate("Critique this design", task_type="review")
+
+    assert result["provider"] == "deepseek"
+
+
+def test_delegate_coding_task_includes_opencode_deepseek_as_a_candidate(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ("claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    monkeypatch.setitem(ai_provider.get_provider("opencode"), "available_fn", lambda: False)
+
+    opencode_deepseek = ai_provider.get_provider("opencode_deepseek")
+    monkeypatch.setitem(opencode_deepseek, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode_deepseek, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+
+    result = ai_router.delegate(
+        "Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent",
+    )
+
+    assert result["provider"] == "opencode_deepseek"
+
+
+def test_delegate_coding_task_opencode_deepseek_uses_correct_model(monkeypatch):
+    import core.ai_provider as ai_provider
+    import core.opencode_bridge as opencode_bridge
+
+    for name in ("claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "opencode"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    opencode_deepseek = ai_provider.get_provider("opencode_deepseek")
+    monkeypatch.setitem(opencode_deepseek, "available_fn", lambda: True)
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    ai_router.delegate(
+        "Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent",
+    )
+
+    assert captured["model"] == "openrouter/deepseek/deepseek-v4-pro"

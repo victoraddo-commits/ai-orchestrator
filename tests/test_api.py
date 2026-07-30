@@ -357,7 +357,7 @@ def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
 def test_delegate_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("gemini", "openrouter", "minimax", "claude"):
+    for name in ("gemini", "openrouter", "minimax", "deepseek", "claude"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 

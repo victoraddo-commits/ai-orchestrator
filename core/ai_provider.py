@@ -174,6 +174,21 @@ def _opencode_minimax_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# 13U: DeepSeek V4 Pro routed through OpenRouter via the opencode CLI --
+# reuses the shared openrouter credential in the CLI's own auth.json (no
+# Zen key involved, no collision risk with the existing opencode/
+# opencode_claude routes that use the Zen credential's "opencode" slot).
+# This is a separate coding route from the "deepseek" text_task provider
+# (which uses DEEPSEEK_OPENROUTER_API_KEY directly, see
+# llm_clients.call_deepseek).
+OPENCODE_DEEPSEEK_MODEL = "openrouter/deepseek/deepseek-v4-pro"
+
+
+def _opencode_deepseek_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", OPENCODE_DEEPSEEK_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
 def _local_not_implemented(*args, **kwargs):
     raise NotImplementedError(
         "The local provider is a Phase 12I architecture placeholder -- no "
@@ -206,6 +221,10 @@ def _openrouter_run_text_task(prompt, timeout=60, project_path=None):
 
 def _minimax_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_minimax(prompt, timeout=timeout)
+
+
+def _deepseek_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_deepseek(prompt, timeout=timeout)
 
 
 register_provider(
@@ -258,6 +277,14 @@ register_provider(
 )
 
 register_provider(
+    "deepseek",
+    run_text_task=_deepseek_run_text_task,
+    available_fn=lambda: bool(os.getenv("DEEPSEEK_OPENROUTER_API_KEY")),
+    kind="cloud",
+    description="DeepSeek V4 Pro via OpenRouter (dedicated DEEPSEEK_OPENROUTER_API_KEY) -- planning/documentation/review",
+)
+
+register_provider(
     "opencode",
     run_coding_task=_opencode_run_coding_task,
     available_fn=_opencode_available,
@@ -295,6 +322,14 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="MiniMax-m2.7 (opencode/minimax-m2.7 via OpenCode Zen) -- coding_agent only, restored 2026-07-29 by 13T's usage review: 3/3 recorded runs through opencode CLI's real tool-use loop, none of the text_task path's hallucinated tool-call failures",
+)
+
+register_provider(
+    "opencode_deepseek",
+    run_coding_task=_opencode_deepseek_run_coding_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="DeepSeek V4 Pro (openrouter/deepseek/deepseek-v4-pro via opencode CLI) -- OpenRouter credential, no Zen key collision",
 )
 
 register_provider(

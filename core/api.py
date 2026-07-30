@@ -291,15 +291,19 @@ _REJECT_INTENT_RE = re.compile(
 
 
 def _load_chat_history():
-    history = load(CHAT_HISTORY_FILE)
-    if not isinstance(history, list):
-        history = []
-    return history
+    data = load(CHAT_HISTORY_FILE)
+    if not isinstance(data, dict):
+        return []
+    return data.get("records", [])
 
 
 def _save_chat_history(history):
-    def mutate(_current):
-        return history
+    def mutate(data):
+        if not isinstance(data, dict):
+            data = {}
+        data["schema_version"] = 1
+        data["records"] = history
+        return data
 
     update(CHAT_HISTORY_FILE, mutate)
 

@@ -353,14 +353,16 @@
       "description": "New core.kai.commands.py patterns (\"kai, list AI workers\", \"kai, show AI workforce\", \"kai, worker health\", \"kai, provider statistics\", etc.) that reuse core.ai_provider.list_providers() and core.ai.ai_router.get_provider_dashboard() -- no new provider metadata, same rule-based phrase-matching pattern 13B already established.",
       "status": "pending",
       "dependencies": [
-        "13B"
+        "13B",
+        "13X"
       ],
-      "priority": 21,
+      "priority": 29,
       "completion_criteria": [
         "Each new command pattern dispatches to existing dashboard/provider functions",
         "No duplicate provider state introduced"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "note": "Deferred 2026-07-30 per user directive: likely mostly redundant once 13X ships -- 13X falls through to open-ended chat (grounded in the same live roadmap/health/provider signals) for anything that does not match a fixed command, so questions like \"kai, show AI workforce\" get a real answer through chat without these dedicated phrase patterns. Added 13X as a hard dependency so this cannot build before chat exists and has been used -- revisit after 13X ships to see what, if anything, is still missing that free-form chat does not already cover."
     },
     {
       "id": "13L",

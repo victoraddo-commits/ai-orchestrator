@@ -244,6 +244,66 @@ def test_advance_builds_drives_deploying_to_failed_on_unsuccessful_deploy(monkey
     assert "crashed" in updated["failure_reason"]
 
 
+def test_advance_builds_restarts_stale_services_after_a_successful_self_modifying_deploy(monkeypatch):
+    # 17C: a merged self-modifying deploy leaves the running services on
+    # stale pre-merge code until they restart -- the deploy pipeline itself
+    # must trigger the restart, after the build's COMPLETED outcome is
+    # already persisted.
+    build = build_manager.create_build("17C", "desc", "/tmp/proj")
+    _force_status(build["id"], "DEPLOYING")
+
+    deploy_result = {
+        "deployed": True,
+        "merged_branch": f"build-{build['id']}",
+        "merge_commit": "abc123",
+        "changed_files": ["core/api.py"],
+    }
+    monkeypatch.setattr(build_manager, "deploy_build", lambda b: deploy_result)
+
+    restart_calls = []
+
+    def fake_restart(b, result):
+        # The build must already be persisted as COMPLETED before any
+        # restart runs: restarting ai-orchestrator.service kills the very
+        # process executing this, and the outcome must never be lost.
+        persisted = build_manager.get_build(b["id"])
+        restart_calls.append((b["id"], result, persisted["status"]))
+        return [{"service": "ai-orchestrator-api.service", "restarted": True}]
+
+    monkeypatch.setattr(build_manager, "restart_services_if_needed", fake_restart)
+
+    build_manager.advance_builds()
+
+    assert len(restart_calls) == 1
+    build_id, result, persisted_status = restart_calls[0]
+    assert build_id == build["id"]
+    assert result["changed_files"] == ["core/api.py"]
+    assert persisted_status == "COMPLETED"
+
+
+def test_advance_builds_never_restarts_services_after_a_failed_deploy(monkeypatch):
+    build = build_manager.create_build("17C", "desc", "/tmp/proj")
+    _force_status(build["id"], "DEPLOYING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "deploy_build",
+        lambda b: {"deployed": False, "reason": "Merge conflict merging build-x"},
+    )
+
+    restart_calls = []
+    monkeypatch.setattr(
+        build_manager,
+        "restart_services_if_needed",
+        lambda b, result: restart_calls.append(b["id"]),
+    )
+
+    build_manager.advance_builds()
+
+    assert build_manager.get_build(build["id"])["status"] == "FAILED"
+    assert restart_calls == []
+
+
 def test_rollback_deployment_requires_a_prior_deployment():
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "COMPLETED")

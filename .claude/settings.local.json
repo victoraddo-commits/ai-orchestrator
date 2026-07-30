@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(journalctl -u ai-orchestrator.service -f --no-pager)",
+      "Bash(journalctl -u ai-orchestrator.service -f -n 0)",
+      "mcp__plugin_telegram_telegram__reply",
+      "Skill(telegram:configure)"
+    ]
+  }
+}

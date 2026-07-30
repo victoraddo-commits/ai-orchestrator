@@ -10,6 +10,7 @@ from core.repo_manager import create_local_repo
 from core.project_templates import get_template
 from core.security_scanner import run_all_scans
 from core.deployment_manager import deploy_build
+from core.plugin_deployer import redeploy_plugin_if_needed
 from core.service_restarter import restart_services_if_needed
 from core.remediation import attempt_rollback
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
@@ -766,6 +767,14 @@ def _run_deployment(build):
         # build's recorded outcome. Only runs on a successful deploy --
         # failed/rolled-back merges never reach this branch.
         _persist_build(build)
+        # 17H: same class of gap as 17C, but for the CloudCLI plugin
+        # bundle -- a merge that lands TypeScript source in the live
+        # plugin repo is invisible until `npm run build` runs and the
+        # compiled dist/ output reaches the directory CloudCLI serves
+        # from. This must run BEFORE restart_services_if_needed: the
+        # scheduler restart it queues kills this very process, and the
+        # npm build has to finish first.
+        redeploy_plugin_if_needed(build, result)
         restart_services_if_needed(build, result)
 
 

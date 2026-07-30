@@ -95,6 +95,10 @@ def update_proposal_status(proposal_id, new_status, note=None):
     raise ValueError(f"Unknown proposal id: {proposal_id!r}")
 
 
+def gather_signals():
+    return _gather_signals()
+
+
 def _gather_signals():
     remaining_work = [
         {"id": p["id"], "name": p["name"], "status": p["status"]}

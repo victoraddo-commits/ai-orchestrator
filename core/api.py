@@ -1,5 +1,6 @@
 import hmac
 import os
+import re
 import secrets
 from pathlib import Path
 
@@ -19,11 +20,11 @@ load_dotenv()
 from core.health import analyze
 from core.incident_manager import load_incidents
 from core.decision_engine import load_decisions
-from core.approval import load_requests, approve, reject
+from core.approval import load_requests, approve, reject, list_pending
 from core.remediation import load_remediations
 from core.verification import load_verification_history
 from core.learning import summarize
-from core.memory import load
+from core.memory import load, update
 from core.lifecycle import InvalidTransition
 from core.build_manager import (
     create_build,
@@ -38,8 +39,9 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history
 from core.ai_provider import list_providers
-from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed
+from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
+from core.kai.planner import gather_signals
 from core.roadmap_engine import (
     load_roadmap,
     get_phase,
@@ -262,12 +264,137 @@ class KaiCommandRequest(BaseModel):
     text: str
 
 
+class KaiChatRequest(BaseModel):
+    text: str
+
+
 @app.post("/kai/command")
 def kai_command_endpoint(
     body: KaiCommandRequest,
     operator: str = Depends(require_bridge_token),
 ):
     return kai_dispatch(body.text)
+
+
+CHAT_HISTORY_FILE = "kai_chat_history.json"
+CHAT_HISTORY_MAX_MESSAGES = 40
+
+_APPROVE_INTENT_RE = re.compile(
+    r"approve\s+(architecture|deploy)\s*(?:plan)?\s*(?:#?(request-?\d*|[a-f0-9-]{8,}))?\s*\.?$",
+    re.I,
+)
+
+_REJECT_INTENT_RE = re.compile(
+    r"reject\s+(architecture|deploy)\s*(?:plan)?\s*(?:#?(request-?\d*|[a-f0-9-]{8,}))?\s*\.?$",
+    re.I,
+)
+
+
+def _load_chat_history():
+    data = load(CHAT_HISTORY_FILE)
+    if not isinstance(data, dict):
+        return []
+    return data.get("records", [])
+
+
+def _save_chat_history(history):
+    def mutate(data):
+        if not isinstance(data, dict):
+            data = {}
+        data["schema_version"] = 1
+        data["records"] = history
+        return data
+
+    update(CHAT_HISTORY_FILE, mutate)
+
+
+def _trim_history(history):
+    return history[-CHAT_HISTORY_MAX_MESSAGES:]
+
+
+def _resolve_approval_request(scope, request_id_hint):
+    pending = [r for r in list_pending() if r.get("approval_type") == scope]
+
+    if not pending:
+        return None, f"No pending {scope} approval requests found."
+
+    if request_id_hint:
+        for r in pending:
+            rid = r.get("id", "")
+            if request_id_hint.lower() in rid.lower():
+                return r, None
+        return None, f"No pending {scope} approval matches request id containing {request_id_hint!r}."
+
+    if len(pending) == 1:
+        return pending[0], None
+
+    lines = []
+    for r in pending:
+        lines.append(
+            f"  - {r.get('title') or r.get('id')} "
+            f"(id: {r['id']}, build: {r.get('build_id')})"
+        )
+    detail = "Multiple pending " + scope + " approvals:\n" + "\n".join(lines)
+    return None, detail
+
+
+@app.post("/kai/chat")
+def kai_chat_endpoint(
+    body: KaiChatRequest,
+    operator: str = Depends(require_bridge_token),
+):
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message text is required")
+
+    history = _load_chat_history()
+    history.append({"role": "user", "content": text})
+
+    dispatch_result = kai_dispatch(text)
+    if dispatch_result.get("matched"):
+        reply = dispatch_result
+    else:
+        approve_match = _APPROVE_INTENT_RE.match(text)
+        reject_match = _REJECT_INTENT_RE.match(text)
+
+        if approve_match or reject_match:
+            match = approve_match or reject_match
+            scope = match.group(1).lower()
+            request_id_hint = match.group(2) if match.lastindex and match.lastindex >= 2 else None
+            request, disambiguation = _resolve_approval_request(scope, request_id_hint)
+
+            if request is None:
+                reply = {"matched": True, "description": f"{scope} approval", "result": disambiguation, "error": None}
+            else:
+                try:
+                    if approve_match:
+                        approval_result = approve(request["id"], operator=operator)
+                        verb = "approved"
+                    else:
+                        approval_result = reject(request["id"], operator=operator)
+                        verb = "rejected"
+
+                    reply_text = (
+                        f"{scope.capitalize()} approval request "
+                        f"({request.get('title') or request['id']}) "
+                        f"{verb} by operator {operator}."
+                    )
+                    reply = {"matched": True, "description": f"{scope} approval intent", "result": reply_text, "error": None}
+                except InvalidTransition as error:
+                    raise HTTPException(status_code=409, detail=str(error))
+        else:
+            try:
+                signals = gather_signals()
+                response_text = ai_chat(history, signals)
+            except AllProvidersFailed as error:
+                raise HTTPException(status_code=502, detail=str(error))
+            reply = {"matched": False, "response": response_text}
+
+    reply_msg = {"role": "assistant", "content": str(reply)}
+    history.append(reply_msg)
+    _save_chat_history(_trim_history(history))
+
+    return reply
 
 
 @app.get("/roadmap")

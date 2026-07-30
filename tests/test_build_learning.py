@@ -444,3 +444,67 @@ def test_ingest_rejected_proposals_includes_proposals_without_a_rejection_note(m
     lessons = build_learning.get_lessons(category="avoided_approach")
     assert lessons[0]["evidence"]["rejection_note"] is None
 
+
+# --- 13T: concurrent lesson appends ------------------------------------------
+
+def test_record_lesson_goes_through_memory_update(monkeypatch):
+    # 13R put builds on a ThreadPoolExecutor, so two builds can record a
+    # lesson at the same time. A load-then-save pair lets both read the same
+    # list and the second write clobber the first -- the same race 324aecf
+    # fixed for the provider-rotation index, so the fix is the same: the
+    # whole read-append-write goes through core.memory.update's single flock
+    # critical section.
+    calls = {}
+
+    def fake_update(name, mutate_fn, directory=None):
+        calls["name"] = name
+        calls["result"] = mutate_fn([{"subject": "existing"}])
+        return calls["result"]
+
+    monkeypatch.setattr(build_learning, "update", fake_update)
+
+    entry = build_learning.record_lesson(
+        "successful_solution", "new", "src", recommendation="observe"
+    )
+
+    assert calls["name"] == build_learning.LESSONS_FILE
+    assert calls["result"] == [{"subject": "existing"}, entry]
+
+
+def test_record_lesson_tolerates_a_non_list_lessons_file(monkeypatch):
+    # core.memory.load defaults to {} for a missing file, and update() passes
+    # that same default straight to the mutate function.
+    captured = {}
+
+    def fake_update(name, mutate_fn, directory=None):
+        captured["result"] = mutate_fn({})
+        return captured["result"]
+
+    monkeypatch.setattr(build_learning, "update", fake_update)
+
+    entry = build_learning.record_lesson(
+        "successful_solution", "new", "src", recommendation="observe"
+    )
+
+    assert captured["result"] == [entry]
+
+
+def test_record_lesson_keeps_every_concurrent_append():
+    import threading
+
+    subjects = [f"subject-{i}" for i in range(20)]
+
+    def record(subject):
+        build_learning.record_lesson(
+            "successful_solution", subject, "src", recommendation="observe"
+        )
+
+    threads = [threading.Thread(target=record, args=(s,)) for s in subjects]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    recorded = sorted(lesson["subject"] for lesson in build_learning.get_lessons())
+
+    assert recorded == sorted(subjects)

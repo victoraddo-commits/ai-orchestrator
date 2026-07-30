@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from core.memory import load, save
+from core.memory import load, save, update
 
 
 SUCCESS_STATUSES = {"COMPLETED"}
@@ -172,8 +172,6 @@ def record_lesson(category, subject, source, evidence=None, recommendation=None)
     if category not in LESSON_CATEGORIES:
         raise ValueError(f"Unknown lesson category: {category!r}")
 
-    lessons = get_lessons()
-
     entry = {
         "category": category,
         "subject": subject,
@@ -183,8 +181,19 @@ def record_lesson(category, subject, source, evidence=None, recommendation=None)
         "timestamp": datetime.now().isoformat(),
     }
 
-    lessons.append(entry)
-    save(LESSONS_FILE, lessons)
+    # 13T: the whole read-append-write goes through core.memory.update()'s
+    # single flock critical section, not a load() then save() pair. Since 13R
+    # dispatches builds through a ThreadPoolExecutor, two builds can record a
+    # lesson at the same time -- with load-then-save both read the same list
+    # and the second write silently drops the first one's lesson (measured at
+    # 18 of 20 lost under a 20-thread append). Exactly the race 324aecf fixed
+    # for the provider-rotation index, and the same fix.
+    def mutate(lessons):
+        lessons = lessons if isinstance(lessons, list) else []
+        lessons.append(entry)
+        return lessons
+
+    update(LESSONS_FILE, mutate)
 
     return entry
 

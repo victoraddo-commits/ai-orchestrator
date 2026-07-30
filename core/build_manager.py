@@ -428,13 +428,23 @@ _GENERIC_TOOL_TAGS = (
 # Tool-call-style markup patterns that signal a provider hallucinated its
 # native tool/invocation syntax instead of responding with prose.  Covers
 # XML-style tags with a provider prefix (<minimax:tool_call>), bare
-# known-tool-name tags (<bash>...</bash>), and bare JSON tool shapes
+# known-tool-name tags (<bash>...</bash>), bare JSON tool shapes
 # ({"tool_calls": [...]}) that may leak into a text response from the
-# planning provider.
+# planning provider, and fenced shell code blocks (```bash ... ```) --
+# confirmed live 2026-07-30 (17B retry, planned_by=deepseek): a text_task
+# call with no real tool access produced "I'll explore the repositories
+# ... ```bash\npwd && ls -la\n```" as its entire "plan", a different
+# syntax than the earlier <bash> tag incident but the same underlying
+# failure (an agentic exploration turn instead of a completed plan).
+# Restricted to shell-family language tags specifically, not every fenced
+# code block -- a legitimate plan may include an illustrative python/json
+# snippet describing a design; it would never fence a shell command it
+# intends to have executed.
 _TOOL_CALL_LEAK = re.compile(
     r"<\s*/?\s*[a-zA-Z0-9_-]+\s*:\s*tool_call\b|"
     r"<\s*/?\s*(?:" + "|".join(_GENERIC_TOOL_TAGS) + r")\s*/?\s*>|"
-    r'"[a-zA-Z0-9_-]*tool_calls?"\s*:\s*',
+    r'"[a-zA-Z0-9_-]*tool_calls?"\s*:\s*|'
+    r"```\s*(?:bash|sh|shell|zsh|console)\b",
     re.IGNORECASE,
 )
 

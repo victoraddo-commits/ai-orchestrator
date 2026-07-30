@@ -1251,6 +1251,35 @@ class TestLooksLikeToolCallLeak:
             "Architecture: a bash deployment script runs migrations before the app starts."
         ) is False
 
+    def test_fenced_bash_block_leak_rejected(self):
+        # Confirmed live 2026-07-30 (17B retry, planned_by=deepseek): a
+        # text_task call with no real tool access produced "I'll explore
+        # the repositories ... ```bash\npwd && ls -la\n```" as its entire
+        # "plan" -- a markdown-fenced shell block, not the XML-tag syntax
+        # the earlier <bash> incident used, so the original pattern missed it.
+        assert build_manager._looks_like_tool_call_leak(
+            "I'll explore the repositories first.\n```bash\npwd && ls -la\n```"
+        ) is True
+
+    def test_other_fenced_shell_languages_rejected(self):
+        for lang in ("sh", "shell", "zsh", "console"):
+            assert build_manager._looks_like_tool_call_leak(
+                f"Let me check.\n```{lang}\nls -la\n```"
+            ) is True, lang
+
+    def test_fenced_python_block_in_real_plan_still_passes(self):
+        # A legitimate plan may include an illustrative code snippet
+        # describing a design -- only shell-family fences (commands
+        # intended to be executed) are the hallucination signal, not any
+        # fenced code block at all.
+        assert build_manager._looks_like_tool_call_leak(
+            "Architecture: add a new provider entry.\n"
+            "```python\n"
+            "\"openrouter_claude\": {\"model\": \"anthropic/claude-sonnet-4.6\"}\n"
+            "```\n"
+            "This wires into the existing ROLE_PROVIDERS chain."
+        ) is False
+
 
 def test_bad_plan_stays_in_planning_and_does_not_reach_approval(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")

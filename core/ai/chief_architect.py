@@ -72,14 +72,19 @@ def delegate_chief_architect(description, **kwargs):
 
 
 def _append_record(record):
-    def mutate(records):
-        records = records if isinstance(records, list) else []
-        records.append(record)
-        return records
+    def mutate(data):
+        if not isinstance(data, dict):
+            data = {}
+        data.setdefault("schema_version", 1)
+        data.setdefault("records", [])
+        data["records"].append(record)
+        return data
 
     update(ARCHITECTURE_HISTORY_FILE, mutate)
 
 
 def get_architecture_history():
     data = load(ARCHITECTURE_HISTORY_FILE)
-    return data if isinstance(data, list) else []
+    if not isinstance(data, dict):
+        return []
+    return data.get("records", [])

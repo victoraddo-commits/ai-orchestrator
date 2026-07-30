@@ -643,3 +643,343 @@ def test_dashboard_serving_does_not_import_cloudcli_bridge():
 
     assert "from core.coding_bridge" not in api_source
     assert "import core.coding_bridge" not in api_source
+
+
+# ── Phase 13X: POST /kai/chat ───────────────────────────────
+
+
+def test_kai_chat_endpoint_requires_auth():
+    response = client.post("/kai/chat", json={"text": "Hello, Kai!"})
+
+    assert response.status_code == 401
+
+
+def test_kai_chat_endpoint_requires_auth_wrong_token():
+    response = client.post(
+        "/kai/chat",
+        json={"text": "Hello, Kai!"},
+        headers={"Authorization": "Bearer not-the-real-token"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_kai_chat_endpoint_rejects_empty_text():
+    response = client.post(
+        "/kai/chat",
+        json={"text": ""},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 400
+
+
+def test_kai_chat_endpoint_dispatches_command_patterns_first(monkeypatch):
+    import core.kai.commands as commands
+
+    monkeypatch.setattr(commands, "advance_roadmap", lambda: {"action": "nothing_to_do"})
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": "Kai, continue roadmap"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert body["result"] == {"action": "nothing_to_do"}
+
+
+def test_kai_chat_endpoint_approve_architecture_resolves_through_existing_system():
+    from core.approval import create_build_approval
+
+    approval = create_build_approval(
+        build_id="b-arch",
+        phase_id="X",
+        approval_type="architecture",
+        title="Architecture plan for new feature",
+        description="desc",
+        risk="low",
+        requested_action="approve_architecture",
+    )
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": f"approve architecture plan #{approval['id']}"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert "approved" in str(body["result"]).lower()
+    assert "cloudcli-plugin" in str(body["result"])
+
+    from core.approval import load_requests
+    updated = next(r for r in load_requests() if r["id"] == approval["id"])
+    assert updated["status"] == "approved"
+    assert updated["approved_by"] == "cloudcli-plugin"
+
+
+def test_kai_chat_endpoint_reject_deploy_resolves_through_existing_system():
+    from core.approval import create_build_approval
+
+    approval = create_build_approval(
+        build_id="b-deploy",
+        phase_id="X",
+        approval_type="deploy",
+        title="Deploy plan for staging",
+        description="desc",
+        risk="low",
+        requested_action="approve_deploy",
+    )
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": f"reject deploy #{approval['id']}"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert "rejected" in str(body["result"]).lower()
+    assert "cloudcli-plugin" in str(body["result"])
+
+    from core.approval import load_requests
+    updated = next(r for r in load_requests() if r["id"] == approval["id"])
+    assert updated["status"] == "rejected"
+    assert updated["rejected_by"] == "cloudcli-plugin"
+
+
+def test_kai_chat_endpoint_approval_auto_resolves_single_pending_plan():
+    from core.approval import create_build_approval
+
+    approval = create_build_approval(
+        build_id="b-solo",
+        phase_id="X",
+        approval_type="architecture",
+        title="Solo architecture plan",
+        description="desc",
+        risk="low",
+        requested_action="approve_architecture",
+    )
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": "approve architecture plan"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert "approved" in str(body["result"]).lower()
+
+    from core.approval import load_requests
+    updated = next(r for r in load_requests() if r["id"] == approval["id"])
+    assert updated["status"] == "approved"
+
+
+def test_kai_chat_endpoint_approval_multiple_pending_lists_options():
+    from core.approval import create_build_approval
+
+    create_build_approval(
+        build_id="b-a",
+        phase_id="X",
+        approval_type="architecture",
+        title="Plan alpha",
+        description="desc",
+        risk="low",
+        requested_action="approve_architecture",
+    )
+    create_build_approval(
+        build_id="b-b",
+        phase_id="X",
+        approval_type="architecture",
+        title="Plan beta",
+        description="desc",
+        risk="low",
+        requested_action="approve_architecture",
+    )
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": "approve architecture plan"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    result_text = str(body["result"])
+    assert "multiple" in result_text.lower() or "plan alpha" in result_text.lower()
+
+
+def test_kai_chat_endpoint_approval_nonexistent_matching_returns_info():
+    response = client.post(
+        "/kai/chat",
+        json={"text": "approve architecture plan"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert "no pending" in str(body["result"]).lower()
+
+
+def test_kai_chat_endpoint_client_supplied_operator_is_ignored():
+    from core.approval import create_build_approval
+
+    approval = create_build_approval(
+        build_id="b-forge",
+        phase_id="X",
+        approval_type="architecture",
+        title="Verify forge-safe plan",
+        description="desc",
+        risk="low",
+        requested_action="approve_architecture",
+    )
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": f"approve architecture plan #{approval['id']}", "operator": "alice"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    from core.approval import load_requests
+    updated = next(r for r in load_requests() if r["id"] == approval["id"])
+    assert updated["approved_by"] == "cloudcli-plugin"
+
+
+def test_kai_chat_endpoint_fallback_to_ai_chat_for_unknown_text(monkeypatch):
+    import core.api as api_module
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "Hello, operator! The roadmap is on track.")
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": "What are you doing right now?"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is False
+    assert body["response"] == "Hello, operator! The roadmap is on track."
+
+
+def test_kai_chat_endpoint_conversation_history_persists(monkeypatch):
+    import core.api as api_module
+
+    call_signals = []
+
+    def fake_chat(messages, signals):
+        call_signals.append((list(messages), dict(signals)))
+        return "Hello, operator!"
+
+    monkeypatch.setattr(api_module, "ai_chat", fake_chat)
+
+    response1 = client.post(
+        "/kai/chat",
+        json={"text": "How are you?"},
+        headers=auth_headers(),
+    )
+    assert response1.status_code == 200
+
+    response2 = client.post(
+        "/kai/chat",
+        json={"text": "What's the roadmap status?"},
+        headers=auth_headers(),
+    )
+    assert response2.status_code == 200
+
+    assert len(call_signals) == 2
+    messages_for_call2 = call_signals[1][0]
+    user_messages = [m["content"] for m in messages_for_call2 if m["role"] == "user"]
+    assert "How are you?" in user_messages
+    assert "What's the roadmap status?" in user_messages
+
+    assistant_messages = [m["content"] for m in messages_for_call2 if m["role"] == "assistant"]
+    assert len(assistant_messages) >= 1
+
+
+def test_kai_chat_endpoint_approval_returns_no_pending_after_request_handled():
+    from core.approval import create_build_approval
+
+    approval = create_build_approval(
+        build_id="b-double",
+        phase_id="X",
+        approval_type="architecture",
+        title="Already-approved plan",
+        description="desc",
+        risk="low",
+        requested_action="approve_architecture",
+    )
+
+    client.post(
+        "/kai/chat",
+        json={"text": f"approve architecture plan #{approval['id']}"},
+        headers=auth_headers(),
+    )
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": f"approve architecture plan #{approval['id']}"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert "no pending" in str(body["result"]).lower()
+
+
+def test_kai_chat_endpoint_returns_502_when_all_providers_fail(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ("gemini", "openrouter", "deepseek", "claude"):
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: False)
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": "What are you doing right now?"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 502
+
+
+def test_kai_chat_endpoint_approval_handles_partial_id_match():
+    from core.approval import create_build_approval
+
+    approval = create_build_approval(
+        build_id="b-partial",
+        phase_id="X",
+        approval_type="deploy",
+        title="Deploy plan for partial-match test",
+        description="desc",
+        risk="low",
+        requested_action="approve_deploy",
+    )
+
+    partial_id = approval["id"][:8]
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": f"approve deploy {partial_id}"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched"] is True
+    assert "approved" in str(body["result"]).lower()
+
+    from core.approval import load_requests
+    updated = next(r for r in load_requests() if r["id"] == approval["id"])
+    assert updated["status"] == "approved"

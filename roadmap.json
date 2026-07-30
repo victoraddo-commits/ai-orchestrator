@@ -537,7 +537,7 @@
       "id": "13V",
       "name": "Chief Architect redundancy: named fallback chain + dedicated history log",
       "description": "The 'planning' role already has automatic multi-provider fallback (ai_router.ROLE_PROVIDERS['planning'], currently [gemini, openrouter, claude] post-minimax-pause -- see 13T for when/whether minimax returns), but there's no dedicated 'Chief Architect' framing distinct from general planning, and DeepSeek / a Claude-specific OpenRouter route aren't in that chain. Add a named priority list: Claude (primary) -> Gemini -> DeepSeek (once 13U lands) -> OpenRouter Claude Sonnet (once 13M's openrouter_claude-equivalent text-capable route exists, or reuse the existing plain 'openrouter' provider pinned to anthropic/claude-sonnet-4.6 if that's simpler) -> OpenAI. Failover triggers: quota exceeded, timeout, unavailable, or degraded health -- all already-detectable via provider_health.get_quota_snapshot()/capture_quota_exceeded(), reuse that, don't reimplement health signals. New memory/chief_architect_history.json, one entry per architecture-planning delegate() call: {task, primary, fallback_used, reason, result}, exactly the shape the user specified -- e.g. {\"task\": \"architecture planning\", \"primary\": \"claude\", \"fallback_used\": \"gemini\", \"reason\": \"claude quota exhausted\", \"result\": \"success\"}. Implementation should be a thin wrapper around the existing ai_router.delegate() (e.g. a new task_type='architecture' entry in ROLE_PROVIDERS, or a dedicated delegate_chief_architect() convenience function) that additionally records to chief_architect_history.json -- do not duplicate delegate()'s fallback-walking logic.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 14,
       "completion_criteria": [
@@ -546,13 +546,14 @@
         "Failover reasons (quota/timeout/unavailable/degraded health) are captured accurately from existing provider_health signals, not guessed",
         "Tests cover: primary success (no fallback recorded), one-level fallback, and full-chain exhaustion"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "4bbe2157"
     },
     {
       "id": "13W",
       "name": "Cost tracking: cost_tier field + real cost estimates in usage history",
       "description": "No cost_tier field or cost estimation exists anywhere today (confirmed: no references to 'cost_tier' anywhere in core/). Two parts: (1) add a cost_tier field ('free', 'low_cost', 'paid', or similar) to each provider's registration in ai_provider.py -- a static classification, not computed, e.g. groq/gemini free-tier as 'free', minimax/deepseek as 'free_or_low_cost' per the user's own labeling request, openai/claude as 'paid'. Surface it in list_providers()/get_provider_dashboard() output. (2) Real per-call cost estimates in ai_usage_history.json entries where available -- OpenRouter's chat-completions responses already include actual cost data (confirmed live: opencode CLI's own step_finish events carry a real 'cost' field, e.g. cost: 0.0139422, when routed through OpenRouter/Zen), so capture that into record_usage() as a new optional 'cost' field rather than estimating from token counts -- use the real figure when the provider's response includes one, leave it null otherwise (never fabricate a number for a provider that doesn't report one). get_provider_dashboard() (or a new aggregation function reusing it) should surface per-provider cost totals and average completion time (duration_ms is already recorded per call, just needs aggregating) alongside the existing attempts/success counts -- this is the 'AI Workforce Analytics' data the dashboard needs; no new UI is required by this phase, just the underlying data (13J/13O already cover surfacing it visually).",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 15,
       "completion_criteria": [
@@ -790,6 +791,80 @@
         "Each project's conversations, roadmap, builds, and approvals are isolated from every other project's",
         "The self-modifying ai-orchestrator project itself continues to work exactly as today -- not folded into the generic multi-project mechanism in a way that risks its special-cased handling",
         "Tests cover: switching projects returns the correct isolated data for each; no cross-project data leakage in any listing endpoint"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "16A",
+      "name": "Standalone Kai dashboard, decoupled from CloudCLI's lifecycle",
+      "description": "Confirmed live 2026-07-30: the only existing Kai UI (13G's Kai Control Center) is embedded as a CloudCLI plugin tab -- it inherits CloudCLI's own hosting, auth, and lifecycle. The user hit this directly: the dashboard showed 'Failed to load: RPC error 404' coinciding with a routine ai-orchestrator-api.service restart, and separately CloudCLI itself had an unrelated host-level update prompt that looked related but wasn't. Kai and CloudCLI are conceptually separate systems; the dashboard should not go down because the other one is restarting, updating, or simply not running. Add a standalone dashboard: a small static HTML/JS page served directly by core.api (e.g. GET /dashboard) at its own URL, reachable independent of CloudCLI entirely. Reuses every existing read endpoint as-is (/health, /roadmap/progress, /approvals, /providers/dashboard, /learning, /builds) -- no new backend logic, this is presentation only. Deliberately READ-ONLY for this phase: core.api's GET endpoints require no auth today (only POST/write endpoints check the bridge token), so a browser-servable page can safely call them directly -- but embedding the bridge token itself into browser-facing JS to support write actions (approve/reject) would leak it to anyone who can load the page, bypassing CloudCLI's proxy entirely. Approve/reject actions stay on the existing CloudCLI-embedded tab until 15A's real auth exists; this phase does not attempt to solve write-auth early.",
+      "status": "pending",
+      "dependencies": [
+        "13G"
+      ],
+      "priority": 38,
+      "completion_criteria": [
+        "GET /dashboard (or similar) serves a self-contained HTML/JS page directly from core.api, reachable without CloudCLI running",
+        "Page displays system health, roadmap progress, active builds, pending approvals (read-only display, no action buttons), provider health/cost, and learning summary -- reusing existing GET endpoints only, no new data computation",
+        "No write/approve/reject actions on this page, and no bridge token embedded in any browser-servable file -- explicitly deferred to 15A",
+        "Page continues to load and display data correctly with CloudCLI's cloudcli.service stopped (proves the decoupling)",
+        "Tests cover: the route serves valid HTML, and a smoke test confirms it doesn't import/require anything from the CloudCLI plugin bridge"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "16B",
+      "name": "Self-healing: automated recovery for known, scoped failure classes",
+      "description": "Follow-on to 14A's stuck-phase detection -- detection alone still requires a human (or this session) to notice and act. For a narrow, already-evidenced set of failure classes seen live this session, attempt automatic recovery before ever paging a human: (1) a build stuck oscillating between WAITING_FOR_USER_INPUT and PLANNING with no real open question (14A's own detection target) -- auto-resubmit a nudge answer once, then escalate if it recurs; (2) a generation/deploy attempt that failed on a now-understood, already-fixed infra bug class (dirty working tree, missing memory/ snapshot, no-op generation) -- these are exactly the failure signatures this session spent tonight fixing at the root, so recovery here means confirming the fix landed and safely retrying, not re-deriving new logic; (3) the orchestrator/API systemd services themselves -- confirm systemd's own Restart= policy is actually configured (verify, don't assume) and add a lightweight liveness self-check the scheduler cycle already has the means to perform. Deliberately NOT in scope: certificate expiry, disk-space monitoring, or any other failure class with no live evidence it's a real risk on this single-host deployment -- added speculatively, they'd be untested guesses. Every auto-recovery action must be logged (what failed, what recovery was attempted, outcome) and still notify a human via 13Z's Telegram bridge if the automated attempt doesn't resolve it -- 'notify humans only when autonomous recovery is unsuccessful' is the exact behavior, not silent-always or loud-always.",
+      "status": "pending",
+      "dependencies": [
+        "14A"
+      ],
+      "priority": 39,
+      "completion_criteria": [
+        "A build stuck oscillating WAITING_FOR_USER_INPUT/PLANNING (14A's detection) gets one automated recovery attempt before human escalation",
+        "systemd Restart= policy for ai-orchestrator.service and ai-orchestrator-api.service is verified/confirmed configured correctly (or fixed if it isn't) -- not assumed",
+        "Every auto-recovery attempt (trigger, action taken, outcome) is logged to a queryable record, not just console/log-file text",
+        "Telegram notification (via 13Z) fires only when an automated recovery attempt fails or a failure class isn't recognized -- never spams on successful auto-recovery",
+        "Explicitly does not add certificate/disk-space/other speculative monitoring with no live evidence of being a real risk here",
+        "Tests cover: the two evidenced failure classes trigger correct recovery attempts, and an unrecognized failure class correctly falls through to human notification rather than being silently swallowed"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "16C",
+      "name": "Continuous self-improvement: scheduled analysis answering concrete questions from real data",
+      "description": "Kai already has the mechanism to propose new roadmap phases from its own observations (13I, add_phase() defaulting to status='proposed' so a human must promote it -- 'AI can propose, AI cannot approve its own changes' stays true). This phase is the analysis engine that actually generates those proposals on a schedule, answering concrete questions from data that already exists rather than speculating: which provider/model actually performs best per role (reuses 13T's provider_evidence module and its MIN_SAMPLE_SIZE/relative-comparison approach, don't reinvent it), which roadmap phases failed most often and why (memory/build_history.json + roadmap.json's own 'note' fields, several of which already document real root causes from tonight), which tests are flaky (repeated CI-adjacent failures with no code change between runs -- needs evidence across multiple self-build test-gate runs, not a guess), and where token/cost is being wasted (13W's now-real per-call cost data, ai_usage_history.json). Each answered question that surfaces a genuine, evidenced improvement becomes one 13I-style proposed phase, never auto-promoted to pending. Explicitly not in scope: fabricating an answer when the underlying data doesn't support one (13T's own MIN_SAMPLE_SIZE discipline applies here too -- 'insufficient data' is a valid, honest output).",
+      "status": "pending",
+      "dependencies": [
+        "13I",
+        "13W"
+      ],
+      "priority": 40,
+      "completion_criteria": [
+        "A scheduled (or Kai-command-triggered) analysis run answers each of: best-performing provider per role, most-failed roadmap phases + root cause pattern, flaky tests (if any evidenced), and token/cost waste hotspots",
+        "Every proposal it files goes through roadmap_engine.add_phase() with status='proposed', never 'pending' -- reuses 13I's existing mechanism, does not add a second proposal pathway",
+        "An analysis question with insufficient supporting data reports 'insufficient data' rather than fabricating a recommendation, matching 13T's established sample-size discipline",
+        "Reuses core.ai.provider_evidence (13T) and the real cost data (13W) directly -- no duplicate data collection",
+        "Tests cover: a well-evidenced finding produces a correctly-shaped proposed phase, and a question with too little data correctly abstains rather than guessing"
+      ],
+      "tests_required": true
+    },
+    {
+      "id": "16D",
+      "name": "Cost budget limits and alerts on top of 13W's real cost data",
+      "description": "Small, direct follow-on to 13W (completed 2026-07-29): real per-call cost is now captured in ai_usage_history.json and aggregated per-provider via get_provider_dashboard() when a provider's response actually reports a figure. This phase adds the alerting layer on top of data that already exists -- no new cost tracking, purely thresholds and notification. A configurable budget limit (e.g. daily/monthly spend ceiling, overall or per-provider) checked against the existing aggregated totals; crossing it sends a Telegram alert (via 13Z) with the actual figures, not a vague warning. No automatic spend-limiting/provider-disabling behavior in this phase -- alert-only, since automatically cutting off a provider mid-roadmap based on a cost threshold is a judgment call for a human, not something to automate without being asked.",
+      "status": "pending",
+      "dependencies": [
+        "13W",
+        "13Z"
+      ],
+      "priority": 41,
+      "completion_criteria": [
+        "A configurable budget limit (at least a total daily/monthly ceiling) is checked against 13W's existing real cost aggregates -- no new cost computation",
+        "Crossing the limit sends a Telegram alert via 13Z's bridge with the actual spend figures, not a generic message",
+        "No automatic provider-disabling or spend-limiting action taken -- alert only, this phase does not make autonomous spending decisions",
+        "Tests cover: an alert fires exactly once when a threshold is crossed (not every cycle after), and stays silent under the threshold"
       ],
       "tests_required": true
     }

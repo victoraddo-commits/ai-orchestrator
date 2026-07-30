@@ -413,40 +413,51 @@ def _tail_for_clarification_check(plan_text):
     return paragraphs[-1] if paragraphs else plan_text
 
 
-# Known tool-invocation tag names various providers/frameworks use for
-# their own native tool-call syntax -- confirmed live 2026-07-30 (13V,
-# planned_by=deepseek): a plain text_task call with no real tool access
-# hallucinated `<bash>find ...</bash>` blocks (unexecuted shell commands)
-# as its entire "plan". Bare tag names like this have no provider prefix
-# at all, unlike the earlier <minimax:tool_call> incident, so they need
-# their own pattern rather than extending the colon-form one below.
-_GENERIC_TOOL_TAGS = (
-    "bash", "shell", "tool", "tool_use", "invoke",
-    "function_calls", "execute", "command", "run_command",
-)
+# Real HTML/SVG element names a legitimate frontend-touching plan might
+# reasonably mention inline (e.g. "add a <button> that POSTs the message").
+# Everything else bare-tag-shaped is presumed to be hallucinated tool/
+# invocation syntax rather than markup -- confirmed live 2026-07-30 across
+# three DIFFERENT tag names in one session (<bash>...</bash> on 13V,
+# <read_file><path>...</path></read_file> on 13M) plus a non-tag variant
+# (```bash fenced block on 17B's retry) -- enumerating specific tool-tag
+# names one at a time loses this race every time a provider/framework uses
+# a new one. A general "any non-HTML bare tag is suspicious" rule doesn't.
+_HTML_TAG_ALLOWLIST = frozenset({
+    "div", "span", "button", "input", "form", "label", "p", "a", "ul", "li",
+    "ol", "table", "tr", "td", "th", "thead", "tbody",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "section", "header", "footer", "nav", "img", "textarea", "select",
+    "option", "style", "script", "svg", "path", "br", "hr", "code", "pre",
+    "strong", "em", "b", "i", "small", "iframe", "canvas", "video", "audio",
+    "source", "link", "meta", "title", "html", "head", "body",
+})
 
-# Tool-call-style markup patterns that signal a provider hallucinated its
-# native tool/invocation syntax instead of responding with prose.  Covers
-# XML-style tags with a provider prefix (<minimax:tool_call>), bare
-# known-tool-name tags (<bash>...</bash>), bare JSON tool shapes
-# ({"tool_calls": [...]}) that may leak into a text response from the
-# planning provider, and fenced shell code blocks (```bash ... ```) --
-# confirmed live 2026-07-30 (17B retry, planned_by=deepseek): a text_task
-# call with no real tool access produced "I'll explore the repositories
-# ... ```bash\npwd && ls -la\n```" as its entire "plan", a different
-# syntax than the earlier <bash> tag incident but the same underlying
-# failure (an agentic exploration turn instead of a completed plan).
-# Restricted to shell-family language tags specifically, not every fenced
-# code block -- a legitimate plan may include an illustrative python/json
-# snippet describing a design; it would never fence a shell command it
-# intends to have executed.
-_TOOL_CALL_LEAK = re.compile(
-    r"<\s*/?\s*[a-zA-Z0-9_-]+\s*:\s*tool_call\b|"
-    r"<\s*/?\s*(?:" + "|".join(_GENERIC_TOOL_TAGS) + r")\s*/?\s*>|"
+_XML_TAG = re.compile(r"<\s*(/?)\s*([a-zA-Z][a-zA-Z0-9_-]*)((?:\s*:\s*[a-zA-Z][a-zA-Z0-9_-]*)?)\s*/?\s*>")
+
+# Bare JSON tool shape ({"tool_calls": [...]}) that may leak into a text
+# response from the planning provider, and fenced shell code blocks
+# (```bash ... ```) -- confirmed live 2026-07-30 (17B retry,
+# planned_by=deepseek): a text_task call with no real tool access produced
+# "I'll explore the repositories ... ```bash\npwd && ls -la\n```" as its
+# entire "plan". Restricted to shell-family language tags specifically, not
+# every fenced code block -- a legitimate plan may include an illustrative
+# python/json snippet describing a design; it would never fence a shell
+# command it intends to have executed.
+_OTHER_LEAK_PATTERNS = re.compile(
     r'"[a-zA-Z0-9_-]*tool_calls?"\s*:\s*|'
     r"```\s*(?:bash|sh|shell|zsh|console)\b",
     re.IGNORECASE,
 )
+
+
+def _has_hallucinated_tag(text):
+    for match in _XML_TAG.finditer(text):
+        namespace = match.group(3)
+        if namespace:
+            return True  # <provider:tool_call> -- never legitimate prose
+        if match.group(2).lower() not in _HTML_TAG_ALLOWLIST:
+            return True
+    return False
 
 # Anything shorter than this (after stripping whitespace) is considered
 # near-empty and not a usable plan.
@@ -463,7 +474,10 @@ def _looks_like_tool_call_leak(text):
     if not text or len(text.strip()) < _MIN_PLAN_LENGTH:
         return True
 
-    if _TOOL_CALL_LEAK.search(text):
+    if _OTHER_LEAK_PATTERNS.search(text):
+        return True
+
+    if _has_hallucinated_tag(text):
         return True
 
     return False

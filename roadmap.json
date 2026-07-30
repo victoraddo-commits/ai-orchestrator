@@ -901,7 +901,7 @@
       "id": "17B",
       "name": "Wire a chat panel into the CloudCLI-embedded Kai Control Center tab, calling POST /kai/chat",
       "description": "Direct follow-on to 13X (POST /kai/chat) -- shipping the backend endpoint alone leaves nowhere safe to actually type into it. The standalone dashboard (16A) deliberately does not hold the bridge token (embedding it in browser JS would leak it to anyone who loads the page, since there is no per-user auth yet -- write auth is explicitly deferred to 15A), so it cannot call 13X's endpoint on its own. The existing CloudCLI-embedded Kai Control Center tab (13G, completed, /project/src/ai-orchestrator-plugin) already has a server-side Node.js proxy (dist/server.js) that holds the bridge token securely and proxies authenticated write calls on the operator's behalf -- the same pattern already used for the tab's existing Approve/Reject buttons. Add a simple chat panel to that tab: a text input, a send button, and a scrolling message history, POSTing through the plugin's existing server-side proxy to POST /kai/chat (never embedding the bridge token client-side). This is the concrete answer to \"where do I actually type to Kai\" -- reliability over visual polish, per the user's explicit MVP framing for the chat experience.",
-      "status": "in_progress",
+      "status": "pending",
       "dependencies": [
         "13X"
       ],
@@ -914,8 +914,7 @@
         "No new approval mechanism and no write capability added beyond what already existed in the tab -- this only adds a transport for 13X's existing endpoint"
       ],
       "tests_required": true,
-      "note": "Queued 2026-07-30 per user request, immediately after 13X in priority -- this closes the gap between \"the chat backend exists\" and \"I can actually open something and type to Kai,\" which is the exact milestone the user has been asking for.",
-      "build_id": "6b9391c8"
+      "note": "Queued 2026-07-30 per user request, immediately after 13X in priority -- this closes the gap between \"the chat backend exists\" and \"I can actually open something and type to Kai,\" which is the exact milestone the user has been asking for."
     }
   ]
 }

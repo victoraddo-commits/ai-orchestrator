@@ -1280,6 +1280,29 @@ class TestLooksLikeToolCallLeak:
             "This wires into the existing ROLE_PROVIDERS chain."
         ) is False
 
+    def test_unknown_tool_tag_name_rejected(self):
+        # Confirmed live 2026-07-30 (13M, planned_by=deepseek): a text_task
+        # call with no real tool access produced
+        # "<read_file><path>core/ai_provider.py</path></read_file>" as its
+        # entire "plan" -- a third distinct tag name in one session (after
+        # <bash> and a fenced ```bash block), never enumerated in any
+        # tag-name list. The general non-HTML-tag rule catches it without
+        # needing to know "read_file" or "path" specifically in advance.
+        assert build_manager._looks_like_tool_call_leak(
+            "I'll start by reading the design document.\n"
+            "<read_file>\n<path>core/ai_provider.py</path>\n</read_file>"
+        ) is True
+
+    def test_common_html_tags_in_frontend_plan_still_pass(self):
+        # A legitimate frontend-touching plan may reasonably mention real
+        # HTML elements inline -- only non-HTML bare tags are the
+        # hallucination signal.
+        assert build_manager._looks_like_tool_call_leak(
+            "Architecture: add a <button> that POSTs the <input> field's "
+            "value to /kai/chat, appending the response to a <div> "
+            "containing the scrolling message history."
+        ) is False
+
 
 def test_bad_plan_stays_in_planning_and_does_not_reach_approval(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")

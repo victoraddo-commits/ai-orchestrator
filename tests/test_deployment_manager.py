@@ -387,6 +387,59 @@ def test_deploy_build_rolls_back_the_first_repo_when_the_second_repo_fails(tmp_p
     assert _clean(live_plugin)
 
 
+def test_deploy_build_rollback_preserves_pre_existing_uncommitted_changes(tmp_path, monkeypatch):
+    live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace = (
+        _make_dual_workspace(tmp_path, monkeypatch, "dual2b")
+    )
+
+    (orchestrator_clone / "backend_feature.py").write_text("# backend half\n")
+    _commit_all(orchestrator_clone, "backend half")
+
+    (plugin_clone / "README.md").write_text("clone changed this line\n")
+    _commit_all(plugin_clone, "conflicting frontend change")
+    (live_plugin / "README.md").write_text("live changed this line too\n")
+    subprocess.run(["git", "-C", str(live_plugin), "commit", "-q", "-am", "live plugin change"], check=True)
+
+    # Pre-existing uncommitted change in the live orchestrator repo -- the
+    # scheduler's own concurrent roadmap.json write that must survive the
+    # rollback of the orchestrator half when the plugin half fails.
+    (live_orchestrator / "roadmap.json").write_text('{"phases": [{"id": "14B"}]}')
+    pre_existing_content = (live_orchestrator / "roadmap.json").read_text()
+
+    build = {"id": "dual2b", "name": "14B", "project_path": str(workspace)}
+
+    result = deploy_mgr.deploy_build(build)
+
+    assert result["deployed"] is False
+    assert "onflict" in result["reason"]
+    assert result["failed_repo"] == str(live_plugin)
+    assert result["rolled_back_repos"] == [str(live_orchestrator)]
+
+    # The backend merge was rolled back -- the new file must not exist.
+    assert not (live_orchestrator / "backend_feature.py").exists()
+
+    # The pre-existing uncommitted roadmap.json change must survive -- either
+    # as a committed change (auto-committed before the deploy attempt) or
+    # still as an uncommitted change. Either way, its content must be intact.
+    assert (live_orchestrator / "roadmap.json").exists()
+    assert (live_orchestrator / "roadmap.json").read_text() == pre_existing_content
+
+    # The live orchestrator repo must not have lost anything -- no data
+    # destruction from git reset --hard ditching collateral working-tree
+    # state.
+    status = subprocess.run(
+        ["git", "-C", str(live_orchestrator), "status", "--porcelain"], capture_output=True, text=True
+    )
+    # After the fix, the tree may be clean (auto-committed) or dirty (if
+    # _commit_dirty_working_tree is already inside _merge_branch_into_live_repo
+    # too, but the rollback resets past it).  Either is acceptable as long as
+    # the file content is preserved, which is already asserted above.
+    assert "roadmap.json" not in status.stdout
+
+    # Neither repo should be mid-merge.
+    assert _clean(live_plugin)
+
+
 def test_deploy_build_fails_whole_deploy_when_the_first_repo_fails(tmp_path, monkeypatch):
     live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace = (
         _make_dual_workspace(tmp_path, monkeypatch, "dual3")

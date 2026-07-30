@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kai Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #c9d1d9;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --yellow: #d29922;
+  --red: #f85149;
+  --purple: #a371f7;
+  --radius: 8px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px;
+}
+
+header h1 { font-size: 1.5rem; font-weight: 600; }
+
+.status-dot {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+}
+
+.status-dot.ok { background: var(--green); }
+.status-dot.degraded { background: var(--yellow); }
+.status-dot.critical { background: var(--red); }
+.status-dot.unknown { background: var(--muted); }
+
+.last-scan { color: var(--muted); font-size: 0.8rem; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+.card h3 {
+  font-size: 0.85rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--muted); margin-bottom: 12px;
+}
+
+.metric { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
+.metric .label { color: var(--muted); font-size: 0.85rem; }
+.metric .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.badge {
+  display: inline-block; font-size: 0.75rem; padding: 2px 8px;
+  border-radius: 12px; font-weight: 600;
+}
+
+.badge.ok { background: rgba(63,185,80,0.15); color: var(--green); }
+.badge.warn { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.badge.critical { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge.pending { background: rgba(163,113,247,0.15); color: var(--purple); }
+.badge.completed { background: rgba(88,166,255,0.15); color: var(--accent); }
+.badge.trusted { background: rgba(63,185,80,0.15); color: var(--green); }
+.badge.observe { background: rgba(210,153,34,0.15); color: var(--yellow); }
+.badge.avoid { background: rgba(248,81,73,0.15); color: var(--red); }
+.badge.info { background: rgba(88,166,255,0.15); color: var(--accent); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 6px 8px; font-size: 0.82rem; }
+th { color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
+td { border-bottom: 1px solid rgba(48,54,61,0.5); }
+
+.progress-bar {
+  height: 8px; background: var(--border); border-radius: 4px; overflow: hidden;
+  margin-top: 4px;
+}
+
+.progress-fill {
+  height: 100%; background: var(--accent); border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-fill.done { background: var(--green); }
+
+.phase-row { display: flex; align-items: center; justify-content: space-between; padding: 3px 0; }
+.phase-name { font-size: 0.82rem; }
+
+.spread { display: flex; justify-content: space-between; align-items: center; }
+
+.empty { color: var(--muted); font-style: italic; font-size: 0.85rem; padding: 8px 0; }
+
+.loading { color: var(--muted); font-size: 0.9rem; }
+
+.error { color: var(--red); font-size: 0.85rem; background: rgba(248,81,73,0.1); padding: 8px 12px; border-radius: var(--radius); }
+
+.cost { font-family: "SF Mono", "Fira Code", monospace; font-size: 0.8rem; }
+.provider-name { font-weight: 600; }
+
+footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.75rem; text-align: center; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <div>
+    <h1>Kai Dashboard</h1>
+  </div>
+  <div id="health-banner" class="last-scan">loading...</div>
+</header>
+
+<div class="grid">
+
+  <div class="card" id="card-health">
+    <h3>System Health</h3>
+    <div id="health-content"><span class="loading">loading...</span></div>
+  </div>
+
+  <div class="card" id="card-roadmap">
+    <h3>Roadmap Progress</h3>
+    <div id="roadmap-content"><span class="loading">loading...</span></div>
+  </div>
+
+  <div class="card" id="card-builds">
+    <h3>Active Builds</h3>
+    <div id="builds-content"><span class="loading">loading...</span></div>
+  </div>
+
+  <div class="card" id="card-approvals">
+    <h3>Pending Approvals</h3>
+    <div id="approvals-content"><span class="loading">loading...</span></div>
+  </div>
+
+  <div class="card" id="card-providers">
+    <h3>Provider Health &amp; Cost</h3>
+    <div id="providers-content"><span class="loading">loading...</span></div>
+  </div>
+
+  <div class="card" id="card-learning">
+    <h3>Learning Summary</h3>
+    <div id="learning-content"><span class="loading">loading...</span></div>
+  </div>
+
+</div>
+
+<footer>
+  Kai Dashboard &middot; Read-only &middot; Served by core.api
+</footer>
+
+</div>
+
+<script>
+(async function() {
+  async function fetchJSON(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(url + " returned " + res.status);
+    return res.json();
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return "unknown";
+    const d = new Date(iso);
+    return d.toLocaleString();
+  }
+
+  const $ = id => document.getElementById(id);
+
+  // ── Health ────────────────────────────────────────────────
+  try {
+    const h = await fetchJSON("/health");
+    const dot = h.status === "ok" ? "ok" : (h.status === "degraded" ? "degraded" : "critical");
+    $("health-banner").innerHTML = `<span class="status-dot ${dot}"></span> ${h.status} &middot; last scan ${fmtTime(h.last_scan)}`;
+
+    let findingsHTML = "";
+    if (h.findings && h.findings.length) {
+      findingsHTML = '<table><thead><tr><th>Component</th><th>Severity</th><th>Message</th></tr></thead><tbody>';
+      for (const f of h.findings.slice(0, 10)) {
+        const sev = (f.severity || "").toLowerCase();
+        const badge = sev === "critical" ? "critical" : (sev === "warning" ? "warn" : "ok");
+        findingsHTML += `<tr><td>${esc(f.service||f.component||"-")}</td><td><span class="badge ${badge}">${esc(f.severity||"-")}</span></td><td>${esc(f.message||f.detail||"-")}</td></tr>`;
+      }
+      findingsHTML += "</tbody></table>";
+    } else {
+      findingsHTML = '<span class="empty">no findings</span>';
+    }
+    $("health-content").innerHTML = findingsHTML;
+  } catch (e) {
+    $("health-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+  }
+
+  // ── Roadmap ───────────────────────────────────────────────
+  try {
+    const r = await fetchJSON("/roadmap/progress");
+    const pct = r.total ? Math.round(r.completed / r.total * 100) : 0;
+    $("roadmap-content").innerHTML = `
+      <div class="spread"><span>${r.completed} / ${r.total} complete</span><strong>${pct}%</strong></div>
+      <div class="progress-bar"><div class="progress-fill ${pct===100?'done':''}" style="width:${pct}%"></div></div>
+      <div class="spread" style="margin-top:8px"><span class="label">in-progress</span><span class="value">${r.in_progress||0}</span></div>
+      <div class="spread"><span class="label">pending</span><span class="value">${r.pending||0}</span></div>
+    `;
+  } catch (e) {
+    $("roadmap-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+  }
+
+  // ── Builds ────────────────────────────────────────────────
+  try {
+    const builds = await fetchJSON("/builds");
+    const active = builds.filter(b => b.status !== "COMPLETED" && b.status !== "FAILED" && b.status !== "ROLLED_BACK");
+    if (active.length) {
+      let html = '<table><thead><tr><th>Name</th><th>Template</th><th>Status</th></tr></thead><tbody>';
+      for (const b of active.slice(0, 10)) {
+        const s = (b.status||"").toLowerCase();
+        const badge = s === "in_progress" || s === "requested" ? "info" : (s === "deploying" ? "warn" : "pending");
+        html += `<tr><td>${esc(b.name)}</td><td>${esc(b.template||"-")}</td><td><span class="badge ${badge}">${esc(b.status)}</span></td></tr>`;
+      }
+      html += "</tbody></table>";
+      $("builds-content").innerHTML = html;
+    } else {
+      $("builds-content").innerHTML = '<span class="empty">no active builds</span>';
+    }
+  } catch (e) {
+    $("builds-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+  }
+
+  // ── Approvals ─────────────────────────────────────────────
+  try {
+    const approvals = await fetchJSON("/approvals");
+    const pending = approvals.filter(a => a.status === "pending");
+    if (pending.length) {
+      let html = '<table><thead><tr><th>Action</th><th>Service</th><th>Reason</th></tr></thead><tbody>';
+      for (const a of pending.slice(0, 10)) {
+        html += `<tr><td><span class="badge pending">${esc(a.action)}</span></td><td>${esc(a.service||"-")}</td><td>${esc(a.reason||"-")}</td></tr>`;
+      }
+      html += "</tbody></table>";
+      $("approvals-content").innerHTML = html;
+    } else {
+      $("approvals-content").innerHTML = '<span class="empty">no pending approvals</span>';
+    }
+  } catch (e) {
+    $("approvals-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+  }
+
+  // ── Providers ─────────────────────────────────────────────
+  try {
+    const pd = await fetchJSON("/providers/dashboard");
+    let html = '<table><thead><tr><th>Provider</th><th>Status</th><th>Cost</th></tr></thead><tbody>';
+    for (const [name, info] of Object.entries(pd)) {
+      const avail = info.available !== false;
+      const cost = info.cost || info.estimated_cost;
+      const pct = (info.percent_remaining != null) ? Math.round(info.percent_remaining) : null;
+      const statusBadge = avail ? "ok" : "critical";
+      const statusLabel = avail ? "available" : "unavailable";
+      html += `<tr>
+        <td class="provider-name">${esc(name)}</td>
+        <td><span class="badge ${statusBadge}">${statusLabel}</span>${pct!=null ? ` <span class="cost">${pct}% left</span>` : ""}</td>
+        <td class="cost">${cost != null ? esc(String(cost)) : "-"}</td>
+      </tr>`;
+    }
+    html += "</tbody></table>";
+    $("providers-content").innerHTML = html;
+  } catch (e) {
+    $("providers-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+  }
+
+  // ── Learning ──────────────────────────────────────────────
+  try {
+    const l = await fetchJSON("/learning");
+    const entries = Object.entries(l);
+    if (entries.length) {
+      let html = '<table><thead><tr><th>Action</th><th>Recommendation</th><th>Score</th></tr></thead><tbody>';
+      for (const [action, info] of entries.slice(0, 10)) {
+        const rec = (info.recommendation||"").toLowerCase();
+        const badge = rec === "trusted" ? "trusted" : (rec === "observe" ? "observe" : (rec === "avoid" ? "avoid" : "info"));
+        html += `<tr><td>${esc(action)}</td><td><span class="badge ${badge}">${esc(info.recommendation||"-")}</span></td><td>${info.score != null ? esc(String(info.score)) : "-"}</td></tr>`;
+      }
+      html += "</tbody></table>";
+      $("learning-content").innerHTML = html;
+    } else {
+      $("learning-content").innerHTML = '<span class="empty">no learning data yet</span>';
+    }
+  } catch (e) {
+    $("learning-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+  }
+
+  function esc(s) {
+    const el = document.createElement("span");
+    el.textContent = s;
+    return el.innerHTML;
+  }
+})();
+</script>
+</body>
+</html>

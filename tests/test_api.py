@@ -571,3 +571,75 @@ def test_kai_command_endpoint_returns_200_with_matched_false_for_unknown_phrase(
 
     assert response.status_code == 200
     assert response.json()["matched"] is False
+
+
+# ── Phase 16A: Standalone Kai Dashboard ──────────────────────
+
+
+def test_dashboard_endpoint_returns_valid_html():
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    content_type = response.headers.get("content-type", "")
+    assert "text/html" in content_type
+    html = response.text
+    assert "<html" in html or "<!DOCTYPE html>" in html
+    assert "<title>" in html
+    assert "Kai Dashboard" in html
+
+
+def test_dashboard_endpoint_html_contains_expected_ui_elements():
+    response = client.get("/dashboard")
+
+    html = response.text
+    assert "Kai Dashboard</title>" in html or "Kai Dashboard" in html
+    assert "System Health" in html
+    assert "Roadmap Progress" in html
+    assert "Active Builds" in html
+    assert "Pending Approvals" in html
+    assert "Provider Health" in html
+    assert "Learning Summary" in html
+
+
+def test_root_endpoint_redirects_to_dashboard():
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/dashboard"
+
+
+def test_root_endpoint_redirect_follow_lands_on_dashboard():
+    response = client.get("/", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert "Kai Dashboard" in response.text
+
+
+def test_dashboard_does_not_contain_approve_reject_actions():
+    """Phase 16A is read-only -- no approve/reject buttons or forms."""
+    response = client.get("/dashboard")
+
+    html = response.text.lower()
+    assert "<button" not in html and "<form" not in html
+
+
+def test_dashboard_html_does_not_contain_bridge_token():
+    """The bridge token must never be embedded in browser-servable files."""
+    from core.api import _load_api_token
+
+    response = client.get("/dashboard")
+
+    token = _load_api_token()
+    assert token not in response.text
+
+
+def test_dashboard_serving_does_not_import_cloudcli_bridge():
+    """Smoke test: core.api must not import the CloudCLI plugin bridge.
+    The dashboard is served directly from core.api, so any import of
+    core.coding_bridge would couple it to CloudCLI's lifecycle."""
+    from pathlib import Path
+
+    api_source = (Path(__file__).resolve().parent.parent / "core" / "api.py").read_text()
+
+    assert "from core.coding_bridge" not in api_source
+    assert "import core.coding_bridge" not in api_source

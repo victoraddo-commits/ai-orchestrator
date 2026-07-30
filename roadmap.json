@@ -1020,6 +1020,22 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30, discovered live: the user could not find the 17B chat panel at all because the deployed plugin bundle was over a day stale, despite the source merge itself being clean. Same severity class as 17C -- essential, high-impact, additive."
+    },
+    {
+      "id": "17I",
+      "name": "Application portfolio awareness: Kai learns what each of your other apps is and can propose maintenance for them",
+      "description": "User asked live 2026-07-30 (after the immediate EXPECTED_SERVICES fix): at what point will Kai learn about and help maintain the users OTHER existing applications (it-manager, proxdash, portfolio, airdrop-hunter, door-bridge, docker-watcher, code-server, watchtower, etc.), not just monitor their up/down state. Today Kai has two separate, narrow things: (1) core.health.EXPECTED_SERVICES (just fixed to cover the real portfolio) -- presence/crash monitoring only, zero semantic knowledge of what any of these apps ARE or DO; (2) core.kai.planner._gather_signals(), which grounds chat answers in roadmap/health/provider state -- also has no awareness of the application portfolio at all. Kais self-build/deploy pipeline is entirely scoped to the ai-orchestrator project itself; there is no equivalent mechanism for building/updating/fixing the users OTHER applications. This phase: (1) a lightweight per-app registry (name, docker container(s), source repo path if any under /project/src/, one-line purpose -- either user-supplied once or inferred from a README/package.json/pyproject if present, not guessed), reusing the schema_version/records convention; (2) fold this registry into _gather_signals() so chat can actually answer questions about these apps by name (\"whats it-managers status\", \"what does portfolio do\") grounded in real data, not fabrication; (3) a maintenance PROPOSAL path -- Kai can notice something (crash loop, outdated dependency flagged by watchtower, etc.) and propose a fix as a roadmap-style item, but explicitly NOT auto-execute anything against these apps -- every actual change still goes through the exact same human approval gate self-build deploys already use, since these are the users real production applications, higher stakes than ai-orchestrators own sandboxed self-build workspace. Explicitly out of scope for this phase: Kai self-modifying/deploying to these OTHER apps repos directly (that would need its own dedicated, carefully-scoped follow-on, not bundled in here) -- this phase is knowledge and monitoring plus proposals only.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 22,
+      "completion_criteria": [
+        "A per-app registry exists covering the real running portfolio, with at minimum name, container(s), and a one-line purpose per app",
+        "Chat can answer a question about a specific named app (status, purpose) grounded in the registry and live docker/health state -- not fabricated",
+        "Kai can propose a maintenance action for one of these apps (e.g. as a new kind of approval-queue entry) but has no path to execute any change to them without going through that same human approval gate -- confirmed by a test asserting no direct write/deploy path exists to any registered apps repo",
+        "Tests cover: registry population, chat grounding referencing a specific app, and the no-unsupervised-action-path guarantee"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-30 directly from the users question about it-manager. Deliberately scoped to knowledge + monitoring + proposals, not actual self-modifying deploys to the users other applications -- that would be a much bigger, separate decision given these are real production apps, not ai-orchestrators own sandboxed self-build workspace."
     }
   ]
 }

@@ -254,6 +254,11 @@ def _merge_self_modifying_build(build):
     repo_merge_commits = {}
 
     for live_repo, clone_path in targets:
+        # Commit any pre-existing dirty working-tree state (e.g. concurrent
+        # roadmap.json writes by the scheduler) BEFORE capturing pre_merge_head
+        # so that the rollback floor includes these bookkeeping changes rather
+        # than silently discarding them on a git reset --hard later.
+        _commit_dirty_working_tree(live_repo)
         pre_merge_head = _git_head_of(live_repo)
         result = _merge_branch_into_live_repo(live_repo, clone_path, branch, build["name"])
 

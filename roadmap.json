@@ -1007,7 +1007,7 @@
       "id": "17H",
       "name": "Rebuild and redeploy the CloudCLI plugin bundle after a merge, same as 17C does for the Python services",
       "description": "Confirmed live 2026-07-30: 17B merged the chat panel into ai-orchestrator-plugin/src/index.ts cleanly (correct code, tests passed, visible in git log) but the ACTUAL bundle CloudCLI loads from (~/.claude-code-ui/plugins/ai-orchestrator/dist/) was still dated 2026-07-29 -- before 17B, before 16A, before any of todays plugin-side work. The self-build pipeline merges TypeScript source into the live repo but has no step that runs npm run build and copies the compiled dist/ output to where CloudCLI actually serves it from -- every plugin-side change this session only became visible after a human (this session) manually ran npm run build and cp -- exactly the same class of gap 17C fixed for the Python services (core.api/scheduler), but 17C only covers those two systemd services, not the plugins compiled TypeScript bundle or the cloudcli.service that serves it. Fix: extend the post-deploy step (core.service_restarter or a sibling module) to detect when a merge touched ai-orchestrator-plugin/src/**, run npm run build in that repo, copy the resulting dist/*.js and *.js.map to ~/.claude-code-ui/plugins/ai-orchestrator/dist/, and restart cloudcli.service so the new bundle actually loads -- mirroring 17Cs changed-file-scoped restart logic, not a parallel ad-hoc mechanism. A merge that does not touch the plugin repo must not trigger a plugin rebuild/cloudcli restart. Essential, high-impact fix -- every future plugin-side change is silently invisible without it, exactly what just happened with 17B. Low risk / non-breaking: purely additive build+deploy automation, reuses 17Cs existing changed-file-scoping pattern rather than inventing a new mechanism.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "17C"
       ],
@@ -1062,7 +1062,7 @@
       "id": "17K",
       "name": "Full Kai chat parity via Telegram -- not just build Q&A routing",
       "description": "User directive 2026-07-30: full access to Kai chat via Telegram, not just the existing build-approval Q&A routing. Confirmed live: core.telegram_bridge.route_inbound_reply() ONLY routes a message to submit_answer/approve/reject when a build is actively WAITING_FOR_USER_INPUT or awaiting an approval decision -- with no pending build it replies \"No build is currently awaiting input.\" and does nothing else. There is no path from Telegram to the actual open-ended chat capability (13X/POST /kai/chat) at all today. Fix: when route_inbound_reply() finds no pending build to route to, forward the message to the SAME chat-handling logic POST /kai/chat uses (refactor core.api's kai_chat_endpoint to expose a shared internal function -- e.g. handle_kai_chat(text, operator) -- that both the FastAPI route and the Telegram bridge call, rather than duplicating the command-dispatch/approval-intent/open-ended-answer logic a second time) and reply with the result via telegram_bridge.send_message(). This makes Telegram a genuinely equal-access surface to Kai -- same memory (13X chat history), same grounding, same command patterns, and (once 17J ships) the same ability to trigger a new build -- not a second, more limited interface with different rules. Every existing safety guarantee is unchanged: the shared handler is the same one 13X already enforces approval-intent-resolves-through-the-real-approval-system on, so nothing new needs inventing here.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13X"
       ],
@@ -1074,7 +1074,8 @@
         "The existing build Q&A/approval routing (WAITING_FOR_USER_INPUT, approve/reject) still takes priority and is unchanged when a build actually is pending",
         "Tests cover: no-pending-build message reaches the chat handler; a pending-build message still routes to submit_answer/approve/reject as before; shared history across both surfaces"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "f08318de"
     },
     {
       "id": "17L",

@@ -1227,6 +1227,30 @@ class TestLooksLikeToolCallLeak:
             "The plan for the project.</minimax:tool_call>"
         ) is True
 
+    def test_bare_bash_tag_leak_rejected(self):
+        # Confirmed live 2026-07-30 (13V, planned_by=deepseek): a plain
+        # text_task call with no real tool access hallucinated <bash>...
+        # </bash> blocks with unexecuted shell commands as its entire
+        # "plan" -- no provider-prefixed :tool_call suffix at all, so the
+        # original colon-form pattern missed it.
+        assert build_manager._looks_like_tool_call_leak(
+            "I'll analyze the codebase first.\n<bash>\nfind / -name '*.py'\n</bash>"
+        ) is True
+
+    def test_other_generic_tool_tags_rejected(self):
+        for tag in ("tool_use", "invoke", "function_calls", "execute", "shell"):
+            assert build_manager._looks_like_tool_call_leak(
+                f"Let me check.\n<{tag}>do a thing</{tag}>"
+            ) is True, tag
+
+    def test_prose_mentioning_bash_without_tags_still_passes(self):
+        # The word "bash" alone in normal prose (discussing a bash script
+        # as part of the actual plan) must not be flagged -- only the tag
+        # markup itself is the signal.
+        assert build_manager._looks_like_tool_call_leak(
+            "Architecture: a bash deployment script runs migrations before the app starts."
+        ) is False
+
 
 def test_bad_plan_stays_in_planning_and_does_not_reach_approval(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")

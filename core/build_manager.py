@@ -413,13 +413,27 @@ def _tail_for_clarification_check(plan_text):
     return paragraphs[-1] if paragraphs else plan_text
 
 
+# Known tool-invocation tag names various providers/frameworks use for
+# their own native tool-call syntax -- confirmed live 2026-07-30 (13V,
+# planned_by=deepseek): a plain text_task call with no real tool access
+# hallucinated `<bash>find ...</bash>` blocks (unexecuted shell commands)
+# as its entire "plan". Bare tag names like this have no provider prefix
+# at all, unlike the earlier <minimax:tool_call> incident, so they need
+# their own pattern rather than extending the colon-form one below.
+_GENERIC_TOOL_TAGS = (
+    "bash", "shell", "tool", "tool_use", "invoke",
+    "function_calls", "execute", "command", "run_command",
+)
+
 # Tool-call-style markup patterns that signal a provider hallucinated its
 # native tool/invocation syntax instead of responding with prose.  Covers
-# both XML-style tags (<minimax:tool_call>) and bare JSON tool shapes
+# XML-style tags with a provider prefix (<minimax:tool_call>), bare
+# known-tool-name tags (<bash>...</bash>), and bare JSON tool shapes
 # ({"tool_calls": [...]}) that may leak into a text response from the
 # planning provider.
 _TOOL_CALL_LEAK = re.compile(
     r"<\s*/?\s*[a-zA-Z0-9_-]+\s*:\s*tool_call\b|"
+    r"<\s*/?\s*(?:" + "|".join(_GENERIC_TOOL_TAGS) + r")\s*/?\s*>|"
     r'"[a-zA-Z0-9_-]*tool_calls?"\s*:\s*',
     re.IGNORECASE,
 )

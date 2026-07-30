@@ -12,6 +12,10 @@ TERMINAL_STATUSES = {"COMPLETED", "FAILED", "ROLLED_BACK"}
 RECOMMENDATION_TRUSTED_MIN = 80
 RECOMMENDATION_OBSERVE_MIN = 50
 
+# Strongest-to-weakest, used to cap an aggregate at the best claim any single
+# lesson underneath it actually makes (see _cap_to_best_lesson_claim).
+RECOMMENDATION_STRENGTH = ("avoid", "observe", "trusted")
+
 # Categories tracked by the 13F lesson store. Plain strings (not an Enum) so
 # they round-trip cleanly through JSON and are easy to filter on.
 LESSON_CATEGORIES = (
@@ -226,14 +230,40 @@ def _lesson_is_positive(lesson):
     return False
 
 
+def _cap_to_best_lesson_claim(aggregate, lesson_recommendations):
+    """Never report a stronger recommendation than any single lesson claims.
+
+    13T: the positive-evidence ratio alone escalates a lone "observe" lesson
+    to "trusted" -- 1 positive out of 1 is 100%. That silently overrides a
+    deliberate judgement: 13T records minimax-m2.7's coding-agent result as
+    "observe" precisely because 3 attempts is below
+    core.ai.provider_evidence.MIN_SAMPLE_SIZE, and a summary that reads back
+    "trusted" defeats the guard.
+
+    One-directional by design -- this only ever lowers the aggregate, so a
+    majority of failures still drags a subject down to "avoid" regardless of
+    how confident its individual positive lessons were.
+    """
+    ranked = [r for r in lesson_recommendations if r in RECOMMENDATION_STRENGTH]
+
+    if not ranked or aggregate not in RECOMMENDATION_STRENGTH:
+        return aggregate
+
+    best = max(ranked, key=RECOMMENDATION_STRENGTH.index)
+
+    return min(aggregate, best, key=RECOMMENDATION_STRENGTH.index)
+
+
 def summarize_lessons(category=None):
     """Aggregate lessons by subject and apply the trusted/observe/avoid pattern.
 
     For each subject within the requested category (or across all categories
     if ``category`` is None), compute the positive-evidence ratio and feed
-    it through the same threshold table ``evaluate_template`` already uses.
-    The result is the per-subject recommendation, exactly the same shape
-    callers already know from ``summarize_templates``.
+    it through the same threshold table ``evaluate_template`` already uses,
+    then cap it at the best claim any single lesson makes (13T, see
+    ``_cap_to_best_lesson_claim``). The result is the per-subject
+    recommendation, exactly the same shape callers already know from
+    ``summarize_templates``.
     """
     lessons = get_lessons(category)
 
@@ -244,9 +274,10 @@ def summarize_lessons(category=None):
             continue
         bucket = by_subject.setdefault(
             subject,
-            {"category": lesson.get("category"), "attempts": 0, "positive": 0},
+            {"category": lesson.get("category"), "attempts": 0, "positive": 0, "claims": []},
         )
         bucket["attempts"] += 1
+        bucket["claims"].append(lesson.get("recommendation"))
         if _lesson_is_positive(lesson):
             bucket["positive"] += 1
 
@@ -260,7 +291,9 @@ def summarize_lessons(category=None):
             "attempts": total,
             "positive": positives,
             "success_rate": rate,
-            "recommendation": _recommend_from_rate(rate, total),
+            "recommendation": _cap_to_best_lesson_claim(
+                _recommend_from_rate(rate, total), bucket["claims"]
+            ),
         }
 
     return summary

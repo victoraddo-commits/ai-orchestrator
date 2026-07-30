@@ -508,3 +508,43 @@ def test_record_lesson_keeps_every_concurrent_append():
     recorded = sorted(lesson["subject"] for lesson in build_learning.get_lessons())
 
     assert recorded == sorted(subjects)
+
+
+# --- 13T: the summary must not out-claim the lessons it aggregates -----------
+
+def test_summarize_lessons_does_not_escalate_a_lone_observe_lesson_to_trusted():
+    # A single positive lesson is a 1/1 positive ratio = 100% = "trusted",
+    # even when that lesson itself says "observe". 13T records exactly such a
+    # lesson deliberately (minimax-m2.7's coding record is real but below
+    # MIN_SAMPLE_SIZE), so the summary silently overriding it back to
+    # "trusted" would defeat the point of the guard.
+    build_learning.record_lesson(
+        "successful_solution", "opencode_minimax", "13T", recommendation="observe"
+    )
+
+    summary = build_learning.summarize_lessons()
+
+    assert summary["opencode_minimax"]["success_rate"] == 100.0
+    assert summary["opencode_minimax"]["recommendation"] == "observe"
+
+
+def test_summarize_lessons_still_reaches_trusted_when_a_lesson_claims_it():
+    for _ in range(5):
+        build_learning.record_lesson(
+            "successful_solution", "gemini", "13T", recommendation="trusted"
+        )
+
+    assert build_learning.summarize_lessons()["gemini"]["recommendation"] == "trusted"
+
+
+def test_summarize_lessons_can_still_downgrade_below_its_lessons_claims():
+    # The cap is one-directional: it only ever lowers the aggregate. A
+    # majority of failures still drags a subject down to "avoid" no matter
+    # how confident the individual positive lessons were.
+    build_learning.record_lesson(
+        "successful_solution", "gemini", "13T", recommendation="trusted"
+    )
+    for _ in range(4):
+        build_learning.record_lesson("common_failure", "gemini", "13T", recommendation="avoid")
+
+    assert build_learning.summarize_lessons()["gemini"]["recommendation"] == "avoid"

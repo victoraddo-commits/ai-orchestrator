@@ -934,6 +934,27 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30, discovered live: 17B chat panel returned RPC 404 in production after a clean merge because the live API service was never restarted to pick up the new route. High priority -- this silently breaks every future deploy that touches live-imported code until a human happens to notice and manually restart, which is exactly the kind of gap this session has been finding and fixing all day."
+    },
+    {
+      "id": "17D",
+      "name": "Standalone Kai Dashboard: real server-side proxy + full tabbed interface (chat, approvals, workforce, learning, roadmap)",
+      "description": "User directive 2026-07-30: consolidate all of Kai's interfaces (chat, approvals, AI workforce, learning, roadmap) onto the standalone dashboard (16A, GET /dashboard on core.api) as real tabs, not just the current read-only summary. 16A was deliberately read-only because the standalone page has no bridge token and the dashboard is reachable from anything on the LAN (core.api now binds 0.0.0.0, not just 127.0.0.1) -- embedding the write-capable bridge token directly in that page's browser-facing JS would let anyone on the LAN who loads the page extract it and act as the full operator (approve/reject builds, chat as the operator), not just view. User explicitly chose the safe option: give the standalone dashboard its own lightweight server-side proxy, mirroring the CloudCLI plugin's existing pattern (ai-orchestrator-plugin/src/server.ts -- a small process that holds the bridge token server-side and forwards authenticated requests on the browser's behalf, never exposing the token itself). Concretely: a new small server component (could live in core.api itself as a same-origin proxy path, or a separate lightweight process) that the dashboard's browser JS talks to instead of calling write endpoints directly -- the real bridge token never reaches the browser. Add real tab navigation to the dashboard (currently a single scrolling page) covering: Overview/health, Chat (reusing 13X/17B's POST+GET /kai/chat), Approvals (with real approve/reject actions now safely possible through the proxy), AI Workforce/providers, Learning, Roadmap. This becomes the single place with everything, without needing the CloudCLI-embedded tab at all going forward -- though that tab should keep working unchanged, not be removed by this phase.",
+      "status": "pending",
+      "dependencies": [
+        "16A",
+        "17B"
+      ],
+      "priority": 19,
+      "completion_criteria": [
+        "The standalone dashboard has real tab navigation (not one long scrolling page) covering Overview, Chat, Approvals, AI Workforce, Learning, and Roadmap",
+        "A server-side proxy holds the bridge token -- confirmed via test that the token never appears in any browser-servable file or API response reachable from the dashboard's own JS",
+        "Chat (send + history) works end-to-end through the standalone dashboard using this proxy, reusing 13X/17B's existing POST/GET /kai/chat -- no new chat backend logic",
+        "Approve/reject actions on the Approvals tab work end-to-end through the proxy and correctly attribute the real operator, reusing the existing core.approval.approve()/reject() calls -- no new approval mechanism",
+        "The existing CloudCLI-embedded Kai Control Center tab (13G/17B) continues to work unchanged",
+        "Tests cover: token never leaks to the browser bundle/responses, chat send+history round-trip, approve/reject through the proxy with correct operator attribution"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-30 per explicit user choice among three options -- this one keeps the same security model 16A was originally built around (no token in browser JS) rather than trading it away for speed. Essential, high-value, but not urgent-blocking -- the CloudCLI tab already has working chat today via 17B."
     }
   ]
 }

@@ -128,6 +128,20 @@ def run_coding_task(project_path, instruction, model=None, timeout=DEFAULT_TIMEO
 
     success = result.returncode == 0 and not tool_errors
 
+    # Confirmed live 2026-07-30: a top-level CLI failure (auth/billing/
+    # network -- the process exits non-zero before ever emitting a
+    # tool_use event) left tool_errors empty, so the real reason was
+    # silently discarded here and callers only ever saw the generic
+    # "generation did not succeed" fallback (core.ai.ai_router).  That
+    # made a real credit-exhaustion message indistinguishable from any
+    # other opaque failure -- neither a human nor _classify_failure_reason
+    # could tell them apart. subprocess.run's capture_output=True already
+    # captures stderr/stdout; surface it instead of dropping it.
+    if not success and not tool_errors:
+        detail = (result.stderr or "").strip() or (result.stdout or "").strip()
+        if detail:
+            tool_errors = [{"tool": None, "content": detail}]
+
     return {
         "success": success,
         "response_text": "".join(response_text_parts),

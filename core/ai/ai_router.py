@@ -271,12 +271,52 @@ def record_usage(provider, task_type, description, success, duration_ms, error=N
 # had no verified example, this one is real and durable (not transient), so
 # it's worth recording as quota_exceeded so K4's skip-known-quota-exceeded
 # check actually prevents wasted retries for the rest of the reset window.
-_QUOTA_EXCEEDED_MARKERS = ("weekly limit", "usage limit")
+#
+# The OpenCode Zen phrases below are best-effort guesses, NOT yet confirmed
+# against a real captured error string the way "weekly limit"/"usage limit"
+# were for Claude -- user directive 2026-07-30, after every opencode_*
+# provider failed generically ("generation did not succeed") during what
+# turned out to be a real Zen credit exhaustion, indistinguishable from any
+# other opaque failure because core.opencode_bridge silently discarded the
+# actual subprocess stderr in that path (fixed same day -- see
+# opencode_bridge.run_coding_task). Once a real example is captured through
+# that fix, replace/tighten these guesses with the confirmed wording.
+_QUOTA_EXCEEDED_MARKERS = (
+    "weekly limit", "usage limit",
+    "insufficient credit", "insufficient balance", "insufficient funds",
+    "out of credit", "credit balance", "payment required", "billing",
+)
+
+# Providers driven through the shared OpenCode Zen credential -- a credit
+# exhaustion there is a single account-wide event, not provider-specific,
+# so it's worth a human notification the first time it's seen (not on every
+# subsequent call that also fails the same known way).
+_OPENCODE_ZEN_PROVIDERS_PREFIX = "opencode"
+
+
+def _notify_opencode_quota_exceeded(provider_name, detail):
+    from core.telegram_bridge import send_message
+
+    try:
+        send_message(
+            f"OpenCode Zen credit exhausted (detected via {provider_name}): {detail}\n\n"
+            "This account is shared across every opencode_* provider -- all of them "
+            "will keep failing until credits are renewed."
+        )
+    except Exception as error:
+        from core.logger import info
+        info(f"telegram notify (opencode quota) failed: {type(error).__name__}")
 
 
 def _record_coding_failure_health(provider_name, detail):
+    was_quota_exceeded = (
+        provider_health.get_quota_snapshot(provider_name) or {}
+    ).get("status") == "quota_exceeded"
+
     if any(marker in detail.lower() for marker in _QUOTA_EXCEEDED_MARKERS):
         provider_health.capture_quota_exceeded(provider_name, detail=detail)
+        if not was_quota_exceeded and provider_name.startswith(_OPENCODE_ZEN_PROVIDERS_PREFIX):
+            _notify_opencode_quota_exceeded(provider_name, detail)
     else:
         provider_health.capture_provider_error(provider_name, detail=detail)
 

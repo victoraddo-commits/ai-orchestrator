@@ -307,6 +307,143 @@ def test_delegate_records_a_generic_coding_failure_as_error_not_quota_exceeded(m
     assert snapshot["status"] == "error"
 
 
+def test_delegate_records_opencode_credit_exhaustion_as_quota_exceeded_and_notifies(monkeypatch):
+    # User directive 2026-07-30: every opencode_* provider failed generically
+    # ("generation did not succeed") during what turned out to be a real
+    # OpenCode Zen credit exhaustion -- add best-effort marker phrases and
+    # notify the user the first time it's detected.
+    import core.ai_provider as ai_provider
+    import core.ai.provider_health as provider_health
+    import core.telegram_bridge as telegram_bridge
+
+    sent = []
+    monkeypatch.setattr(telegram_bridge, "send_message", lambda text: sent.append(text))
+
+    opencode_claude = ai_provider.get_provider("opencode_claude")
+    monkeypatch.setitem(opencode_claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode_claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "response_text": "", "files_changed": [], "commits": [],
+            "tool_errors": [{"tool": None, "content": "Error: insufficient credit balance"}],
+        },
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["opencode_claude", "opencode"]})
+
+    ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    snapshot = provider_health.get_quota_snapshot("opencode_claude")
+    assert snapshot["status"] == "quota_exceeded"
+    assert "insufficient credit" in snapshot["detail"].lower()
+    assert len(sent) == 1
+    assert "opencode_claude" in sent[0]
+
+
+def test_delegate_does_not_renotify_once_already_quota_exceeded(monkeypatch):
+    import core.ai_provider as ai_provider
+    import core.ai.provider_health as provider_health
+    import core.telegram_bridge as telegram_bridge
+
+    sent = []
+    monkeypatch.setattr(telegram_bridge, "send_message", lambda text: sent.append(text))
+    provider_health.capture_quota_exceeded("opencode_claude", detail="already known: insufficient credit balance")
+
+    opencode_claude = ai_provider.get_provider("opencode_claude")
+    monkeypatch.setitem(opencode_claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode_claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "response_text": "", "files_changed": [], "commits": [],
+            "tool_errors": [{"tool": None, "content": "Error: insufficient credit balance, still exhausted"}],
+        },
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["opencode_claude", "opencode"]})
+
+    ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    assert sent == []
+
+
+def test_delegate_does_not_notify_for_non_opencode_quota_exceeded(monkeypatch):
+    # The notification is specifically about the shared OpenCode Zen
+    # account -- Claude's own weekly-limit quota_exceeded must not trigger
+    # the opencode-specific alert.
+    import core.ai_provider as ai_provider
+    import core.telegram_bridge as telegram_bridge
+
+    sent = []
+    monkeypatch.setattr(telegram_bridge, "send_message", lambda text: sent.append(text))
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "response_text": "", "files_changed": [], "commits": [],
+            "tool_errors": [{"tool": None, "content": "You've hit your weekly limit"}],
+        },
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
+
+    ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    assert sent == []
+
+
+def test_opencode_quota_notify_failure_does_not_break_delegate(monkeypatch):
+    # A Telegram outage must never surface as a build/generation failure.
+    import core.ai_provider as ai_provider
+    import core.telegram_bridge as telegram_bridge
+
+    def _boom(text):
+        raise RuntimeError("Telegram sendMessage failed")
+
+    monkeypatch.setattr(telegram_bridge, "send_message", _boom)
+
+    opencode_claude = ai_provider.get_provider("opencode_claude")
+    monkeypatch.setitem(opencode_claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode_claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "response_text": "", "files_changed": [], "commits": [],
+            "tool_errors": [{"tool": None, "content": "Error: insufficient credit balance"}],
+        },
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["opencode_claude", "opencode"]})
+
+    result = ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    assert result["response"]["success"] is True
+
+
 def test_delegate_accepts_explicit_task_type_override(monkeypatch):
     import core.ai_provider as ai_provider
 

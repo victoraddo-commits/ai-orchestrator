@@ -5,8 +5,8 @@ import pytest
 import core.opencode_bridge as opencode_bridge
 
 
-def _completed(stdout, returncode=0):
-    return subprocess.CompletedProcess(args=["opencode"], returncode=returncode, stdout=stdout, stderr="")
+def _completed(stdout, returncode=0, stderr=""):
+    return subprocess.CompletedProcess(args=["opencode"], returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 def test_run_coding_task_reports_file_write_and_commit(monkeypatch):
@@ -59,6 +59,64 @@ def test_run_coding_task_marks_unsuccessful_on_nonzero_exit_code(monkeypatch):
     result = opencode_bridge.run_coding_task("/proj", "do something")
 
     assert result["success"] is False
+
+
+def test_run_coding_task_surfaces_stderr_on_top_level_cli_failure(monkeypatch):
+    # Confirmed live 2026-07-30: a top-level CLI failure (auth/billing/
+    # network -- the process exits non-zero before any tool_use event) used
+    # to leave tool_errors empty, silently discarding the real reason (e.g.
+    # a credit-exhaustion message) and leaving callers with nothing but the
+    # generic "generation did not succeed" fallback.
+    monkeypatch.setattr(
+        opencode_bridge,
+        "_run_opencode_process",
+        lambda p, i, m, t: _completed("", returncode=1, stderr="Error: insufficient credit balance"),
+    )
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["success"] is False
+    assert result["tool_errors"] == [{"tool": None, "content": "Error: insufficient credit balance"}]
+
+
+def test_run_coding_task_falls_back_to_stdout_when_stderr_empty(monkeypatch):
+    monkeypatch.setattr(
+        opencode_bridge,
+        "_run_opencode_process",
+        lambda p, i, m, t: _completed("some non-JSON diagnostic output", returncode=1, stderr=""),
+    )
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["success"] is False
+    assert result["tool_errors"] == [{"tool": None, "content": "some non-JSON diagnostic output"}]
+
+
+def test_run_coding_task_leaves_tool_errors_empty_when_nothing_captured(monkeypatch):
+    # Existing behavior preserved: a nonzero exit with genuinely nothing on
+    # stderr/stdout still results in an empty tool_errors list, not a
+    # fabricated message.
+    monkeypatch.setattr(opencode_bridge, "_run_opencode_process", lambda p, i, m, t: _completed("", returncode=1))
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["success"] is False
+    assert result["tool_errors"] == []
+
+
+def test_run_coding_task_does_not_overwrite_real_tool_errors_with_stderr(monkeypatch):
+    # When tool_errors are already populated (a real tool failure was
+    # parsed), stderr must not clobber that more specific signal.
+    stdout = '{"type":"tool_use","part":{"tool":"bash","state":{"status":"error","error":"permission denied"}}}'
+    monkeypatch.setattr(
+        opencode_bridge,
+        "_run_opencode_process",
+        lambda p, i, m, t: _completed(stdout, returncode=1, stderr="some unrelated stderr noise"),
+    )
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["tool_errors"] == [{"tool": "bash", "content": "permission denied"}]
 
 
 def test_run_coding_task_deduplicates_repeated_file_writes(monkeypatch):

@@ -983,3 +983,84 @@ def test_kai_chat_endpoint_approval_handles_partial_id_match():
     from core.approval import load_requests
     updated = next(r for r in load_requests() if r["id"] == approval["id"])
     assert updated["status"] == "approved"
+
+
+# ── Phase 17B: GET /kai/chat (history for the plugin chat panel) ──────
+
+
+def test_kai_chat_history_requires_auth():
+    response = client.get("/kai/chat")
+
+    assert response.status_code == 401
+
+
+def test_kai_chat_history_requires_auth_wrong_token():
+    response = client.get(
+        "/kai/chat",
+        headers={"Authorization": "Bearer not-the-real-token"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_kai_chat_history_empty_when_no_conversation_yet():
+    response = client.get("/kai/chat", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_kai_chat_history_matches_what_post_persists(monkeypatch):
+    """Completion criterion for 17B: the history the panel displays (served
+    by GET /kai/chat) must match exactly what POST /kai/chat persists to
+    memory/kai_chat_history.json."""
+    import core.api as api_module
+    from core.memory import load
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "All systems nominal.")
+
+    post1 = client.post(
+        "/kai/chat",
+        json={"text": "How are you?"},
+        headers=auth_headers(),
+    )
+    assert post1.status_code == 200
+
+    post2 = client.post(
+        "/kai/chat",
+        json={"text": "What's next on the roadmap?"},
+        headers=auth_headers(),
+    )
+    assert post2.status_code == 200
+
+    response = client.get("/kai/chat", headers=auth_headers())
+
+    assert response.status_code == 200
+    history = response.json()
+
+    persisted = load("kai_chat_history.json")["records"]
+    assert history == persisted
+
+    user_messages = [m["content"] for m in history if m["role"] == "user"]
+    assert user_messages == ["How are you?", "What's next on the roadmap?"]
+
+    assistant_messages = [m for m in history if m["role"] == "assistant"]
+    assert len(assistant_messages) == 2
+
+    # Alternating user/assistant order, most recent last.
+    assert [m["role"] for m in history] == ["user", "assistant", "user", "assistant"]
+
+
+def test_kai_chat_history_get_does_not_modify_history(monkeypatch):
+    import core.api as api_module
+    from core.memory import load
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "Hi.")
+
+    client.post("/kai/chat", json={"text": "hello"}, headers=auth_headers())
+    before = load("kai_chat_history.json")
+
+    response = client.get("/kai/chat", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert load("kai_chat_history.json") == before

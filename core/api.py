@@ -338,6 +338,17 @@ def _resolve_approval_request(scope, request_id_hint):
     return None, detail
 
 
+@app.get("/kai/chat")
+def kai_chat_history_endpoint(operator: str = Depends(require_bridge_token)):
+    """Phase 17B: read-only conversation history for the CloudCLI plugin's
+    chat panel. Bridge-token gated like POST /kai/chat -- the history can
+    contain operational detail (approvals, failures, roadmap state) that
+    must not be readable by anything that doesn't hold the shared secret.
+    Returns exactly what POST /kai/chat persists, so the panel's display
+    always matches memory/kai_chat_history.json."""
+    return _load_chat_history()
+
+
 @app.post("/kai/chat")
 def kai_chat_endpoint(
     body: KaiChatRequest,

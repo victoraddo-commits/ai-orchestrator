@@ -204,6 +204,40 @@ def test_deploy_build_merges_a_self_modifying_build_instead_of_requiring_a_docke
     assert (live_repo / "new_feature.py").exists()
 
 
+def test_self_modifying_merge_reports_which_files_it_changed(tmp_path, monkeypatch):
+    # 17C: the post-deploy service-restart decision needs to know exactly
+    # which files the merge landed on the live orchestrator repo -- a
+    # --no-ff merge commit's first-parent diff is the authoritative answer.
+    live_repo = tmp_path / "live"
+    _init_repo(live_repo)
+
+    workspace_root = tmp_path / "self-build-workspaces"
+    monkeypatch.setattr(roadmap_manager, "SELF_PROJECT_PATH", live_repo)
+    monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", workspace_root)
+
+    clone_dir = workspace_root / "clone_changed_files"
+    subprocess.run(["git", "clone", "-q", str(live_repo), str(clone_dir)], check=True)
+    subprocess.run(["git", "-C", str(clone_dir), "checkout", "-q", "-b", "build-cf1"], check=True)
+    (clone_dir / "core").mkdir()
+    (clone_dir / "core" / "api.py").write_text("# new route\n")
+    (clone_dir / "roadmap.json").write_text("{}\n")
+    subprocess.run(["git", "-C", str(clone_dir), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(clone_dir), "commit", "-q", "-m", "implement phase"], check=True)
+
+    build = {"id": "cf1", "name": "17C", "project_path": str(clone_dir)}
+
+    result = deploy_mgr.deploy_build(build)
+
+    assert result["deployed"] is True
+    assert sorted(result["changed_files"]) == ["core/api.py", "roadmap.json"]
+
+
+def test_changed_files_of_merge_returns_none_when_git_cannot_answer(tmp_path):
+    _init_repo(tmp_path / "live")
+
+    assert deploy_mgr._changed_files_of_merge(tmp_path / "live", "not-a-commit") is None
+
+
 def test_deploy_build_succeeds_despite_uncommitted_roadmap_json_changes(tmp_path, monkeypatch):
     # Confirmed live 2026-07-29 (twice: 13G, then 13T) -- roadmap_engine.
     # save_roadmap() writes roadmap.json directly with no git commit, so

@@ -10,6 +10,7 @@ from core.repo_manager import create_local_repo
 from core.project_templates import get_template
 from core.security_scanner import run_all_scans
 from core.deployment_manager import deploy_build
+from core.service_restarter import restart_services_if_needed
 from core.remediation import attempt_rollback
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 from core.approval import create_build_approval
@@ -754,6 +755,18 @@ def _run_deployment(build):
         build["failure_reason"] = result.get("reason", "Deployment failed")
 
     _record_if_terminal(build)
+
+    if result.get("deployed"):
+        # 17C: a successful self-modifying merge leaves the running
+        # services executing stale pre-merge code (Python never hot-
+        # reloads) -- restart whichever service actually imported the
+        # changed modules. Persist the terminal COMPLETED state FIRST:
+        # restarting ai-orchestrator.service takes down this very
+        # process, and the restart must never be able to lose the
+        # build's recorded outcome. Only runs on a successful deploy --
+        # failed/rolled-back merges never reach this branch.
+        _persist_build(build)
+        restart_services_if_needed(build, result)
 
 
 # CODE_REVIEW is dispatchable as a defensive fallback only -- the normal

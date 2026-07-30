@@ -166,6 +166,21 @@ def _git_head_of(repo):
     ).stdout.strip()
 
 
+def _changed_files_of_merge(repo, merge_commit):
+    # Every self-modifying merge is --no-ff, so the merge commit's first
+    # parent is exactly the pre-merge live HEAD: diffing first-parent ->
+    # merge commit lists precisely the files this deploy landed. Returns
+    # None (unknown) if git can't answer, so downstream restart logic can
+    # fail safe (restart) instead of silently running stale code.
+    result = subprocess.run(
+        ["git", "-C", str(repo), "diff", "--name-only", f"{merge_commit}^1", merge_commit],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return None
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+
+
 def _commit_dirty_working_tree(live_repo):
     # roadmap_engine.save_roadmap() writes roadmap.json directly to disk on
     # every phase status change (in_progress/completed/failed), with no git
@@ -281,6 +296,13 @@ def _merge_self_modifying_build(build):
         merged.append((live_repo, pre_merge_head))
         repo_merge_commits[live_repo] = result["merge_commit"]
 
+    # Which files did this deploy actually land on the orchestrator's own
+    # live repo? Drives the post-deploy service-restart decision (17C):
+    # only the primary repo's changes matter -- the plugin repo is not
+    # code either orchestrator service imports.
+    primary_repo = targets[0][0]
+    changed_files = _changed_files_of_merge(primary_repo, repo_merge_commits[primary_repo])
+
     return {
         "deployed": True,
         "merged_branch": branch,
@@ -288,6 +310,7 @@ def _merge_self_modifying_build(build):
         # repo's merge commit, exactly what this key meant before 13Q.
         "merge_commit": repo_merge_commits[targets[0][0]],
         "merged_repos": repo_merge_commits,
+        "changed_files": changed_files,
     }
 
 

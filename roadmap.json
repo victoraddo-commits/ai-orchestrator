@@ -383,7 +383,7 @@
       "id": "13M",
       "name": "OpenRouter Claude coding fallback + OpenRouter text-model rotation",
       "description": "Implements docs/superpowers/specs/2026-07-28-openrouter-expansion-design.md. Two changes: (1) new coding-capable provider openrouter_claude (core/ai_provider.py) driving openrouter/anthropic/claude-sonnet-4.6 through the opencode CLI, exactly like opencode_claude does for Fable 5, gated on a \"openrouter\" credential in opencode auth.json (add _opencode_credential_available(key) generalizing the existing _opencode_available); (2) core/ai/ai_router.py ROLE_PROVIDERS[\"coding\"] reordered to [\"opencode_claude\", \"openrouter_claude\", \"claude\", \"opencode\"] with only the first two rotating against each other via _rotate_candidates (direct claude and opencode stay a fixed tail, never tried first) so the direct Claude/Anthropic subscription credit is preserved -- delegate() must call _candidates_for directly for task_type==\"coding\" instead of wrapping it in the outer per-role rotation, to avoid double-rotating. Also: core/llm_clients.py OPENROUTER_MODELS list (openai/gpt-4o-mini, z-ai/glm-5, openai/gpt-5, deepseek/deepseek-v4-flash, deepseek/deepseek-v4-pro -- all confirmed live against the real OpenRouter API) with new rotation state (memory/openrouter_model_rotation.json) driving core/ai_provider.py _openrouter_run_text_task, replacing the single hardcoded OPENROUTER_DEFAULT_MODEL used today for the planning/log_analysis/documentation roles. Also add scripts/setup_openrouter_opencode_auth.py (idempotent: reads OPENROUTER_API_KEY from env, writes/merges {\"type\": \"api\", \"key\": ...} under the \"openrouter\" key into ~/.local/share/opencode/auth.json -- \"opencode auth login openrouter\" itself is confirmed broken headlessly in this environment, \"fetch() URL is invalid\"). See the design doc for full code sketches, error handling, and the full test list -- follow it directly rather than re-deriving the approach. Updated 2026-07-30 per user directive: also add anthropic/claude-opus-4.7 as a new openrouter_claude_opus coding-capable provider, tried FIRST in the coding roles alt-Claude rotation (ahead of opencode_claude and openrouter_claude), and move deepseek/deepseek-v4-flash to the front of the OPENROUTER_MODELS text-task rotation list -- both explicitly named for priority. See the Update 2026-07-30 section at the top of the design doc for exact details, including a real naming conflict to resolve: 13V (already shipped) registered a different, text_task-only openrouter_claude provider under the same key this design doc also wants to use for a coding-capable provider -- rename this designs coding version to avoid colliding with it. User directive 2026-07-30: explicitly high-priority, essential. Low risk / non-breaking / backward-compatible -- purely additive provider registration reusing the existing opencode CLI bridge and rotation pattern, no change to any existing role for providers other than the ones named here.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 18,
       "completion_criteria": [
@@ -396,7 +396,8 @@
         "Full test list from the design doc's Testing section is implemented and passing",
         "openrouter_claude_opus (anthropic/claude-opus-4.7) is registered and tried first in the coding roles alt-Claude rotation; deepseek/deepseek-v4-flash is first in the OPENROUTER_MODELS text-task rotation; 13Vs existing text_task openrouter_claude provider is not overwritten or broken by this build"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "e6708c0c"
     },
     {
       "id": "13N",
@@ -901,7 +902,7 @@
       "id": "17B",
       "name": "Wire a chat panel into the CloudCLI-embedded Kai Control Center tab, calling POST /kai/chat",
       "description": "Direct follow-on to 13X (POST /kai/chat) -- shipping the backend endpoint alone leaves nowhere safe to actually type into it. The standalone dashboard (16A) deliberately does not hold the bridge token (embedding it in browser JS would leak it to anyone who loads the page, since there is no per-user auth yet -- write auth is explicitly deferred to 15A), so it cannot call 13X's endpoint on its own. The existing CloudCLI-embedded Kai Control Center tab (13G, completed, /project/src/ai-orchestrator-plugin) already has a server-side Node.js proxy (dist/server.js) that holds the bridge token securely and proxies authenticated write calls on the operator's behalf -- the same pattern already used for the tab's existing Approve/Reject buttons. Add a simple chat panel to that tab: a text input, a send button, and a scrolling message history, POSTing through the plugin's existing server-side proxy to POST /kai/chat (never embedding the bridge token client-side). This is the concrete answer to \"where do I actually type to Kai\" -- reliability over visual polish, per the user's explicit MVP framing for the chat experience.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13X"
       ],
@@ -916,6 +917,23 @@
       "tests_required": true,
       "note": "Queued 2026-07-30 per user request, immediately after 13X in priority -- this closes the gap between \"the chat backend exists\" and \"I can actually open something and type to Kai,\" which is the exact milestone the user has been asking for.",
       "build_id": "b9a9249e"
+    },
+    {
+      "id": "17C",
+      "name": "Restart ai-orchestrator-api.service after a self-modifying deploy actually merges",
+      "description": "Confirmed live 2026-07-30: 17B merged GET /kai/chat into core/api.py cleanly (commit visible in the live repo, tests passed) but the running ai-orchestrator-api.service process had been up since 04:25 that morning -- Python does not hot-reload, so the new route returned a genuine 404 until manually restarted, even though the deploy itself reported COMPLETED/VERIFIED. This is systemic, not a one-off: core/deployment_manager.py has zero logic anywhere to restart the live service after a self-modifying merge -- grep for \"systemctl\"/\"restart\" in that file only turns up container crash-loop counting, unrelated to reloading the orchestrator's own process. Every future deploy that touches any module core.api or the scheduler daemon has already imported will have this same silent-stale-code problem. This likely also explains part of the earlier \"Kai Control Center RPC 404\" investigation (2026-07-30 briefing) that was chalked up to transient restart timing -- the real mechanism may have simply been stale-code-until-restart, recurring by coincidence rather than being a one-off blip. Fix: after a self-modifying build reaches VERIFIED/COMPLETED (post-merge, post self-build-test-suite-pass), restart ai-orchestrator-api.service (and ai-orchestrator.service if the change touched anything the scheduler daemon itself imports, not just the API layer) via systemctl. Must be graceful: only restart if the merge actually succeeded (never on a rolled-back/failed deploy), and should not restart on every deploy indiscriminately if a phase touched neither service's code (e.g. a pure roadmap.json/docs-only change) -- avoid unnecessary restarts that could drop in-flight requests for no reason. Essential, high-impact fix -- every future deploy touching live-imported code is silently broken without it. Low risk / non-breaking / backward-compatible: purely additive restart logic gated on successful merge, does not change any existing deploy behavior.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 17,
+      "completion_criteria": [
+        "A successful self-modifying deploy that changes core/api.py (or any module the running api service has imported) results in ai-orchestrator-api.service actually restarting automatically, with no manual intervention required",
+        "A deploy that only touches roadmap.json/docs/non-imported files does not trigger an unnecessary service restart",
+        "A failed/rolled-back deploy never triggers a restart",
+        "The restart is logged (what triggered it, which service, outcome) for observability",
+        "Tests cover: successful merge touching core/api.py triggers restart; roadmap-only change does not; failed merge does not restart"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-30, discovered live: 17B chat panel returned RPC 404 in production after a clean merge because the live API service was never restarted to pick up the new route. High priority -- this silently breaks every future deploy that touches live-imported code until a human happens to notice and manually restart, which is exactly the kind of gap this session has been finding and fixing all day."
     }
   ]
 }

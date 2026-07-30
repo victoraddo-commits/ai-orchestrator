@@ -189,6 +189,12 @@ def test_delegate_records_usage_on_failure_too(monkeypatch):
 def test_delegate_with_coding_agent_capability_calls_run_coding_task_not_run_text_task(monkeypatch):
     import core.ai_provider as ai_provider
 
+    # 13M: every candidate ahead of claude in the coding order must be
+    # stubbed unavailable for claude to be the one that answers.
+    for name in ("openrouter_claude_opus", "opencode_claude", "openrouter_claude_sonnet",
+                 "opencode_claude_sonnet", "opencode_claude_opus"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
@@ -674,6 +680,10 @@ def test_record_usage_defaults_cost_to_null_not_an_estimate():
 def test_delegate_coding_agent_records_the_cost_reported_by_the_provider(monkeypatch):
     import core.ai_provider as ai_provider
 
+    for name in ("openrouter_claude_opus", "opencode_claude", "openrouter_claude_sonnet",
+                 "opencode_claude_sonnet", "opencode_claude_opus"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
@@ -693,6 +703,10 @@ def test_delegate_coding_agent_records_the_cost_reported_by_the_provider(monkeyp
 
 def test_delegate_records_null_cost_when_the_response_carries_none(monkeypatch):
     import core.ai_provider as ai_provider
+
+    for name in ("openrouter_claude_opus", "opencode_claude", "openrouter_claude_sonnet",
+                 "opencode_claude_sonnet", "opencode_claude_opus"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
@@ -947,7 +961,8 @@ def test_delegate_review_task_includes_deepseek_as_a_candidate(monkeypatch):
 def test_delegate_coding_task_includes_opencode_deepseek_as_a_candidate(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus"):
+    for name in ("claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus",
+                 "openrouter_claude_opus", "openrouter_claude_sonnet"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     monkeypatch.setitem(ai_provider.get_provider("opencode"), "available_fn", lambda: False)
@@ -970,7 +985,8 @@ def test_delegate_coding_task_opencode_deepseek_uses_correct_model(monkeypatch):
     import core.ai_provider as ai_provider
     import core.opencode_bridge as opencode_bridge
 
-    for name in ("claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "opencode"):
+    for name in ("claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus",
+                 "openrouter_claude_opus", "openrouter_claude_sonnet", "opencode"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     opencode_deepseek = ai_provider.get_provider("opencode_deepseek")
@@ -989,3 +1005,205 @@ def test_delegate_coding_task_opencode_deepseek_uses_correct_model(monkeypatch):
     )
 
     assert captured["model"] == "openrouter/deepseek/deepseek-v4-pro"
+
+
+# --- 13M: Claude-preserving coding order + alt-Claude front rotation ---------
+
+CODING_FIXED_TAIL = [
+    "opencode_claude_sonnet",
+    "opencode_claude_opus",
+    "claude",
+    "opencode_deepseek",
+    "opencode",
+    "opencode_minimax",
+]
+
+
+def test_coding_rotating_front_prioritizes_openrouter_claude_opus_first():
+    # Explicit user directive (2026-07-30): anthropic/claude-opus-4.7 via
+    # OpenRouter is tried FIRST in the coding role's alt-Claude rotation,
+    # ahead of opencode_claude (Fable 5) and the OpenRouter Sonnet route.
+    assert ai_router.CODING_ROTATING_FRONT == [
+        "openrouter_claude_opus",
+        "opencode_claude",
+        "openrouter_claude_sonnet",
+    ]
+    assert ai_router.ROLE_PROVIDERS["coding"][:3] == ai_router.CODING_ROTATING_FRONT
+
+
+def test_candidates_for_coding_rotates_only_the_alt_claude_front_group():
+    candidates = ai_router._candidates_for("coding")
+
+    assert len(candidates) == len(ai_router.ROLE_PROVIDERS["coding"])
+    assert sorted(candidates[:3]) == sorted(ai_router.CODING_ROTATING_FRONT)
+    assert candidates[3:] == CODING_FIXED_TAIL
+
+
+def test_candidates_for_coding_front_order_rotates_while_the_tail_never_changes():
+    fronts, tails = [], []
+    for _ in range(4):
+        candidates = ai_router._candidates_for("coding")
+        fronts.append(candidates[:3])
+        tails.append(candidates[3:])
+
+    front = ai_router.CODING_ROTATING_FRONT
+    assert fronts == [
+        front,
+        front[1:] + front[:1],
+        front[2:] + front[:2],
+        front,  # full cycle: back to the start
+    ]
+    assert all(tail == CODING_FIXED_TAIL for tail in tails)
+
+
+def test_direct_claude_is_never_first_for_coding():
+    # The whole point of 13M's coding order: the direct Claude/Anthropic
+    # subscription is a last-resort fallback, never the first attempt.
+    for _ in range(6):
+        assert ai_router._candidates_for("coding")[0] != "claude"
+
+
+def test_candidates_for_coding_respects_an_overridden_role_list(monkeypatch):
+    monkeypatch.setattr(
+        ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]}
+    )
+
+    # With no rotating-front members present, the overridden list is used
+    # verbatim (and repeatedly -- nothing rotates).
+    assert ai_router._candidates_for("coding") == ["claude", "opencode"]
+    assert ai_router._candidates_for("coding") == ["claude", "opencode"]
+
+
+def test_candidates_for_non_coding_roles_is_unchanged_and_unrotated():
+    for role in ("planning", "log_analysis", "documentation", "review", "architecture"):
+        assert ai_router._candidates_for(role) == ai_router.ROLE_PROVIDERS[role]
+
+
+def test_delegate_does_not_double_rotate_the_coding_candidates(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    rotate_calls = []
+    real_rotate = ai_router._rotate_candidates
+
+    def spying_rotate(task_type, candidates):
+        rotate_calls.append(list(candidates))
+        return real_rotate(task_type, candidates)
+
+    monkeypatch.setattr(ai_router, "_rotate_candidates", spying_rotate)
+
+    for name in ai_router.ROLE_PROVIDERS["coding"]:
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: False)
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+
+    ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    # Exactly one rotation -- the front group inside _candidates_for. The
+    # outer per-role rotation in delegate() must not wrap it a second time.
+    assert rotate_calls == [ai_router.CODING_ROTATING_FRONT]
+
+
+def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_alt_claude_routes_are_down(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ai_router.CODING_ROTATING_FRONT + ["opencode_claude_sonnet", "opencode_claude_opus"]:
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+
+    result = ai_router.delegate(
+        "Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent",
+        return_attempts=True,
+    )
+
+    # With every alt-Claude route unavailable, direct claude is reached --
+    # and only after all five of them were attempted/skipped first.
+    assert result["provider"] == "claude"
+    attempted_before_claude = [a["provider"] for a in result["attempts"]]
+    assert sorted(attempted_before_claude[:3]) == sorted(ai_router.CODING_ROTATING_FRONT)
+    assert attempted_before_claude[3:] == ["opencode_claude_sonnet", "opencode_claude_opus"]
+
+
+def test_delegate_coding_falls_all_the_way_to_opencode_when_claude_is_also_down(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ai_router.CODING_ROTATING_FRONT + [
+        "opencode_claude_sonnet", "opencode_claude_opus", "claude", "opencode_deepseek",
+    ]:
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+
+    result = ai_router.delegate(
+        "Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent",
+    )
+
+    assert result["provider"] == "opencode"
+
+
+def test_delegate_coding_raises_all_providers_failed_when_every_candidate_is_down(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ai_router.ROLE_PROVIDERS["coding"]:
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    with pytest.raises(AllProvidersFailed) as excinfo:
+        ai_router.delegate("Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    attempted = [a["provider"] for a in excinfo.value.attempts]
+    assert sorted(attempted) == sorted(ai_router.ROLE_PROVIDERS["coding"])
+
+
+def test_delegate_coding_rotates_the_first_attempt_across_the_alt_claude_routes(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    front = ai_router.CODING_ROTATING_FRONT
+    for name in front:
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: True)
+        monkeypatch.setitem(
+            provider, "run_coding_task",
+            lambda project_path, instruction, n=name, **kwargs: {"success": True, "response_text": f"from {n}", "files_changed": [], "commits": [], "tool_errors": []},
+        )
+
+    seen = [
+        ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")["provider"]
+        for _ in range(4)
+    ]
+
+    assert seen == front + [front[0]]
+
+
+@pytest.mark.parametrize("role", ["planning", "log_analysis", "documentation", "review"])
+def test_non_coding_roles_do_not_include_the_openrouter_coding_routes(role):
+    assert "openrouter_claude_opus" not in ai_router.ROLE_PROVIDERS[role]
+    assert "openrouter_claude_sonnet" not in ai_router.ROLE_PROVIDERS[role]
+
+
+def test_13v_architecture_chain_still_resolves_its_text_task_openrouter_claude():
+    # The 13V Chief Architect chain relies on the text_task-only
+    # "openrouter_claude" provider -- 13M's coding routes use distinct keys,
+    # so this entry must still resolve with text capability.
+    import core.ai_provider as ai_provider
+
+    assert "openrouter_claude" in ai_router.ROLE_PROVIDERS["architecture"]
+    for name in ai_router.ROLE_PROVIDERS["architecture"]:
+        provider = ai_provider.get_provider(name)
+        assert provider is not None, name
+        assert provider.get("run_text_task") is not None, name

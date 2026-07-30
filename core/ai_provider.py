@@ -17,6 +17,7 @@ import core.coding_bridge as coding_bridge
 import core.llm_clients as llm_clients
 import core.ai.provider_health as provider_health
 import core.opencode_bridge as opencode_bridge
+from core.memory import update
 from core.repo_manager import create_local_repo
 
 
@@ -112,7 +113,11 @@ def _claude_run_text_task(prompt, timeout=60, project_path=None):
     return result.get("response_text", "")
 
 
-def _opencode_available():
+def _opencode_credential_available(key):
+    """True when the opencode CLI is on PATH and its own credential store
+    (~/.local/share/opencode/auth.json) holds an entry under `key` -- e.g.
+    "opencode" for the OpenCode Zen account, "openrouter" for the OpenRouter
+    account (see scripts/setup_openrouter_opencode_auth.py)."""
     if shutil.which("opencode") is None:
         return False
 
@@ -121,7 +126,11 @@ def _opencode_available():
     except (FileNotFoundError, json.JSONDecodeError):
         return False
 
-    return "opencode" in auth
+    return key in auth
+
+
+def _opencode_available():
+    return _opencode_credential_available("opencode")
 
 
 def _opencode_run_coding_task(project_path, instruction, **kwargs):
@@ -206,6 +215,34 @@ def _opencode_deepseek_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# 13M: coding-capable Claude routes billed through the OpenRouter account --
+# the opencode CLI drives OpenRouter-hosted models with its full agentic
+# tool-use loop once an "openrouter" credential exists in its auth.json
+# (confirmed live 2026-07-28; see scripts/setup_openrouter_opencode_auth.py,
+# since `opencode auth login openrouter` is broken headlessly). These
+# preserve the direct CloudCLI/Anthropic subscription's credit: see
+# ai.ai_router.ROLE_PROVIDERS["coding"], where they rotate ahead of the
+# direct "claude" provider. Opus 4.7 is tried first in that rotation per
+# explicit user directive (2026-07-30).
+#
+# Named openrouter_claude_opus/openrouter_claude_sonnet (not the design
+# doc's original "openrouter_claude") because 13V already shipped a
+# text_task-only provider under the "openrouter_claude" key (see below) --
+# these coding routes must not collide with or overwrite it.
+OPENROUTER_CLAUDE_OPUS_MODEL = "openrouter/anthropic/claude-opus-4.7"
+OPENROUTER_CLAUDE_SONNET_MODEL = "openrouter/anthropic/claude-sonnet-4.6"
+
+
+def _openrouter_claude_opus_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", OPENROUTER_CLAUDE_OPUS_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
+def _openrouter_claude_sonnet_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", OPENROUTER_CLAUDE_SONNET_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
 def _local_not_implemented(*args, **kwargs):
     raise NotImplementedError(
         "The local provider is a Phase 12I architecture placeholder -- no "
@@ -232,8 +269,36 @@ def _openai_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_openai(prompt, timeout=timeout)
 
 
+# 13M: the plain-text openrouter provider rotates across
+# llm_clients.OPENROUTER_MODELS instead of always using the single
+# OPENROUTER_DEFAULT_MODEL (which remains the default for direct
+# call_openrouter callers). Same rotation-state shape as ai_router's
+# provider_rotation.json, keyed by a fixed "index" since this provider has
+# no per-role model split. The read-increment-write goes through
+# core.memory.update()'s flock critical section (same reasoning as
+# ai_router._rotate_candidates, 13R): concurrent delegate() calls must not
+# read the same index and land on the same model.
+OPENROUTER_MODEL_ROTATION_FILE = "openrouter_model_rotation.json"
+
+
+def _next_openrouter_model():
+    models = llm_clients.OPENROUTER_MODELS
+    captured = {}
+
+    def mutate(state):
+        state = state if isinstance(state, dict) else {}
+        start = state.get("index", 0) % len(models)
+        captured["start"] = start
+        state["index"] = (start + 1) % len(models)
+        return state
+
+    update(OPENROUTER_MODEL_ROTATION_FILE, mutate)
+
+    return models[captured["start"]]
+
+
 def _openrouter_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_openrouter(prompt, timeout=timeout)
+    return llm_clients.call_openrouter(prompt, model=_next_openrouter_model(), timeout=timeout)
 
 
 def _openrouter_claude_run_text_task(prompt, timeout=60, project_path=None):
@@ -290,7 +355,7 @@ register_provider(
     run_text_task=_openrouter_run_text_task,
     available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
     kind="cloud",
-    description="OpenRouter (openai/gpt-4o-mini) -- planning/research fallback, reduces Claude-credit usage",
+    description="OpenRouter (rotates llm_clients.OPENROUTER_MODELS, deepseek-v4-flash first) -- planning/research fallback, reduces Claude-credit usage",
     cost_tier="paid",
 )
 
@@ -380,6 +445,24 @@ register_provider(
     kind="cloud",
     description="DeepSeek V4 Pro (openrouter/deepseek/deepseek-v4-pro via opencode CLI) -- OpenRouter credential, no Zen key collision",
     cost_tier="free_or_low_cost",
+)
+
+register_provider(
+    "openrouter_claude_opus",
+    run_coding_task=_openrouter_claude_opus_run_coding_task,
+    available_fn=lambda: _opencode_credential_available("openrouter"),
+    kind="cloud",
+    description="Claude Opus 4.7 (openrouter/anthropic/claude-opus-4.7 via opencode CLI) -- billed through the OpenRouter account, not the CloudCLI/Anthropic subscription; tried first in the coding role's alt-Claude rotation per user directive (2026-07-30)",
+    cost_tier="paid",
+)
+
+register_provider(
+    "openrouter_claude_sonnet",
+    run_coding_task=_openrouter_claude_sonnet_run_coding_task,
+    available_fn=lambda: _opencode_credential_available("openrouter"),
+    kind="cloud",
+    description="Claude Sonnet 4.6 (openrouter/anthropic/claude-sonnet-4.6 via opencode CLI) -- billed through the OpenRouter account, not the CloudCLI/Anthropic subscription; coding-capable counterpart of 13V's text-only 'openrouter_claude'",
+    cost_tier="paid",
 )
 
 register_provider(

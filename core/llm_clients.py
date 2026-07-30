@@ -26,6 +26,22 @@ OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 # fallback role, so defaulting to the cheap, confirmed-working paid model
 # instead of a free one that wasn't actually available at test time.
 OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini"
+# 13M: the plain-text openrouter provider rotates across these instead of
+# being pinned to the single default above (which stays as the back-compat
+# default for direct call_openrouter callers). All 5 confirmed live against
+# the real OpenRouter chat-completions API (2026-07-28 design session).
+# deepseek/deepseek-v4-flash is first per explicit user directive
+# (2026-07-30): prioritize it over the rest of this set. Claude Sonnet 4.6
+# deliberately does NOT join this rotation -- its role is the coding
+# fallback (openrouter_claude_* in core.ai_provider), keeping the
+# cheap/plain-text role cheap.
+OPENROUTER_MODELS = [
+    "deepseek/deepseek-v4-flash",
+    "openai/gpt-4o-mini",
+    "z-ai/glm-5",
+    "openai/gpt-5",
+    "deepseek/deepseek-v4-pro",
+]
 # MiniMax-Text-01/M1 isn't supported on this account's plan ("your current
 # token plan not support model"), but MiniMax-M2 is, and is confirmed
 # working live against real API calls with the account's loaded credits

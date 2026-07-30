@@ -940,7 +940,7 @@
       "id": "17D",
       "name": "Standalone Kai Dashboard: real server-side proxy + full tabbed interface (chat, approvals, workforce, learning, roadmap)",
       "description": "User directive 2026-07-30: consolidate all of Kai's interfaces (chat, approvals, AI workforce, learning, roadmap) onto the standalone dashboard (16A, GET /dashboard on core.api) as real tabs, not just the current read-only summary. 16A was deliberately read-only because the standalone page has no bridge token and the dashboard is reachable from anything on the LAN (core.api now binds 0.0.0.0, not just 127.0.0.1) -- embedding the write-capable bridge token directly in that page's browser-facing JS would let anyone on the LAN who loads the page extract it and act as the full operator (approve/reject builds, chat as the operator), not just view. User explicitly chose the safe option: give the standalone dashboard its own lightweight server-side proxy, mirroring the CloudCLI plugin's existing pattern (ai-orchestrator-plugin/src/server.ts -- a small process that holds the bridge token server-side and forwards authenticated requests on the browser's behalf, never exposing the token itself). Concretely: a new small server component (could live in core.api itself as a same-origin proxy path, or a separate lightweight process) that the dashboard's browser JS talks to instead of calling write endpoints directly -- the real bridge token never reaches the browser. Add real tab navigation to the dashboard (currently a single scrolling page) covering: Overview/health, Chat (reusing 13X/17B's POST+GET /kai/chat), Approvals (with real approve/reject actions now safely possible through the proxy), AI Workforce/providers, Learning, Roadmap. This becomes the single place with everything, without needing the CloudCLI-embedded tab at all going forward -- though that tab should keep working unchanged, not be removed by this phase.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "16A",
         "17B"
@@ -1007,7 +1007,7 @@
       "id": "17H",
       "name": "Rebuild and redeploy the CloudCLI plugin bundle after a merge, same as 17C does for the Python services",
       "description": "Confirmed live 2026-07-30: 17B merged the chat panel into ai-orchestrator-plugin/src/index.ts cleanly (correct code, tests passed, visible in git log) but the ACTUAL bundle CloudCLI loads from (~/.claude-code-ui/plugins/ai-orchestrator/dist/) was still dated 2026-07-29 -- before 17B, before 16A, before any of todays plugin-side work. The self-build pipeline merges TypeScript source into the live repo but has no step that runs npm run build and copies the compiled dist/ output to where CloudCLI actually serves it from -- every plugin-side change this session only became visible after a human (this session) manually ran npm run build and cp -- exactly the same class of gap 17C fixed for the Python services (core.api/scheduler), but 17C only covers those two systemd services, not the plugins compiled TypeScript bundle or the cloudcli.service that serves it. Fix: extend the post-deploy step (core.service_restarter or a sibling module) to detect when a merge touched ai-orchestrator-plugin/src/**, run npm run build in that repo, copy the resulting dist/*.js and *.js.map to ~/.claude-code-ui/plugins/ai-orchestrator/dist/, and restart cloudcli.service so the new bundle actually loads -- mirroring 17Cs changed-file-scoped restart logic, not a parallel ad-hoc mechanism. A merge that does not touch the plugin repo must not trigger a plugin rebuild/cloudcli restart. Essential, high-impact fix -- every future plugin-side change is silently invisible without it, exactly what just happened with 17B. Low risk / non-breaking: purely additive build+deploy automation, reuses 17Cs existing changed-file-scoping pattern rather than inventing a new mechanism.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "17C"
       ],
@@ -1019,7 +1019,8 @@
         "Tests cover: plugin-touching merge triggers build+deploy+restart; backend-only merge does not; a build failure is handled without corrupting the previously-deployed dist"
       ],
       "tests_required": true,
-      "note": "Queued 2026-07-30, discovered live: the user could not find the 17B chat panel at all because the deployed plugin bundle was over a day stale, despite the source merge itself being clean. Same severity class as 17C -- essential, high-impact, additive."
+      "note": "Queued 2026-07-30, discovered live: the user could not find the 17B chat panel at all because the deployed plugin bundle was over a day stale, despite the source merge itself being clean. Same severity class as 17C -- essential, high-impact, additive.",
+      "build_id": "c76e4634"
     },
     {
       "id": "17I",

@@ -59,17 +59,75 @@ ROLE_PROVIDERS = {
     # scoped to DeepSeek -- it authenticates fine for the claude-fable-5/
     # sonnet-5/opus-5 routes too, so swapping it into the shared "opencode"
     # auth.json slot didn't risk any of them.
-    "coding": ["claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "opencode"],
-    # minimax paused everywhere (2026-07-28, user directive) after two
-    # separate live incidents (builds ca7ff314/13P and 56e6c3d7's first
-    # attempt/13R) where it returned hallucinated <minimax:tool_call>
-    # markup instead of an actual plan on this tools-less text_task path --
-    # initially scoped to just this list, but the user then asked to pause
-    # every minimax route, including "opencode" above (its only model is
-    # minimax-m2.7, via opencode CLI's real tool-use loop -- a materially
-    # different capability that had no evidence of the same failure, but
-    # paused anyway per that directive rather than left running). See 13T,
-    # which will review real usage history before deciding what to restore.
+    #
+    # 13T (2026-07-29) appends "opencode_minimax" (opencode/minimax-m2.7,
+    # pinned in ai_provider) -- the half of the 2026-07-28 blanket minimax
+    # pause the usage history does *not* support. Reviewed via
+    # core.ai.provider_evidence over memory/ai_usage_history.json, with the
+    # "opencode" aggregate split per model by matching each entry's timestamp
+    # and duration against the opencode CLI session store
+    # (~/.local/share/opencode/opencode.db, session.model/time_updated;
+    # every match was within 0.2s):
+    #
+    #   minimax-m2.7    3 attempts, 3 successes (100%)
+    #   deepseek-v4-pro 4 attempts, 2 successes  (50%) -- both of the
+    #                   provider's recorded failures were deepseek's: a 600s
+    #                   wall-clock timeout (2026-07-29T04:40:03) and missing
+    #                   memory/*.json tool errors (19:45:45, environmental,
+    #                   fixed by a2ab1d4)
+    #
+    # Same-capability comparators over the same history: opencode_claude
+    # (Fable 5) 4/8 with three timeouts, claude 3/5, opencode_claude_sonnet
+    # 1/1. minimax-m2.7 is the only coding-agent model with zero recorded
+    # timeouts, tool errors, or hallucinated-tool-call events on this path.
+    #
+    # Cross-checked against git history rather than trusting the success
+    # flag alone (13S: flags were content-blind before 4c69637): commits
+    # e622a14+34a7ac3 (13F, implementation + tests, merged to main via
+    # 7bd8f73) and b17d199 (13G, API endpoints + 123 test lines) were both
+    # authored inside a minimax session window. The third run (2640db8, 13R)
+    # committed work authored during the *preceding* timed-out Fable session
+    # -- a salvage, not original authorship -- so 2 of 3 are verified
+    # original implementations, not 3.
+    #
+    # Placed last, deliberately: 3 attempts is below
+    # provider_evidence.MIN_SAMPLE_SIZE, which caps it at "observe" rather
+    # than "trusted". That earns a real slot in the rotation (see
+    # _rotate_candidates -- every candidate gets a turn as primary, so this
+    # is how it accumulates the evidence to be re-judged on), not a
+    # promotion ahead of the Claude family, and not a change to
+    # opencode_bridge.OPENCODE_DEFAULT_MODEL.
+    "coding": [
+        "claude",
+        "opencode_claude",
+        "opencode_claude_sonnet",
+        "opencode_claude_opus",
+        "opencode",
+        "opencode_minimax",
+    ],
+    # minimax stays out of every text_task role -- unchanged from the
+    # 2026-07-28 pause, but 13T re-grounded it in the full usage history
+    # instead of the single 13P incident that triggered it:
+    #
+    #   minimax/planning  4 attempts, 3 flagged "success" (75%), 1
+    #                     ConnectionError -- but all 3 of those flags predate
+    #                     13S's plan validation (4c69637), when any HTTP 200
+    #                     counted as success regardless of content. Checked
+    #                     against the plan text actually stored in
+    #                     memory/builds.json, every one of the 3 was
+    #                     hallucinated <minimax:tool_call>/<invoke> markup
+    #                     with no plan in it: ca7ff314/13P, 56e6c3d7/13R,
+    #                     and e75e4848/13Q -- a third incident found only by
+    #                     this review. Verified usable outputs: 0/4.
+    #   comparators       gemini 41/42 (97.6%), openrouter 11/12 (91.7%)
+    #
+    # log_analysis and documentation have no recorded minimax attempts at
+    # all, so on counts alone they'd be "insufficient_history" -- but they
+    # reach minimax through the identical tools-less code path
+    # (ai_provider._minimax_run_text_task -> llm_clients.call_minimax, no
+    # tools wired up), which is the established cause of the failure, so the
+    # planning evidence carries. The registry entry stays registered; only
+    # the routing is withheld.
     "planning": ["gemini", "openrouter", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
     "documentation": ["gemini", "groq", "openrouter", "claude"],

@@ -513,3 +513,90 @@ def test_get_provider_dashboard_claude_uses_self_tracked_usage_not_quota_state(m
 
     assert dashboard["claude"]["percent_remaining"] is None
     assert "self-tracked" in dashboard["claude"]["quota_detail"].lower()
+
+
+# --- 13T: evidence-based minimax routing ------------------------------------
+
+TEXT_TASK_ROLES = ("planning", "log_analysis", "documentation", "review")
+
+
+@pytest.mark.parametrize("role", TEXT_TASK_ROLES)
+def test_minimax_is_not_in_any_text_task_role(role):
+    # 13T usage-history review: 4 recorded planning attempts, 3 flagged
+    # "success", but every content-bearing one was hallucinated
+    # <minimax:tool_call> markup (builds ca7ff314/13P, 56e6c3d7/13R,
+    # e75e4848/13Q) and the fourth was a ConnectionError -- 0/4 usable.
+    # log_analysis/documentation have no recorded attempts at all, but share
+    # the identical tools-less core.llm_clients.call_minimax code path.
+    assert "minimax" not in ai_router.ROLE_PROVIDERS[role]
+
+
+def test_minimax_coding_agent_route_is_in_the_coding_rotation():
+    # The other half of the same review: minimax-m2.7 through opencode CLI's
+    # real tool-use loop is 3/3 recorded, with zero hallucinated-tool-call,
+    # timeout or tool-error events -- the 2026-07-28 blanket pause was
+    # over-broad for this path.
+    assert "opencode_minimax" in ai_router.ROLE_PROVIDERS["coding"]
+
+
+def test_minimax_coding_agent_route_is_not_ahead_of_the_claude_family():
+    # "observe", not "trusted": 3 attempts is below MIN_SAMPLE_SIZE, so it
+    # earns a place in the rotation, not the front of it.
+    coding = ai_router.ROLE_PROVIDERS["coding"]
+
+    assert coding.index("opencode_minimax") > coding.index("claude")
+    assert coding.index("opencode_minimax") > coding.index("opencode_claude")
+
+
+def test_coding_role_still_ends_on_a_claude_family_universal_fallback():
+    assert "claude" in ai_router.ROLE_PROVIDERS["coding"]
+
+
+def test_every_coding_candidate_supports_the_coding_agent_capability():
+    # A candidate without run_coding_task can only ever contribute a
+    # "does not support coding_agent" failure string -- adding one to this
+    # list would silently shorten the real fallback chain.
+    import core.ai_provider as ai_provider
+
+    for name in ai_router.ROLE_PROVIDERS["coding"]:
+        provider = ai_provider.get_provider(name)
+        assert provider is not None, name
+        assert provider.get("run_coding_task") is not None, name
+
+
+@pytest.mark.parametrize("role", TEXT_TASK_ROLES)
+def test_every_text_role_candidate_supports_the_text_task_capability(role):
+    import core.ai_provider as ai_provider
+
+    for name in ai_router.ROLE_PROVIDERS[role]:
+        provider = ai_provider.get_provider(name)
+        assert provider is not None, name
+        assert provider.get("run_text_task") is not None, name
+
+
+def test_delegate_falls_through_to_opencode_minimax_when_the_others_fail(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    for name in ("claude", "opencode_claude", "opencode_minimax"):
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: True)
+
+    def fail(project_path, instruction, timeout=60):
+        raise RuntimeError("nope")
+
+    monkeypatch.setitem(ai_provider.get_provider("claude"), "run_coding_task", fail)
+    monkeypatch.setitem(ai_provider.get_provider("opencode_claude"), "run_coding_task", fail)
+    monkeypatch.setitem(
+        ai_provider.get_provider("opencode_minimax"),
+        "run_coding_task",
+        lambda project_path, instruction, timeout=60: {"success": True, "response_text": "done"},
+    )
+    monkeypatch.setattr(
+        ai_router,
+        "ROLE_PROVIDERS",
+        {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode_claude", "opencode_minimax"]},
+    )
+
+    result = ai_router.delegate("Build a widget", capability="coding_agent", project_path="/tmp/x")
+
+    assert result["provider"] == "opencode_minimax"

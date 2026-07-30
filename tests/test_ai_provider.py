@@ -338,3 +338,57 @@ def test_opencode_claude_escalation_tiers_share_availability_with_opencode(monke
 
     monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
     assert ai_provider.list_providers()[provider_name]["available"] is False
+
+
+# --- 13T: minimax restored on the coding_agent route only -------------------
+
+def test_opencode_minimax_provider_is_registered_with_coding_agent_capability_only():
+    # 13T: minimax-m2.7 is registered for coding_agent and *only* coding_agent
+    # -- the usage-history review found its tools-less text_task record to be
+    # 0/4 usable, so it must never be reachable as a text provider.
+    providers = ai_provider.list_providers()
+
+    assert "opencode_minimax" in providers
+    assert "coding_agent" in providers["opencode_minimax"]["capabilities"]
+    assert "text_task" not in providers["opencode_minimax"]["capabilities"]
+
+
+def test_opencode_minimax_provider_uses_the_minimax_zen_model(monkeypatch, tmp_path):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider("opencode_minimax")
+    provider["run_coding_task"](str(tmp_path), "build a widget")
+
+    assert captured["model"] == "opencode/minimax-m2.7"
+
+
+def test_opencode_minimax_provider_shares_availability_with_opencode(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    assert ai_provider.list_providers()["opencode_minimax"]["available"] is True
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    assert ai_provider.list_providers()["opencode_minimax"]["available"] is False
+
+
+def test_minimax_text_provider_is_still_registered_but_text_only():
+    # The registry entry stays (it is what any future re-evaluation would
+    # exercise); what 13T changed is only whether ai_router routes to it.
+    providers = ai_provider.list_providers()
+
+    assert "text_task" in providers["minimax"]["capabilities"]
+    assert "coding_agent" not in providers["minimax"]["capabilities"]

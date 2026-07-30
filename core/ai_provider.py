@@ -149,6 +149,31 @@ def _opencode_claude_opus_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# 13T: minimax-m2.7 pinned as its own routable coding-agent provider rather
+# than left as an implicit historical default of "opencode". Two reasons it
+# has to be a separate registry entry:
+#
+#   * "opencode" now means deepseek-v4-pro (2026-07-29), so routing to
+#     minimax at all requires an explicit model pin.
+#   * every usage-history entry is keyed by *provider*, not model -- the
+#     "opencode" aggregate is already a blend of the two models, and 13T had
+#     to reconstruct which was which from the opencode CLI session store to
+#     get real per-model counts. A distinct name means the next review reads
+#     minimax's coding-agent record straight out of
+#     core.ai.provider_evidence with no external attribution step.
+#
+# The evidence for having this route at all (see ai.ai_router.ROLE_PROVIDERS
+# ["coding"] and the 13T lesson records): 3/3 recorded coding_agent runs,
+# zero hallucinated-tool-call/timeout/tool-error events -- unlike the
+# tools-less text_task path, which is 0/4 usable and stays unrouted.
+OPENCODE_MINIMAX_MODEL = "opencode/minimax-m2.7"
+
+
+def _opencode_minimax_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", OPENCODE_MINIMAX_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
 def _local_not_implemented(*args, **kwargs):
     raise NotImplementedError(
         "The local provider is a Phase 12I architecture placeholder -- no "
@@ -229,7 +254,7 @@ register_provider(
     run_text_task=_minimax_run_text_task,
     available_fn=lambda: bool(os.getenv("MINIMAX_API_KEY")),
     kind="cloud",
-    description="MiniMax-M2 -- planning/research fallback (account currently has no usable credits for this model)",
+    description="MiniMax-M2 (tools-less chat completion) -- registered but deliberately unrouted: 13T's usage review found 0/4 usable text_task outputs. Its coding-agent counterpart is 'opencode_minimax'",
 )
 
 register_provider(
@@ -262,6 +287,14 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="Claude Opus 5 (opencode/claude-opus-5 via OpenCode Zen) -- top escalation tier above Fable 5/Sonnet 5, same separate Zen billing",
+)
+
+register_provider(
+    "opencode_minimax",
+    run_coding_task=_opencode_minimax_run_coding_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="MiniMax-m2.7 (opencode/minimax-m2.7 via OpenCode Zen) -- coding_agent only, restored 2026-07-29 by 13T's usage review: 3/3 recorded runs through opencode CLI's real tool-use loop, none of the text_task path's hallucinated tool-call failures",
 )
 
 register_provider(

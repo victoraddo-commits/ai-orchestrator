@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from core.memory import load, save
+from core.memory import load, save, update
 
 
 SUCCESS_STATUSES = {"COMPLETED"}
@@ -11,6 +11,10 @@ TERMINAL_STATUSES = {"COMPLETED", "FAILED", "ROLLED_BACK"}
 # templates -- per 13F's "no new classification scheme" requirement.
 RECOMMENDATION_TRUSTED_MIN = 80
 RECOMMENDATION_OBSERVE_MIN = 50
+
+# Strongest-to-weakest, used to cap an aggregate at the best claim any single
+# lesson underneath it actually makes (see _cap_to_best_lesson_claim).
+RECOMMENDATION_STRENGTH = ("avoid", "observe", "trusted")
 
 # Categories tracked by the 13F lesson store. Plain strings (not an Enum) so
 # they round-trip cleanly through JSON and are easy to filter on.
@@ -172,8 +176,6 @@ def record_lesson(category, subject, source, evidence=None, recommendation=None)
     if category not in LESSON_CATEGORIES:
         raise ValueError(f"Unknown lesson category: {category!r}")
 
-    lessons = get_lessons()
-
     entry = {
         "category": category,
         "subject": subject,
@@ -183,8 +185,19 @@ def record_lesson(category, subject, source, evidence=None, recommendation=None)
         "timestamp": datetime.now().isoformat(),
     }
 
-    lessons.append(entry)
-    save(LESSONS_FILE, lessons)
+    # 13T: the whole read-append-write goes through core.memory.update()'s
+    # single flock critical section, not a load() then save() pair. Since 13R
+    # dispatches builds through a ThreadPoolExecutor, two builds can record a
+    # lesson at the same time -- with load-then-save both read the same list
+    # and the second write silently drops the first one's lesson (measured at
+    # 18 of 20 lost under a 20-thread append). Exactly the race 324aecf fixed
+    # for the provider-rotation index, and the same fix.
+    def mutate(lessons):
+        lessons = lessons if isinstance(lessons, list) else []
+        lessons.append(entry)
+        return lessons
+
+    update(LESSONS_FILE, mutate)
 
     return entry
 
@@ -217,14 +230,40 @@ def _lesson_is_positive(lesson):
     return False
 
 
+def _cap_to_best_lesson_claim(aggregate, lesson_recommendations):
+    """Never report a stronger recommendation than any single lesson claims.
+
+    13T: the positive-evidence ratio alone escalates a lone "observe" lesson
+    to "trusted" -- 1 positive out of 1 is 100%. That silently overrides a
+    deliberate judgement: 13T records minimax-m2.7's coding-agent result as
+    "observe" precisely because 3 attempts is below
+    core.ai.provider_evidence.MIN_SAMPLE_SIZE, and a summary that reads back
+    "trusted" defeats the guard.
+
+    One-directional by design -- this only ever lowers the aggregate, so a
+    majority of failures still drags a subject down to "avoid" regardless of
+    how confident its individual positive lessons were.
+    """
+    ranked = [r for r in lesson_recommendations if r in RECOMMENDATION_STRENGTH]
+
+    if not ranked or aggregate not in RECOMMENDATION_STRENGTH:
+        return aggregate
+
+    best = max(ranked, key=RECOMMENDATION_STRENGTH.index)
+
+    return min(aggregate, best, key=RECOMMENDATION_STRENGTH.index)
+
+
 def summarize_lessons(category=None):
     """Aggregate lessons by subject and apply the trusted/observe/avoid pattern.
 
     For each subject within the requested category (or across all categories
     if ``category`` is None), compute the positive-evidence ratio and feed
-    it through the same threshold table ``evaluate_template`` already uses.
-    The result is the per-subject recommendation, exactly the same shape
-    callers already know from ``summarize_templates``.
+    it through the same threshold table ``evaluate_template`` already uses,
+    then cap it at the best claim any single lesson makes (13T, see
+    ``_cap_to_best_lesson_claim``). The result is the per-subject
+    recommendation, exactly the same shape callers already know from
+    ``summarize_templates``.
     """
     lessons = get_lessons(category)
 
@@ -235,9 +274,10 @@ def summarize_lessons(category=None):
             continue
         bucket = by_subject.setdefault(
             subject,
-            {"category": lesson.get("category"), "attempts": 0, "positive": 0},
+            {"category": lesson.get("category"), "attempts": 0, "positive": 0, "claims": []},
         )
         bucket["attempts"] += 1
+        bucket["claims"].append(lesson.get("recommendation"))
         if _lesson_is_positive(lesson):
             bucket["positive"] += 1
 
@@ -251,7 +291,9 @@ def summarize_lessons(category=None):
             "attempts": total,
             "positive": positives,
             "success_rate": rate,
-            "recommendation": _recommend_from_rate(rate, total),
+            "recommendation": _cap_to_best_lesson_claim(
+                _recommend_from_rate(rate, total), bucket["claims"]
+            ),
         }
 
     return summary

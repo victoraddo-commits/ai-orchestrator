@@ -444,3 +444,107 @@ def test_ingest_rejected_proposals_includes_proposals_without_a_rejection_note(m
     lessons = build_learning.get_lessons(category="avoided_approach")
     assert lessons[0]["evidence"]["rejection_note"] is None
 
+
+# --- 13T: concurrent lesson appends ------------------------------------------
+
+def test_record_lesson_goes_through_memory_update(monkeypatch):
+    # 13R put builds on a ThreadPoolExecutor, so two builds can record a
+    # lesson at the same time. A load-then-save pair lets both read the same
+    # list and the second write clobber the first -- the same race 324aecf
+    # fixed for the provider-rotation index, so the fix is the same: the
+    # whole read-append-write goes through core.memory.update's single flock
+    # critical section.
+    calls = {}
+
+    def fake_update(name, mutate_fn, directory=None):
+        calls["name"] = name
+        calls["result"] = mutate_fn([{"subject": "existing"}])
+        return calls["result"]
+
+    monkeypatch.setattr(build_learning, "update", fake_update)
+
+    entry = build_learning.record_lesson(
+        "successful_solution", "new", "src", recommendation="observe"
+    )
+
+    assert calls["name"] == build_learning.LESSONS_FILE
+    assert calls["result"] == [{"subject": "existing"}, entry]
+
+
+def test_record_lesson_tolerates_a_non_list_lessons_file(monkeypatch):
+    # core.memory.load defaults to {} for a missing file, and update() passes
+    # that same default straight to the mutate function.
+    captured = {}
+
+    def fake_update(name, mutate_fn, directory=None):
+        captured["result"] = mutate_fn({})
+        return captured["result"]
+
+    monkeypatch.setattr(build_learning, "update", fake_update)
+
+    entry = build_learning.record_lesson(
+        "successful_solution", "new", "src", recommendation="observe"
+    )
+
+    assert captured["result"] == [entry]
+
+
+def test_record_lesson_keeps_every_concurrent_append():
+    import threading
+
+    subjects = [f"subject-{i}" for i in range(20)]
+
+    def record(subject):
+        build_learning.record_lesson(
+            "successful_solution", subject, "src", recommendation="observe"
+        )
+
+    threads = [threading.Thread(target=record, args=(s,)) for s in subjects]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    recorded = sorted(lesson["subject"] for lesson in build_learning.get_lessons())
+
+    assert recorded == sorted(subjects)
+
+
+# --- 13T: the summary must not out-claim the lessons it aggregates -----------
+
+def test_summarize_lessons_does_not_escalate_a_lone_observe_lesson_to_trusted():
+    # A single positive lesson is a 1/1 positive ratio = 100% = "trusted",
+    # even when that lesson itself says "observe". 13T records exactly such a
+    # lesson deliberately (minimax-m2.7's coding record is real but below
+    # MIN_SAMPLE_SIZE), so the summary silently overriding it back to
+    # "trusted" would defeat the point of the guard.
+    build_learning.record_lesson(
+        "successful_solution", "opencode_minimax", "13T", recommendation="observe"
+    )
+
+    summary = build_learning.summarize_lessons()
+
+    assert summary["opencode_minimax"]["success_rate"] == 100.0
+    assert summary["opencode_minimax"]["recommendation"] == "observe"
+
+
+def test_summarize_lessons_still_reaches_trusted_when_a_lesson_claims_it():
+    for _ in range(5):
+        build_learning.record_lesson(
+            "successful_solution", "gemini", "13T", recommendation="trusted"
+        )
+
+    assert build_learning.summarize_lessons()["gemini"]["recommendation"] == "trusted"
+
+
+def test_summarize_lessons_can_still_downgrade_below_its_lessons_claims():
+    # The cap is one-directional: it only ever lowers the aggregate. A
+    # majority of failures still drags a subject down to "avoid" no matter
+    # how confident the individual positive lessons were.
+    build_learning.record_lesson(
+        "successful_solution", "gemini", "13T", recommendation="trusted"
+    )
+    for _ in range(4):
+        build_learning.record_lesson("common_failure", "gemini", "13T", recommendation="avoid")
+
+    assert build_learning.summarize_lessons()["gemini"]["recommendation"] == "avoid"

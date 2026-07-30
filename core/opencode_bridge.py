@@ -18,6 +18,14 @@ comment; this coding-agent path never actually showed that failure, but was
 paused right alongside it per user directive). Replaced with deepseek-v4-pro,
 confirmed live against the same OpenCode Zen credential (full account access,
 not narrowly scoped -- also authenticated fine for opencode/claude-fable-5).
+
+13T's usage-history review (2026-07-29) then found minimax-m2.7 to be 3/3 on
+this coding-agent path against deepseek-v4-pro's 2/4, so minimax is routable
+again -- but as its own explicitly pinned provider ("opencode_minimax", see
+ai_provider.OPENCODE_MINIMAX_MODEL), not by changing this default. 3 attempts
+is below core.ai.provider_evidence.MIN_SAMPLE_SIZE, which is enough to earn a
+slot in the rotation and nothing more; deepseek-v4-pro stays the default for
+an unpinned run.
 """
 
 import json

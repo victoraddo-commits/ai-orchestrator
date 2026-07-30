@@ -3,6 +3,42 @@
 Date: 2026-07-28
 Status: Approved, not yet implemented
 
+## Update 2026-07-30
+
+User directive: OpenRouter also offers `anthropic/claude-opus-4.7`, not
+just `claude-sonnet-4.6`. Add it, and **prioritize** it and
+`deepseek/deepseek-v4-flash` specifically (both named explicitly) over the
+rest of this design's model set when this phase is built:
+
+- **New provider `openrouter_claude_opus`**: mirrors the `openrouter_claude`
+  section below exactly, but `OPENROUTER_CLAUDE_OPUS_MODEL =
+  "openrouter/anthropic/claude-opus-4.7"`, gated on the same `"openrouter"`
+  opencode credential. In the coding role's alt-Claude rotation (`Section 2`
+  below), it should be tried **first** -- i.e. `_rotate_candidates(task_type,
+  ["openrouter_claude_opus", "opencode_claude", "openrouter_claude"])` --
+  ahead of both existing alt-Claude routes, not just added to the tail.
+- **`deepseek/deepseek-v4-flash`** should be moved to the front of
+  `OPENROUTER_MODELS` (Section 3 below), so the text-task rotation tries it
+  before `openai/gpt-4o-mini`/`z-ai/glm-5`/`openai/gpt-5`, not after.
+  `deepseek/deepseek-v4-pro` is already live separately as the `opencode_deepseek`
+  provider (`core/ai_provider.py`, `OPENCODE_DEEPSEEK_MODEL`) -- no change
+  needed there.
+- **Known conflict to resolve during this build**: 13V (built and merged
+  2026-07-30, before this phase) already registered a provider named
+  `openrouter_claude` in `core/ai_provider.py` -- but as a **text_task-only**
+  provider (`_openrouter_claude_run_text_task`, calling
+  `llm_clients.call_openrouter_claude()`, model `anthropic/claude-sonnet-4.6`
+  -- no `openrouter/` prefix, and no coding-agent capability), used in 13V's
+  fixed-order "architecture" planning chain. This design's Section 1 defines
+  a *different*, coding-capable `openrouter_claude` (via `opencode_bridge
+  .run_coding_task`, model string `openrouter/anthropic/claude-sonnet-4.6`
+  with the prefix). These two cannot both be registered under the same
+  provider key. Resolve by renaming this design's coding-capable version to
+  a distinct key (e.g. `openrouter_claude_coding`) rather than colliding
+  with or silently overwriting 13V's already-shipped, already-relied-upon
+  text_task provider -- check `core/ai/ai_router.py`'s `"architecture"`
+  `ROLE_PROVIDERS` entry (13V) still resolves correctly before/after.
+
 ## Problem
 
 Two separate asks from the user (2026-07-28), both routed through OpenRouter:

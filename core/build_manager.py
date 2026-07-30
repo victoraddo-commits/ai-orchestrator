@@ -445,6 +445,25 @@ def _looks_like_tool_call_leak(text):
     return False
 
 
+def _looks_like_no_op_generation(result):
+    # opencode_bridge.run_coding_task (and its equivalents) define success
+    # purely as "process exited cleanly with no tool errors" -- a coding
+    # agent that stops early (hits its own internal turn/step budget,
+    # decides it's "done exploring" without ever implementing anything) can
+    # exit 0 with that flag still set. Confirmed live 2026-07-29: build
+    # 1b3875d7 (13U) reported success via opencode_claude_sonnet with
+    # files_changed=[] and no commits -- the response_text was mid-
+    # exploration ("Now let's check how this workspace relates to...").
+    # Every generation prompt explicitly instructs "write the code, and
+    # commit your work with git as you go" (GENERATION_DISCIPLINE_PREAMBLE
+    # + _generation_prompt), so a claimed success with neither files_changed
+    # nor commits never represents real completed work for a build task --
+    # treat it the same as an outright failure rather than letting it
+    # cascade through code review/security review to a human-facing deploy
+    # approval for a no-op diff.
+    return not (result.get("files_changed") or result.get("commits"))
+
+
 def _plan_needs_clarification(plan_text):
     # A plan that's still asking an open question isn't a concrete proposal
     # yet -- surfacing it as a formal Approval would ask a human to
@@ -590,9 +609,17 @@ def _run_generation(build):
     build["generation_result"] = result
     build["generated_by"] = delegated["provider"]
 
-    if not result.get("success"):
+    if not result.get("success") or _looks_like_no_op_generation(result):
         transition(build, "FAILED", BUILD_TRANSITIONS)
-        build["failure_reason"] = "Generation run did not complete successfully"
+        build["failure_reason"] = (
+            "Generation run did not complete successfully"
+            if not result.get("success")
+            else (
+                "Generation reported success but made no changes (no files "
+                "written, no commits) -- the coding agent stopped without "
+                "actually doing the work despite exiting cleanly"
+            )
+        )
         _record_if_terminal(build)
         return
 

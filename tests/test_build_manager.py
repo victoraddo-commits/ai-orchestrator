@@ -436,6 +436,75 @@ def test_advance_builds_marks_planning_failed_when_all_providers_fail(monkeypatc
     assert "usage limit reached" in updated["failure_reason"]
 
 
+def test_generation_reporting_success_with_no_changes_is_treated_as_failure(monkeypatch):
+    # opencode_bridge.run_coding_task (and equivalents) define success purely
+    # as "process exited cleanly, no tool errors" -- a coding agent that
+    # stops early (hits its own internal turn/step budget without ever
+    # implementing anything) can exit 0 with that flag still set. Confirmed
+    # live 2026-07-29: build 1b3875d7 (13U) reported success via
+    # opencode_claude_sonnet with files_changed=[] and no commits, response
+    # text mid-exploration. Every generation prompt explicitly instructs
+    # "write the code, and commit your work with git as you go" -- a claimed
+    # success with neither files_changed nor commits must not cascade to a
+    # human-facing deploy approval for a no-op diff.
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "GENERATING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "opencode_claude_sonnet", "task_type": "coding", "duration_ms": 10,
+            "response": {
+                "success": True,
+                "response_text": "Now let's check how this workspace relates to the project...",
+                "files_changed": [],
+                "commits": [],
+                "tool_errors": [],
+            },
+        },
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "FAILED"
+    assert "no changes" in updated["failure_reason"].lower()
+
+
+def test_generation_with_no_files_changed_but_a_real_commit_is_not_treated_as_no_op(monkeypatch):
+    # A commit without any "write" tool_use events being parsed (e.g. a
+    # commit amending/renaming existing files some other way) still counts
+    # as real evidence of work -- only genuinely empty (no files AND no
+    # commits) should be rejected.
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+    _force_status(build["id"], "GENERATING")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "response": {
+                "success": True,
+                "response_text": "Done.",
+                "files_changed": [],
+                "commits": [{"sha": "abc123", "message": "implement todo app"}],
+                "tool_errors": [],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        build_manager, "run_all_scans",
+        lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
+
+
 def test_run_generation_uses_the_longer_generation_timeout_not_the_planning_one(monkeypatch):
     # Generation involves real file writes/tool calls/tests and legitimately
     # takes longer than a quick text-only planning response -- confirmed
@@ -450,7 +519,7 @@ def test_run_generation_uses_the_longer_generation_timeout_not_the_planning_one(
         captured["timeout"] = kwargs.get("timeout")
         return {
             "provider": "claude", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         }
 
     monkeypatch.setattr(build_manager, "delegate", fake_delegate)
@@ -510,7 +579,7 @@ def test_advance_builds_reaches_deploy_approval_even_with_critical_findings(monk
         "delegate",
         lambda description, **kwargs: {
             "provider": "claude", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(
@@ -654,7 +723,7 @@ def test_advance_builds_runs_two_ready_builds_concurrently_without_cross_talk(mo
             "response": {
                 "success": True,
                 "response_text": f"built by {provider}",
-                "files_changed": [], "commits": [], "tool_errors": [],
+                "files_changed": ["app.py"], "commits": [], "tool_errors": [],
             },
         }
 
@@ -691,7 +760,7 @@ def test_one_builds_crash_does_not_lose_the_other_builds_result(monkeypatch, tmp
         build_manager, "delegate",
         lambda description, **kwargs: {
             "provider": "claude", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
 
@@ -734,7 +803,7 @@ def test_code_review_is_skipped_for_claude_generated_builds(monkeypatch):
         build_manager, "delegate",
         lambda description, **kwargs: {
             "provider": "claude", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(
@@ -796,7 +865,7 @@ def test_code_review_findings_never_block_the_build(monkeypatch, tmp_path):
         build_manager, "delegate",
         lambda description, **kwargs: {
             "provider": "opencode", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(
@@ -820,7 +889,7 @@ def test_code_review_skips_gracefully_when_claude_is_unavailable(monkeypatch, tm
         build_manager, "delegate",
         lambda description, **kwargs: {
             "provider": "opencode", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(
@@ -847,7 +916,7 @@ def test_code_review_skips_gracefully_when_the_claude_call_fails(monkeypatch, tm
         build_manager, "delegate",
         lambda description, **kwargs: {
             "provider": "opencode", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(
@@ -906,7 +975,7 @@ def test_deploy_approval_surfaces_code_review_findings(monkeypatch, tmp_path):
         build_manager, "delegate",
         lambda description, **kwargs: {
             "provider": "opencode", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(

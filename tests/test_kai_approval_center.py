@@ -98,7 +98,7 @@ def test_advance_builds_creates_a_deploy_approval_after_security_review(monkeypa
         "delegate",
         lambda description, **kwargs: {
             "provider": "claude", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(
@@ -178,7 +178,7 @@ def test_approving_deploy_approval_resumes_the_build(monkeypatch):
         "delegate",
         lambda description, **kwargs: {
             "provider": "claude", "task_type": "coding", "duration_ms": 10,
-            "response": {"success": True, "response_text": "Done.", "files_changed": [], "commits": [], "tool_errors": []},
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
     monkeypatch.setattr(

@@ -6,7 +6,9 @@ import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
+from fastapi.responses import StreamingResponse
+import httpx
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse, RedirectResponse
 
@@ -133,6 +135,158 @@ def require_bridge_token(authorization: str | None = Header(default=None)) -> st
         raise HTTPException(status_code=401, detail="Missing or invalid API token")
 
     return BRIDGE_OPERATOR
+
+
+# ── Dashboard passphrase (Phase 17D) ─────────────────────────────────────────
+# The standalone dashboard is served on 0.0.0.0 so anyone on the LAN can load
+# it.  The proxy routes below forward requests with the real bridge token, so
+# they must gate on something the LAN operator knows but anonymous LAN visitors
+# do not.  A lightweight shared passphrase fills that role: the operator enters
+# it once in the UI, it is stored in localStorage, and every proxy request
+# carries it in the X-Dashboard-Passphrase header.  The passphrase itself never
+# grants access to the backend -- that still requires the bridge token, which
+# the proxy injects server-side.
+
+DASHBOARD_PASSPHRASE_PATH = Path(
+    os.environ.get(
+        "AI_ORCHESTRATOR_DASHBOARD_PASSPHRASE_PATH",
+        str(Path.home() / ".ai-orchestrator" / "dashboard_passphrase"),
+    )
+)
+
+DASHBOARD_PROXY_OPERATOR = "dashboard-proxy"
+
+
+def _load_dashboard_passphrase() -> str:
+    """Return the dashboard passphrase, creating one on first use (same
+    security hygiene as _load_api_token: 0600 file, 0700 parent dir)."""
+    if not DASHBOARD_PASSPHRASE_PATH.exists():
+        DASHBOARD_PASSPHRASE_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        DASHBOARD_PASSPHRASE_PATH.parent.chmod(0o700)
+        try:
+            fd = os.open(DASHBOARD_PASSPHRASE_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            try:
+                os.write(fd, secrets.token_urlsafe(24).encode())
+            finally:
+                os.close(fd)
+    return DASHBOARD_PASSPHRASE_PATH.read_text().strip()
+
+
+# Ensure the passphrase file exists on startup (same reasoning as the bridge
+# token: the dashboard page's JS needs it to be available before the first
+# interactive request).
+_load_dashboard_passphrase()
+
+
+def _require_dashboard_passphrase(
+    x_dashboard_passphrase: str | None = Header(default=None),
+) -> None:
+    """FastAPI dependency: enforces X-Dashboard-Passphrase on proxy routes."""
+    expected = _load_dashboard_passphrase()
+    presented = x_dashboard_passphrase or ""
+    if not hmac.compare_digest(presented.encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="Missing or invalid dashboard passphrase")
+
+
+# ── Dashboard same-origin proxy (Phase 17D) ──────────────────────────────────
+# Routes under /dashboard/api/proxy/* forward requests to the backend with the
+# real bridge token injected.  The browser never sees the token; it only sees
+# the passphrase it already knows.
+
+_PROXY_TARGET_HOST = os.environ.get("AI_ORCHESTRATOR_API_HOST", "127.0.0.1")
+_PROXY_TARGET_PORT = int(os.environ.get("AI_ORCHESTRATOR_API_PORT", "8000"))
+_PROXY_BASE_URL = f"http://{_PROXY_TARGET_HOST}:{_PROXY_TARGET_PORT}"
+
+# In tests, set AI_ORCHESTRATOR_PROXY_BASE_URL to override the target URL.
+# For in-process ASGI testing (where the proxy IS the backend), callers can
+# call _set_proxy_client() with an httpx.AsyncClient configured with an
+# ASGITransport so no real network connection is needed.
+_PROXY_BASE_URL = os.environ.get("AI_ORCHESTRATOR_PROXY_BASE_URL", _PROXY_BASE_URL)
+_proxy_client: httpx.AsyncClient | None = None
+
+
+def _set_proxy_client(client: "httpx.AsyncClient | None") -> None:
+    """Override the proxy's httpx client.  For tests only."""
+    global _proxy_client
+    _proxy_client = client
+
+
+def _get_proxy_client() -> httpx.AsyncClient:
+    global _proxy_client
+    if _proxy_client is None or _proxy_client.is_closed:
+        _proxy_client = httpx.AsyncClient(base_url=_PROXY_BASE_URL)
+    return _proxy_client
+
+
+# Strip hop-by-hop headers that must not be forwarded.
+_HOP_BY_HOP = frozenset([
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailers", "transfer-encoding", "upgrade",
+    # Our own passphrase header is stripped before forwarding.
+    "x-dashboard-passphrase",
+])
+
+
+@app.api_route(
+    "/dashboard/api/proxy/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+)
+async def dashboard_proxy(
+    path: str,
+    request: Request,
+    _: None = Depends(_require_dashboard_passphrase),
+):
+    """Phase 17D: server-side proxy for the standalone dashboard.
+
+    Validates the caller knows the dashboard passphrase, then forwards the
+    request to the backend with the real bridge token injected.  The token
+    never travels to the browser -- only the passphrase does, and the
+    passphrase only guards access to this proxy, not to the backend directly.
+    """
+    token = _load_api_token()
+    client = _get_proxy_client()
+
+    # Build forwarded headers: drop hop-by-hop + our own passphrase header,
+    # inject the real bridge token.
+    fwd_headers = {
+        k: v
+        for k, v in request.headers.items()
+        if k.lower() not in _HOP_BY_HOP
+    }
+    fwd_headers["authorization"] = f"Bearer {token}"
+    fwd_headers["host"] = f"{_PROXY_TARGET_HOST}:{_PROXY_TARGET_PORT}"
+
+    # Preserve query string.
+    qs = request.url.query
+    target_path = f"/{path}" + (f"?{qs}" if qs else "")
+
+    body = await request.body()
+
+    try:
+        proxy_response = await client.request(
+            method=request.method,
+            url=target_path,
+            headers=fwd_headers,
+            content=body,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Backend unreachable: {exc}")
+
+    # Strip hop-by-hop from the response before forwarding back.
+    resp_headers = {
+        k: v
+        for k, v in proxy_response.headers.items()
+        if k.lower() not in _HOP_BY_HOP
+    }
+
+    return StreamingResponse(
+        content=iter([proxy_response.content]),
+        status_code=proxy_response.status_code,
+        headers=resp_headers,
+    )
 
 
 class ApprovalAction(BaseModel):

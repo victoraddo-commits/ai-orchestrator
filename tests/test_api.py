@@ -983,3 +983,406 @@ def test_kai_chat_endpoint_approval_handles_partial_id_match():
     from core.approval import load_requests
     updated = next(r for r in load_requests() if r["id"] == approval["id"])
     assert updated["status"] == "approved"
+
+
+# ── Phase 17B: GET /kai/chat (history for the plugin chat panel) ──────
+
+
+def test_kai_chat_history_requires_auth():
+    response = client.get("/kai/chat")
+
+    assert response.status_code == 401
+
+
+def test_kai_chat_history_requires_auth_wrong_token():
+    response = client.get(
+        "/kai/chat",
+        headers={"Authorization": "Bearer not-the-real-token"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_kai_chat_history_empty_when_no_conversation_yet():
+    response = client.get("/kai/chat", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_kai_chat_history_matches_what_post_persists(monkeypatch):
+    """Completion criterion for 17B: the history the panel displays (served
+    by GET /kai/chat) must match exactly what POST /kai/chat persists to
+    memory/kai_chat_history.json."""
+    import core.api as api_module
+    from core.memory import load
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "All systems nominal.")
+
+    post1 = client.post(
+        "/kai/chat",
+        json={"text": "How are you?"},
+        headers=auth_headers(),
+    )
+    assert post1.status_code == 200
+
+    post2 = client.post(
+        "/kai/chat",
+        json={"text": "What's next on the roadmap?"},
+        headers=auth_headers(),
+    )
+    assert post2.status_code == 200
+
+    response = client.get("/kai/chat", headers=auth_headers())
+
+    assert response.status_code == 200
+    history = response.json()
+
+    persisted = load("kai_chat_history.json")
+    assert history == persisted
+
+    user_messages = [m["content"] for m in history if m["role"] == "user"]
+    assert user_messages == ["How are you?", "What's next on the roadmap?"]
+
+    assistant_messages = [m for m in history if m["role"] == "assistant"]
+    assert len(assistant_messages) == 2
+
+    # Alternating user/assistant order, most recent last.
+    assert [m["role"] for m in history] == ["user", "assistant", "user", "assistant"]
+
+
+def test_kai_chat_history_get_does_not_modify_history(monkeypatch):
+    import core.api as api_module
+    from core.memory import load
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "Hi.")
+
+    client.post("/kai/chat", json={"text": "hello"}, headers=auth_headers())
+    before = load("kai_chat_history.json")
+
+    response = client.get("/kai/chat", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert load("kai_chat_history.json") == before
+
+
+# ── Phase 17B: what the chat panel actually *displays* ────────────────
+#
+# The panel renders history[i]["content"] verbatim as the chat transcript,
+# so that field has to be readable prose -- not a Python repr of the
+# endpoint's response envelope. Found by driving the real backend through
+# the real bridge proxy: the panel showed
+#   "{'matched': False, 'response': '37 roadmap phases are complete.'}"
+# where the operator should have read "37 roadmap phases are complete."
+# The HTTP response body of POST /kai/chat is deliberately unchanged --
+# only the persisted transcript text is fixed.
+
+
+def test_kai_chat_persists_the_reply_prose_not_a_python_repr(monkeypatch):
+    import core.api as api_module
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "37 roadmap phases are complete.")
+
+    post = client.post("/kai/chat", json={"text": "How many phases are done?"}, headers=auth_headers())
+    assert post.status_code == 200
+    # The wire format callers already depend on is untouched.
+    assert post.json() == {"matched": False, "response": "37 roadmap phases are complete."}
+
+    history = client.get("/kai/chat", headers=auth_headers()).json()
+    assistant = history[-1]
+
+    assert assistant["role"] == "assistant"
+    assert assistant["content"] == "37 roadmap phases are complete."
+    # No dict repr leaking into the transcript.
+    assert "matched" not in assistant["content"]
+    assert not assistant["content"].startswith("{")
+
+
+def test_kai_chat_history_content_is_always_a_string(monkeypatch):
+    """The panel calls String(msg.content) on this; a non-string would render
+    as "[object Object]"."""
+    import core.api as api_module
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "fine")
+
+    client.post("/kai/chat", json={"text": "hi"}, headers=auth_headers())
+    client.post("/kai/chat", json={"text": "Kai, analyze system health."}, headers=auth_headers())
+
+    history = client.get("/kai/chat", headers=auth_headers()).json()
+
+    assert len(history) == 4
+    for message in history:
+        assert isinstance(message["content"], str), message
+        assert message["role"] in ("user", "assistant")
+
+
+def test_kai_chat_persists_approval_intent_result_as_prose():
+    from core.approval import create_build_approval
+
+    approval = create_build_approval(
+        build_id="b-transcript",
+        phase_id="X",
+        approval_type="architecture",
+        title="Transcript-readable plan",
+        description="desc",
+        risk="low",
+        requested_action="approve_architecture",
+    )
+
+    post = client.post(
+        "/kai/chat",
+        json={"text": f"approve architecture plan #{approval['id']}"},
+        headers=auth_headers(),
+    )
+    assert post.status_code == 200
+
+    history = client.get("/kai/chat", headers=auth_headers()).json()
+    content = history[-1]["content"]
+
+    assert "Transcript-readable plan" in content
+    assert "approved" in content.lower()
+    assert "'matched'" not in content
+
+
+def test_kai_chat_persists_structured_command_result_readably(monkeypatch):
+    """A matched command returns structured data. The transcript keeps the
+    command's description plus JSON -- readable, and valid JSON rather than
+    a Python repr (True/False/None are not JSON tokens)."""
+    monkeypatch.setattr(
+        "core.api.kai_dispatch",
+        lambda text: {
+            "matched": True,
+            "description": "Analyze system health and AI provider status.",
+            "result": {"findings": ["docker_unavailable"], "ok": True},
+            "error": None,
+        },
+    )
+
+    client.post("/kai/chat", json={"text": "Kai, analyze system health."}, headers=auth_headers())
+
+    content = client.get("/kai/chat", headers=auth_headers()).json()[-1]["content"]
+
+    assert content.startswith("Analyze system health and AI provider status.")
+    assert "docker_unavailable" in content
+    assert "True" not in content and "true" in content  # JSON, not Python repr
+    _json.loads(content.split("\n", 1)[1])  # the payload half parses as JSON
+
+
+def test_kai_chat_persists_command_error_as_prose(monkeypatch):
+    monkeypatch.setattr(
+        "core.api.kai_dispatch",
+        lambda text: {
+            "matched": True,
+            "description": "Advance the active roadmap.",
+            "result": None,
+            "error": "roadmap is locked",
+        },
+    )
+
+    client.post("/kai/chat", json={"text": "Kai, continue roadmap."}, headers=auth_headers())
+
+    content = client.get("/kai/chat", headers=auth_headers()).json()[-1]["content"]
+
+    assert "roadmap is locked" in content
+    assert "'error'" not in content
+
+
+def test_kai_chat_history_file_uses_a_single_schema_envelope(monkeypatch):
+    """memory/kai_chat_history.json must follow the same on-disk convention as
+    every other memory file: core.memory_manager supplies exactly one
+    {schema_version, records: [...]} wrapper, so load() yields a bare list.
+    It used to be wrapped twice (records was itself a {schema_version,
+    records} dict), which only read back correctly because the two extra
+    layers cancelled out -- any other consumer using the normal load()
+    convention got a dict where it expected a list."""
+    import json as _json
+    import core.api as api_module
+    from core.memory import MEMORY_DIR, load
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "ok")
+
+    client.post("/kai/chat", json={"text": "hello"}, headers=auth_headers())
+
+    raw = _json.loads((MEMORY_DIR / "kai_chat_history.json").read_text())
+
+    assert set(raw) == {"schema_version", "records"}
+    assert isinstance(raw["records"], list), f"double-wrapped: {raw['records']!r}"
+    assert raw["records"] == [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "ok"},
+    ]
+
+    # load() unwraps the single envelope, so callers get the list directly.
+    assert load("kai_chat_history.json") == raw["records"]
+
+
+def test_kai_chat_history_reads_legacy_double_wrapped_file(monkeypatch):
+    """Any file written before the envelope fix still reads back correctly --
+    no operator loses their transcript to the format change."""
+    import json as _json
+    from core.memory import MEMORY_DIR
+
+    legacy = [
+        {"role": "user", "content": "written by the old code"},
+        {"role": "assistant", "content": "still readable"},
+    ]
+    (MEMORY_DIR / "kai_chat_history.json").write_text(
+        _json.dumps({"schema_version": 1, "records": {"schema_version": 1, "records": legacy}})
+    )
+
+    response = client.get("/kai/chat", headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json() == legacy
+
+
+def test_kai_chat_appending_to_a_legacy_file_normalizes_the_envelope(monkeypatch):
+    import json as _json
+    import core.api as api_module
+    from core.memory import MEMORY_DIR
+
+    legacy = [{"role": "user", "content": "old turn"}, {"role": "assistant", "content": "old reply"}]
+    (MEMORY_DIR / "kai_chat_history.json").write_text(
+        _json.dumps({"schema_version": 1, "records": {"schema_version": 1, "records": legacy}})
+    )
+
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "new reply")
+    client.post("/kai/chat", json={"text": "new turn"}, headers=auth_headers())
+
+    raw = _json.loads((MEMORY_DIR / "kai_chat_history.json").read_text())
+
+    assert isinstance(raw["records"], list)
+    assert [m["content"] for m in raw["records"]] == [
+        "old turn",
+        "old reply",
+        "new turn",
+        "new reply",
+    ]
+
+
+# ── Phase 17B: GET /kai/identity, GET /kai/proposals, GET /learning/lessons ──
+#
+# The CloudCLI plugin's Kai Control Center tab (13G) has called these three
+# endpoints since it was written, but they were never actually added to
+# core/api.py -- Promise.all([...]) in renderKaiControlCenter rejects the
+# instant any one of its fetches 404s, so the *entire* tab (identity card,
+# chat panel, proposals, roadmap, approvals, lessons) has been rendering
+# "Failed to load: HTTP 404" instead of any content since 13G shipped.
+# Discovered while verifying 17B's chat panel end-to-end against a real
+# running backend+proxy+browser -- without these, the panel the operator
+# needs literally never appears. No new write capability: all three are
+# read-only wrappers around functions (core.kai.identity/mission/goals/
+# policies, core.kai.planner.list_proposals, core.build_learning.
+# summarize_lessons) that already exist and are already unit-tested.
+
+
+def test_kai_identity_endpoint_returns_assembled_identity():
+    response = client.get("/kai/identity")
+
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["name"] == "Kai"
+    assert "Kai" in body["identity"]
+    assert "AI Orchestrator" in body["identity"]
+    assert "human control" in body["mission"].lower()
+    for expected in ["analyze", "plan", "delegate", "execute approved work", "learn", "improve"]:
+        assert expected in body["capabilities"]
+    assert len(body["restrictions"]) == 4
+    assert isinstance(body["autonomous_mode"], bool)
+
+
+def test_kai_identity_endpoint_reflects_live_autonomous_mode(monkeypatch):
+    import core.api as api_module
+
+    monkeypatch.setattr(api_module, "is_autonomous_mode_enabled", lambda: True)
+
+    response = client.get("/kai/identity")
+
+    assert response.status_code == 200
+    assert response.json()["autonomous_mode"] is True
+
+
+def test_kai_identity_endpoint_does_not_require_auth():
+    # Read-only, ungated -- same tier as /learning and /roadmap/progress,
+    # which this identity card sits directly alongside in the tab.
+    response = client.get("/kai/identity")
+
+    assert response.status_code == 200
+
+
+def test_kai_proposals_endpoint_returns_empty_list_when_none_exist(monkeypatch):
+    monkeypatch.setattr("core.kai.planner.load_proposals", lambda: [])
+
+    response = client.get("/kai/proposals")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_kai_proposals_endpoint_returns_stored_proposals(monkeypatch):
+    from core.lifecycle import new_object
+
+    proposal = new_object(
+        "proposed",
+        title="Reduce docker health flakiness",
+        description="Docker findings recur",
+        suggested_action="Add a remediation",
+        rationale="Recurring health finding",
+        source_signals=["health:docker_unavailable"],
+        target_roadmap_phase_draft=None,
+        synthesized_by="claude",
+        roadmap_phase_id=None,
+    )
+    monkeypatch.setattr("core.kai.planner.load_proposals", lambda: [proposal])
+
+    response = client.get("/kai/proposals")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["title"] == "Reduce docker health flakiness"
+    assert body[0]["status"] == "proposed"
+
+
+def test_kai_proposals_endpoint_does_not_require_auth(monkeypatch):
+    monkeypatch.setattr("core.kai.planner.load_proposals", lambda: [])
+
+    response = client.get("/kai/proposals")
+
+    assert response.status_code == 200
+
+
+def test_learning_lessons_endpoint_returns_empty_dict_when_none_recorded(monkeypatch):
+    monkeypatch.setattr("core.build_learning.load", lambda *a, **k: [])
+
+    response = client.get("/learning/lessons")
+
+    assert response.status_code == 200
+    assert response.json() == {}
+
+
+def test_learning_lessons_endpoint_aggregates_by_subject(monkeypatch):
+    lessons = [
+        {"category": "preferred_architecture", "subject": "fastapi_template", "recommendation": "trusted"},
+        {"category": "preferred_architecture", "subject": "fastapi_template", "recommendation": "trusted"},
+        {"category": "common_failure", "subject": "flask_template", "recommendation": None},
+    ]
+    monkeypatch.setattr("core.build_learning.load", lambda *a, **k: lessons)
+
+    response = client.get("/learning/lessons")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["fastapi_template"]["category"] == "preferred_architecture"
+    assert body["fastapi_template"]["attempts"] == 2
+    assert body["fastapi_template"]["recommendation"] == "trusted"
+    assert body["flask_template"]["recommendation"] == "avoid"
+
+
+def test_learning_lessons_endpoint_does_not_require_auth(monkeypatch):
+    monkeypatch.setattr("core.build_learning.load", lambda *a, **k: [])
+
+    response = client.get("/learning/lessons")
+
+    assert response.status_code == 200

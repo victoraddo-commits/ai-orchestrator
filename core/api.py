@@ -1,4 +1,5 @@
 import hmac
+import json
 import os
 import re
 import secrets
@@ -37,11 +38,15 @@ from core.build_manager import (
     rollback_deployment,
 )
 from core.project_templates import TEMPLATES
-from core.build_learning import summarize_templates, get_build_history
+from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.ai_provider import list_providers
 from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
-from core.kai.planner import gather_signals
+from core.kai.planner import gather_signals, list_proposals
+import core.kai.identity as kai_identity
+import core.kai.mission as kai_mission
+import core.kai.goals as kai_goals
+import core.kai.policies as kai_policies
 from core.roadmap_engine import (
     load_roadmap,
     get_phase,
@@ -197,6 +202,15 @@ def build_learning_endpoint():
     }
 
 
+@app.get("/learning/lessons")
+def learning_lessons_endpoint():
+    """Phase 13F lesson store (preferred architectures, common failures,
+    successful solutions, avoided approaches), aggregated per-subject the
+    same way /learning/builds aggregates per-template. Consumed by the
+    CloudCLI plugin's Kai Control Center "Lessons learned" card (13G)."""
+    return summarize_lessons()
+
+
 @app.post("/approvals/{request_id}/approve")
 def approve_request(
     request_id: str,
@@ -276,6 +290,34 @@ def kai_command_endpoint(
     return kai_dispatch(body.text)
 
 
+@app.get("/kai/identity")
+def kai_identity_endpoint():
+    """Assembles Kai's identity/mission/capabilities/restrictions statements
+    (core/kai/identity.py, mission.py, goals.py, policies.py -- each already
+    covered by tests/test_kai_identity.py individually) plus the live
+    autonomous-mode flag into the single object the CloudCLI plugin's Kai
+    Control Center identity card (13G) renders. Read-only and ungated, same
+    as the sibling /learning and /roadmap/progress endpoints it sits next to
+    on that tab -- nothing here is sensitive beyond what those already
+    expose."""
+    return {
+        "name": "Kai",
+        "identity": kai_identity.get_identity(),
+        "mission": kai_mission.get_mission(),
+        "capabilities": kai_goals.get_capabilities(),
+        "restrictions": kai_policies.get_restrictions(),
+        "autonomous_mode": is_autonomous_mode_enabled(),
+    }
+
+
+@app.get("/kai/proposals")
+def kai_proposals_endpoint():
+    """13C improvement proposals (core/kai/planner.py), for the Kai Control
+    Center's proposals card. Read-only, ungated like /approvals and
+    /learning -- proposals are advisory text, not a write surface."""
+    return list_proposals()
+
+
 CHAT_HISTORY_FILE = "kai_chat_history.json"
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -290,22 +332,29 @@ _REJECT_INTENT_RE = re.compile(
 )
 
 
+def _chat_records(data):
+    """Normalizes whatever is on disk into the message list.
+
+    core.memory_manager already supplies the one {schema_version, records}
+    envelope every memory file uses, so load() hands us the bare list. Files
+    written before that was true carry a second, redundant envelope inside
+    records; unwrap it so no operator loses their transcript to the fix."""
+
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return _chat_records(data.get("records", []))
+    return []
+
+
 def _load_chat_history():
-    data = load(CHAT_HISTORY_FILE)
-    if not isinstance(data, dict):
-        return []
-    return data.get("records", [])
+    return _chat_records(load(CHAT_HISTORY_FILE))
 
 
 def _save_chat_history(history):
-    def mutate(data):
-        if not isinstance(data, dict):
-            data = {}
-        data["schema_version"] = 1
-        data["records"] = history
-        return data
-
-    update(CHAT_HISTORY_FILE, mutate)
+    # mutate receives (and must return) the bare records list -- memory_manager
+    # adds the schema_version envelope on write.
+    update(CHAT_HISTORY_FILE, lambda data: list(history))
 
 
 def _trim_history(history):
@@ -336,6 +385,47 @@ def _resolve_approval_request(scope, request_id_hint):
         )
     detail = "Multiple pending " + scope + " approvals:\n" + "\n".join(lines)
     return None, detail
+
+
+def _reply_content(reply):
+    """The assistant turn as it belongs in a chat transcript.
+
+    The response envelope this endpoint returns ({matched, response} for
+    open-ended chat, {matched, description, result, error} for a matched
+    command) is the wire contract for programmatic callers. The transcript,
+    though, is read by a human in the plugin's chat panel, which renders
+    content verbatim -- so store the prose, not str() of the envelope, which
+    showed the operator "{'matched': False, 'response': '...'}" instead of
+    the answer. Structured command results keep their description and are
+    dumped as JSON (not a Python repr, whose True/False/None aren't JSON)."""
+
+    if reply.get("error"):
+        return str(reply["error"])
+
+    if reply.get("response") is not None:
+        return str(reply["response"])
+
+    result = reply.get("result")
+    description = reply.get("description") or ""
+
+    if isinstance(result, str):
+        return result
+    if result is None:
+        return description or str(reply)
+
+    rendered = json.dumps(result, indent=2, default=str)
+    return f"{description}\n{rendered}" if description else rendered
+
+
+@app.get("/kai/chat")
+def kai_chat_history_endpoint(operator: str = Depends(require_bridge_token)):
+    """Phase 17B: read-only conversation history for the CloudCLI plugin's
+    chat panel. Bridge-token gated like POST /kai/chat -- the history can
+    contain operational detail (approvals, failures, roadmap state) that
+    must not be readable by anything that doesn't hold the shared secret.
+    Returns exactly what POST /kai/chat persists, so the panel's display
+    always matches memory/kai_chat_history.json."""
+    return _load_chat_history()
 
 
 @app.post("/kai/chat")
@@ -390,8 +480,7 @@ def kai_chat_endpoint(
                 raise HTTPException(status_code=502, detail=str(error))
             reply = {"matched": False, "response": response_text}
 
-    reply_msg = {"role": "assistant", "content": str(reply)}
-    history.append(reply_msg)
+    history.append({"role": "assistant", "content": _reply_content(reply)})
     _save_chat_history(_trim_history(history))
 
     return reply

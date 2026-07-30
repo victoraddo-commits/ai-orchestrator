@@ -25,6 +25,18 @@ OPENCODE_AUTH_PATH = Path.home() / ".local" / "share" / "opencode" / "auth.json"
 
 _PROVIDERS = {}
 
+# 13W: static cost classification per provider -- assigned at registration,
+# never computed. Valid values, per the user's own labeling request:
+#   "free"             -- free-tier API keys (gemini, groq)
+#   "free_or_low_cost" -- cheap/credit-pool models (minimax, deepseek, Zen's
+#                         default routes)
+#   "paid"             -- real per-call billing against a paid account
+#                         (openai, claude subscription, openrouter) or
+#                         materially expensive models (Sonnet/Opus escalation
+#                         tiers -- Fable 5 was chosen for the default Zen
+#                         route precisely because it's the cheap one).
+COST_TIERS = ("free", "free_or_low_cost", "paid")
+
 # Ad-hoc text-only Claude calls (e.g. router-delegated planning/review tasks
 # with no build attached) need *some* real directory for CloudCLI's
 # /api/agent to operate against -- this one is created once, lazily, and
@@ -32,7 +44,10 @@ _PROVIDERS = {}
 _SCRATCH_WORKSPACE = os.path.join(os.path.expanduser("~"), ".ai-orchestrator", "text-task-scratch")
 
 
-def register_provider(name, run_coding_task=None, run_text_task=None, available_fn=None, kind="cloud", description=""):
+def register_provider(name, run_coding_task=None, run_text_task=None, available_fn=None, kind="cloud", description="", cost_tier="free_or_low_cost"):
+    if cost_tier not in COST_TIERS:
+        raise ValueError(f"cost_tier must be one of {COST_TIERS}, got {cost_tier!r}")
+
     capabilities = []
     if run_coding_task is not None:
         capabilities.append("coding_agent")
@@ -46,6 +61,7 @@ def register_provider(name, run_coding_task=None, run_text_task=None, available_
         "kind": kind,
         "description": description,
         "capabilities": capabilities,
+        "cost_tier": cost_tier,
     }
 
 
@@ -60,6 +76,7 @@ def list_providers():
             "description": entry["description"],
             "available": bool(entry["available_fn"]()),
             "capabilities": entry["capabilities"],
+            "cost_tier": entry["cost_tier"],
         }
         for name, entry in _PROVIDERS.items()
     }
@@ -234,6 +251,7 @@ register_provider(
     available_fn=_claude_available,
     kind="cloud",
     description="Claude Agent SDK via CloudCLI's /api/agent (Phase 12B) -- senior engineer: coding, implementation, hard debugging",
+    cost_tier="paid",
 )
 
 register_provider(
@@ -242,6 +260,7 @@ register_provider(
     available_fn=lambda: bool(os.getenv("GEMINI_API_KEY")),
     kind="cloud",
     description="Google Gemini -- planning, architecture review, documentation",
+    cost_tier="free",
 )
 
 register_provider(
@@ -250,6 +269,7 @@ register_provider(
     available_fn=lambda: bool(os.getenv("GROQ_API_KEY")),
     kind="cloud",
     description="Groq -- fast log/quick analysis, simple tasks",
+    cost_tier="free",
 )
 
 register_provider(
@@ -258,6 +278,7 @@ register_provider(
     available_fn=lambda: bool(os.getenv("OPENAI_API_KEY")),
     kind="cloud",
     description="OpenAI -- available, not currently assigned a primary role",
+    cost_tier="paid",
 )
 
 register_provider(
@@ -266,6 +287,7 @@ register_provider(
     available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
     kind="cloud",
     description="OpenRouter (openai/gpt-4o-mini) -- planning/research fallback, reduces Claude-credit usage",
+    cost_tier="paid",
 )
 
 register_provider(
@@ -274,6 +296,7 @@ register_provider(
     available_fn=lambda: bool(os.getenv("MINIMAX_API_KEY")),
     kind="cloud",
     description="MiniMax-M2 (tools-less chat completion) -- registered but deliberately unrouted: 13T's usage review found 0/4 usable text_task outputs. Its coding-agent counterpart is 'opencode_minimax'",
+    cost_tier="free_or_low_cost",
 )
 
 register_provider(
@@ -282,6 +305,7 @@ register_provider(
     available_fn=lambda: bool(os.getenv("DEEPSEEK_OPENROUTER_API_KEY")),
     kind="cloud",
     description="DeepSeek V4 Pro via OpenRouter (dedicated DEEPSEEK_OPENROUTER_API_KEY) -- planning/documentation/review",
+    cost_tier="free_or_low_cost",
 )
 
 register_provider(
@@ -290,6 +314,7 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="OpenCode (DeepSeek V4 Pro via OpenCode Zen by default, was MiniMax-m2.7 until 2026-07-29) -- sandboxed coding agent, second code-writing worker alongside Claude",
+    cost_tier="free_or_low_cost",
 )
 
 register_provider(
@@ -298,6 +323,7 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="Claude Fable 5 (opencode/claude-fable-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits",
+    cost_tier="free_or_low_cost",
 )
 
 register_provider(
@@ -306,6 +332,7 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="Claude Sonnet 5 (opencode/claude-sonnet-5 via OpenCode Zen) -- escalation above Fable 5 when it's also unavailable/failing, same separate Zen billing",
+    cost_tier="paid",
 )
 
 register_provider(
@@ -314,6 +341,7 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="Claude Opus 5 (opencode/claude-opus-5 via OpenCode Zen) -- top escalation tier above Fable 5/Sonnet 5, same separate Zen billing",
+    cost_tier="paid",
 )
 
 register_provider(
@@ -322,6 +350,7 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="MiniMax-m2.7 (opencode/minimax-m2.7 via OpenCode Zen) -- coding_agent only, restored 2026-07-29 by 13T's usage review: 3/3 recorded runs through opencode CLI's real tool-use loop, none of the text_task path's hallucinated tool-call failures",
+    cost_tier="free_or_low_cost",
 )
 
 register_provider(
@@ -330,6 +359,7 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="DeepSeek V4 Pro (openrouter/deepseek/deepseek-v4-pro via opencode CLI) -- OpenRouter credential, no Zen key collision",
+    cost_tier="free_or_low_cost",
 )
 
 register_provider(
@@ -338,4 +368,5 @@ register_provider(
     available_fn=lambda: False,
     kind="local",
     description="Extension point for a future local model (e.g. Ollama) -- not installed",
+    cost_tier="free",
 )

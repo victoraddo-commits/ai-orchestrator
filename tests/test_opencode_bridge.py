@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 import core.opencode_bridge as opencode_bridge
 
 
@@ -96,6 +98,72 @@ def test_run_coding_task_reports_timeout_as_failure_not_a_crash(monkeypatch):
 
     assert result["success"] is False
     assert "5s" in result["tool_errors"][0]["content"]
+
+
+# --- 13W: real per-call cost from step_finish events -------------------------
+
+def test_run_coding_task_sums_cost_across_step_finish_events(monkeypatch):
+    # Real shape confirmed live: step_finish events carry the actual billed
+    # cost per step (e.g. cost: 0.0139422 via OpenRouter/Zen).
+    stdout = "\n".join([
+        '{"type":"step_finish","part":{"type":"step-finish","cost":0.00200562,"tokens":{"total":7913}}}',
+        '{"type":"text","part":{"text":"Done."}}',
+        '{"type":"step_finish","part":{"type":"step-finish","cost":0.0005844,"tokens":{"total":7998}}}',
+    ])
+
+    monkeypatch.setattr(opencode_bridge, "_run_opencode_process", lambda p, i, m, t: _completed(stdout))
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["cost"] == pytest.approx(0.00200562 + 0.0005844)
+
+
+def test_run_coding_task_recognizes_the_hyphenated_step_finish_spelling(monkeypatch):
+    # The CLI stream and the session store spell part types differently
+    # (tool_use vs tool) -- accept both separators for step finish.
+    stdout = '{"type":"step-finish","part":{"type":"step-finish","cost":0.0139422}}'
+
+    monkeypatch.setattr(opencode_bridge, "_run_opencode_process", lambda p, i, m, t: _completed(stdout))
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["cost"] == pytest.approx(0.0139422)
+
+
+def test_run_coding_task_reports_null_cost_when_no_step_reports_one(monkeypatch):
+    # Never fabricate: a run whose events carry no cost figure records None,
+    # not an estimate from token counts.
+    stdout = "\n".join([
+        '{"type":"text","part":{"text":"Done."}}',
+        '{"type":"step_finish","part":{"type":"step-finish","tokens":{"total":100}}}',
+    ])
+
+    monkeypatch.setattr(opencode_bridge, "_run_opencode_process", lambda p, i, m, t: _completed(stdout))
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["cost"] is None
+
+
+def test_run_coding_task_reports_null_cost_on_timeout(monkeypatch):
+    def fake_run(project_path, instruction, model, timeout):
+        raise subprocess.TimeoutExpired(cmd="opencode", timeout=timeout)
+
+    monkeypatch.setattr(opencode_bridge, "_run_opencode_process", fake_run)
+
+    result = opencode_bridge.run_coding_task("/proj", "do something", timeout=5)
+
+    assert result["cost"] is None
+
+
+def test_run_coding_task_ignores_non_numeric_cost_values(monkeypatch):
+    stdout = '{"type":"step_finish","part":{"type":"step-finish","cost":"unknown"}}'
+
+    monkeypatch.setattr(opencode_bridge, "_run_opencode_process", lambda p, i, m, t: _completed(stdout))
+
+    result = opencode_bridge.run_coding_task("/proj", "do something")
+
+    assert result["cost"] is None
 
 
 def test_run_coding_task_passes_project_path_and_instruction_through(monkeypatch):

@@ -519,6 +519,160 @@ def test_get_provider_dashboard_claude_uses_self_tracked_usage_not_quota_state(m
     assert "self-tracked" in dashboard["claude"]["quota_detail"].lower()
 
 
+# --- 13W: real per-call cost capture + workforce analytics aggregation ------
+
+def test_record_usage_stores_a_provider_reported_cost():
+    entry = ai_router.record_usage("opencode", "coding", "build x", success=True, duration_ms=1200, cost=0.0139422)
+
+    assert entry["cost"] == 0.0139422
+    assert ai_router.get_usage_history()[-1]["cost"] == 0.0139422
+
+
+def test_record_usage_defaults_cost_to_null_not_an_estimate():
+    entry = ai_router.record_usage("gemini", "planning", "plan x", success=True, duration_ms=800)
+
+    assert entry["cost"] is None
+
+
+def test_delegate_coding_agent_records_the_cost_reported_by_the_provider(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": True, "response_text": "ok", "files_changed": [], "commits": [],
+            "tool_errors": [], "cost": 0.0139422,
+        },
+    )
+
+    ai_router.delegate("Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    history = ai_router.get_usage_history()
+    assert history[-1]["success"] is True
+    assert history[-1]["cost"] == 0.0139422
+
+
+def test_delegate_records_null_cost_when_the_response_carries_none(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": [],
+        },
+    )
+
+    ai_router.delegate("Implement the widget", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    assert ai_router.get_usage_history()[-1]["cost"] is None
+
+
+def test_delegate_text_task_records_null_cost(monkeypatch):
+    # Plain chat-completion providers return a string -- no cost figure to
+    # capture, so the entry must record null, never a token-count estimate.
+    import core.ai_provider as ai_provider
+
+    gemini = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(gemini, "available_fn", lambda: True)
+    monkeypatch.setitem(gemini, "run_text_task", lambda p, timeout=60, project_path=None: "planned")
+
+    ai_router.delegate("Design an application architecture")
+
+    assert ai_router.get_usage_history()[-1]["cost"] is None
+
+
+def test_delegate_records_cost_even_for_a_result_level_failure(monkeypatch):
+    # A failed generation still incurred the cost the provider billed for it.
+    import core.ai_provider as ai_provider
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        claude, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {
+            "success": False, "response_text": "", "files_changed": [], "commits": [],
+            "tool_errors": [{"tool": "Bash", "content": "tests failed"}], "cost": 0.002,
+        },
+    )
+
+    opencode = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        opencode, "run_coding_task",
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
+    )
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
+
+    ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
+
+    history = ai_router.get_usage_history()
+    failed = next(e for e in history if e["provider"] == "claude")
+    assert failed["success"] is False
+    assert failed["cost"] == 0.002
+
+
+def test_get_provider_dashboard_aggregates_cost_totals_and_average_duration(monkeypatch):
+    monkeypatch.setattr(
+        ai_router, "get_usage_history",
+        lambda: [
+            {"provider": "opencode", "success": True, "timestamp": "2026-07-30T00:00:00",
+             "task_type": "coding", "duration_ms": 100, "cost": 0.01},
+            {"provider": "opencode", "success": False, "timestamp": "2026-07-30T00:01:00",
+             "task_type": "coding", "duration_ms": 300, "cost": 0.02},
+            # a pre-13W entry with no cost key at all must not break the sum
+            {"provider": "opencode", "success": True, "timestamp": "2026-07-30T00:02:00",
+             "task_type": "coding", "duration_ms": 200},
+        ],
+    )
+
+    dashboard = ai_router.get_provider_dashboard()
+
+    assert dashboard["opencode"]["total_cost"] == pytest.approx(0.03)
+    assert dashboard["opencode"]["cost_reported_calls"] == 2
+    assert dashboard["opencode"]["average_duration_ms"] == pytest.approx(200.0)
+    assert dashboard["opencode"]["total_attempts"] == 3
+    assert dashboard["opencode"]["total_successes"] == 2
+
+
+def test_get_provider_dashboard_total_cost_is_null_when_no_call_ever_reported_one(monkeypatch):
+    # "no cost data" must stay distinguishable from "cost zero" -- never
+    # display a fabricated 0.0 for a provider that doesn't report cost.
+    monkeypatch.setattr(
+        ai_router, "get_usage_history",
+        lambda: [{"provider": "gemini", "success": True, "timestamp": "2026-07-30T00:00:00",
+                  "task_type": "planning", "duration_ms": 500, "cost": None}],
+    )
+
+    dashboard = ai_router.get_provider_dashboard()
+
+    assert dashboard["gemini"]["total_cost"] is None
+    assert dashboard["gemini"]["cost_reported_calls"] == 0
+    assert dashboard["gemini"]["average_duration_ms"] == 500
+
+
+def test_get_provider_dashboard_shows_null_aggregates_for_a_provider_with_no_history():
+    dashboard = ai_router.get_provider_dashboard()
+
+    assert dashboard["local"]["total_cost"] is None
+    assert dashboard["local"]["average_duration_ms"] is None
+
+
+def test_get_provider_dashboard_surfaces_each_providers_cost_tier():
+    import core.ai_provider as ai_provider
+
+    dashboard = ai_router.get_provider_dashboard()
+
+    for name, entry in dashboard.items():
+        assert entry["cost_tier"] in ai_provider.COST_TIERS, name
+
+    assert dashboard["gemini"]["cost_tier"] == "free"
+    assert dashboard["claude"]["cost_tier"] == "paid"
+
+
 # --- 13T: evidence-based minimax routing ------------------------------------
 
 TEXT_TASK_ROLES = ("planning", "log_analysis", "documentation", "review")

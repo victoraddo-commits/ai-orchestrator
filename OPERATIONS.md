@@ -92,6 +92,23 @@ always require approval no matter what this flag is set to. Flip it
 deliberately, not as a side effect of something else, and watch a cycle
 afterward the same way you would for any other deploy.
 
+## OpenRouter credential for the opencode CLI
+
+The `openrouter_claude_opus` / `openrouter_claude_sonnet` coding providers
+(`core/ai_provider.py`) drive OpenRouter-hosted Claude models through the
+`opencode` CLI, which reads its own credential store at
+`~/.local/share/opencode/auth.json` (the same file the OpenCode Zen
+credential lives in). To register/refresh the OpenRouter key there:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... python3 scripts/setup_openrouter_opencode_auth.py
+```
+
+Idempotent — re-run any time (fresh deploy, reset auth.json); it merges the
+`"openrouter"` entry without disturbing other keys. Do **not** use
+`opencode auth login openrouter`: it fails headlessly with "fetch() URL is
+invalid" (confirmed 2026-07-28). The app itself never writes this file.
+
 ## Common troubleshooting
 
 - **Nothing in `incidents.json` matches what I see in Proxmox/Docker**:

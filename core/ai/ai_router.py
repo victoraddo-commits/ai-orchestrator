@@ -104,11 +104,25 @@ ROLE_PROVIDERS = {
     # is how it accumulates the evidence to be re-judged on), not a
     # promotion ahead of the Claude family, and not a change to
     # opencode_bridge.OPENCODE_DEFAULT_MODEL.
+    #
+    # 13M (2026-07-30): the direct Claude/Anthropic subscription's credit is
+    # preserved by never trying "claude" first. The three alt-Claude routes
+    # (Opus 4.7 + Sonnet 4.6 via the OpenRouter account, Fable 5 via OpenCode
+    # Zen -- all billed independently of the subscription) form a rotating
+    # front group (CODING_ROTATING_FRONT, see _candidates_for): only they
+    # take turns as the first attempt, openrouter_claude_opus first per
+    # explicit user directive (2026-07-30). Everything after them is a fixed
+    # fallback tail, always walked in this order: the Zen Claude escalation
+    # tiers (still alt-billing, still Claude-family), then direct "claude"
+    # as the last Claude-family resort, then the non-Claude routes exactly
+    # as before.
     "coding": [
-        "claude",
+        "openrouter_claude_opus",
         "opencode_claude",
+        "openrouter_claude_sonnet",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
+        "claude",
         "opencode_deepseek",
         "opencode",
         "opencode_minimax",
@@ -197,7 +211,24 @@ def classify_task(description):
     return best_category if scores[best_category] > 0 else DEFAULT_TASK_TYPE
 
 
+# 13M: the coding role's rotating front group -- the alt-Claude routes that
+# take turns as the first attempt (see ROLE_PROVIDERS["coding"]'s comment).
+# Uniformly rotating the whole coding list, as every other role does, would
+# put direct "claude" first on a fraction of calls, defeating the
+# credit-preservation goal -- so only these rotate; every other coding
+# candidate is a fixed tail, always tried last and in ROLE_PROVIDERS order.
+CODING_ROTATING_FRONT = ["openrouter_claude_opus", "opencode_claude", "openrouter_claude_sonnet"]
+
+
 def _candidates_for(task_type):
+    if task_type == "coding":
+        # Derived from ROLE_PROVIDERS["coding"] (not hardcoded) so tests and
+        # callers that override the role list keep working: only the members
+        # of CODING_ROTATING_FRONT actually present in the list rotate.
+        candidates = ROLE_PROVIDERS.get("coding", ["claude"])
+        front = [name for name in CODING_ROTATING_FRONT if name in candidates]
+        tail = [name for name in candidates if name not in CODING_ROTATING_FRONT]
+        return _rotate_candidates(task_type, front) + tail
     return ROLE_PROVIDERS.get(task_type, ["claude"])
 
 
@@ -373,7 +404,12 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
     # rides on AllProvidersFailed.attempts regardless of the flag.
     resolved_type = task_type or classify_task(description)
     candidates = _candidates_for(resolved_type)
-    if resolved_type not in FIXED_ORDER_TASK_TYPES:
+    # "coding" is excluded from the outer rotation: _candidates_for already
+    # rotated its alt-Claude front group internally (13M), so rotating the
+    # returned list again would both double-advance the rotation state and
+    # let the fixed last-resort tail (direct claude, opencode, ...) take
+    # first-try turns.
+    if resolved_type not in FIXED_ORDER_TASK_TYPES and resolved_type != "coding":
         candidates = _rotate_candidates(resolved_type, candidates)
 
     attempts = []

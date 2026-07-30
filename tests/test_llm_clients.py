@@ -241,3 +241,69 @@ def test_call_deepseek_does_not_use_shared_openrouter_key_even_when_dedicated_ke
 
     with pytest.raises(llm_clients.ProviderUnavailable, match="DEEPSEEK_OPENROUTER_API_KEY"):
         llm_clients.call_deepseek("hello")
+
+# --- 13M: openrouter text-task model rotation list ---------------------------
+
+def test_openrouter_models_contains_exactly_the_five_confirmed_live_models():
+    assert llm_clients.OPENROUTER_MODELS == [
+        "deepseek/deepseek-v4-flash",
+        "openai/gpt-4o-mini",
+        "z-ai/glm-5",
+        "openai/gpt-5",
+        "deepseek/deepseek-v4-pro",
+    ]
+
+
+def test_openrouter_models_prioritizes_deepseek_v4_flash_first():
+    # Explicit user directive (2026-07-30): deepseek/deepseek-v4-flash is
+    # tried before the rest of the rotation set.
+    assert llm_clients.OPENROUTER_MODELS[0] == "deepseek/deepseek-v4-flash"
+
+
+def test_openrouter_default_model_is_unchanged_for_back_compat():
+    assert llm_clients.OPENROUTER_DEFAULT_MODEL == "openai/gpt-4o-mini"
+
+
+def test_call_openrouter_still_defaults_to_the_default_model(monkeypatch):
+    # Direct callers that pass no model kwarg keep getting
+    # OPENROUTER_DEFAULT_MODEL -- rotation lives in
+    # core.ai_provider._openrouter_run_text_task, not here.
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["model"] = kwargs["json"]["model"]
+        return _resp(json_body={"choices": [{"message": {"content": "hi"}}]})
+
+    monkeypatch.setattr(llm_clients.requests, "post", fake_post)
+
+    llm_clients.call_openrouter("hello")
+
+    assert captured["model"] == llm_clients.OPENROUTER_DEFAULT_MODEL
+
+
+def test_call_openrouter_passes_an_explicit_model_through(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["model"] = kwargs["json"]["model"]
+        return _resp(json_body={"choices": [{"message": {"content": "hi"}}]})
+
+    monkeypatch.setattr(llm_clients.requests, "post", fake_post)
+
+    llm_clients.call_openrouter("hello", model="z-ai/glm-5")
+
+    assert captured["model"] == "z-ai/glm-5"
+
+
+@pytest.mark.integration
+def test_call_openrouter_deepseek_v4_flash_against_real_api():
+    # Codifies the 2026-07-28 live verification of the new rotation models
+    # (matching the existing test_call_openrouter_against_real_api pattern).
+    result = llm_clients.call_openrouter(
+        "Reply with exactly the single word: pong", model="deepseek/deepseek-v4-flash"
+    )
+    assert "pong" in result.lower()

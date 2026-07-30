@@ -499,6 +499,8 @@ def test_every_registered_provider_has_a_valid_cost_tier():
         ("openrouter", "paid"),
         ("opencode_claude_sonnet", "paid"),
         ("opencode_claude_opus", "paid"),
+        ("openrouter_claude_opus", "paid"),
+        ("openrouter_claude_sonnet", "paid"),
     ],
 )
 def test_provider_cost_tier_matches_the_static_classification(provider_name, expected_tier):
@@ -526,3 +528,233 @@ def test_deepseek_run_text_task_does_not_use_the_shared_OPENROUTER_API_KEY(monke
     import core.llm_clients as llm_clients
     with pytest.raises(llm_clients.ProviderUnavailable, match="DEEPSEEK_OPENROUTER_API_KEY"):
         ai_provider.get_provider("deepseek")["run_text_task"]("hello")
+
+
+# --- 13M: opencode credential generalization ---------------------------------
+
+def test_opencode_credential_available_checks_each_key_independently(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-zen"}}')
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    assert provider_module._opencode_credential_available("opencode") is True
+    assert provider_module._opencode_credential_available("openrouter") is False
+
+    auth_path.write_text(
+        '{"opencode": {"type": "api", "key": "sk-zen"}, "openrouter": {"type": "api", "key": "sk-or"}}'
+    )
+    assert provider_module._opencode_credential_available("openrouter") is True
+
+
+def test_opencode_credential_available_is_false_when_cli_missing(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text('{"openrouter": {"type": "api", "key": "sk-or"}}')
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    assert provider_module._opencode_credential_available("openrouter") is False
+
+
+def test_opencode_credential_available_is_false_when_auth_file_missing_or_corrupt(monkeypatch, tmp_path):
+    import core.ai_provider as provider_module
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", tmp_path / "auth.json")
+
+    assert provider_module._opencode_credential_available("openrouter") is False
+
+    (tmp_path / "auth.json").write_text("{not json")
+    assert provider_module._opencode_credential_available("openrouter") is False
+
+
+def test_opencode_available_is_a_thin_wrapper_over_the_generalized_helper(monkeypatch):
+    import core.ai_provider as provider_module
+
+    captured = {}
+
+    def fake_credential_available(key):
+        captured["key"] = key
+        return True
+
+    monkeypatch.setattr(provider_module, "_opencode_credential_available", fake_credential_available)
+
+    assert provider_module._opencode_available() is True
+    assert captured["key"] == "opencode"
+
+
+# --- 13M: OpenRouter-billed Claude coding routes via the opencode CLI --------
+
+@pytest.mark.parametrize("provider_name", ["openrouter_claude_opus", "openrouter_claude_sonnet"])
+def test_openrouter_claude_coding_providers_are_registered_with_coding_agent_capability_only(provider_name):
+    providers = ai_provider.list_providers()
+
+    assert provider_name in providers
+    assert "coding_agent" in providers[provider_name]["capabilities"]
+    assert "text_task" not in providers[provider_name]["capabilities"]
+
+
+def test_13v_text_task_openrouter_claude_provider_is_not_overwritten():
+    # 13V shipped a text_task-only "openrouter_claude" (anthropic/
+    # claude-sonnet-4.6 via OpenRouter's plain chat-completions API) for the
+    # Chief Architect chain. 13M's coding routes use distinct keys
+    # (openrouter_claude_opus/openrouter_claude_sonnet) -- the 13V entry must
+    # survive unchanged.
+    providers = ai_provider.list_providers()
+
+    assert "openrouter_claude" in providers
+    assert "text_task" in providers["openrouter_claude"]["capabilities"]
+    assert "coding_agent" not in providers["openrouter_claude"]["capabilities"]
+
+    entry = ai_provider.get_provider("openrouter_claude")
+    assert entry["run_coding_task"] is None
+    assert entry["run_text_task"] is not None
+
+
+@pytest.mark.parametrize(
+    "provider_name,expected_model",
+    [
+        ("openrouter_claude_opus", "openrouter/anthropic/claude-opus-4.7"),
+        ("openrouter_claude_sonnet", "openrouter/anthropic/claude-sonnet-4.6"),
+    ],
+)
+def test_openrouter_claude_coding_providers_default_to_their_openrouter_model(
+    monkeypatch, tmp_path, provider_name, expected_model
+):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["project_path"] = project_path
+        captured["instruction"] = instruction
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider(provider_name)
+    provider["run_coding_task"](str(tmp_path), "build a widget")
+
+    assert captured["model"] == expected_model
+    assert captured["project_path"] == str(tmp_path)
+    assert captured["instruction"] == "build a widget"
+
+
+@pytest.mark.parametrize("provider_name", ["openrouter_claude_opus", "openrouter_claude_sonnet"])
+def test_openrouter_claude_coding_providers_respect_an_explicit_model_override(
+    monkeypatch, tmp_path, provider_name
+):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider(provider_name)
+    provider["run_coding_task"](str(tmp_path), "build a widget", model="openrouter/some/other-model")
+
+    assert captured["model"] == "openrouter/some/other-model"
+
+
+@pytest.mark.parametrize("provider_name", ["openrouter_claude_opus", "openrouter_claude_sonnet"])
+def test_openrouter_claude_coding_providers_are_gated_on_the_openrouter_credential(
+    monkeypatch, tmp_path, provider_name
+):
+    import core.ai_provider as provider_module
+
+    auth_path = tmp_path / "auth.json"
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
+
+    # A Zen-only auth.json is NOT enough -- these bill through OpenRouter.
+    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-zen"}}')
+    assert ai_provider.list_providers()[provider_name]["available"] is False
+
+    auth_path.write_text('{"openrouter": {"type": "api", "key": "sk-or"}}')
+    assert ai_provider.list_providers()[provider_name]["available"] is True
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    assert ai_provider.list_providers()[provider_name]["available"] is False
+
+
+# --- 13M: openrouter text-task model rotation --------------------------------
+
+def test_next_openrouter_model_cycles_through_all_models_before_repeating():
+    import core.ai_provider as provider_module
+    import core.llm_clients as llm_clients
+
+    seen = [provider_module._next_openrouter_model() for _ in range(len(llm_clients.OPENROUTER_MODELS))]
+
+    assert seen == llm_clients.OPENROUTER_MODELS
+    # The next call wraps back to the start of the list.
+    assert provider_module._next_openrouter_model() == llm_clients.OPENROUTER_MODELS[0]
+
+
+def test_next_openrouter_model_starts_from_index_zero_when_no_state_file_exists(isolated_memory):
+    import core.ai_provider as provider_module
+    import core.llm_clients as llm_clients
+
+    assert not (isolated_memory / provider_module.OPENROUTER_MODEL_ROTATION_FILE).exists()
+    assert provider_module._next_openrouter_model() == llm_clients.OPENROUTER_MODELS[0]
+
+
+def test_next_openrouter_model_persists_rotation_state_across_calls(isolated_memory):
+    import core.ai_provider as provider_module
+    from core.memory import load
+
+    provider_module._next_openrouter_model()
+    provider_module._next_openrouter_model()
+
+    # State lives on disk (not in-process), so it survives across calls and
+    # process restarts alike.
+    assert (isolated_memory / provider_module.OPENROUTER_MODEL_ROTATION_FILE).exists()
+    assert load(provider_module.OPENROUTER_MODEL_ROTATION_FILE)["index"] == 2
+
+
+def test_openrouter_run_text_task_uses_the_rotated_model(monkeypatch):
+    import core.llm_clients as llm_clients
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    models_used = []
+
+    def fake_call_openrouter(prompt, model=llm_clients.OPENROUTER_DEFAULT_MODEL, timeout=60):
+        models_used.append(model)
+        return "rotated response"
+
+    monkeypatch.setattr(llm_clients, "call_openrouter", fake_call_openrouter)
+
+    provider = ai_provider.get_provider("openrouter")
+    assert provider["run_text_task"]("hello") == "rotated response"
+    provider["run_text_task"]("hello again")
+
+    assert models_used == llm_clients.OPENROUTER_MODELS[:2]
+
+
+@pytest.mark.integration
+def test_openrouter_claude_sonnet_coding_path_against_real_api(tmp_path):
+    # Codifies the 2026-07-28 live design-session verification: the opencode
+    # CLI drives OpenRouter-hosted Claude with real file-write capability.
+    provider = ai_provider.get_provider("openrouter_claude_sonnet")
+    if not ai_provider.list_providers()["openrouter_claude_sonnet"]["available"]:
+        pytest.skip("openrouter credential not configured in opencode auth.json")
+
+    result = provider["run_coding_task"](
+        str(tmp_path),
+        "Create a file named pong.txt containing exactly the word: pong. Do nothing else.",
+        timeout=300,
+    )
+
+    assert result["success"] is True
+    assert (tmp_path / "pong.txt").exists()

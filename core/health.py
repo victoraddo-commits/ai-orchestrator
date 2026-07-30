@@ -8,6 +8,14 @@ EXPECTED_SERVICES = (
     "pulse",
     "proxdash-backend",
     "proxdash-frontend",
+    "it-manager",
+    "it-manager-mailpit",
+    "watchtower",
+    "code-server",
+    "airdrop-hunter-airdrop-hunter-1",
+    "portfolio-portfolio-1",
+    "docker-watcher",
+    "door-bridge",
 )
 
 

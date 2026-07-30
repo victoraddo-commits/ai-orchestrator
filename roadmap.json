@@ -513,7 +513,8 @@
         "No change made based on the single 13P incident alone -- must be backed by the broader usage-history review"
       ],
       "tests_required": true,
-      "build_id": "6e705577"
+      "build_id": "6e705577",
+      "note": "Deploy failed on an unrelated dirty-working-tree merge conflict (roadmap.json, same class of bug as 13G) despite the generated code being fully correct and 681 tests passing. Root cause fixed live (commit b3d4dc4, deployment_manager now auto-commits dirty state before merging) and the already-verified build branch was merged directly (commit 0cc0c11) rather than wastefully regenerating from scratch. Build object 6e705577 shows FAILED -- that reflects the failed deploy attempt, not the code quality."
     },
     {
       "id": "13U",

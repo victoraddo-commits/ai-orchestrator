@@ -615,12 +615,23 @@ def test_root_endpoint_redirect_follow_lands_on_dashboard():
     assert "Kai Dashboard" in response.text
 
 
-def test_dashboard_does_not_contain_approve_reject_actions():
-    """Phase 16A is read-only -- no approve/reject buttons or forms."""
+def test_dashboard_actions_go_through_proxy_not_directly():
+    """Phase 17D: the dashboard now has interactive actions, but they are
+    routed through /dashboard/api/proxy/* -- never by attaching the real
+    bridge token directly to browser JS.  Confirm the HTML exists and that
+    write actions (approve/reject) reference the proxy path, not a direct
+    /approvals endpoint with an Authorization header embedded in the JS."""
     response = client.get("/dashboard")
 
-    html = response.text.lower()
-    assert "<button" not in html and "<form" not in html
+    html = response.text
+    # Dashboard now intentionally has buttons (approve/reject in Approvals tab)
+    assert "<button" in html.lower()
+    # The JS must use the proxy path for write actions, not direct auth
+    assert "/dashboard/api/proxy/" in html
+    # The bridge token itself must never appear in the HTML
+    from core.api import _load_api_token
+    token = _load_api_token()
+    assert token not in html
 
 
 def test_dashboard_html_does_not_contain_bridge_token():

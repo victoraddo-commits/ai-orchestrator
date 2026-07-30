@@ -552,7 +552,7 @@
       "id": "13W",
       "name": "Cost tracking: cost_tier field + real cost estimates in usage history",
       "description": "No cost_tier field or cost estimation exists anywhere today (confirmed: no references to 'cost_tier' anywhere in core/). Two parts: (1) add a cost_tier field ('free', 'low_cost', 'paid', or similar) to each provider's registration in ai_provider.py -- a static classification, not computed, e.g. groq/gemini free-tier as 'free', minimax/deepseek as 'free_or_low_cost' per the user's own labeling request, openai/claude as 'paid'. Surface it in list_providers()/get_provider_dashboard() output. (2) Real per-call cost estimates in ai_usage_history.json entries where available -- OpenRouter's chat-completions responses already include actual cost data (confirmed live: opencode CLI's own step_finish events carry a real 'cost' field, e.g. cost: 0.0139422, when routed through OpenRouter/Zen), so capture that into record_usage() as a new optional 'cost' field rather than estimating from token counts -- use the real figure when the provider's response includes one, leave it null otherwise (never fabricate a number for a provider that doesn't report one). get_provider_dashboard() (or a new aggregation function reusing it) should surface per-provider cost totals and average completion time (duration_ms is already recorded per call, just needs aggregating) alongside the existing attempts/success counts -- this is the 'AI Workforce Analytics' data the dashboard needs; no new UI is required by this phase, just the underlying data (13J/13O already cover surfacing it visually).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 15,
       "completion_criteria": [
@@ -561,7 +561,8 @@
         "get_provider_dashboard() (or an equivalent aggregation) surfaces per-provider cost totals and average duration_ms",
         "Tests cover: cost_tier present for every registered provider, cost field correctly captured/omitted depending on response shape"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "0c698132"
     },
     {
       "id": "13X",
@@ -635,7 +636,7 @@
       "id": "14B",
       "name": "Dual-repo deploy rollback must not discard unrelated uncommitted changes",
       "description": "Gap found live 2026-07-29 during manual review of 13Q's deploy (build 18488584), before approving: core.deployment_manager._merge_self_modifying_build's dual-repo rollback path (added by 13Q) reacts to a second-repo (plugin) merge failure by running `git reset --hard <pre_merge_head>` on every already-merged live repo, including SELF_PROJECT_PATH -- this project's own live working directory. Unlike the pre-13Q single-repo failure path (`git merge --abort`, which only undoes the merge attempt itself and leaves any other uncommitted working-tree state untouched), `git reset --hard` unconditionally discards ALL uncommitted changes in the working tree at that moment, not just the merge commit being rolled back. Confirmed live: at the moment of this review, `git status` on SELF_PROJECT_PATH showed an uncommitted roadmap.json change (routine autonomous status-sync churn) -- had a dual-repo deploy been running then and failed on the plugin-repo merge, that uncommitted change would have been silently destroyed as collateral damage of rolling back a merge that had nothing to do with it. Confirmed via tests/test_deployment_manager.py (13Q's own new tests): rollback tests only assert the merge itself is cleanly undone, none set up pre-existing uncommitted changes before triggering the second-repo failure path, so this gap has zero test coverage in either direction. This gap is currently inert (requires a dual-repo deploy to actually run and fail on its second repo, which has not happened yet in production), but must be fixed before 13Q's dual-repo path is ever exercised for real against a phase that touches the plugin. Fix: before performing any merge in _merge_self_modifying_build, capture whether the live repo's working tree is dirty (git status --porcelain) with enough information to restore it (e.g. git stash create/store, or refuse the whole deploy upfront if the live repo already has uncommitted changes, forcing a human to resolve that first) -- reset --hard on rollback must restore exactly the state that existed before this deploy attempt started, not silently discard whatever a human or another process had in progress in the live tree at the time.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 13,
       "completion_criteria": [

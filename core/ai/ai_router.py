@@ -59,7 +59,7 @@ ROLE_PROVIDERS = {
     # scoped to DeepSeek -- it authenticates fine for the claude-fable-5/
     # sonnet-5/opus-5 routes too, so swapping it into the shared "opencode"
     # auth.json slot didn't risk any of them.
-    "coding": ["claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "opencode"],
+    "coding": ["claude", "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "opencode_deepseek", "opencode"],
     # minimax paused everywhere (2026-07-28, user directive) after two
     # separate live incidents (builds ca7ff314/13P and 56e6c3d7's first
     # attempt/13R) where it returned hallucinated <minimax:tool_call>
@@ -70,14 +70,14 @@ ROLE_PROVIDERS = {
     # different capability that had no evidence of the same failure, but
     # paused anyway per that directive rather than left running). See 13T,
     # which will review real usage history before deciding what to restore.
-    "planning": ["gemini", "openrouter", "claude"],
+    "planning": ["gemini", "openrouter", "deepseek", "claude"],
     "log_analysis": ["groq", "openrouter", "claude"],
-    "documentation": ["gemini", "groq", "openrouter", "claude"],
+    "documentation": ["gemini", "groq", "openrouter", "deepseek", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
-    "review": ["openai", "gemini", "claude"],
+    "review": ["openai", "gemini", "deepseek", "claude"],
 }
 
 DEFAULT_TASK_TYPE = "coding"

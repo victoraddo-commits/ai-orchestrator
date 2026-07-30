@@ -196,3 +196,48 @@ def test_call_openrouter_against_real_api():
 # unverified-on-success status as OPENAI_API_KEY (insufficient_quota).
 # call_minimax's error-parsing path (business-logic failure via HTTP 200)
 # *is* covered, by test_call_minimax_raises_a_clear_error_on_business_level_failure.
+
+
+def test_call_deepseek_raises_when_key_missing(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_OPENROUTER_API_KEY", raising=False)
+
+    with pytest.raises(llm_clients.ProviderUnavailable):
+        llm_clients.call_deepseek("hello")
+
+
+def test_call_deepseek_extracts_text_from_response(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(
+        llm_clients.requests, "post",
+        lambda *a, **k: _resp(json_body={"choices": [{"message": {"content": "deepseek says hi"}}]}),
+    )
+
+    assert llm_clients.call_deepseek("hello") == "deepseek says hi"
+
+
+def test_call_deepseek_uses_dedicated_key_not_shared_openrouter_key(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_OPENROUTER_API_KEY", "dedicated-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "shared-key")
+
+    captured = {}
+
+    def capture_post(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers", {})
+        return _resp(json_body={"choices": [{"message": {"content": "ok"}}]})
+
+    monkeypatch.setattr(llm_clients.requests, "post", capture_post)
+
+    llm_clients.call_deepseek("hello")
+
+    assert "Bearer dedicated-key" in captured["headers"].get("Authorization", "")
+    assert "shared-key" not in captured["headers"].get("Authorization", "")
+    assert captured["url"] == "https://openrouter.ai/api/v1/chat/completions"
+
+
+def test_call_deepseek_does_not_use_shared_openrouter_key_even_when_dedicated_key_is_missing(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "shared-key")
+    monkeypatch.delenv("DEEPSEEK_OPENROUTER_API_KEY", raising=False)
+
+    with pytest.raises(llm_clients.ProviderUnavailable, match="DEEPSEEK_OPENROUTER_API_KEY"):
+        llm_clients.call_deepseek("hello")

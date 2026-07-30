@@ -501,7 +501,7 @@
       "id": "13T",
       "name": "Determine minimax's actual strengths from real usage data, adjust routing",
       "description": "Follow-on to the 'minimax' common_failure lesson recorded 2026-07-28 (memory/learning_lessons.json) -- that incident showed minimax performs poorly on the plain text_task path (planning/log_analysis/documentation roles in core.ai.ai_router.ROLE_PROVIDERS, backed by core.llm_clients.call_minimax, a tools-less chat-completion call), but this should not be read as 'minimax is bad' broadly -- it's used in a completely different, already-real capacity too: the 'opencode' provider's default model is opencode/minimax-m2.7, run through opencode CLI's actual agentic tool-use loop (core/opencode_bridge.py) for real coding_agent tasks, where it has genuine tools to call rather than hallucinating them. Task: review memory/ai_usage_history.json's existing 'opencode' provider entries (its only model has always been minimax-m2.7, so this data already is minimax's coding-agent track record) alongside its text_task entries under the 'minimax' provider name, and produce an evidence-based recommendation: which roles/task_types minimax is actually reliable for versus not, backed by real success/failure counts rather than the single bad text_task incident. Apply the result to core.ai.ai_router.ROLE_PROVIDERS and/or core.build_learning lesson records (e.g. record a preferred_architecture or successful_solution lesson for whatever roles the data actually supports) -- do not just remove minimax everywhere based on one incident, and do not keep it in the planning/log_analysis/documentation text_task rotation if the data doesn't support it there.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "13S"
       ],
@@ -512,13 +512,14 @@
         "A lesson recorded via core.build_learning.record_lesson capturing the finding for future reference",
         "No change made based on the single 13P incident alone -- must be backed by the broader usage-history review"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "6e705577"
     },
     {
       "id": "13U",
       "name": "Register DeepSeek as a real provider",
       "description": "PARTIALLY DONE ALREADY (2026-07-29, direct live fix, not built by Kai) -- coding capability is done: core.opencode_bridge.OPENCODE_DEFAULT_MODEL now points at opencode/deepseek-v4-pro (was opencode/minimax-m2.7), using the dedicated DEEPSEEK_OPENCODE_ZEN_API_KEY credential (confirmed live to have full OpenCode Zen account access, not narrowly scoped -- also authenticates for opencode/claude-fable-5, so swapping it into the shared 'opencode' auth.json slot didn't risk opencode_claude), and ai_router.ROLE_PROVIDERS['coding'] is back to [claude, opencode_claude, opencode], 3 options again. Remaining scope for this phase: text-task capability only (planning/documentation/review, matching 'Planning: YES, Documentation: YES, Review: YES'). New provider 'deepseek' (or similar name distinct from the existing coding-only 'opencode' route), following the existing llm_clients.py + ai_provider.py pattern (NOT a separate per-provider file -- rejected as inconsistent with how every other provider here is structured). New llm_clients.call_deepseek(prompt, model='deepseek/deepseek-v4-pro') posting directly to https://openrouter.ai/api/v1/chat/completions using DEEPSEEK_OPENROUTER_API_KEY (already in .env, confirmed live -- its own dedicated key, not the shared OPENROUTER_API_KEY the existing 'openrouter' provider uses), registered with run_text_task, added to ROLE_PROVIDERS for planning/documentation/review. Mark cost_tier='free_or_low_cost' wherever the registry gains a cost_tier field (see 13W). DEEPSEEK_OPENCODE_ZEN_API_KEY is now in active use (see above) -- no longer an unresolved credential.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 13,
       "completion_criteria": [
@@ -527,7 +528,8 @@
         "DEEPSEEK_OPENCODE_ZEN_API_KEY is not wired into anything that could collide with or override the existing opencode Zen credential",
         "Tests cover: availability reflects DEEPSEEK_OPENROUTER_API_KEY presence, text_task call uses the dedicated key not the shared OPENROUTER_API_KEY, coding-agent path uses the correct model string"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "194fbf49"
     },
     {
       "id": "13V",

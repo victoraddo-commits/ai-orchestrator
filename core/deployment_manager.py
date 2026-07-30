@@ -166,7 +166,34 @@ def _git_head_of(repo):
     ).stdout.strip()
 
 
+def _commit_dirty_working_tree(live_repo):
+    # roadmap_engine.save_roadmap() writes roadmap.json directly to disk on
+    # every phase status change (in_progress/completed/failed), with no git
+    # commit -- the scheduler can leave the live repo's working tree dirty
+    # at any moment a deploy happens to land. `git merge` refuses to run
+    # against local changes it might overwrite and aborts outright.
+    # Confirmed live 2026-07-29 (twice: 13G, then 13T) -- both builds did
+    # genuinely correct work and passed every gate, only to fail here on an
+    # unrelated concurrent roadmap.json write. Commit whatever's dirty
+    # first so the merge always runs against a clean tree; nothing is lost
+    # either way since these are exactly the bookkeeping writes that were
+    # about to be committed by this same deploy's own merge commit anyway.
+    status = subprocess.run(
+        ["git", "-C", str(live_repo), "status", "--porcelain"], capture_output=True, text=True,
+    )
+    if not status.stdout.strip():
+        return
+
+    subprocess.run(["git", "-C", str(live_repo), "add", "-A"], capture_output=True, text=True)
+    subprocess.run(
+        ["git", "-C", str(live_repo), "commit", "-q", "-m", "Live bookkeeping: concurrent scheduler state updates"],
+        capture_output=True, text=True,
+    )
+
+
 def _merge_branch_into_live_repo(live_repo, clone_path, branch, build_name):
+    _commit_dirty_working_tree(live_repo)
+
     fetch = subprocess.run(
         ["git", "-C", str(live_repo), "fetch", "-q", clone_path, f"{branch}:{branch}"],
         capture_output=True, text=True,

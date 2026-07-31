@@ -883,7 +883,7 @@
       "id": "17A",
       "name": "Parallel self-build execution: serialize only the merge step, not the whole phase",
       "description": "Discovered live 2026-07-30 while investigating why 16A ran before the newly-reprioritized 13X: core.roadmap_manager.advance_roadmap() hard-limits self-modifying builds to exactly one phase in flight at a time, with a comment justifying this by builds sharing SELF_PROJECT_PATH's live working directory -- but that rationale is stale. K3 (completed) already gives every self-build its own isolated clone (_create_isolated_self_clone(), under ~/.ai-orchestrator/self-build-workspaces/), so planning, generation, code review, and security review for multiple phases can safely run concurrently today -- each operates entirely inside its own clone. The one real shared resource is the final merge into the live repo (core.deployment_manager._merge_branch_into_live_repo()) during DEPLOYING, which must still happen one at a time to avoid two builds racing on the same git HEAD. This phase relaxes advance_roadmap()'s single-in-flight check to only serialize the merge/deploy step (e.g. a merge lock or queue), letting build_manager.advance_builds()'s existing MAX_CONCURRENT_BUILDS-based thread pool actually parallelize the earlier lifecycle stages for self-modifying phases the way it already does for regular app builds. Must also handle a build going stale relative to another build that merged first while it was still generating -- e.g. re-checking for merge conflicts and re-running tests against the latest live HEAD immediately before merge, not trusting a plan/generation that ran against an now-outdated base.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "K3"
       ],
@@ -896,7 +896,8 @@
         "Tests cover: two phases advancing in parallel, a merge-time conflict between two concurrently-completed phases, and a build correctly detecting/handling a stale base at merge time"
       ],
       "tests_required": true,
-      "note": "Queued 2026-07-30 per user request, deliberately low priority -- this is a throughput/efficiency improvement, not a blocker for the current top priority (13X/16A/13H, direct Kai chat). Revisit after those ship."
+      "note": "Queued 2026-07-30 per user request, deliberately low priority -- this is a throughput/efficiency improvement, not a blocker for the current top priority (13X/16A/13H, direct Kai chat). Revisit after those ship.",
+      "build_id": "49091397"
     },
     {
       "id": "17B",
@@ -1062,7 +1063,7 @@
       "id": "17K",
       "name": "Full Kai chat parity via Telegram -- not just build Q&A routing",
       "description": "User directive 2026-07-30: full access to Kai chat via Telegram, not just the existing build-approval Q&A routing. Confirmed live: core.telegram_bridge.route_inbound_reply() ONLY routes a message to submit_answer/approve/reject when a build is actively WAITING_FOR_USER_INPUT or awaiting an approval decision -- with no pending build it replies \"No build is currently awaiting input.\" and does nothing else. There is no path from Telegram to the actual open-ended chat capability (13X/POST /kai/chat) at all today. Fix: when route_inbound_reply() finds no pending build to route to, forward the message to the SAME chat-handling logic POST /kai/chat uses (refactor core.api's kai_chat_endpoint to expose a shared internal function -- e.g. handle_kai_chat(text, operator) -- that both the FastAPI route and the Telegram bridge call, rather than duplicating the command-dispatch/approval-intent/open-ended-answer logic a second time) and reply with the result via telegram_bridge.send_message(). This makes Telegram a genuinely equal-access surface to Kai -- same memory (13X chat history), same grounding, same command patterns, and (once 17J ships) the same ability to trigger a new build -- not a second, more limited interface with different rules. Every existing safety guarantee is unchanged: the shared handler is the same one 13X already enforces approval-intent-resolves-through-the-real-approval-system on, so nothing new needs inventing here.",
-      "status": "in_progress",
+      "status": "pending",
       "dependencies": [
         "13X"
       ],
@@ -1075,7 +1076,7 @@
         "Tests cover: no-pending-build message reaches the chat handler; a pending-build message still routes to submit_answer/approve/reject as before; shared history across both surfaces"
       ],
       "tests_required": true,
-      "build_id": "f08318de"
+      "build_id": null
     },
     {
       "id": "17L",

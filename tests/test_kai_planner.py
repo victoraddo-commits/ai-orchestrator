@@ -200,10 +200,12 @@ def test_gather_signals_includes_application_builds_key(monkeypatch):
 
 
 def test_application_build_signals_excludes_self_modifying_builds(monkeypatch):
+    from core.roadmap_manager import SELF_PROJECT_PATH
+
     monkeypatch.setattr(
         planner, "load_builds",
         lambda: [
-            {"id": "b-self", "name": "self-build", "status": "GENERATING", "project_path": "/project/ai-orchestrator"},
+            {"id": "b-self", "name": "self-build", "status": "GENERATING", "project_path": str(SELF_PROJECT_PATH)},
             {"id": "b-app", "name": "my-app", "status": "GENERATING", "project_path": "/project/src/my-app"},
         ],
     )

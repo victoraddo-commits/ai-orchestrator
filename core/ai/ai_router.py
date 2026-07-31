@@ -181,17 +181,48 @@ ROLE_PROVIDERS = {
     # SQL generation, categorization) to groq first -- these are exactly the
     # small-output, low-reasoning-depth calls groq's inference speed suits
     # best, and unlike "planning" they don't need gemini's long-context
-    # strength. groq has NO recorded usage in this system yet (not
-    # registered with an API key -- see ai_provider.py's groq available_fn,
-    # requires GROQ_API_KEY) and no task_type routed anything here before
-    # this, so this whole role starts at provider_evidence's "observe" tier,
-    # not "trusted": gemini/deepseek/claude are real, already-proven
-    # fallbacks, not filler. core.api._extract_build_intent() (17J) is the
-    # first caller -- it was using task_type="planning" for what is really
-    # intent classification, paying for gemini's long-context planning
-    # strength on a task that doesn't need it.
+    # strength. groq has NO recorded usage in this system yet -- not a
+    # credentials problem (GROQ_API_KEY has been valid the whole time), just
+    # that no task_type ever routed anything to it before this, so this role
+    # starts at provider_evidence's "observe" tier, not "trusted":
+    # gemini/deepseek/claude are real, already-proven fallbacks, not filler.
+    # core.api._extract_build_intent() (17J) is the first caller -- it was
+    # using task_type="planning" for what is really intent classification,
+    # paying for gemini's long-context planning strength on a task that
+    # doesn't need it.
     "classification": ["groq", "gemini", "deepseek", "claude"],
 }
+
+# 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
+# domain (legal education for one specific user, not software operations),
+# kept in its own "law_*" namespace rather than mixed into the roles above so
+# its usage/evidence never blends with this system's own operational
+# history. Every entry here is FIXED_ORDER (see below): these are deliberate
+# task-fit assignments from real reasoning about each provider's strengths
+# (gemini's long context for textbooks, claude's depth for case analysis,
+# groq's speed for quick chat), the same rationale "architecture" was given
+# fixed-order treatment for from day one -- not a claim that evidence
+# already backs this ordering, since it's brand new.
+LAW_TUTOR_ROLE_PROVIDERS = {
+    # Long-document / textbook / lecture-note reading -- gemini's long
+    # context window is the whole reason this role exists separately from
+    # law_teaching.
+    "law_document": ["gemini", "claude", "openai", "deepseek"],
+    # Case/judgment analysis -- benefits from careful, deep reasoning over a
+    # fixed set of facts more than from speed or context length.
+    "law_case_analysis": ["claude", "gemini", "openai", "deepseek"],
+    # Teaching/explaining concepts, Socratic questioning -- this system has
+    # no evidence either way for "which model teaches better", so this is a
+    # genuine judgment call, not a measured pick.
+    "law_teaching": ["openai", "claude", "gemini", "deepseek"],
+    # Exam questions, IRAC structuring, mock exams -- moderate depth, moderate cost.
+    "law_exam": ["claude", "openai", "deepseek", "gemini"],
+    # Flashcards -- short, structured, low-stakes, high-volume; cheap and fast matter more than depth here.
+    "law_flashcards": ["deepseek", "groq", "claude", "openai"],
+    # Fast general chat / quick answers -- groq's exact strength.
+    "law_chat": ["groq", "deepseek", "claude", "openai"],
+}
+ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -204,8 +235,14 @@ DEFAULT_TASK_TYPE = "coding"
 # there is backed by real success-rate evidence (see ROLE_PROVIDERS
 # comment), not just a preference, so it deserves the same strict-priority
 # treatment as "architecture" rather than being rotated down to a 1-in-4
-# chance of going first.
-FIXED_ORDER_TASK_TYPES = frozenset({"architecture", "planning"})
+# chance of going first. The law_* roles joined the same day for the same
+# reason "architecture" originally did: each ordering is a deliberate
+# task-fit judgment call (see LAW_TUTOR_ROLE_PROVIDERS comment), not a
+# default that rotation should spread load across.
+FIXED_ORDER_TASK_TYPES = frozenset({
+    "architecture", "planning",
+    "law_document", "law_case_analysis", "law_teaching", "law_exam", "law_flashcards", "law_chat",
+})
 
 USAGE_HISTORY_FILE = "ai_usage_history.json"
 MAX_DESCRIPTION_LENGTH = 200

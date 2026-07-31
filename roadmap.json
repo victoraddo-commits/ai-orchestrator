@@ -1096,6 +1096,22 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 per explicit user directive to expand Kai's capability for managing existing applications without an artificial ceiling. The expansion is in scope/reach, not in safety discipline -- every gate that governs self-builds and new-app builds today governs this too, un-relaxed."
+    },
+    {
+      "id": "17M",
+      "name": "Expand AI provider roster with free-tier options, without displacing top-priority providers",
+      "description": "User asked 2026-07-30: 'Have kai learn to find top tier free/completely free api workers. Prioritize kai's highest priority workers access.' Today core.ai.ai_router.ROLE_PROVIDERS['coding'] is a fixed, manually-curated list (13M ordering: openrouter_claude_opus first, then opencode_claude, openrouter_claude_sonnet, then a fixed tail of claude/opencode_deepseek/opencode/opencode_minimax). There is no mechanism for Kai to discover NEW free-tier AI API providers on its own and add them as additional rotation capacity. This phase: (1) a repeatable evaluation procedure Kai follows before adding any candidate provider -- confirm the tier is genuinely free (no card-on-file trial that auto-bills), confirm the auth method and rate limits, confirm basic response quality on a small held-out prompt set; (2) a documented, reviewable way to add an evaluated provider into core/ai/ai_router.py's rotation as an additional fallback option; (3) new providers must always slot in AFTER the existing top-priority providers in ROLE_PROVIDERS ordering -- they exist purely as extra redundancy/capacity for when the preferred providers are exhausted or unavailable, never ahead of or competing with them for the same quota. 'Prioritize Kai's highest priority workers access' means exactly this: existing preferred providers keep first call every time; new free-tier additions only ever get used as overflow.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 30,
+      "completion_criteria": [
+        "A documented evaluation checklist exists for vetting a candidate free-tier provider before it's added (genuinely free, rate limits known, basic quality check)",
+        "At least one new provider is added to ai_router's rotation after passing that evaluation",
+        "ROLE_PROVIDERS ordering places every existing top-priority provider strictly before any newly-added free-tier provider, covered by a regression test",
+        "The new provider's integration is covered by tests using the same mocking pattern as existing providers in tests/test_ai_router*.py"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-30 directly from the user's Telegram request. Deliberately scoped so this can never quietly demote or starve the existing hand-picked top providers -- it only ever adds fallback capacity underneath them."
     }
   ]
 }

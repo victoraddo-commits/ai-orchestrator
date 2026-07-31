@@ -63,6 +63,7 @@ from core.roadmap_manager import (
     is_autonomous_mode_enabled,
     enable_autonomous_mode,
     disable_autonomous_mode,
+    is_self_modifying,
 )
 
 
@@ -604,6 +605,103 @@ def _resolve_approval_request(scope, request_id_hint):
     return None, detail
 
 
+# 17J: cheap pre-filter before ever spending an AI call on intent
+# extraction -- most chat messages are plain questions, not build requests.
+# Keyword-based, deliberately generous (false positives just cost one extra
+# extraction call that comes back is_build_request=false; false negatives
+# would silently drop a real request into the open-ended chat fallback).
+_BUILD_INTENT_VERBS = ("build", "create", "make", "scaffold", "generate", "start")
+_BUILD_INTENT_NOUNS = (
+    "app", "application", "website", "site", "api", "service",
+    "backend", "frontend", "project",
+)
+
+
+def _looks_like_build_request(text):
+    lowered = text.lower()
+    return any(v in lowered for v in _BUILD_INTENT_VERBS) and any(n in lowered for n in _BUILD_INTENT_NOUNS)
+
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(name):
+    slug = _SLUG_RE.sub("-", name.lower()).strip("-")
+    return slug or "app"
+
+
+# Module-level (not inlined) so tests can point it at a tmp_path instead of
+# monkeypatching pathlib.Path.exists globally.
+APPLICATION_BUILD_BASE_DIR = Path("/project/src")
+
+
+def _unique_project_path(slug):
+    base = APPLICATION_BUILD_BASE_DIR / slug
+    if not base.exists():
+        return str(base)
+    n = 2
+    while (APPLICATION_BUILD_BASE_DIR / f"{slug}-{n}").exists():
+        n += 1
+    return str(APPLICATION_BUILD_BASE_DIR / f"{slug}-{n}")
+
+
+_BUILD_EXTRACTION_PROMPT = (
+    "The operator sent this message to Kai, an AI orchestrator that can build "
+    "new applications on request:\n\n{text}\n\n"
+    "Does this message ask Kai to build/create a new application? Respond with "
+    "ONLY a JSON object, no other text, matching exactly this shape:\n"
+    '{{"is_build_request": true or false, "name": "short-lowercase-hyphenated-slug", '
+    '"description": "a concrete one-to-two sentence description of what to build", '
+    '"template": one of {templates} or null}}\n\n'
+    "If is_build_request is false, name/description/template may be empty/null. "
+    "Pick template only if the request clearly matches one of the listed options "
+    "(e.g. \"react\" for a general website/frontend, \"fastapi\"/\"django\"/\"node-api\" "
+    "for a backend/API); use null if genuinely ambiguous so the build agent decides."
+)
+
+
+def _extract_build_intent(text):
+    """Returns {"name", "description", "template"} if `text` expresses a
+    request to build a new application, else None. Uses the AI router for
+    extraction rather than brittle regex -- free-form requests vary too much
+    to pattern-match reliably. Fails closed: any parsing/provider problem is
+    treated as "not a build request" so a malformed extraction never blocks
+    the normal open-ended chat fallback."""
+    if not _looks_like_build_request(text):
+        return None
+
+    prompt = _BUILD_EXTRACTION_PROMPT.format(text=text, templates=list(TEMPLATES.keys()))
+
+    try:
+        result = delegate(prompt, task_type="planning", capability="text_task")
+        raw = result.get("response", "")
+    except AllProvidersFailed:
+        return None
+
+    match = re.search(r"\{.*\}", raw, re.S)
+    if not match:
+        return None
+
+    try:
+        parsed = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+
+    if not parsed.get("is_build_request"):
+        return None
+
+    name = str(parsed.get("name") or "").strip()
+    description = str(parsed.get("description") or "").strip()
+    if not name or not description:
+        return None
+
+    template = parsed.get("template")
+    if template not in TEMPLATES:
+        template = None
+
+    return {"name": name, "description": description, "template": template}
+
+
 def _reply_content(reply):
     """The assistant turn as it belongs in a chat transcript.
 
@@ -689,6 +787,29 @@ def kai_chat_endpoint(
                     reply = {"matched": True, "description": f"{scope} approval intent", "result": reply_text, "error": None}
                 except InvalidTransition as error:
                     raise HTTPException(status_code=409, detail=str(error))
+        elif (build_intent := _extract_build_intent(text)) is not None:
+            # 17J: create_build() only inserts a REQUESTED build record --
+            # it does not itself plan/generate/deploy anything. The
+            # scheduler's own background cycle (advance_builds) does that
+            # work on its normal cadence, so this call returns immediately;
+            # the chat response must never block on up to
+            # GENERATION_TIMEOUT (1200s) of real generation work. Every gate
+            # this build passes through (architecture/deploy approval) is
+            # the exact same one every other build uses -- create_build()
+            # never approves anything, and nothing under core/kai/ ever
+            # calls approve_architecture/approve_deploy (see
+            # tests/test_kai_identity.py's structural guarantee).
+            project_path = _unique_project_path(_slugify(build_intent["name"]))
+            build = create_build(
+                build_intent["name"], build_intent["description"], project_path,
+                template=build_intent["template"],
+            )
+            reply_text = (
+                f"Started a new build: \"{build_intent['name']}\" (id: {build['id']}) "
+                f"at {project_path}. I'll let you know here (and via Telegram) once "
+                "it needs an architecture or deploy decision from you."
+            )
+            reply = {"matched": True, "description": "build request", "result": reply_text, "error": None}
         else:
             try:
                 signals = gather_signals()

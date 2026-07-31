@@ -25,6 +25,7 @@ from core.lifecycle import new_object, transition, InvalidTransition
 from core.roadmap_engine import load_roadmap, get_progress_summary, add_phase
 from core.health import analyze as analyze_health
 from core.build_learning import get_build_history
+from core.build_manager import load_builds
 from core.ai.ai_router import delegate, get_usage_history, AllProvidersFailed
 from core.ai import provider_health
 
@@ -127,7 +128,36 @@ def _gather_signals():
         "recent_build_failures": recent_failures,
         "recent_ai_usage_failures": recent_usage_failures,
         "provider_quota": provider_health.get_all_quota_snapshots(),
+        "application_builds": _application_build_signals(),
     }
+
+
+# 17J: chat-triggered application builds (core/api.py's POST /kai/chat) are
+# ordinary, non-self-modifying builds -- they don't appear in
+# remaining_roadmap_work at all (that's roadmap phases only), so without
+# this, a chat question like "how's the website build going" had nothing
+# real to ground an answer in. Local import of is_self_modifying to avoid
+# the existing core.roadmap_manager <-> core.kai.planner import cycle
+# (roadmap_manager already imports load_proposals from this module).
+_APP_BUILD_TERMINAL_STATUSES = {"COMPLETED", "FAILED", "ROLLED_BACK"}
+RECENT_APPLICATION_BUILDS_LIMIT = 10
+
+
+def _application_build_signals():
+    from core.roadmap_manager import is_self_modifying
+
+    app_builds = [
+        b for b in load_builds()
+        if not is_self_modifying(b.get("project_path", ""))
+    ]
+
+    active = [b for b in app_builds if b.get("status") not in _APP_BUILD_TERMINAL_STATUSES]
+    recent_terminal = [b for b in app_builds if b.get("status") in _APP_BUILD_TERMINAL_STATUSES][-RECENT_APPLICATION_BUILDS_LIMIT:]
+
+    return [
+        {"id": b.get("id"), "name": b.get("name"), "status": b.get("status"), "project_path": b.get("project_path")}
+        for b in active + recent_terminal
+    ]
 
 
 def _build_prompt(signals):

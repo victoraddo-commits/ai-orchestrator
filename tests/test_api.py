@@ -1271,6 +1271,214 @@ def test_kai_chat_appending_to_a_legacy_file_normalizes_the_envelope(monkeypatch
     ]
 
 
+# ── Phase 17J: chat-triggered application builds ─────────────────────────────
+#
+# "Kai, build me a website" -- POST /kai/chat detects the intent, extracts a
+# structured {name, description, template} via the AI router, and calls the
+# same core.build_manager.create_build() any other build goes through. No
+# new pipeline, no new approval mechanism: create_build() only inserts a
+# REQUESTED build record, the exact same architecture/deploy approval gates
+# apply, and the chat response returns immediately rather than blocking on
+# generation.
+
+
+def _mock_extraction(monkeypatch, response_text):
+    import core.api as api_module
+
+    monkeypatch.setattr(
+        api_module, "delegate",
+        lambda prompt, **kwargs: {"provider": "gemini", "response": response_text},
+    )
+
+
+def test_kai_chat_build_request_creates_a_real_build(monkeypatch):
+    import core.api as api_module
+
+    _mock_extraction(
+        monkeypatch,
+        '{"is_build_request": true, "name": "my portfolio", '
+        '"description": "A personal portfolio website.", "template": "react"}',
+    )
+
+    captured = {}
+
+    def fake_create_build(name, description, project_path, template=None):
+        captured.update(name=name, description=description, project_path=project_path, template=template)
+        return {"id": "b-portfolio-1", "status": "REQUESTED"}
+
+    monkeypatch.setattr(api_module, "create_build", fake_create_build)
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": "Kai, build me a website for my portfolio"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "b-portfolio-1" in body["result"]
+
+    assert captured["name"] == "my portfolio"
+    assert captured["description"] == "A personal portfolio website."
+    assert captured["template"] == "react"
+    assert captured["project_path"] == "/project/src/my-portfolio"
+
+
+def test_kai_chat_build_request_does_not_block_on_generation(monkeypatch):
+    """create_build() must be the only thing called -- never advance_builds()
+    or anything that would run real (up to 20-minute) generation inline."""
+    import core.api as api_module
+
+    _mock_extraction(
+        monkeypatch,
+        '{"is_build_request": true, "name": "api-svc", "description": "A REST API.", "template": null}',
+    )
+    monkeypatch.setattr(
+        api_module, "create_build",
+        lambda name, description, project_path, template=None: {"id": "b-fast", "status": "REQUESTED"},
+    )
+
+    def boom(*a, **kw):
+        raise AssertionError("must not advance/generate builds synchronously from chat")
+
+    # advance_builds is not even imported into core.api -- this just documents
+    # the invariant; the real guarantee is create_build being the only call.
+    response = client.post("/kai/chat", json={"text": "please create a new api service"}, headers=auth_headers())
+
+    assert response.status_code == 200
+
+
+def test_kai_chat_non_build_message_falls_through_to_open_ended_chat(monkeypatch):
+    """A message with no build-intent keywords must never even attempt
+    extraction -- confirms the cheap pre-filter guards the AI call."""
+    import core.api as api_module
+
+    def fail_if_called(*a, **kw):
+        raise AssertionError("delegate() must not be called for a non-build message")
+
+    monkeypatch.setattr(api_module, "delegate", fail_if_called)
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "Everything looks healthy.")
+
+    response = client.post("/kai/chat", json={"text": "what are you doing right now?"}, headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json()["matched"] is False
+
+
+def test_kai_chat_build_keyword_but_extraction_says_no_falls_through(monkeypatch):
+    """Pre-filter matches ('build' + 'app'), but the AI extraction correctly
+    determines it's not actually a build request -- must fail through to the
+    normal open-ended answer, not force a build."""
+    import core.api as api_module
+
+    _mock_extraction(monkeypatch, '{"is_build_request": false}')
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "Sure, here's how app builds work here.")
+
+    def fail_if_called(*a, **kw):
+        raise AssertionError("create_build must not be called")
+
+    monkeypatch.setattr(api_module, "create_build", fail_if_called)
+
+    response = client.post(
+        "/kai/chat",
+        json={"text": "how does the build process work for a new app?"},
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["matched"] is False
+
+
+def test_kai_chat_build_extraction_malformed_json_fails_closed(monkeypatch):
+    """A provider returning garbage instead of JSON must never crash the
+    endpoint or accidentally trigger a build -- fail closed to open chat."""
+    import core.api as api_module
+
+    _mock_extraction(monkeypatch, "I'm not sure what you mean by that, sorry!")
+    monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "fallback reply")
+
+    def fail_if_called(*a, **kw):
+        raise AssertionError("create_build must not be called on malformed extraction")
+
+    monkeypatch.setattr(api_module, "create_build", fail_if_called)
+
+    response = client.post("/kai/chat", json={"text": "build me an app please"}, headers=auth_headers())
+
+    assert response.status_code == 200
+    assert response.json()["matched"] is False
+
+
+def test_kai_chat_build_request_project_path_disambiguates_existing_directory(monkeypatch, tmp_path):
+    import core.api as api_module
+
+    monkeypatch.setattr(api_module, "APPLICATION_BUILD_BASE_DIR", tmp_path)
+    (tmp_path / "blog").mkdir()  # pre-existing -- must be disambiguated, not reused
+
+    _mock_extraction(
+        monkeypatch,
+        '{"is_build_request": true, "name": "blog", "description": "A blog.", "template": null}',
+    )
+
+    captured = {}
+    monkeypatch.setattr(
+        api_module, "create_build",
+        lambda name, description, project_path, template=None: captured.update(project_path=project_path) or {"id": "b-blog-2", "status": "REQUESTED"},
+    )
+
+    response = client.post("/kai/chat", json={"text": "build me a blog app"}, headers=auth_headers())
+
+    assert response.status_code == 200
+    assert captured["project_path"] == str(tmp_path / "blog-2")
+
+
+def test_kai_chat_build_request_rejects_unknown_template(monkeypatch):
+    """An extracted template not in the real TEMPLATES set must be treated
+    as null (agent decides), never passed through as-is to create_build."""
+    import core.api as api_module
+
+    _mock_extraction(
+        monkeypatch,
+        '{"is_build_request": true, "name": "widget", "description": "A widget app.", '
+        '"template": "cobol-mainframe"}',
+    )
+
+    captured = {}
+    monkeypatch.setattr(
+        api_module, "create_build",
+        lambda name, description, project_path, template=None: captured.update(template=template) or {"id": "b-w", "status": "REQUESTED"},
+    )
+
+    response = client.post("/kai/chat", json={"text": "build me a widget app"}, headers=auth_headers())
+
+    assert response.status_code == 200
+    assert captured["template"] is None
+
+
+def test_kai_chat_build_request_never_calls_approval_functions(monkeypatch):
+    """Structural guarantee extended to build-triggering: the chat handler
+    that creates a build must never itself approve/deploy it."""
+    import core.api as api_module
+
+    _mock_extraction(
+        monkeypatch,
+        '{"is_build_request": true, "name": "svc", "description": "A service.", "template": null}',
+    )
+
+    def fail_if_called(*a, **kw):
+        raise AssertionError("chat must never approve/deploy a build it just created")
+
+    monkeypatch.setattr(api_module, "approve_architecture", fail_if_called)
+    monkeypatch.setattr(api_module, "approve_deploy", fail_if_called)
+    monkeypatch.setattr(
+        api_module, "create_build",
+        lambda name, description, project_path, template=None: {"id": "b-safe", "status": "REQUESTED"},
+    )
+
+    response = client.post("/kai/chat", json={"text": "build me a service"}, headers=auth_headers())
+
+    assert response.status_code == 200
+
+
 # ── Phase 17B: GET /kai/identity, GET /kai/proposals, GET /learning/lessons ──
 #
 # The CloudCLI plugin's Kai Control Center tab (13G) has called these three

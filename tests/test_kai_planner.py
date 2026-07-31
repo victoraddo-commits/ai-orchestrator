@@ -12,6 +12,7 @@ def _stub_signals(monkeypatch):
     monkeypatch.setattr(planner, "get_build_history", lambda: [])
     monkeypatch.setattr(planner, "get_usage_history", lambda: [])
     monkeypatch.setattr(planner.provider_health, "get_all_quota_snapshots", lambda: {})
+    monkeypatch.setattr(planner, "load_builds", lambda: [])
 
 
 def _stub_delegate(monkeypatch, response, provider="gemini"):
@@ -183,3 +184,63 @@ def test_promote_proposal_creates_a_proposed_status_roadmap_phase_and_marks_impl
 
     assert result["proposal"]["status"] == "implemented"
     assert result["proposal"]["roadmap_phase_id"] == "13E"
+
+
+# ── Phase 17J: application_builds signal (chat-triggered non-self builds) ────
+
+
+def test_gather_signals_includes_application_builds_key(monkeypatch):
+    _stub_signals(monkeypatch)
+    _stub_delegate(monkeypatch, "[]")
+
+    signals = planner._gather_signals()
+
+    assert "application_builds" in signals
+    assert signals["application_builds"] == []
+
+
+def test_application_build_signals_excludes_self_modifying_builds(monkeypatch):
+    monkeypatch.setattr(
+        planner, "load_builds",
+        lambda: [
+            {"id": "b-self", "name": "self-build", "status": "GENERATING", "project_path": "/project/ai-orchestrator"},
+            {"id": "b-app", "name": "my-app", "status": "GENERATING", "project_path": "/project/src/my-app"},
+        ],
+    )
+
+    signals = planner._application_build_signals()
+
+    ids = [b["id"] for b in signals]
+    assert "b-app" in ids
+    assert "b-self" not in ids
+
+
+def test_application_build_signals_includes_active_and_recent_terminal_not_stale_terminal(monkeypatch):
+    builds = (
+        [{"id": f"b-old-{i}", "name": "x", "status": "COMPLETED", "project_path": "/project/src/x"} for i in range(15)]
+        + [{"id": "b-active", "name": "y", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL", "project_path": "/project/src/y"}]
+    )
+    monkeypatch.setattr(planner, "load_builds", lambda: builds)
+
+    signals = planner._application_build_signals()
+    ids = [b["id"] for b in signals]
+
+    # Active (non-terminal) builds are always included, regardless of count.
+    assert "b-active" in ids
+    # Only the most recent RECENT_APPLICATION_BUILDS_LIMIT terminal builds are kept.
+    assert len([i for i in ids if i.startswith("b-old-")]) == planner.RECENT_APPLICATION_BUILDS_LIMIT
+    assert "b-old-0" not in ids  # oldest, past the limit
+    assert "b-old-14" in ids  # most recent terminal
+
+
+def test_application_build_signals_reports_status_and_path(monkeypatch):
+    monkeypatch.setattr(
+        planner, "load_builds",
+        lambda: [{"id": "b-1", "name": "widget", "status": "WAITING_FOR_DEPLOY_APPROVAL", "project_path": "/project/src/widget"}],
+    )
+
+    signals = planner._application_build_signals()
+
+    assert signals == [{
+        "id": "b-1", "name": "widget", "status": "WAITING_FOR_DEPLOY_APPROVAL", "project_path": "/project/src/widget",
+    }]

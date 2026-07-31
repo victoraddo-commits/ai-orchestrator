@@ -1165,6 +1165,30 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-31. Depends on 17O (the shared knowledge base and its approval workflow) and on the user's payment-provider decision -- do not start implementation until both are resolved."
+    },
+    {
+      "id": "17Q",
+      "name": "Kai Operations Appliance (KOA): dedicated ops/infrastructure-management machine",
+      "description": "User directive 2026-07-31, explicitly deferred: 'This project is NOT to begin immediately... Only after every pending roadmap has been completed, tested, documented, and marked complete should you begin this project.' Do not start this ahead of any other queued phase (17A/17K/17M/17N/17O/17P and anything added after) regardless of how it might otherwise be prioritized. Builds on and supersedes the earlier informational document kai-dedicated-computer-2026-07-31.md (uploaded to /uploads, recommended Zorin OS) -- the user has now selected Zorin and wants the delta between that informational doc and this fuller operational spec identified and folded in, not a second document written from scratch. Missing from the original doc that this spec adds: Infrastructure-as-Code (Ansible playbooks, cloud-init, Docker Compose, systemd units, all version controlled, reproducible from bare hardware), a real observability stack (evaluate and likely adopt Prometheus/Grafana/Loki/Alertmanager/node_exporter, reusing existing components where practical rather than duplicating what 17O's Monitoring Service will already provide), backup verification/restore-testing discipline ('a backup is only successful if it can be restored'), disaster recovery coordination, AI-governance controls for autonomous actions (approval workflows, rollback plans, audit trails, confidence reporting, execution logging), and Zero Trust / least-privilege security posture beyond the basic hardening the original doc covered. Purpose: KOA is an operational command center ONLY -- infrastructure management, secure remote administration, AI orchestration, monitoring, secrets management, WireGuard/SSH management, deployment coordination. It explicitly does NOT host production workloads, document repositories, embeddings, or vector databases -- those stay on 17O's dedicated Knowledge Platform infrastructure, accessed by KOA only through authenticated APIs. Required process before any code/config is written: audit the current Kai ecosystem fresh at that time (do not assume this session's architecture reports are still accurate -- validate against whatever the actual implementation looks like once prior phases are done), review Proxmox A, review Proxmox B if reachable by then, review all running services/security controls/deployment workflows, and produce a readiness report. Required final deliverable before ANY deployment: a Completion Report / executive briefing (not the implementation itself) covering exactly what the user specified -- (1) Executive Summary in plain language, (2) a 'What You Need From Me' checklist covering hardware/OS install/BIOS/storage/encryption passphrases/WireGuard config/SSH key approval/DNS/certificates/Bitwarden/MFA/network+firewall+router changes/backup destinations/credentials/physical installation/testing help/maintenance decisions, each item marked mandatory-or-optional with reasoning, timing, and expected effort, (3) an Integration Plan describing exactly how KOA connects to Proxmox A, Proxmox B, Kai, Juris Kai, Law Tutor, the AI router, monitoring, and backups, (4) a Migration Plan (changes required, downtime, rollback, risks, validation), (5) a Readiness Checklist (ready to purchase hardware / install OS / configure networking / integrate with Kai / migrate / go to production). The user must review and approve this briefing before any production change happens -- this phase's own completion criteria are about producing that briefing, not about the appliance being live.",
+      "status": "pending",
+      "dependencies": [
+        "17A",
+        "17K",
+        "17M",
+        "17N",
+        "17O",
+        "17P"
+      ],
+      "priority": 65,
+      "completion_criteria": [
+        "This phase does not begin advancement until every other roadmap phase queued ahead of it (by priority order) is completed -- verified by the scheduler's normal priority-ordered selection, not started out of turn",
+        "A fresh readiness audit of the ecosystem (Proxmox A/B, running services, security controls, deployment workflows) is produced before any design work, explicitly validated against the then-current implementation rather than assumed from earlier documents",
+        "Infrastructure-as-Code artifacts (Ansible/cloud-init/Compose/systemd, as applicable) are version-controlled from the start, not written ad hoc",
+        "The Completion Report / executive briefing (Executive Summary, What's Needed From The User checklist, Integration Plan, Migration Plan, Readiness Checklist) is delivered and the user has explicitly approved it BEFORE any production deployment step runs",
+        "Heavy/resource-intensive services (document ingestion, OCR, embeddings, vector DB, knowledge repositories) are confirmed to live on 17O's dedicated infrastructure, accessed by KOA only via authenticated API calls -- not duplicated onto the appliance"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-31 directly from the user's Telegram request, explicitly deferred by the user's own instruction to run last, after every other currently-queued phase completes. Do not reprioritize ahead of anything else."
     }
   ]
 }

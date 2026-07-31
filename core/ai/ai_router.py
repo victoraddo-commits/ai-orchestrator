@@ -150,6 +150,14 @@ ROLE_PROVIDERS = {
     # tools wired up), which is the established cause of the failure, so the
     # planning evidence carries. The registry entry stays registered; only
     # the routing is withheld.
+    #
+    # gemini is listed first on real evidence (97.6% success, see the
+    # comparison above) and, like "architecture" below, is in
+    # FIXED_ORDER_TASK_TYPES -- rotation was silently undoing that evidence
+    # by giving every candidate an equal first-try turn, so in practice
+    # gemini was only tried first ~1-in-4 calls despite being the
+    # demonstrably better choice. User flagged this live 2026-07-31 ("why is
+    # kai not using gemini mainly for planning where it exceeds").
     "planning": ["gemini", "openrouter", "deepseek", "claude"],
     # 13V: the Chief Architect chain -- a *named priority list* distinct from
     # general "planning": Claude's judgment is the product here, so unlike
@@ -177,8 +185,12 @@ DEFAULT_TASK_TYPE = "coding"
 # 13V: task types whose ROLE_PROVIDERS order is a strict priority list --
 # 13J's rotation (spread first-try traffic across candidates) is exactly
 # wrong for a chain whose whole point is "this provider is the primary,
-# the rest are redundancy".
-FIXED_ORDER_TASK_TYPES = frozenset({"architecture"})
+# the rest are redundancy". "planning" joined 2026-07-31: gemini's ordering
+# there is backed by real success-rate evidence (see ROLE_PROVIDERS
+# comment), not just a preference, so it deserves the same strict-priority
+# treatment as "architecture" rather than being rotated down to a 1-in-4
+# chance of going first.
+FIXED_ORDER_TASK_TYPES = frozenset({"architecture", "planning"})
 
 USAGE_HISTORY_FILE = "ai_usage_history.json"
 MAX_DESCRIPTION_LENGTH = 200

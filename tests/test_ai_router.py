@@ -543,9 +543,11 @@ def test_get_provider_dashboard_surfaces_a_recorded_claude_error(monkeypatch):
 
 def test_delegate_rotates_starting_candidate_across_successive_calls(monkeypatch):
     # A strict fallback-only order starves whichever candidate never fails
-    # first (e.g. gemini for planning) -- rotation gives every role
-    # candidate a real turn as the first attempt so idle credits (openrouter,
-    # minimax, ...) actually get used instead of sitting untouched.
+    # first (e.g. openai for review) -- rotation gives every role candidate
+    # a real turn as the first attempt so idle credits (openrouter, minimax,
+    # ...) actually get used instead of sitting untouched. ("review" is used
+    # here rather than "planning" because planning is now FIXED_ORDER --
+    # gemini's lead there is evidence-backed, not just a default.)
     import core.ai_provider as ai_provider
 
     review_candidates = ["openai", "gemini", "deepseek", "claude"]
@@ -557,6 +559,26 @@ def test_delegate_rotates_starting_candidate_across_successive_calls(monkeypatch
     seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(5)]
 
     assert seen == review_candidates + ["openai"]
+
+
+def test_delegate_planning_always_tries_gemini_first_not_rotated(monkeypatch):
+    # Regression: "planning" is FIXED_ORDER (like "architecture") because
+    # gemini's lead in ROLE_PROVIDERS["planning"] is backed by real
+    # success-rate evidence, not just a default -- rotation was silently
+    # giving every candidate an equal first-try turn, undermining that
+    # evidence. Unlike test_delegate_rotates_starting_candidate_across_
+    # successive_calls (task_type="review", which DOES rotate), every one
+    # of these repeated calls must land on gemini first.
+    import core.ai_provider as ai_provider
+
+    for name in ai_router.ROLE_PROVIDERS["planning"]:
+        provider = ai_provider.get_provider(name)
+        monkeypatch.setitem(provider, "available_fn", lambda: True)
+        monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None, n=name: f"from {n}")
+
+    seen = [ai_router.delegate("Plan this feature", task_type="planning")["provider"] for _ in range(4)]
+
+    assert seen == ["gemini"] * 4
 
 
 def test_delegate_rotation_is_tracked_independently_per_task_type(monkeypatch):

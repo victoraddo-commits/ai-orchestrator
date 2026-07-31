@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pytest
 
 import core.memory as memory
+import core.law_documents as law_documents
 
 
 @pytest.fixture(autouse=True)
@@ -17,3 +18,14 @@ def isolated_memory(tmp_path, monkeypatch):
     monkeypatch.setattr(memory, "MEMORY_DIR", test_memory_dir)
 
     yield test_memory_dir
+
+
+@pytest.fixture(autouse=True)
+def isolated_law_documents(tmp_path, monkeypatch):
+    test_docs_dir = tmp_path / "law_documents"
+    test_docs_dir.mkdir()
+
+    monkeypatch.setenv("AI_ORCHESTRATOR_LAW_DOCUMENTS_DIR", str(test_docs_dir))
+    monkeypatch.setattr(law_documents, "DOCUMENTS_DIR", test_docs_dir)
+
+    yield test_docs_dir

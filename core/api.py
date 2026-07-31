@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Depends, Request
+from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 import httpx
 from pydantic import BaseModel
@@ -30,6 +30,10 @@ from core.verification import load_verification_history
 from core.learning import summarize
 from core.memory import load, update
 from core.lifecycle import InvalidTransition
+from core.law_documents import (
+    save_document, list_documents, get_document, delete_document,
+    DocumentTooLarge, UnsupportedFileType,
+)
 from core.build_manager import (
     create_build,
     list_builds,
@@ -1022,3 +1026,43 @@ def rollback_build_endpoint(
         raise HTTPException(status_code=404, detail="Build not found")
 
     return result
+
+
+# ── Law library documents (Kai Dashboard upload, 2026-07-31) ────────────────
+# Operator-facing upload of legal textbooks/notes/case judgments that feed
+# the Law Tutor bot's context. Admin-only (require_bridge_token), same as
+# every other write endpoint in this file -- distinct from the Law Tutor
+# bot's own Telegram surface, which has no upload capability of its own.
+
+@app.post("/kai/law-documents")
+async def upload_law_document_endpoint(
+    file: UploadFile = File(...),
+    category: str | None = Form(default=None),
+    jurisdiction: str | None = Form(default=None),
+    operator: str = Depends(require_bridge_token),
+):
+    content = await file.read()
+    try:
+        record = save_document(
+            file.filename or "untitled", content,
+            category=category, jurisdiction=jurisdiction, uploaded_by=operator,
+        )
+    except DocumentTooLarge as error:
+        raise HTTPException(status_code=413, detail=str(error))
+    except UnsupportedFileType as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+    return record
+
+
+@app.get("/kai/law-documents")
+def list_law_documents_endpoint(operator: str = Depends(require_bridge_token)):
+    return {"documents": list_documents()}
+
+
+@app.delete("/kai/law-documents/{doc_id}")
+def delete_law_document_endpoint(doc_id: str, operator: str = Depends(require_bridge_token)):
+    existed = delete_document(doc_id)
+    if not existed:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"ok": True}

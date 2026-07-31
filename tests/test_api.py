@@ -1625,3 +1625,66 @@ def test_learning_lessons_endpoint_does_not_require_auth(monkeypatch):
     response = client.get("/learning/lessons")
 
     assert response.status_code == 200
+
+
+# ── Law library document upload (2026-07-31) ─────────────────────────────────
+
+def test_upload_law_document_requires_auth():
+    response = client.post(
+        "/kai/law-documents",
+        files={"file": ("notes.txt", b"some notes", "text/plain")},
+    )
+    assert response.status_code == 401
+
+
+def test_upload_law_document_stores_and_returns_a_record():
+    response = client.post(
+        "/kai/law-documents",
+        files={"file": ("torts.txt", b"Negligence requires a duty of care.", "text/plain")},
+        data={"category": "torts", "jurisdiction": "Ghana"},
+        headers=auth_headers(),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["filename"] == "torts.txt"
+    assert body["category"] == "torts"
+    assert body["jurisdiction"] == "Ghana"
+    assert body["extracted_chars"] > 0
+
+
+def test_upload_law_document_rejects_unsupported_type():
+    response = client.post(
+        "/kai/law-documents",
+        files={"file": ("virus.exe", b"nope", "application/octet-stream")},
+        headers=auth_headers(),
+    )
+    assert response.status_code == 400
+
+
+def test_list_law_documents_requires_auth():
+    response = client.get("/kai/law-documents")
+    assert response.status_code == 401
+
+
+def test_list_and_delete_law_document_round_trip():
+    upload = client.post(
+        "/kai/law-documents",
+        files={"file": ("contracts.txt", b"Offer and acceptance.", "text/plain")},
+        headers=auth_headers(),
+    )
+    doc_id = upload.json()["id"]
+
+    listing = client.get("/kai/law-documents", headers=auth_headers())
+    assert listing.status_code == 200
+    assert any(d["id"] == doc_id for d in listing.json()["documents"])
+
+    deletion = client.delete(f"/kai/law-documents/{doc_id}", headers=auth_headers())
+    assert deletion.status_code == 200
+
+    listing_after = client.get("/kai/law-documents", headers=auth_headers())
+    assert not any(d["id"] == doc_id for d in listing_after.json()["documents"])
+
+
+def test_delete_nonexistent_law_document_returns_404():
+    response = client.delete("/kai/law-documents/does-not-exist", headers=auth_headers())
+    assert response.status_code == 404

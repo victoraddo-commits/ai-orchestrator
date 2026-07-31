@@ -145,6 +145,29 @@ def test_case_routes_through_law_case_analysis(monkeypatch, authorized):
     assert captured["task_type"] == "law_case_analysis"
 
 
+def test_research_routes_through_law_case_analysis(monkeypatch, authorized):
+    captured = {}
+    monkeypatch.setattr(commands, "delegate", _capturing_delegate(captured))
+
+    bot.handle_message(_msg(authorized, "/research evolution of duty of care"))
+
+    assert captured["task_type"] == "law_case_analysis"
+
+
+def test_argument_routes_through_law_case_analysis(monkeypatch, authorized):
+    captured = {}
+    monkeypatch.setattr(commands, "delegate", _capturing_delegate(captured))
+
+    bot.handle_message(_msg(authorized, "/argument should strict liability apply"))
+
+    assert captured["task_type"] == "law_case_analysis"
+
+
+def test_research_and_argument_without_args_return_usage(authorized):
+    assert "Usage" in bot.handle_message(_msg(authorized, "/research"))
+    assert "Usage" in bot.handle_message(_msg(authorized, "/argument"))
+
+
 def test_flashcards_routes_through_law_flashcards(monkeypatch, authorized):
     captured = {}
     monkeypatch.setattr(commands, "delegate", _capturing_delegate(captured))

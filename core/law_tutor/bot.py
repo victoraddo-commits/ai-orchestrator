@@ -28,25 +28,31 @@ from core.law_tutor import commands
 
 POLL_INTERVAL_SECONDS = 3
 
-HELP_TEXT = """Hi! I'm Kai, in Law Tutor mode. Commands:
+HELP_TEXT = """Hi! I'm Kai, in Legal Intelligence mode. Commands:
 
 /learn <topic> - explain a legal concept, Socratic-style
-/case <case name> - analyze a judgment/case
+/case <case name> - case brief (facts, issue, rule, analysis, decision, precedent)
+/research <question> - investigate a legal question in depth
+/argument <issue> - full argument: issue, law, both sides, evaluation, conclusion
+/debate <topic> - argue both sides, more conversational than /argument
 /quiz [topic] - test your understanding
 /flashcards <topic> - generate flashcards
 /exam <topic> - a mock exam question
 /irac <fact pattern> - structure an IRAC answer
 /studyplan - build/update a revision plan
-/debate <topic> - argue both sides of an issue
 /needspractice <topic> - flag a topic for extra revision
 /progress - see what you've studied and what's flagged
 /help - show this again
 
-You can also just message me normally and I'll do my best to help."""
+You can also just message me normally and I'll do my best to help.
+
+Note: I don't yet ingest uploaded textbooks/PDFs into a persistent knowledge base -- ask your admin if you want that built."""
 
 _COMMAND_HANDLERS = {
     "/learn": lambda chat_id, arg: commands.cmd_learn(chat_id, arg),
     "/case": lambda chat_id, arg: commands.cmd_case(chat_id, arg),
+    "/research": lambda chat_id, arg: commands.cmd_research(chat_id, arg),
+    "/argument": lambda chat_id, arg: commands.cmd_argument(chat_id, arg),
     "/quiz": lambda chat_id, arg: commands.cmd_quiz(chat_id, arg),
     "/flashcards": lambda chat_id, arg: commands.cmd_flashcards(chat_id, arg),
     "/exam": lambda chat_id, arg: commands.cmd_exam(chat_id, arg),

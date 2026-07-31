@@ -51,13 +51,41 @@ def cmd_case(chat_id, case_text):
         return "Usage: /case <case name or citation> -- e.g. /case Donoghue v Stevenson"
     instruction = (
         f"Analyze this case: {case_text}\n"
-        "Cover: case name, court, facts, legal issue, decision, reasoning, the legal "
-        "principle established, why the case matters, and its exam relevance. If you are "
-        "not confident of the specific jurisdiction's citation details, say so plainly "
-        "rather than inventing them, and ask which jurisdiction/course this is for if it "
-        "would change the analysis."
+        "Use the Case Brief Format exactly: Case / Court / Date / Jurisdiction, then Facts, "
+        "Issue, Rule, Analysis, Decision, Precedent, and Exam Application. If you are not "
+        "confident of the specific citation details (court, date, exact holding), say so "
+        "plainly ('I need to verify this authority') rather than inventing them, and ask "
+        "which jurisdiction/course this is for if that would change the analysis."
     )
     return _ask("law_case_analysis", instruction, chat_id, "case", topic=case_text)
+
+
+def cmd_research(chat_id, question_text):
+    if not question_text:
+        return "Usage: /research <question> -- e.g. /research how has the standard for duty of care evolved"
+    instruction = (
+        f"Research this legal question: {question_text}\n"
+        "Do not just summarize -- analyze competing interpretations, historical "
+        "development, judicial trends, and conflicting authorities. Identify any gaps in "
+        "the reasoning you present and suggest where a stronger argument could be made. "
+        "Cite sources (case/statute/commentary, with authority type) wherever you make a "
+        "legal claim, and say 'I need to verify this authority' rather than inventing a "
+        "citation you're not confident of."
+    )
+    return _ask("law_case_analysis", instruction, chat_id, "research", topic=question_text)
+
+
+def cmd_argument(chat_id, issue_text):
+    if not issue_text:
+        return "Usage: /argument <legal issue> -- e.g. /argument should X be liable for Y"
+    instruction = (
+        f"Develop a full legal argument on: {issue_text}\n"
+        "Structure it exactly as: Issue (the legal question), Applicable Law (statutes and "
+        "precedents that apply), Arguments For (the strongest case for one side), Arguments "
+        "Against (the strongest case for the other side), Evaluation (compare both), and "
+        "Conclusion (the most legally supported outcome)."
+    )
+    return _ask("law_case_analysis", instruction, chat_id, "argument", topic=issue_text)
 
 
 def cmd_quiz(chat_id, topic_text):

@@ -1291,6 +1291,26 @@ def _mock_extraction(monkeypatch, response_text):
     )
 
 
+def test_extract_build_intent_uses_classification_task_type(monkeypatch):
+    # 2026-07-31: this is intent classification, not architectural planning
+    # -- it must route through task_type="classification" (groq-first, fast
+    # structured extraction) rather than "planning" (gemini-first, long-
+    # context architecture), which it used before this fix.
+    import core.api as api_module
+
+    captured = {}
+
+    def spy_delegate(prompt, **kwargs):
+        captured.update(kwargs)
+        return {"provider": "gemini", "response": '{"is_build_request": false}'}
+
+    monkeypatch.setattr(api_module, "delegate", spy_delegate)
+
+    api_module._extract_build_intent("Kai, build me a personal website")
+
+    assert captured.get("task_type") == "classification"
+
+
 def test_kai_chat_build_request_creates_a_real_build(monkeypatch):
     import core.api as api_module
 

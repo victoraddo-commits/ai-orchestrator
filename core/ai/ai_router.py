@@ -176,6 +176,21 @@ ROLE_PROVIDERS = {
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
     "review": ["openai", "gemini", "deepseek", "claude"],
+    # 2026-07-31, user directive: route short, structured, high-volume calls
+    # (intent detection, request classification, JSON/command extraction,
+    # SQL generation, categorization) to groq first -- these are exactly the
+    # small-output, low-reasoning-depth calls groq's inference speed suits
+    # best, and unlike "planning" they don't need gemini's long-context
+    # strength. groq has NO recorded usage in this system yet (not
+    # registered with an API key -- see ai_provider.py's groq available_fn,
+    # requires GROQ_API_KEY) and no task_type routed anything here before
+    # this, so this whole role starts at provider_evidence's "observe" tier,
+    # not "trusted": gemini/deepseek/claude are real, already-proven
+    # fallbacks, not filler. core.api._extract_build_intent() (17J) is the
+    # first caller -- it was using task_type="planning" for what is really
+    # intent classification, paying for gemini's long-context planning
+    # strength on a task that doesn't need it.
+    "classification": ["groq", "gemini", "deepseek", "claude"],
 }
 
 CHAT_HISTORY_MAX_MESSAGES = 40

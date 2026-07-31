@@ -673,7 +673,12 @@ def _extract_build_intent(text):
     prompt = _BUILD_EXTRACTION_PROMPT.format(text=text, templates=list(TEMPLATES.keys()))
 
     try:
-        result = delegate(prompt, task_type="planning", capability="text_task")
+        # This is intent classification (does this message ask for a build?
+        # extract a name/description/template), not architectural planning --
+        # task_type="classification" routes it to fast, structured-output
+        # providers (groq once configured) instead of paying for gemini's
+        # long-context planning strength on a task that doesn't need it.
+        result = delegate(prompt, task_type="classification", capability="text_task")
         raw = result.get("response", "")
     except AllProvidersFailed:
         return None

@@ -950,6 +950,39 @@ def test_delegate_planning_task_includes_deepseek_as_a_candidate(monkeypatch):
     assert result["provider"] == "deepseek"
 
 
+def test_classification_role_prefers_groq_and_falls_back_when_unavailable(monkeypatch):
+    # 2026-07-31: new task_type for intent detection / request classification
+    # / structured extraction -- short, fast, low-reasoning-depth calls groq
+    # suits well, distinct from "planning" which core.api._extract_build_intent
+    # used to (mis)use for exactly this kind of call.
+    import core.ai_provider as ai_provider
+
+    assert ai_router.ROLE_PROVIDERS["classification"][0] == "groq"
+
+    groq = ai_provider.get_provider("groq")
+    monkeypatch.setitem(groq, "available_fn", lambda: True)
+    monkeypatch.setitem(groq, "run_text_task", lambda p, timeout=60, project_path=None: "groq classified")
+
+    result = ai_router.delegate("Classify this request", task_type="classification")
+    assert result["provider"] == "groq"
+
+
+def test_classification_role_falls_back_to_gemini_when_groq_has_no_credentials(monkeypatch):
+    # groq has no recorded usage in this system at all (no GROQ_API_KEY
+    # configured) -- must fail closed to a real, already-proven fallback,
+    # not raise, when it's simply not registered with credentials.
+    import core.ai_provider as ai_provider
+
+    monkeypatch.setitem(ai_provider.get_provider("groq"), "available_fn", lambda: False)
+
+    gemini = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(gemini, "available_fn", lambda: True)
+    monkeypatch.setitem(gemini, "run_text_task", lambda p, timeout=60, project_path=None: "gemini classified")
+
+    result = ai_router.delegate("Classify this request", task_type="classification")
+    assert result["provider"] == "gemini"
+
+
 def test_delegate_documentation_task_includes_deepseek_as_a_candidate(monkeypatch):
     import core.ai_provider as ai_provider
 

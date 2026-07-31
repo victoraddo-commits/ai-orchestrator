@@ -55,6 +55,27 @@ def test_delete_nonexistent_document_returns_false():
     assert delete_document("does-not-exist") is False
 
 
+# Regression: doc_id reaches delete_document/get_document_text straight from
+# a URL path parameter (DELETE /kai/law-documents/{doc_id}) with no
+# validation -- a path-traversal doc_id must not escape DOCUMENTS_DIR.
+def test_delete_document_rejects_path_traversal_doc_id(tmp_path):
+    from core.law_documents import DOCUMENTS_DIR
+    sentinel = DOCUMENTS_DIR.parent / "sentinel.txt"
+    sentinel.write_text("must survive")
+
+    assert delete_document("../sentinel.txt") is False
+    assert sentinel.exists()
+    sentinel.unlink()
+
+
+def test_get_document_text_rejects_path_traversal_doc_id():
+    assert get_document_text("../../../etc/passwd") is None
+
+
+def test_delete_document_rejects_malformed_doc_id_even_if_not_traversal():
+    assert delete_document("not-a-valid-hex-id") is False
+
+
 def test_multiple_documents_are_all_listed():
     save_document("a.txt", b"first")
     save_document("b.txt", b"second")

@@ -15,12 +15,28 @@ before volume grows.
 """
 
 import os
+import re
 import shutil
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 from core.memory import update
+
+_DOC_ID_RE = re.compile(r"^[0-9a-f]{12}$")  # matches uuid.uuid4().hex[:12] in save_document
+
+
+def _safe_doc_dir(doc_id):
+    """Returns the document's directory, or None if doc_id isn't a value
+    save_document() could actually have produced -- doc_id reaches here
+    straight from a URL path parameter (see core.api's DELETE endpoint),
+    so this rejects path traversal (`../../etc`) rather than trusting it."""
+    if not _DOC_ID_RE.match(doc_id):
+        return None
+    doc_dir = (DOCUMENTS_DIR / doc_id).resolve()
+    if DOCUMENTS_DIR.resolve() not in doc_dir.parents:
+        return None
+    return doc_dir
 
 
 def _default_documents_dir():
@@ -122,7 +138,9 @@ def get_document(doc_id):
 
 
 def get_document_text(doc_id, max_chars=None):
-    doc_dir = DOCUMENTS_DIR / doc_id
+    doc_dir = _safe_doc_dir(doc_id)
+    if doc_dir is None:
+        return None
     text_path = doc_dir / "extracted.txt"
     if not text_path.exists():
         return None
@@ -131,6 +149,10 @@ def get_document_text(doc_id, max_chars=None):
 
 
 def delete_document(doc_id):
+    doc_dir = _safe_doc_dir(doc_id)
+    if doc_dir is None:
+        return False
+
     def mutate(index):
         index = index if isinstance(index, dict) else {"schema_version": 1, "records": []}
         index["records"] = [r for r in index.get("records", []) if r["id"] != doc_id]
@@ -139,7 +161,6 @@ def delete_document(doc_id):
     existed = get_document(doc_id) is not None
     update(INDEX_FILE, mutate)
 
-    doc_dir = DOCUMENTS_DIR / doc_id
     if doc_dir.exists():
         shutil.rmtree(doc_dir, ignore_errors=True)
 

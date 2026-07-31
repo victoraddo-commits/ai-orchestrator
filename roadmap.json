@@ -1127,6 +1127,44 @@
       ],
       "tests_required": false,
       "note": "Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry."
+    },
+    {
+      "id": "17O",
+      "name": "Ghana Legal Brain: authoritative legal knowledge base for Juris Kai / Law Tutor",
+      "description": "User directive 2026-07-31: build a structured Ghana legal knowledge base so Kai can do real legal research, not just general chat -- constitution, acts of parliament, legislative instruments, case law (Supreme Court / Court of Appeal / High Court), procedure rules, and international law instruments Ghana has ratified. Every entry must be traceable to a real primary source (constitution article, act section, LI, case citation) with source metadata preserved. Primary sources only -- explicitly excludes textbooks, private legal opinions, paid databases, and law firm publications as the FOUNDATION of this base (those stay in the separate, already-built core.law_documents upload path for the Law Tutor bot, which is per-user/operator content, not the shared canonical corpus). Directory taxonomy (user's final structure, 2026-07-31): 01 Constitution (1992 Constitution + amendments), 02 Legislation (Acts, LIs, Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal Procedure, Evidence Rules), 05 Specialized Law (Company/Labour/Land/Tax/Banking/Data Protection), 06 International Law (Treaties, Human Rights Instruments), 07 Legal Reasoning (maxims, interpretation principles, judicial reasoning patterns). The 1992 Constitution is the supreme/foundational authority: any analysis Kai produces that conflicts with it must explicitly cite the conflict rather than staying silent. CRITICAL data-integrity requirement, explicit from the user: content only enters this SHARED knowledge base through operator review via the Kai Dashboard -- Kai must cross-check a candidate document against multiple sources before treating it as authoritative, every addition is timestamped with who approved it, and this is a genuinely new approval workflow to build inside the legal module (distinct from the existing self-build architecture/deploy approval gates). Regular users' own uploads (via Juris Kai, see 17P) NEVER enter this shared base regardless of any per-document fee they paid -- those stay confined to that user's own profile/chat, always labeled as user-uploaded and unverified. Needs an ingestion pipeline (PDF/HTML fetch, OCR for scanned documents, text extraction, per-source-type metadata schema, duplicate/hash detection) and a retrieval layer that preserves citations down to article/section/case-name when Kai answers from it. Estimated volume per the user's own estimate: at least 30GB. Given the current host has only ~15GB free disk shared with unrelated production services (see the 2026-07-31 infra analysis in /uploads), this phase is blocked on relocating storage/compute -- almost certainly Proxmox B once its address/credentials are confirmed with the user (not currently available in this environment). Self-updating: periodically check official sources for new/amended Acts, LIs, and court decisions.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 45,
+      "completion_criteria": [
+        "A per-source-type metadata schema and storage layout exists matching the 7-category taxonomy above, with source URL/citation preserved on every record",
+        "An operator-facing review/approval workflow exists in the Kai Dashboard legal module: candidate documents are cross-checked against multiple sources before entering the shared base, and every approval is timestamped with the approving operator's identity",
+        "Content the user uploads through Juris Kai (17P) is verified to never reach this shared base under any code path -- covered by a test",
+        "Kai's answers grounded in this base include the specific citation (article/section/case name), not just a general reference",
+        "Storage location is confirmed and provisioned (Proxmox B or an explicitly chosen alternative) before bulk ingestion begins -- not built against the current host's limited free disk"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-31. Large, multi-part build -- expect this to need its own sub-plan/design proposal reviewed by the user before implementation starts, similar to how 17N (voice/phone) was scoped."
+    },
+    {
+      "id": "17P",
+      "name": "Juris Kai: multi-tenant paid legal-assistant Telegram bot (subscriptions + per-document billing)",
+      "description": "User directive 2026-07-31: turn the Juris Kai bot (@Juriskai_bot, token already configured) into a paid, multi-tenant product distinct from the private single-user Law Tutor bot (core.law_tutor, built 2026-07-31 for one non-operational family member). Requirements as given: every user gets their own account, no shared accounts; monthly subscription tier; separate small per-document fee for users who want Kai to analyze a specific uploaded document, billed by counting files/pages; if the bot is added to a Telegram group, billing must still apply (not a free loophole); new users get an onboarding disclaimer message ('this is a tutor/research assistant, not a lawyer') before first use. User-uploaded documents/analysis stay scoped to that user's own profile/chat only and are never merged into the shared Ghana Legal Brain corpus (17O) -- always labeled as user-uploaded and unverified when referenced back to that user. Payment provider: user is deciding between Telegram's built-in Payments API and Hubtel (already integrated in this environment for SMS, and the natural fit for Ghana Mobile Money, which the target audience likely uses more than cards) -- do not build billing against a specific provider until that decision is final. New requirement: a dedicated 'Juris Kai' tab on the Kai Dashboard for managing billing, subscriptions, per-user usage, and the document-approval workflow described in 17O. Security boundary: this is NOT the same trust model as core.law_tutor (single trusted family member) -- Juris Kai is open to paying strangers, so it needs real per-user auth/accounts and must NOT gain any path to Kai's operational capabilities (same core.build_manager/core.approval/core.deployment_manager import boundary already enforced and tested for core.law_tutor applies here, arguably with even less room for error given the larger, less-trusted user base).",
+      "status": "pending",
+      "dependencies": [
+        "17O"
+      ],
+      "priority": 46,
+      "completion_criteria": [
+        "Every Juris Kai user has their own isolated account/session -- no shared state between users, covered by a test",
+        "A chosen payment provider (Telegram Payments or Hubtel, per the user's decision) is wired up for both the monthly subscription and the per-document fee, with page/file-count-based pricing for the latter",
+        "The bot correctly detects and bills when added to a group, not just 1:1 chats",
+        "New users receive the required onboarding disclaimer before their first substantive response",
+        "User-uploaded document analysis is verified, by test, to never write into the shared Ghana Legal Brain corpus (17O) under any code path",
+        "A 'Juris Kai' tab exists on the Kai Dashboard covering subscriptions, per-user usage/billing, and (jointly with 17O) the document-approval queue",
+        "This module's import graph never reaches core.build_manager / core.approval / core.deployment_manager, verified the same way as core.law_tutor's existing structural test"
+      ],
+      "tests_required": true,
+      "note": "Queued 2026-07-31. Depends on 17O (the shared knowledge base and its approval workflow) and on the user's payment-provider decision -- do not start implementation until both are resolved."
     }
   ]
 }

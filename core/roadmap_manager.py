@@ -21,7 +21,14 @@ from pathlib import Path
 
 from core.memory import load, save
 from core.roadmap_engine import get_candidate_phases, update_phase
-from core.build_manager import create_build, get_build, load_builds, save_builds, BUILD_TRANSITIONS
+from core.build_manager import (
+    create_build,
+    get_build,
+    load_builds,
+    save_builds,
+    BUILD_TRANSITIONS,
+    MAX_CONCURRENT_BUILDS,
+)
 from core.lifecycle import transition
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 # 13C's Improvement Proposal store -- the source of the risk/expected-benefit
@@ -500,64 +507,178 @@ def _build_description(phase):
     return description
 
 
+def _phase_build_uses_isolated_clone(build):
+    """A self-modifying build is safe to run concurrently with others only
+    when its project_path is an isolated clone under SELF_BUILD_WORKSPACE_ROOT
+    (K3's per-build isolation). A build whose project_path resolves to
+    SELF_PROJECT_PATH itself is the old, unsafe pattern -- it would share
+    the live working directory with anything else in flight, so it must
+    still be serialized (the pre-17A single-in-flight behavior, kept for
+    exactly this case)."""
+
+    project_path = build.get("project_path")
+    if not project_path:
+        return False
+
+    try:
+        resolved = Path(project_path).resolve()
+    except OSError:
+        return False
+
+    if resolved == SELF_PROJECT_PATH:
+        return False
+
+    try:
+        return resolved.parent == SELF_BUILD_WORKSPACE_ROOT.resolve()
+    except OSError:
+        return False
+
+
+def _requires_exclusive(phase, build):
+    """A phase is exclusive -- must run with nothing else in flight -- if
+    either the roadmap entry carries an explicit ``"exclusive": true``
+    (human-settable escape hatch for a phase known unsafe to parallelize,
+    e.g. 17A itself, which changes the concurrency rules it would otherwise
+    run under), or the build's project_path resolves to SELF_PROJECT_PATH
+    directly rather than an isolated clone (the exact unsafe condition the
+    pre-17A single-in-flight guard existed to prevent).
+
+    build may be None -- e.g. when deciding whether to start a new phase
+    that has no build yet, only the phase's own ``"exclusive"`` flag can
+    be checked at that point."""
+
+    if phase.get("exclusive") is True:
+        return True
+
+    if build is not None and not _phase_build_uses_isolated_clone(build):
+        return True
+
+    return False
+
+
+# Ordering of event actions by significance -- when advance_roadmap()
+# collects per-phase events across all in-flight phases in one cycle, the
+# top-level "action" it returns is the highest-significance event observed.
+# Preserves the pre-17A single-return-value contract for consumers that
+# only inspect ``result["action"]`` while still exposing every per-phase
+# outcome for anyone that wants them via ``result["events"]``.
+_EVENT_SIGNIFICANCE = {
+    "phase_failed": 4,
+    "phase_completed": 3,
+    "started_phase": 2,
+    "waiting_on_human": 1,
+    "nothing_to_do": 0,
+}
+
+
+def _select_top_event(events):
+    if not events:
+        return {"action": "nothing_to_do"}
+    return max(events, key=lambda e: _EVENT_SIGNIFICANCE.get(e.get("action"), -1))
+
+
+def _process_in_progress_phase(phase):
+    """Advance a single in-flight phase as far as this cycle can without
+    starting a new phase. Returns the per-phase event dict (same vocabulary
+    as pre-17A: phase_completed / phase_failed / waiting_on_human), or None
+    if the phase has no live build to look at (already-cleaned-up state)."""
+
+    build = get_build(phase["build_id"])
+    if build is None:
+        return None
+
+    # build_manager's own GENERATING handling (_run_generation, reused
+    # as-is) runs generation through to SECURITY_REVIEW/
+    # WAITING_FOR_DEPLOY_APPROVAL in one synchronous call -- there's no
+    # separate at-rest GENERATING state to intercept mid-step without
+    # editing build_manager.py itself. WAITING_FOR_DEPLOY_APPROVAL is the
+    # next state this loop actually observes the build sitting in, so
+    # that's where the self-build test suite runs: once, before a human
+    # is ever asked to approve deploy.
+    if build["status"] == "WAITING_FOR_DEPLOY_APPROVAL" and build.get("self_build_test_result") is None:
+        test_result = _run_self_build_tests(build["project_path"])
+        build = _apply_self_build_test_result(phase["build_id"], test_result) or build
+
+    if build["status"] == "COMPLETED":
+        update_phase(phase["id"], status="completed")
+        return {"action": "phase_completed", "phase_id": phase["id"], "build_id": phase["build_id"]}
+
+    if build["status"] in STOPPING_BUILD_STATUSES:
+        update_phase(phase["id"], status="failed")
+        return {
+            "action": "phase_failed",
+            "phase_id": phase["id"],
+            "build_id": phase["build_id"],
+            "reason": build.get("failure_reason"),
+        }
+
+    return {
+        "action": "waiting_on_human",
+        "phase_id": phase["id"],
+        "build_id": phase["build_id"],
+        "build_status": build["status"],
+    }
+
+
 def advance_roadmap():
     if not is_autonomous_mode_enabled():
         return {"action": "disabled"}
 
     from core.roadmap_engine import load_roadmap
 
-    in_progress = [p for p in load_roadmap()["phases"] if p["status"] == "in_progress" and p.get("build_id")]
+    in_progress_phases = [
+        p for p in load_roadmap()["phases"]
+        if p["status"] == "in_progress" and p.get("build_id")
+    ]
 
-    # Self-modifying builds all operate on this same repo's live working
-    # directory (SELF_PROJECT_PATH), not an isolated clone -- running more
-    # than one concurrently means two builds fighting over `git checkout`
-    # on the same working tree. Confirmed live: this is what crashed the
-    # first build's Claude process. Only one phase may be in flight at a
-    # time, full stop, regardless of whether the roadmap's dependency graph
-    # would otherwise allow another phase to start.
-    for phase in in_progress:
-        build = get_build(phase["build_id"])
-
-        if build is None:
+    # 17A: pre-K3, self-modifying builds all operated on SELF_PROJECT_PATH's
+    # single live working tree, so two builds in flight meant two concurrent
+    # `git checkout` commands fighting for the same working directory --
+    # the old code enforced a hard one-phase-at-a-time cap for exactly that
+    # reason. K3 now gives every self-modifying build its own isolated
+    # clone (_create_isolated_self_clone(), under SELF_BUILD_WORKSPACE_ROOT),
+    # so PLANNING / GENERATING / CODE_REVIEW / SECURITY_REVIEW for multiple
+    # phases run entirely inside their own clones with no shared mutable
+    # state. The only truly shared resource is live-repo HEAD during the
+    # DEPLOYING merge, and that is serialized at a much narrower scope by
+    # deployment_manager._live_merge_lock(). The single-in-flight guard is
+    # kept only for phases that opt into exclusivity (roadmap entry's
+    # ``"exclusive": true``) or for a build whose project_path resolves to
+    # SELF_PROJECT_PATH itself rather than an isolated clone -- see
+    # _requires_exclusive().
+    events = []
+    still_active_phases = []
+    for phase in in_progress_phases:
+        event = _process_in_progress_phase(phase)
+        if event is None:
             continue
+        events.append(event)
+        if event["action"] not in ("phase_completed", "phase_failed"):
+            still_active_phases.append((phase, get_build(phase["build_id"])))
 
-        # build_manager's own GENERATING handling (_run_generation, reused
-        # as-is) runs generation through to SECURITY_REVIEW/
-        # WAITING_FOR_DEPLOY_APPROVAL in one synchronous call -- there's no
-        # separate at-rest GENERATING state to intercept mid-step without
-        # editing build_manager.py itself. WAITING_FOR_DEPLOY_APPROVAL is the
-        # next state this loop actually observes the build sitting in, so
-        # that's where the self-build test suite runs: once, before a human
-        # is ever asked to approve deploy (or, now, before the Approval
-        # Center's own deploy-approval request is even created -- see
-        # build_manager._create_deploy_approval). A failing run transitions
-        # the build straight to FAILED, which the STOPPING_BUILD_STATUSES
-        # check just below then fails the phase for exactly like any other
-        # build failure -- no new path around ARCHITECTURE_APPROVED/
-        # DEPLOY_APPROVAL is added.
-        if build["status"] == "WAITING_FOR_DEPLOY_APPROVAL" and build.get("self_build_test_result") is None:
-            test_result = _run_self_build_tests(build["project_path"])
-            build = _apply_self_build_test_result(phase["build_id"], test_result) or build
+    # Exclusivity: an exclusive phase in flight blocks all new starts;
+    # if any non-exclusive phase is in flight, an exclusive candidate
+    # cannot be started either. Otherwise cap by MAX_CONCURRENT_BUILDS.
+    any_exclusive_in_flight = any(
+        _requires_exclusive(phase, build) for phase, build in still_active_phases
+    )
+    any_in_flight = bool(still_active_phases)
 
-        if build["status"] == "COMPLETED":
-            update_phase(phase["id"], status="completed")
-            return {"action": "phase_completed", "phase_id": phase["id"], "build_id": phase["build_id"]}
+    if any_exclusive_in_flight:
+        return _finalize(events)
 
-        if build["status"] in STOPPING_BUILD_STATUSES:
-            update_phase(phase["id"], status="failed")
-            return {
-                "action": "phase_failed",
-                "phase_id": phase["id"],
-                "build_id": phase["build_id"],
-                "reason": build.get("failure_reason"),
-            }
-
-        return {"action": "waiting_on_human", "phase_id": phase["id"], "build_id": phase["build_id"], "build_status": build["status"]}
+    if len(still_active_phases) >= MAX_CONCURRENT_BUILDS:
+        return _finalize(events)
 
     next_phase = _select_next_phase()
 
     if next_phase is None:
-        return {"action": "nothing_to_do"}
+        return _finalize(events)
+
+    # A candidate marked exclusive cannot start while anything else is in
+    # flight -- it must run alone.
+    if next_phase.get("exclusive") is True and any_in_flight:
+        return _finalize(events)
 
     build = create_build(
         name=next_phase["id"],
@@ -567,4 +688,11 @@ def advance_roadmap():
 
     update_phase(next_phase["id"], status="in_progress", build_id=build["id"])
 
-    return {"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"]}
+    events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"]})
+    return _finalize(events)
+
+
+def _finalize(events):
+    top = dict(_select_top_event(events))
+    top["events"] = events
+    return top

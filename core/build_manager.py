@@ -386,11 +386,12 @@ def _record_if_terminal(build):
 # check") just as readily as a real choice ("database A or database B"),
 # which is worse than not checking at all.
 _SIGNOFF_PATTERNS = re.compile(
-    r"any objections|any concerns|any (?:other |additional )?edge cases"
+    r"any objections|any concerns|any (?:other |additional |specific )?edge cases"
     r"|shall we proceed|does this look good|let me know if"
-    r"|ready to proceed|ready for implementation|before proceeding"
+    r"|ready to proceed|ready for implementation|before proceeding|before we proceed"
     r"|before coding begins|before implementation"
-    r"|that we need to account for|need to account for",
+    r"|that we need to account for|need to account for"
+    r"|you would like addressed|you would like considered",
     re.IGNORECASE,
 )
 

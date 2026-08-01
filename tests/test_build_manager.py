@@ -1212,11 +1212,22 @@ Example rhetorical: Are there any concerns...?
 ### 4. Questions / Clarifications for the Requester
 Everything specified in the roadmap phase and prior clarifications is clear and actionable. Are there any objections or additional edge cases you would like considered before coding begins?"""
 
+# 17A hit this live 2026-08-01, six planning cycles in a row: "specific" and
+# "before we proceed to implementation" weren't in the existing pattern set
+# ("other "/"additional " edge cases, "before implementation"/"before
+# proceeding" as separate phrases), so this exact rhetorical sign-off kept
+# getting treated as a genuine blocking question every single cycle.
+_17A_SPECIFIC_EDGE_CASES_PLAN = """Here is the proposed architecture plan for phase 17A.
+
+### Questions / Clarifications for the Requester
+Everything needed is fully specified. Are there any specific edge cases or additional constraints you would like addressed before we proceed to implementation?"""
+
 
 @pytest.mark.parametrize("plan_text", [
     _13P_DECISION_POINTS_PLAN,
     _13P_SIGNOFF_PLAN,
     _13Y_SELF_REFERENTIAL_PLAN,
+    _17A_SPECIFIC_EDGE_CASES_PLAN,
 ])
 def test_plan_needs_clarification_false_positives_from_13p_and_13y_incidents_are_fixed(plan_text):
     assert build_manager._plan_needs_clarification(plan_text) is False

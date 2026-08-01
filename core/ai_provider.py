@@ -99,7 +99,15 @@ def _claude_run_text_task(prompt, timeout=60, project_path=None):
     )
     result = _claude_run_coding_task(project_path, instruction, timeout=timeout)
 
-    if not result.get("success"):
+    # Confirmed live 2026-08-01: a long/complex prompt got success=True back
+    # from the underlying coding_bridge run with an EMPTY response_text --
+    # not a real answer, but not flagged as a failure either, so delegate()
+    # had no reason to fall through to the next candidate and a caller got
+    # silently handed "". Treat that the same as any other failure so the
+    # router's fallback logic actually engages instead of returning nothing.
+    empty_response = not (result.get("response_text") or "").strip()
+
+    if not result.get("success") or empty_response:
         # Surface whatever actually went wrong verbatim -- this is where a
         # real "usage limit reached" message would show up, but we don't
         # pattern-match for that specific wording since it's never been
@@ -107,6 +115,8 @@ def _claude_run_text_task(prompt, timeout=60, project_path=None):
         # and re-raised so the router's fallback logic engages.
         errors = result.get("tool_errors") or []
         detail = "; ".join(e.get("content", "") for e in errors) or "coding_bridge run did not succeed"
+        if empty_response and result.get("success"):
+            detail = f"succeeded but returned an empty response_text ({detail})"
         provider_health.capture_provider_error("claude", detail=detail)
         raise RuntimeError(f"Claude text task failed: {detail}")
 

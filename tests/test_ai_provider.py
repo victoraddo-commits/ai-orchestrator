@@ -139,6 +139,27 @@ def test_claude_run_text_task_surfaces_raw_error_and_raises_on_failure(monkeypat
     assert "usage limit reached" in snapshot["detail"].lower()
 
 
+def test_claude_run_text_task_treats_a_successful_but_empty_response_as_a_failure(monkeypatch, tmp_path):
+    # Confirmed live 2026-08-01: success=True with an empty response_text
+    # was silently returned as "" instead of triggering delegate()'s
+    # fallback to the next candidate provider.
+    import core.ai_provider as provider_module
+    import core.ai.provider_health as provider_health
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        return {"success": True, "response_text": "", "tool_errors": []}
+
+    monkeypatch.setattr(provider_module, "_claude_run_coding_task", fake_run_coding_task)
+
+    claude = provider_module.get_provider("claude")
+    with pytest.raises(RuntimeError):
+        claude["run_text_task"]("quick question", project_path=str(tmp_path))
+
+    snapshot = provider_health.get_quota_snapshot("claude")
+    assert snapshot["status"] == "error"
+    assert "empty" in snapshot["detail"].lower()
+
+
 def test_claude_run_text_task_uses_a_scratch_workspace_when_no_project_path_given(monkeypatch):
     import core.ai_provider as provider_module
 

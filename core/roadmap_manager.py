@@ -95,15 +95,57 @@ def _self_test_executable():
     return SELF_PROJECT_PATH / ".venv" / "bin" / "pytest"
 
 
+def _sync_clone_with_live_repo(repo_path):
+    # Root-caused live 2026-08-01: three separate self-builds (17A, 17K x2)
+    # failed their test gate on the exact same already-fixed test bug,
+    # because each build's isolated clone was made (git clone from
+    # SELF_PROJECT_PATH) before the fix landed on live main and never
+    # refreshed afterward -- wasting a full generate/review/test cycle each
+    # time on a false positive, not a real defect in the generated code.
+    # `origin` in every clone is SELF_PROJECT_PATH itself (a local path, see
+    # _create_isolated_self_clone), so fetch+merge here always picks up
+    # whatever is current on live main right before the test run that
+    # gates deploy approval -- the same "don't trust a stale base" principle
+    # 17A applies at merge time, applied one step earlier at test time too.
+    try:
+        fetch = subprocess.run(
+            ["git", "fetch", "-q", "origin"],
+            cwd=repo_path, capture_output=True, text=True, timeout=60,
+        )
+        if fetch.returncode != 0:
+            return False, (fetch.stdout or "") + (fetch.stderr or "")
+
+        merge = subprocess.run(
+            ["git", "merge", "--no-edit", "-q", "origin/main"],
+            cwd=repo_path, capture_output=True, text=True, timeout=60,
+        )
+        if merge.returncode != 0:
+            subprocess.run(["git", "merge", "--abort"], cwd=repo_path, capture_output=True, text=True, timeout=30)
+            return False, (merge.stdout or "") + (merge.stderr or "")
+        return True, None
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return False, str(error)
+
+
 def _run_self_build_tests(project_path):
     # A dual-repo workspace's project_path is the parent directory holding
     # both clones -- this repo's own test suite lives in the orchestrator
     # clone, so that's where pytest must run. Single-repo workspaces are the
     # repo root already (unchanged behavior).
+    repo_path = orchestrator_repo_path(project_path)
+
+    synced, sync_error = _sync_clone_with_live_repo(repo_path)
+    if not synced:
+        return {
+            "passed": False,
+            "returncode": None,
+            "output": f"Stale base: could not sync build clone with live main before testing -- {sync_error}",
+        }
+
     try:
         completed = subprocess.run(
             [str(_self_test_executable())] + SELF_TEST_ARGS,
-            cwd=orchestrator_repo_path(project_path),
+            cwd=repo_path,
             capture_output=True,
             text=True,
             timeout=SELF_TEST_TIMEOUT,

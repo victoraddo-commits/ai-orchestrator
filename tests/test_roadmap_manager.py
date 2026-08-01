@@ -543,18 +543,79 @@ def test_run_self_build_tests_uses_the_fixed_pytest_command(monkeypatch, tmp_pat
 
 
 def test_run_self_build_tests_reports_failure_on_nonzero_exit(monkeypatch, tmp_path):
-    class FakeCompleted:
+    class FakeSyncOk:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    class FakeTestFailure:
         returncode = 1
         stdout = ""
         stderr = "1 failed, 2 passed"
 
-    monkeypatch.setattr(roadmap_manager.subprocess, "run", lambda *a, **k: FakeCompleted())
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        return FakeTestFailure() if cmd[0].endswith("pytest") else FakeSyncOk()
+
+    monkeypatch.setattr(roadmap_manager.subprocess, "run", fake_run)
 
     result = roadmap_manager._run_self_build_tests(str(tmp_path))
 
     assert result["passed"] is False
     assert result["returncode"] == 1
     assert "1 failed" in result["output"]
+
+
+def test_run_self_build_tests_syncs_the_clone_with_live_main_before_testing(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeOk:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        calls.append(cmd)
+        return FakeOk()
+
+    monkeypatch.setattr(roadmap_manager.subprocess, "run", fake_run)
+
+    roadmap_manager._run_self_build_tests(str(tmp_path))
+
+    assert calls[0] == ["git", "fetch", "-q", "origin"]
+    assert calls[1] == ["git", "merge", "--no-edit", "-q", "origin/main"]
+    assert calls[2][0].endswith("pytest")
+
+
+def test_run_self_build_tests_reports_stale_base_without_running_pytest_on_merge_conflict(monkeypatch, tmp_path):
+    class FakeFetchOk:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    class FakeMergeConflict:
+        returncode = 1
+        stdout = ""
+        stderr = "CONFLICT (content): Merge conflict in core/api.py"
+
+    calls = []
+
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        calls.append(cmd)
+        if cmd[:2] == ["git", "fetch"]:
+            return FakeFetchOk()
+        if cmd[:2] == ["git", "merge"] and "--abort" not in cmd:
+            return FakeMergeConflict()
+        return FakeFetchOk()
+
+    monkeypatch.setattr(roadmap_manager.subprocess, "run", fake_run)
+
+    result = roadmap_manager._run_self_build_tests(str(tmp_path))
+
+    assert result["passed"] is False
+    assert "Stale base" in result["output"]
+    assert "CONFLICT" in result["output"]
+    assert not any(str(c[0]).endswith("pytest") for c in calls)
+    assert ["git", "merge", "--abort"] in calls
 
 
 def test_run_self_build_tests_handles_a_missing_pytest_executable(monkeypatch, tmp_path):

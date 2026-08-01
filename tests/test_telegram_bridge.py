@@ -344,14 +344,34 @@ def test_route_inbound_reply_approve_deploy(monkeypatch):
     assert result["action"] == "approve_deploy"
 
 
-def test_route_inbound_reply_no_pending_build():
+def test_route_inbound_reply_no_pending_build_forwards_to_kai_chat(monkeypatch):
+    """17K: When no build is pending, route_inbound_reply must forward the
+    message to handle_kai_chat and return a real chat answer -- NOT the old
+    'No build is currently awaiting input.' dead-end."""
+    import core.api as api_module
+
+    called = {}
+
+    def fake_handle_kai_chat(text, operator):
+        called["text"] = text
+        called["operator"] = operator
+        return {"matched": False, "response": "Hi! I'm Kai, your orchestrator."}
+
+    monkeypatch.setattr(api_module, "handle_kai_chat", fake_handle_kai_chat)
+    # Force lazy import cache to refresh so the bridge picks up the monkeypatched version.
+    import core.telegram_bridge as tb_module
+    tb_module._handle_kai_chat = fake_handle_kai_chat
+
     result = tb.route_inbound_reply(
-        {"text": "hello", "from": {"id": "612786480"}},
+        {"text": "hello", "from": {"id": "612786480", "first_name": "Dev"}},
         pending_builds=[],
     )
 
-    assert result["routed"] is False
-    assert "No build" in result["reply"]
+    assert result["routed"] is True
+    assert result["action"] == "kai_chat"
+    assert called["text"] == "hello"
+    assert "Hi! I'm Kai" in result["reply"]
+    assert "No build" not in result["reply"]
 
 
 def test_route_inbound_reply_multiple_pending_builds():
@@ -592,3 +612,271 @@ def test_operator_name_without_username():
 def test_operator_name_id_only():
     name = tb._operator_name({"id": "612786480"})
     assert "tg:612786480" in name
+
+
+# ---------------------------------------------------------------------------
+# Phase 17K: Telegram full Kai chat access
+# ---------------------------------------------------------------------------
+
+
+def test_17k_no_pending_build_calls_handle_kai_chat(monkeypatch):
+    """When no build is pending, route_inbound_reply calls handle_kai_chat
+    and returns the response -- the old 'No build is currently awaiting
+    input.' dead-end must never appear."""
+    import core.telegram_bridge as tb_module
+
+    def fake_handle_kai_chat(text, operator):
+        return {"matched": False, "response": "Kai says hello from shared handler."}
+
+    tb_module._handle_kai_chat = fake_handle_kai_chat
+
+    result = tb.route_inbound_reply(
+        {"text": "What is the roadmap status?", "from": {"id": "612786480"}},
+        pending_builds=[],
+    )
+
+    assert result["routed"] is True
+    assert result["action"] == "kai_chat"
+    assert "Kai says hello" in result["reply"]
+    assert "No build" not in result["reply"]
+
+    # Restore so other tests aren't affected.
+    tb_module._handle_kai_chat = None
+
+
+def test_17k_pending_build_still_routes_to_submit_answer(monkeypatch):
+    """With a build in WAITING_FOR_USER_INPUT, route_inbound_reply must route
+    to submit_answer -- not to the chat handler -- preserving the existing
+    build Q&A priority."""
+    builds = [
+        {
+            "id": "b-qa",
+            "name": "17K-test",
+            "status": "WAITING_FOR_USER_INPUT",
+            "pending_question": "SQLite or Postgres?",
+        }
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    called = {}
+
+    def fake_submit_answer(build_id, answer):
+        called["build_id"] = build_id
+        called["answer"] = answer
+        return {"id": build_id, "name": "17K-test", "status": "PLANNING"}
+
+    import core.build_manager as bm
+    monkeypatch.setattr(bm, "submit_answer", fake_submit_answer)
+
+    # Ensure handle_kai_chat is NOT called.
+    import core.telegram_bridge as tb_module
+    chat_called = {"yes": False}
+
+    original = tb_module._handle_kai_chat
+
+    def spy_chat(text, operator):
+        chat_called["yes"] = True
+        return {"matched": False, "response": "should not be called"}
+
+    tb_module._handle_kai_chat = spy_chat
+
+    try:
+        result = tb.route_inbound_reply(
+            {"text": "PostgreSQL", "from": {"id": "612786480"}},
+            pending_builds=builds,
+        )
+    finally:
+        tb_module._handle_kai_chat = original
+
+    assert result["routed"] is True
+    assert result["action"] == "submit_answer"
+    assert called["answer"] == "PostgreSQL"
+    assert chat_called["yes"] is False, "handle_kai_chat must NOT be called when a build is pending"
+
+
+def test_17k_pending_build_approve_routes_to_approve_not_chat(monkeypatch):
+    """Approval messages ('approve') must still go to approve_architecture
+    when a build is waiting, not to the open-ended chat handler."""
+    builds = [
+        {"id": "b-arch", "name": "17K-arch", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"}
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    import core.build_manager as bm
+    monkeypatch.setattr(bm, "approve_architecture", lambda bid, operator=None: {"id": bid, "status": "ARCHITECTURE_APPROVED"})
+
+    import core.telegram_bridge as tb_module
+    original = tb_module._handle_kai_chat
+    chat_called = {"yes": False}
+
+    def spy_chat(text, operator):
+        chat_called["yes"] = True
+        return {"matched": False, "response": "wrong path"}
+
+    tb_module._handle_kai_chat = spy_chat
+
+    try:
+        result = tb.route_inbound_reply(
+            {"text": "approve", "from": {"id": "612786480"}},
+            pending_builds=builds,
+        )
+    finally:
+        tb_module._handle_kai_chat = original
+
+    assert result["routed"] is True
+    assert result["action"] == "approve_architecture"
+    assert chat_called["yes"] is False
+
+
+def test_17k_shared_implementation_behavior_change_visible_from_both_surfaces(monkeypatch):
+    """Verify the shared handler contract: a single change to handle_kai_chat
+    is immediately visible from both POST /kai/chat (via the API) and the
+    Telegram route_inbound_reply path -- there is no parallel copy of logic.
+
+    We monkeypatch handle_kai_chat with a custom implementation and confirm
+    that both callers invoke that same function, not independent copies."""
+    import core.api as api_module
+    import core.telegram_bridge as tb_module
+
+    sentinel_calls = []
+
+    def sentinel_handler(text, operator):
+        sentinel_calls.append({"text": text, "operator": operator})
+        return {"matched": False, "response": f"sentinel:{text}"}
+
+    # Patch the function in api module.
+    monkeypatch.setattr(api_module, "handle_kai_chat", sentinel_handler)
+    # Also update the cached reference in telegram_bridge.
+    tb_module._handle_kai_chat = sentinel_handler
+
+    try:
+        from fastapi.testclient import TestClient
+        client = TestClient(api_module.app)
+
+        def _auth_headers():
+            return {"Authorization": f"Bearer {api_module._load_api_token()}"}
+
+        # Call via POST /kai/chat.
+        resp = client.post("/kai/chat", json={"text": "test from api"}, headers=_auth_headers())
+        assert resp.status_code == 200
+        assert "sentinel:test from api" in resp.json().get("response", "")
+
+        # Call via Telegram bridge.
+        tg_result = tb.route_inbound_reply(
+            {"text": "test from telegram", "from": {"id": "612786480"}},
+            pending_builds=[],
+        )
+        assert tg_result["routed"] is True
+        assert "sentinel:test from telegram" in tg_result["reply"]
+
+        # Both calls went through the SAME sentinel.
+        assert len(sentinel_calls) == 2
+        texts = {c["text"] for c in sentinel_calls}
+        assert "test from api" in texts
+        assert "test from telegram" in texts
+    finally:
+        tb_module._handle_kai_chat = None
+
+
+def test_17k_shared_history_across_telegram_and_api(monkeypatch):
+    """Conversation history (kai_chat_history.json) is the same file for
+    both surfaces: a message written by the API side is visible when the
+    Telegram side reads it, because both call the same _load/_save helpers.
+
+    This is a structural/unit test -- it writes a known message to the
+    chat history via the API helper and confirms the Telegram-side
+    handle_kai_chat call would receive that same history (i.e., the history
+    is NOT per-surface; there are no separate files)."""
+    import core.api as api_module
+    import core.telegram_bridge as tb_module
+
+    # Write a known message to history via the API's own save helper.
+    api_module._save_chat_history([
+        {"role": "user", "content": "prior API message"},
+        {"role": "assistant", "content": "prior API answer"},
+    ])
+
+    # Confirm the same history is visible via _load_chat_history (shared store).
+    loaded = api_module._load_chat_history()
+    assert any(m["content"] == "prior API message" for m in loaded), \
+        "API-written message not visible via _load_chat_history"
+
+    # Now simulate a Telegram chat call: handle_kai_chat reads from that same
+    # file. We stub the AI so no network call happens.
+    history_seen_by_handler = []
+
+    def capturing_handler(text, operator):
+        # Read history INSIDE the call to prove it sees the prior API context.
+        h = api_module._load_chat_history()
+        history_seen_by_handler.extend(h)
+        return {"matched": False, "response": "Telegram answer"}
+
+    tb_module._handle_kai_chat = capturing_handler
+
+    try:
+        result = tb.route_inbound_reply(
+            {"text": "Telegram question", "from": {"id": "612786480"}},
+            pending_builds=[],
+        )
+        assert result["routed"] is True
+    finally:
+        tb_module._handle_kai_chat = None
+
+    # The Telegram-side handler saw the API's prior message in the shared history.
+    contents = [m["content"] for m in history_seen_by_handler]
+    assert "prior API message" in contents, \
+        "Telegram handler did not see the prior API message in shared history"
+
+
+def test_17k_real_shared_history_end_to_end(monkeypatch):
+    """End-to-end shared history test using the real handle_kai_chat, with
+    AI calls stubbed to return fast.
+
+    A question via POST /kai/chat is saved to history; a subsequent Telegram
+    message calls the same handler and thus reads that same history file,
+    proving both surfaces share context."""
+    import core.api as api_module
+    import core.telegram_bridge as tb_module
+
+    # Stub the AI and planner so no real network call is made.
+    monkeypatch.setattr(api_module, "ai_chat", lambda history, signals: "AI answer")
+    monkeypatch.setattr(api_module, "gather_signals", lambda: {})
+
+    # Stub kai_dispatch to always be unmatched so we reach the AI fallback.
+    monkeypatch.setattr(api_module, "kai_dispatch", lambda text: {"matched": False})
+
+    # Make sure the bridge uses the REAL handle_kai_chat (not a stub).
+    tb_module._handle_kai_chat = None  # reset lazy cache so it re-imports
+
+    from fastapi.testclient import TestClient
+    client = TestClient(api_module.app)
+
+    def _auth():
+        return {"Authorization": f"Bearer {api_module._load_api_token()}"}
+
+    # Step 1: Chat via POST /kai/chat.
+    resp = client.post("/kai/chat", json={"text": "API question"}, headers=_auth())
+    assert resp.status_code == 200
+
+    # Step 2: Confirm history was written.
+    history_before_tg = api_module._load_chat_history()
+    user_msgs = [m for m in history_before_tg if m["role"] == "user"]
+    assert any(m["content"] == "API question" for m in user_msgs), \
+        "API question not persisted to kai_chat_history.json"
+
+    # Step 3: Send a message via Telegram (no pending build).
+    # Re-import to get the real handle_kai_chat now that _handle_kai_chat=None.
+    tb_module._import_kai_chat()
+    result = tb.route_inbound_reply(
+        {"text": "Telegram question", "from": {"id": "612786480"}},
+        pending_builds=[],
+    )
+    assert result["routed"] is True
+    assert result["action"] == "kai_chat"
+    assert "AI answer" in result["reply"]
+
+    # Step 4: The history now has BOTH the API message and the Telegram message.
+    history_after = api_module._load_chat_history()
+    all_user_msgs = [m["content"] for m in history_after if m["role"] == "user"]
+    assert "API question" in all_user_msgs, "API question vanished from history after Telegram message"
+    assert "Telegram question" in all_user_msgs, "Telegram question not saved to shared history"

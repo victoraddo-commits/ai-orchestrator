@@ -82,15 +82,26 @@ STOPPING_BUILD_STATUSES = {"FAILED", "ROLLED_BACK"}
 # the clone actually being validated, so tests run against the generated
 # code, not the live repo's own (unchanged) copy.
 #
-# -m "not integration": confirmed live 2026-08-01, this exact gate failed
+# -m "not external_api": confirmed live 2026-08-01, this exact gate failed
 # FOUR separate self-builds in one night on the same two OpenRouter-hitting
-# integration tests (test_openrouter_claude_sonnet_coding_path_against_real_api,
+# tests (test_openrouter_claude_sonnet_coding_path_against_real_api,
 # test_call_openrouter_against_real_api) -- real external-API flakiness with
 # zero relation to whether the generated code is correct. A test that
 # depends on a third party's uptime has no business gating an automated
-# deploy decision. These tests still run in the normal (non-self-build)
-# `pytest tests/` suite -- only the self-build gate excludes them.
-SELF_TEST_ARGS = ["tests/", "-m", "not integration"]
+# deploy decision.
+#
+# Deliberately NOT "-m not integration": a security review of the first cut
+# of this fix (which used "not integration") caught that test_sandbox.py and
+# test_security_scanner.py are ALSO marked integration -- those exercise
+# real Docker sandbox isolation and the real security scanners, exactly the
+# checks that must NOT be silently skipped before a self-modifying deploy.
+# external_api (pytest.ini) is a narrower, strict subset of integration:
+# only tests that call a real third-party API get it, so those two files
+# (and test_deployment_manager.py's local-Docker-only test) keep gating
+# deploys while the genuinely third-party-dependent tests don't. All of
+# these tests still run in the normal (non-self-build) `pytest tests/`
+# suite -- only the self-build gate excludes external_api ones.
+SELF_TEST_ARGS = ["tests/", "-m", "not external_api"]
 SELF_TEST_TIMEOUT = 300
 SELF_TEST_OUTPUT_LIMIT = 10000
 

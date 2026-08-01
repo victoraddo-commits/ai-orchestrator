@@ -174,18 +174,21 @@ def test_call_groq_never_leaks_key_in_raised_error(monkeypatch):
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_call_gemini_against_real_api():
     result = llm_clients.call_gemini("Reply with exactly the single word: pong")
     assert "pong" in result.lower()
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_call_groq_against_real_api():
     result = llm_clients.call_groq("Reply with exactly the single word: pong")
     assert "pong" in result.lower()
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_call_openrouter_against_real_api():
     result = llm_clients.call_openrouter("Reply with exactly the single word: pong")
     assert "pong" in result.lower()
@@ -300,6 +303,7 @@ def test_call_openrouter_passes_an_explicit_model_through(monkeypatch):
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_call_openrouter_deepseek_v4_flash_against_real_api():
     # Codifies the 2026-07-28 live verification of the new rotation models
     # (matching the existing test_call_openrouter_against_real_api pattern).

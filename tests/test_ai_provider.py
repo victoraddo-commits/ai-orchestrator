@@ -743,6 +743,7 @@ def test_openrouter_run_text_task_uses_the_rotated_model(monkeypatch):
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_openrouter_claude_sonnet_coding_path_against_real_api(tmp_path):
     # Codifies the 2026-07-28 live design-session verification: the opencode
     # CLI drives OpenRouter-hosted Claude with real file-write capability.

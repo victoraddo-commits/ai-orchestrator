@@ -539,7 +539,7 @@ def test_run_self_build_tests_uses_the_fixed_pytest_command(monkeypatch, tmp_pat
 
     assert captured["cmd"] == [
         str(roadmap_manager.SELF_PROJECT_PATH / ".venv" / "bin" / "pytest"),
-        "tests/", "-m", "not integration",
+        "tests/", "-m", "not external_api",
     ]
     assert captured["cwd"] == str(tmp_path)
     assert result == {"passed": True, "returncode": 0, "output": "3 passed"}
@@ -758,3 +758,36 @@ def test_advance_roadmap_never_auto_approves_anything():
     source = inspect.getsource(roadmap_manager)
     assert "approve_architecture" not in source
     assert "approve_deploy(" not in source
+
+
+def test_self_build_gate_marker_excludes_only_third_party_api_tests_not_local_security_checks():
+    # Real regression test for a caught-live security-review finding: the
+    # first cut of this fix used "-m not integration", which also silently
+    # excluded test_sandbox.py (real Docker sandbox isolation) and
+    # test_security_scanner.py (real bandit/semgrep scans) from the
+    # self-build deploy gate -- exactly the checks that must NOT be skipped
+    # before a self-modifying deploy. external_api must be a strict subset
+    # of integration containing ONLY genuinely third-party-API-dependent
+    # tests, verified here against pytest's own marker collection rather
+    # than just asserting the command string.
+    import subprocess
+
+    result = subprocess.run(
+        [str(roadmap_manager.SELF_PROJECT_PATH / ".venv" / "bin" / "pytest"),
+         "--collect-only", "-q", "-m", "not external_api"],
+        cwd=str(roadmap_manager.SELF_PROJECT_PATH),
+        capture_output=True, text=True, timeout=60,
+    )
+
+    collected = result.stdout
+
+    # Local, no-third-party-API integration tests must still be collected
+    # (i.e. still gate self-modifying deploys).
+    assert "test_run_in_sandbox_actually_runs_a_real_container" in collected
+    assert "test_run_all_scans_against_a_real_vulnerable_fixture" in collected
+    assert "test_deploy_build_real_end_to_end" in collected
+
+    # Genuinely third-party-API-dependent tests must be excluded.
+    assert "test_call_openrouter_against_real_api" not in collected
+    assert "test_openrouter_claude_sonnet_coding_path_against_real_api" not in collected
+    assert "test_call_gemini_against_real_api" not in collected

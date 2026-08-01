@@ -4,6 +4,7 @@ import core.ai.ai_router as ai_router
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_live_delegate_architecture_design_routes_to_gemini():
     result = ai_router.delegate("Design an application architecture for a todo list app")
 
@@ -13,6 +14,7 @@ def test_live_delegate_architecture_design_routes_to_gemini():
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_live_delegate_log_analysis_routes_to_groq():
     result = ai_router.delegate("Analyze Docker error log: container exited with code 137")
 
@@ -22,6 +24,7 @@ def test_live_delegate_log_analysis_routes_to_groq():
 
 
 @pytest.mark.integration
+@pytest.mark.external_api
 def test_live_dashboard_reflects_real_quota_after_calls():
     ai_router.delegate("Analyze Docker error log")
 

@@ -537,7 +537,10 @@ def test_run_self_build_tests_uses_the_fixed_pytest_command(monkeypatch, tmp_pat
 
     result = roadmap_manager._run_self_build_tests(str(tmp_path))
 
-    assert captured["cmd"] == [str(roadmap_manager.SELF_PROJECT_PATH / ".venv" / "bin" / "pytest"), "tests/"]
+    assert captured["cmd"] == [
+        str(roadmap_manager.SELF_PROJECT_PATH / ".venv" / "bin" / "pytest"),
+        "tests/", "-m", "not integration",
+    ]
     assert captured["cwd"] == str(tmp_path)
     assert result == {"passed": True, "returncode": 0, "output": "3 passed"}
 

@@ -32,6 +32,20 @@ from dotenv import load_dotenv
 
 import core.build_manager as _bm
 
+# Imported lazily inside route_inbound_reply to avoid circular imports at
+# module load time (core.api imports core.telegram_bridge indirectly through
+# the orchestrator cycle; deferring the import breaks the cycle).
+_handle_kai_chat = None
+_KaiChatAllProvidersFailed = None
+
+
+def _import_kai_chat():
+    global _handle_kai_chat, _KaiChatAllProvidersFailed
+    if _handle_kai_chat is None:
+        from core.api import handle_kai_chat, KaiChatAllProvidersFailed  # noqa: PLC0415
+        _handle_kai_chat = handle_kai_chat
+        _KaiChatAllProvidersFailed = KaiChatAllProvidersFailed
+
 
 AI_ORCHESTRATOR_ENV_PATH = Path("/project/ai-orchestrator/.env")
 ALLOWED_CHAT_ID = os.environ.get("KAI_TELEGRAM_CHAT_ID") or "612786480"
@@ -367,9 +381,40 @@ def route_inbound_reply(message, pending_builds=None):
         pending_builds = _find_pending_build()
 
     if not pending_builds:
+        # No build is awaiting input -- fall through to the full Kai chat
+        # experience rather than returning a dead-end static error. This is
+        # the 17K path: Telegram becomes a genuine equal-access surface for
+        # open-ended chat, commands, and build requests (same handler as
+        # POST /kai/chat).
+        from_info = message.get("from", {})
+        operator = _operator_name(from_info)
+        text = (message.get("text") or "").strip()
+        if not text:
+            return {"routed": False, "reply": "Empty message."}
+
+        _import_kai_chat()
+        try:
+            reply = _handle_kai_chat(text, operator)
+        except Exception as exc:
+            return {"routed": False, "reply": f"Chat error: {exc}"}
+
+        # Extract the human-readable response string from the reply dict.
+        if reply.get("response") is not None:
+            reply_text = str(reply["response"])
+        elif reply.get("result") is not None:
+            result = reply["result"]
+            reply_text = result if isinstance(result, str) else json.dumps(result, indent=2, default=str)
+        elif reply.get("error"):
+            reply_text = str(reply["error"])
+        else:
+            reply_text = str(reply)
+
         return {
-            "routed": False,
-            "reply": "No build is currently awaiting input.",
+            "routed": True,
+            "action": "kai_chat",
+            "operator": operator,
+            "reply": reply_text,
+            "chat_reply": reply,
         }
 
     if len(pending_builds) > 1:

@@ -752,15 +752,21 @@ def kai_chat_history_endpoint(operator: str = Depends(require_bridge_token)):
     return _load_chat_history()
 
 
-@app.post("/kai/chat")
-def kai_chat_endpoint(
-    body: KaiChatRequest,
-    operator: str = Depends(require_bridge_token),
-):
-    text = (body.text or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Message text is required")
+class KaiChatAllProvidersFailed(Exception):
+    """Raised by handle_kai_chat when all AI providers fail (502-worthy)."""
 
+
+def handle_kai_chat(text: str, operator: str) -> dict:
+    """Shared Kai chat logic used by both POST /kai/chat and the Telegram bridge.
+
+    Loads/saves conversation history (kai_chat_history.json), dispatches Kai
+    commands, resolves approval intents, triggers build creation (17J), and
+    falls back to open-ended AI chat -- in exactly this priority order.
+
+    Returns the same reply dict that POST /kai/chat returns.
+    Raises KaiChatAllProvidersFailed when all AI providers are unavailable.
+    Raises core.lifecycle.InvalidTransition on illegal approval state transitions.
+    """
     history = _load_chat_history()
     history.append({"role": "user", "content": text})
 
@@ -780,22 +786,19 @@ def kai_chat_endpoint(
             if request is None:
                 reply = {"matched": True, "description": f"{scope} approval", "result": disambiguation, "error": None}
             else:
-                try:
-                    if approve_match:
-                        approval_result = approve(request["id"], operator=operator)
-                        verb = "approved"
-                    else:
-                        approval_result = reject(request["id"], operator=operator)
-                        verb = "rejected"
+                if approve_match:
+                    approval_result = approve(request["id"], operator=operator)
+                    verb = "approved"
+                else:
+                    approval_result = reject(request["id"], operator=operator)
+                    verb = "rejected"
 
-                    reply_text = (
-                        f"{scope.capitalize()} approval request "
-                        f"({request.get('title') or request['id']}) "
-                        f"{verb} by operator {operator}."
-                    )
-                    reply = {"matched": True, "description": f"{scope} approval intent", "result": reply_text, "error": None}
-                except InvalidTransition as error:
-                    raise HTTPException(status_code=409, detail=str(error))
+                reply_text = (
+                    f"{scope.capitalize()} approval request "
+                    f"({request.get('title') or request['id']}) "
+                    f"{verb} by operator {operator}."
+                )
+                reply = {"matched": True, "description": f"{scope} approval intent", "result": reply_text, "error": None}
         elif (build_intent := _extract_build_intent(text)) is not None:
             # 17J: create_build() only inserts a REQUESTED build record --
             # it does not itself plan/generate/deploy anything. The
@@ -824,13 +827,30 @@ def kai_chat_endpoint(
                 signals = gather_signals()
                 response_text = ai_chat(history, signals)
             except AllProvidersFailed as error:
-                raise HTTPException(status_code=502, detail=str(error))
+                raise KaiChatAllProvidersFailed(str(error)) from error
             reply = {"matched": False, "response": response_text}
 
     history.append({"role": "assistant", "content": _reply_content(reply)})
     _save_chat_history(_trim_history(history))
 
     return reply
+
+
+@app.post("/kai/chat")
+def kai_chat_endpoint(
+    body: KaiChatRequest,
+    operator: str = Depends(require_bridge_token),
+):
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message text is required")
+
+    try:
+        return handle_kai_chat(text, operator)
+    except KaiChatAllProvidersFailed as error:
+        raise HTTPException(status_code=502, detail=str(error))
+    except InvalidTransition as error:
+        raise HTTPException(status_code=409, detail=str(error))
 
 
 @app.get("/roadmap")

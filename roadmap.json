@@ -284,7 +284,8 @@
         "13C"
       ],
       "priority": 17,
-      "note": "Re-prioritized 2026-07-30 per user directive: autonomy levels are how Kai decides what it can execute unsupervised when driven through the new chat interface (13X) -- this is the users stated Priority 3 (\"Kai autonomous operations through that interface\"). Existing approval gates (architecture/deploy) are unaffected -- this phase governs the space of actions Kai can take BEFORE those gates, not a bypass."
+      "note": "Re-prioritized 2026-07-30 per user directive: autonomy levels are how Kai decides what it can execute unsupervised when driven through the new chat interface (13X) -- this is the users stated Priority 3 (\"Kai autonomous operations through that interface\"). Existing approval gates (architecture/deploy) are unaffected -- this phase governs the space of actions Kai can take BEFORE those gates, not a bypass.",
+      "build_id": null
     },
     {
       "id": "13I",
@@ -901,7 +902,7 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 per user request, deliberately low priority -- this is a throughput/efficiency improvement, not a blocker for the current top priority (13X/16A/13H, direct Kai chat). Revisit after those ship. | Requeued 2026-07-31: prior FAILED status was a false positive -- generated code was correct, self-build test gate failed only due to a pre-existing test bug (test_kai_planner.py hardcoded /project/ai-orchestrator instead of SELF_PROJECT_PATH, breaking when run from an isolated clone). Fixed in commit 0c1c06c before requeue. | Requeued 2026-08-01 (3rd time): different failure this time -- openrouter_claude_opus explored its isolated clone, misjudged that the feature was already implemented (confused by ordinary repo history mentioning 17A), and exited claiming success with zero files changed and zero commits. Caught correctly by build_manager's own no-op-success check, not a pipeline bug. Requeuing for a fresh attempt. | Requeued 2026-08-01 (5th time): the sign-off regex fix (commit 941f4bb) worked correctly -- no more question loop, went straight into a real planning attempt. That specific attempt failed only because of a diagnostic-script mistake on the operator side (advance_builds() invoked manually without load_dotenv() first, so it saw zero credentials) -- not a real system defect. Requeuing to let the actual scheduler process it normally. | Deferred 2026-08-01 (operator request): temporarily stepped aside so 17K could get Fable's direct attention right away instead of waiting behind it. Will resume its own turn automatically once 17K clears. | Deferred again 2026-08-01 for 17K/Fable priority. | Rejected 2026-08-01: generation's own merge with live main silently reverted two real fixes from earlier tonight (commits 790b697, 5daf43c) without a git conflict being flagged -- a clean-merge-wrong-result bug. Requeuing fresh; worth watching for this pattern again since it's not something the existing test-time sync function would have caught (that only runs at the test gate, not during the agent's own mid-generation git operations).",
-      "build_id": "516f71de"
+      "build_id": "5dcbb01a"
     },
     {
       "id": "17B",

@@ -7,6 +7,7 @@ from core.remediation import attempt_rollback
 from core.verification import verify_service
 from core.build_manager import advance_builds, load_builds
 from core.roadmap_manager import advance_roadmap
+from core.approval_watchdog import check_stale_approvals
 from core.logger import info
 from core.telegram_bridge import (
     detect_state_changes,
@@ -21,6 +22,13 @@ def _safe_send(message_text):
         send_message(message_text)
     except Exception as error:
         info(f"telegram outbound failed: {type(error).__name__}")
+
+
+def _safe_check_stale_approvals():
+    try:
+        check_stale_approvals()
+    except Exception as error:
+        info(f"stale approval check failed: {type(error).__name__}")
 
 
 def _safe_process_inbound():
@@ -86,6 +94,12 @@ def run_cycle():
 
 
     builds = advance_builds()
+
+
+    # After this cycle's builds have been advanced as far as they can go
+    # without a human, flag any that are now stuck waiting -- this is the
+    # only point where "stuck" is actually knowable (right after advancing).
+    _safe_check_stale_approvals()
 
 
     remediation = process()

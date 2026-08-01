@@ -24,19 +24,17 @@ def _safe_send(message_text):
         info(f"telegram outbound failed: {type(error).__name__}")
 
 
-def _safe_check_stale_approvals():
-    try:
-        check_stale_approvals()
-    except Exception as error:
-        info(f"stale approval check failed: {type(error).__name__}")
-
-    try:
-        check_stale_failures()
-    except Exception as error:
-        info(f"stale failure check failed: {type(error).__name__}")
-
-
 def _safe_process_inbound():
+    # Deliberately a short poll (timeout=0, the default) run at most once
+    # per 60s cycle -- this bot token is SHARED with the Claude Code
+    # Telegram plugin's own always-on long-poll consumer (confirmed live
+    # 2026-08-01: a dedicated long-poll process for this same token
+    # collided with 409 Conflict on essentially every call, and even rapid
+    # short polls collided ~40% of the time in testing). Until
+    # ai-orchestrator has its own dedicated bot token (see
+    # core/telegram_poller.py, built and ready, deliberately not wired up
+    # yet), this occasional short poll is the only reliable way to read
+    # inbound messages without fighting the plugin for the same stream.
     try:
         updates = poll_updates()
     except Exception as error:
@@ -54,6 +52,18 @@ def _safe_process_inbound():
 
         if reply_text:
             _safe_send(reply_text)
+
+
+def _safe_check_stale_approvals():
+    try:
+        check_stale_approvals()
+    except Exception as error:
+        info(f"stale approval check failed: {type(error).__name__}")
+
+    try:
+        check_stale_failures()
+    except Exception as error:
+        info(f"stale failure check failed: {type(error).__name__}")
 
 
 def run_cycle():

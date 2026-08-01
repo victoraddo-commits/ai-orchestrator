@@ -116,7 +116,14 @@ def _resolve_offset():
     return None
 
 
-def poll_updates(token=None, chat_id=None):
+def poll_updates(token=None, chat_id=None, poll_timeout=0):
+    # poll_timeout=0 (the default) is a short poll -- Telegram returns
+    # immediately whether or not anything is waiting, which is what the
+    # once-per-60s orchestrator cycle wants (it must not block its other
+    # duties). core.telegram_poller passes a real long-poll value instead:
+    # Telegram holds the connection open server-side until a message
+    # arrives or the timeout elapses, so a dedicated tight loop gets replies
+    # out in near-real-time instead of waiting for the next 60s tick.
     global _last_update_id
 
     if token is None:
@@ -129,10 +136,13 @@ def poll_updates(token=None, chat_id=None):
             _api_url("getUpdates", token),
             params={
                 "offset": _resolve_offset(),
-                "timeout": 0,
+                "timeout": poll_timeout,
                 "allowed_updates": json.dumps(["message"]),
             },
-            timeout=15,
+            # The HTTP client timeout must comfortably exceed Telegram's own
+            # server-side long-poll window, or requests aborts the
+            # connection right as a reply would have arrived.
+            timeout=poll_timeout + 15,
         )
         response.raise_for_status()
         body = response.json()

@@ -770,12 +770,21 @@ def test_self_build_gate_marker_excludes_only_third_party_api_tests_not_local_se
     # of integration containing ONLY genuinely third-party-API-dependent
     # tests, verified here against pytest's own marker collection rather
     # than just asserting the command string.
+    # Uses sys.executable (the interpreter actually running this test right
+    # now) rather than SELF_PROJECT_PATH's .venv/bin/pytest -- confirmed
+    # live 2026-08-01: SELF_PROJECT_PATH is derived from __file__, so when
+    # this whole suite runs from inside an isolated self-build clone (as
+    # the self-build gate does), it resolved to the CLONE's own path, which
+    # never carries a .venv (gitignored), causing a FileNotFoundError. The
+    # currently-running interpreter always has pytest available, regardless
+    # of which copy of this test file is executing.
     import subprocess
+    import sys
 
     result = subprocess.run(
-        [str(roadmap_manager.SELF_PROJECT_PATH / ".venv" / "bin" / "pytest"),
+        [sys.executable, "-m", "pytest",
          "--collect-only", "-q", "-m", "not external_api"],
-        cwd=str(roadmap_manager.SELF_PROJECT_PATH),
+        cwd=str(Path(__file__).resolve().parent.parent),
         capture_output=True, text=True, timeout=60,
     )
 

@@ -11,10 +11,16 @@ Two directions:
   Matching and routing to submit_answer/approve_architecture/approve_deploy
   is the CALLER's responsibility (see _route_inbound_reply).
 
-Config: reads TELEGRAM_BOT_TOKEN from the existing channel .env file at
-/root/.claude/channels/telegram/.env or an equivalent env var -- never
-duplicated or hardcoded. Chat ID and dmPolicy=allowlist enforcement are
-applied on every operation.
+Config: reads KAI_TELEGRAM_BOT_TOKEN from ai-orchestrator's own .env file
+(/project/ai-orchestrator/.env) -- a bot dedicated to Kai
+(@KaiEnzo_bot, 2026-08-01), never duplicated or hardcoded. Deliberately NOT
+the Claude Code Telegram plugin's shared TELEGRAM_BOT_TOKEN
+(/root/.claude/channels/telegram/.env): confirmed live 2026-08-01 that
+reusing that token caused real 409 Conflict collisions between this
+module's poller and the plugin's own always-on getUpdates consumer --
+Telegram only allows one active listener per bot token, so each consumer
+needs its own bot. Chat ID and dmPolicy=allowlist enforcement are applied
+on every operation.
 """
 
 import json
@@ -27,17 +33,17 @@ from dotenv import load_dotenv
 import core.build_manager as _bm
 
 
-TELEGRAM_ENV_PATH = Path("/root/.claude/channels/telegram/.env")
-ALLOWED_CHAT_ID = "612786480"
+AI_ORCHESTRATOR_ENV_PATH = Path("/project/ai-orchestrator/.env")
+ALLOWED_CHAT_ID = os.environ.get("KAI_TELEGRAM_CHAT_ID") or "612786480"
 
 
 def _load_token():
-    load_dotenv(TELEGRAM_ENV_PATH)
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    load_dotenv(AI_ORCHESTRATOR_ENV_PATH)
+    token = os.environ.get("KAI_TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError(
-            "TELEGRAM_BOT_TOKEN is not set; expected in "
-            f"{TELEGRAM_ENV_PATH} or the environment"
+            "KAI_TELEGRAM_BOT_TOKEN is not set; expected in "
+            f"{AI_ORCHESTRATOR_ENV_PATH} or the environment"
         )
     return token
 

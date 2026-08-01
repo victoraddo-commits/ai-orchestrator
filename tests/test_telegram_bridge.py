@@ -443,7 +443,7 @@ def test_no_spam_zero_changes_on_repeated_identical_snapshot():
 
 
 def test_send_message_posts_correct_payload(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token-12345")
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token-12345")
 
     posted = {}
 
@@ -463,7 +463,7 @@ def test_send_message_posts_correct_payload(monkeypatch):
 
 
 def test_send_message_raises_on_api_failure(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
 
     monkeypatch.setattr(
         tb.requests, "post",
@@ -480,7 +480,7 @@ def test_send_message_raises_on_api_failure(monkeypatch):
 
 
 def test_poll_updates_returns_new_messages(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
     tb.reset_offset()
 
     monkeypatch.setattr(
@@ -498,7 +498,7 @@ def test_poll_updates_returns_new_messages(monkeypatch):
 
 
 def test_poll_updates_filters_non_allowed_chat(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
     tb.reset_offset()
 
     monkeypatch.setattr(
@@ -514,7 +514,7 @@ def test_poll_updates_filters_non_allowed_chat(monkeypatch):
 
 
 def test_poll_updates_skips_empty_text_messages(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
     tb.reset_offset()
 
     monkeypatch.setattr(
@@ -530,7 +530,7 @@ def test_poll_updates_skips_empty_text_messages(monkeypatch):
 
 
 def test_poll_updates_respects_last_offset(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
     tb.reset_offset()
 
     call_count = [0]
@@ -557,7 +557,7 @@ def test_poll_updates_respects_last_offset(monkeypatch):
 
 
 def test_poll_updates_raises_on_get_updates_failure(monkeypatch):
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "test-token")
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
     tb.reset_offset()
 
     monkeypatch.setattr(

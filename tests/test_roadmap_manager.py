@@ -395,7 +395,14 @@ def test_advance_roadmap_marks_phase_completed_when_linked_build_completes(isola
     assert roadmap_engine.get_phase("X")["status"] == "completed"
 
 
-def test_advance_roadmap_marks_phase_failed_when_linked_build_fails_and_does_not_retry(isolated_roadmap, monkeypatch):
+def test_advance_roadmap_marks_phase_failed_when_linked_build_fails_and_does_not_retry(isolated_roadmap, monkeypatch, tmp_path):
+    # 17A: previously a phase failure early-returned from advance_roadmap()
+    # so no other phase started in the same tick. Under the concurrency cap,
+    # a failed phase merely frees its slot -- another eligible candidate is
+    # free to start alongside the failure event in this same cycle. The
+    # core "a failed phase is never AUTO-RETRIED" doctrine (X itself is
+    # not re-run without a human) is what STOPPING_BUILD_STATUSES actually
+    # protects and is asserted here.
     _write(isolated_roadmap, [
         {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": "build-123"},
         {"id": "Y", "status": "pending", "dependencies": [], "priority": 2},
@@ -403,37 +410,58 @@ def test_advance_roadmap_marks_phase_failed_when_linked_build_fails_and_does_not
     roadmap_manager.enable_autonomous_mode()
 
     monkeypatch.setattr(roadmap_manager, "get_build", lambda build_id: {"id": build_id, "status": "FAILED", "failure_reason": "tests failed"})
+
+    # Any create_build call must be for Y (a fresh start), never for X (the
+    # already-failed phase). Auto-retrying X itself is what "does_not_retry"
+    # in this test's name forbids.
     monkeypatch.setattr(
-        roadmap_manager, "create_build",
-        lambda *a, **k: pytest.fail("a failed phase must not be auto-retried"),
+        roadmap_manager, "_create_isolated_self_clone", lambda **kwargs: str(tmp_path / "clone-y")
     )
+    real_create_build = roadmap_manager.create_build
+
+    def guarded_create_build(name, description, project_path, template=None):
+        assert name != "X", "the already-failed phase X must not be auto-retried"
+        return real_create_build(name=name, description=description, project_path=project_path, template=template)
+
+    monkeypatch.setattr(roadmap_manager, "create_build", guarded_create_build)
 
     result = roadmap_manager.advance_roadmap()
 
+    # phase_failed outranks started_phase, so the top-level action reports
+    # the failure -- the started_phase event is still visible in events[].
     assert result["action"] == "phase_failed"
     assert roadmap_engine.get_phase("X")["status"] == "failed"
-    # Y is NOT started in the same tick -- a human needs to look at the
-    # failure first; the next advance_roadmap() call will pick Y up.
-    assert roadmap_engine.get_phase("Y")["status"] == "pending"
+    # Y is now allowed to start in the same tick (a failed phase no longer
+    # blocks the whole roadmap while it awaits a human).
+    assert roadmap_engine.get_phase("Y")["status"] == "in_progress"
+    started_events = [e for e in result.get("events", []) if e.get("action") == "started_phase"]
+    assert any(e["phase_id"] == "Y" for e in started_events)
 
 
-def test_advance_roadmap_does_not_start_a_new_phase_while_another_is_still_waiting(isolated_roadmap, monkeypatch):
-    # Real bug found live: a phase stuck at WAITING_FOR_USER (not COMPLETED,
-    # not FAILED/ROLLED_BACK) fell through the old loop silently, and
-    # advance_roadmap() went on to start a second, unrelated phase
-    # concurrently -- both self-modifying builds sharing the same working
-    # directory. Confirmed live: this is what crashed the first build's
-    # Claude process (a concurrent git checkout on the same working tree).
+def test_advance_roadmap_does_not_start_a_new_phase_while_another_is_still_waiting(isolated_roadmap, monkeypatch, tmp_path):
+    # 17A: this test previously asserted the old single-in-flight guard.
+    # Post-K3, each self-build has its own isolated clone (planning
+    # /generation /review all happen inside distinct clones with no shared
+    # working tree), so two phases in flight is now the expected, correct
+    # behavior. What must NOT change: an exclusive-marked phase still runs
+    # alone. Also verifies that a build whose project_path resolves to
+    # SELF_PROJECT_PATH itself (an unsafe pre-K3-style build with no
+    # isolated clone) is still treated as exclusive per _requires_exclusive.
     _write(isolated_roadmap, [
-        {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": "build-1"},
+        {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1,
+         "build_id": "build-1", "exclusive": True},
         {"id": "Y", "status": "pending", "dependencies": [], "priority": 2},
     ])
     roadmap_manager.enable_autonomous_mode()
 
-    monkeypatch.setattr(roadmap_manager, "get_build", lambda build_id: {"id": build_id, "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"})
+    monkeypatch.setattr(
+        roadmap_manager, "get_build",
+        lambda build_id: {"id": build_id, "status": "WAITING_FOR_ARCHITECTURE_APPROVAL",
+                          "project_path": str(tmp_path / "clone-x")},
+    )
     monkeypatch.setattr(
         roadmap_manager, "create_build",
-        lambda *a, **k: pytest.fail("must not start Y while X is still waiting on a human"),
+        lambda *a, **k: pytest.fail("must not start Y while an exclusive phase X is still in flight"),
     )
 
     result = roadmap_manager.advance_roadmap()

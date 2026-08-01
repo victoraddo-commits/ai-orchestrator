@@ -1,9 +1,12 @@
+import fcntl
 import os
 import re
 import subprocess
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
+from pathlib import Path
 
 from core.remediation import (
     create_remediation,
@@ -14,6 +17,43 @@ from core.remediation import (
 
 
 DEPLOY_ACTION = "deploy_build"
+
+
+# 17A: only one merge into a live repo may proceed at a time -- concurrent
+# deployers race on the same git HEAD otherwise (the exact bug the pre-17A
+# single-in-flight-phase guard existed to prevent). File-based fcntl.flock
+# matches core.memory_manager's convention: correct across separate
+# processes (scheduler service + API), and per-open-file-description so it
+# also excludes two threads in one process (each _run_deployment worker
+# opens its own fd, so two flock() calls on separate fds inside one process
+# still serialize). Blocking is deliberate -- a second DEPLOYING build's
+# worker just waits its turn rather than being told to try again later.
+#
+# The lock file lives under core.memory.MEMORY_DIR, alongside the other
+# *.lock files memory_manager already writes there. In production
+# MEMORY_DIR is SELF_PROJECT_PATH/memory (gitignored), so the lock never
+# leaks into a git diff; in tests conftest.py isolates MEMORY_DIR to a
+# tmp_path, so the lock never pollutes a test's live-repo working tree.
+def _merge_lock_path():
+    # Imported lazily inside the function to keep this module usable at
+    # import time regardless of whether core.memory has been imported yet
+    # -- matches the lazy-import pattern _self_modifying_merge_targets()
+    # already uses to break the roadmap_manager <-> deployment_manager
+    # circular import.
+    from core.memory import MEMORY_DIR
+    return Path(MEMORY_DIR) / "live_repo_merge.lock"
+
+
+@contextmanager
+def _live_merge_lock():
+    lock_path = _merge_lock_path()
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def _slugify(name):
@@ -262,6 +302,69 @@ def _merge_self_modifying_build(build):
     # self_clone), not a deployable app -- there's no Dockerfile and never
     # will be. "Deploying" it means landing its committed changes on each
     # live repo instead of building/running a container.
+    #
+    # 17A: the whole sequence -- stale-base sync, pre-merge retest, and
+    # every (live_repo, clone) merge with its partial-failure rollback --
+    # runs inside one exclusive flock on live_repo_merge.lock, so a second
+    # concurrent DEPLOYING build's worker thread blocks here rather than
+    # racing on the same live HEAD. The lock spans the entire dual-repo
+    # atomic merge (not just the individual git-merge calls) so a build
+    # can never observe the live repos in a mid-merge state.
+    with _live_merge_lock():
+        return _merge_self_modifying_build_locked(build)
+
+
+def _merge_self_modifying_build_locked(build):
+    # 17A: stale-base handling. Between when this build's clone was made
+    # (or last generated against) and now, another self-modifying build may
+    # have merged first and moved live HEAD. Sync each clone with its live
+    # origin before merging: a conflict here means the two builds edited
+    # incompatibly, fail immediately with a clear reason; a clean sync that
+    # actually moved the clone's HEAD means the pre-merge test result was
+    # taken against a now-outdated base, so re-run the test suite against
+    # the current base before landing. If the sync didn't move HEAD (clone
+    # was already current), pytest is skipped -- 300s of re-testing when
+    # nothing changed is pure latency.
+    from core.roadmap_manager import (
+        self_build_repo_paths,
+        _sync_clone_with_live_repo,
+        _run_self_build_tests,
+    )
+
+    pre_merge_retest = {"skipped": "clone already current"}
+    any_clone_moved = False
+
+    for repo_path in self_build_repo_paths(build["project_path"]):
+        pre_sync_head = _git_head_of(repo_path)
+        synced, sync_error = _sync_clone_with_live_repo(repo_path)
+        if not synced:
+            return {
+                "deployed": False,
+                "reason": (
+                    "Stale base: build branch conflicts with live HEAD "
+                    "(another build merged first) -- " + (sync_error or "")
+                ),
+                "failed_repo": repo_path,
+                "pre_merge_retest": {"skipped": "sync failed before retest"},
+            }
+        post_sync_head = _git_head_of(repo_path)
+        if pre_sync_head != post_sync_head:
+            any_clone_moved = True
+
+    if any_clone_moved:
+        retest = _run_self_build_tests(build["project_path"])
+        pre_merge_retest = retest
+        if not retest.get("passed"):
+            return {
+                "deployed": False,
+                "reason": (
+                    "Stale base: tests failed against latest live HEAD "
+                    "after another build merged first -- "
+                    + (retest.get("output") or "")
+                ),
+                "pre_merge_retest": retest,
+            }
+
     branch = f"build-{build['id']}"
     targets = _self_modifying_merge_targets(build)
 
@@ -291,6 +394,7 @@ def _merge_self_modifying_build(build):
                 "reason": f"{result['reason']} (repo: {live_repo})",
                 "failed_repo": live_repo,
                 "rolled_back_repos": [repo for repo, _ in merged],
+                "pre_merge_retest": pre_merge_retest,
             }
 
         merged.append((live_repo, pre_merge_head))
@@ -313,6 +417,7 @@ def _merge_self_modifying_build(build):
         "merge_commit": repo_merge_commits[targets[0][0]],
         "merged_repos": repo_merge_commits,
         "changed_files": changed_files,
+        "pre_merge_retest": pre_merge_retest,
     }
 
 

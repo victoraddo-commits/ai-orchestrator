@@ -387,6 +387,18 @@ def test_deploy_build_rolls_back_the_first_repo_when_the_second_repo_fails(tmp_p
     # Atomicity: a conflict in the plugin repo must fail the whole deploy
     # and un-apply the already-merged orchestrator half -- never a partial
     # deploy where the backend landed but the frontend didn't.
+    #
+    # 17A: this test's conflict now surfaces as a "Stale base" error caught
+    # by the pre-merge sync inside the merge lock (both live and clone
+    # diverged on README.md's same line -- exactly the "another build
+    # merged first" scenario that sync-then-retest exists for), not by the
+    # git-merge step itself. The atomicity guarantee is still preserved:
+    # neither live repo is touched, because the sync-then-merge sequence
+    # aborts before any merge into live happens. failed_repo therefore
+    # points at the clone whose sync conflicted, and rolled_back_repos is
+    # empty (nothing to roll back). The defense-in-depth atomic rollback
+    # of a merge-step failure is separately covered by a real merge failure
+    # in _merge_branch_into_live_repo (e.g. a fetch failure).
     live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace = (
         _make_dual_workspace(tmp_path, monkeypatch, "dual2")
     )
@@ -402,18 +414,20 @@ def test_deploy_build_rolls_back_the_first_repo_when_the_second_repo_fails(tmp_p
     subprocess.run(["git", "-C", str(live_plugin), "commit", "-q", "-am", "live plugin change"], check=True)
 
     orchestrator_head_before = _head(live_orchestrator)
+    plugin_head_before = _head(live_plugin)
 
     build = {"id": "dual2", "name": "13G", "project_path": str(workspace)}
 
     result = deploy_mgr.deploy_build(build)
 
     assert result["deployed"] is False
-    assert "onflict" in result["reason"]
-    assert result["failed_repo"] == str(live_plugin)
-    assert result["rolled_back_repos"] == [str(live_orchestrator)]
+    assert "Stale base" in result["reason"]
+    assert result["failed_repo"] == str(plugin_clone)
 
-    # The orchestrator merge was rolled back: HEAD restored, file gone.
+    # Neither live repo was touched -- the abort happened before any merge
+    # into live could land, so there is nothing to roll back.
     assert _head(live_orchestrator) == orchestrator_head_before
+    assert _head(live_plugin) == plugin_head_before
     assert not (live_orchestrator / "backend_feature.py").exists()
 
     # Neither live repo is left mid-merge or dirty.
@@ -422,6 +436,14 @@ def test_deploy_build_rolls_back_the_first_repo_when_the_second_repo_fails(tmp_p
 
 
 def test_deploy_build_rollback_preserves_pre_existing_uncommitted_changes(tmp_path, monkeypatch):
+    # 17A: this test's conflict now surfaces via the pre-merge stale-base
+    # sync, aborting before any merge into live. Uncommitted live-repo
+    # state must still survive intact -- the whole point of committing
+    # the working tree before any merge attempt is that data is never lost
+    # to a `git reset --hard` on a merge-step failure. Since 17A aborts
+    # before the merge step, the pre-existing content simply stays where
+    # it was (still uncommitted, or already committed if a prior operation
+    # committed it -- either is fine, only the content matters).
     live_orchestrator, live_plugin, orchestrator_clone, plugin_clone, workspace = (
         _make_dual_workspace(tmp_path, monkeypatch, "dual2b")
     )
@@ -436,7 +458,7 @@ def test_deploy_build_rollback_preserves_pre_existing_uncommitted_changes(tmp_pa
 
     # Pre-existing uncommitted change in the live orchestrator repo -- the
     # scheduler's own concurrent roadmap.json write that must survive the
-    # rollback of the orchestrator half when the plugin half fails.
+    # deploy attempt regardless of how it fails.
     (live_orchestrator / "roadmap.json").write_text('{"phases": [{"id": "14B"}]}')
     pre_existing_content = (live_orchestrator / "roadmap.json").read_text()
 
@@ -445,32 +467,24 @@ def test_deploy_build_rollback_preserves_pre_existing_uncommitted_changes(tmp_pa
     result = deploy_mgr.deploy_build(build)
 
     assert result["deployed"] is False
-    assert "onflict" in result["reason"]
-    assert result["failed_repo"] == str(live_plugin)
-    assert result["rolled_back_repos"] == [str(live_orchestrator)]
+    assert "Stale base" in result["reason"]
+    assert result["failed_repo"] == str(plugin_clone)
 
-    # The backend merge was rolled back -- the new file must not exist.
+    # The backend merge never happened -- new file must not exist on live.
     assert not (live_orchestrator / "backend_feature.py").exists()
 
-    # The pre-existing uncommitted roadmap.json change must survive -- either
-    # as a committed change (auto-committed before the deploy attempt) or
-    # still as an uncommitted change. Either way, its content must be intact.
+    # The pre-existing uncommitted roadmap.json change must survive intact.
     assert (live_orchestrator / "roadmap.json").exists()
     assert (live_orchestrator / "roadmap.json").read_text() == pre_existing_content
 
-    # The live orchestrator repo must not have lost anything -- no data
-    # destruction from git reset --hard ditching collateral working-tree
-    # state.
-    status = subprocess.run(
-        ["git", "-C", str(live_orchestrator), "status", "--porcelain"], capture_output=True, text=True
-    )
-    # After the fix, the tree may be clean (auto-committed) or dirty (if
-    # _commit_dirty_working_tree is already inside _merge_branch_into_live_repo
-    # too, but the rollback resets past it).  Either is acceptable as long as
-    # the file content is preserved, which is already asserted above.
-    assert "roadmap.json" not in status.stdout
+    # 17A: aborting before the merge step means this write may still be
+    # sitting as untracked/uncommitted, exactly as the operator left it --
+    # no data destruction from a `git reset --hard`. Content preservation
+    # (asserted above) is the real requirement; whether the file is
+    # untracked, unstaged, staged, or already committed is implementation
+    # detail as long as nothing was lost.
 
-    # Neither repo should be mid-merge.
+    # The plugin repo must not be mid-merge.
     assert _clean(live_plugin)
 
 
@@ -488,15 +502,22 @@ def test_deploy_build_fails_whole_deploy_when_the_first_repo_fails(tmp_path, mon
     _commit_all(plugin_clone, "frontend half")
 
     plugin_head_before = _head(live_plugin)
+    orchestrator_head_before = _head(live_orchestrator)
 
     build = {"id": "dual3", "name": "13G", "project_path": str(workspace)}
 
     result = deploy_mgr.deploy_build(build)
 
     assert result["deployed"] is False
-    assert result["failed_repo"] == str(live_orchestrator)
+    # 17A: caught by the pre-merge stale-base sync on the orchestrator
+    # clone (it and live diverged on the same line -- exactly the "another
+    # build merged first" case). failed_repo therefore points at the
+    # orchestrator clone, and neither live repo is touched.
+    assert result["failed_repo"] == str(orchestrator_clone)
+    assert "Stale base" in result["reason"]
 
-    # The plugin repo was never touched -- no partial apply from the other side.
+    # Neither live repo was touched -- no partial apply from the other side.
+    assert _head(live_orchestrator) == orchestrator_head_before
     assert _head(live_plugin) == plugin_head_before
     assert not (live_plugin / "frontend_feature.ts").exists()
     assert _clean(live_orchestrator)

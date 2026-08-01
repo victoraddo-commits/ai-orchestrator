@@ -367,7 +367,7 @@
     {
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
-      "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.",
+      "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n",
       "status": "pending",
       "dependencies": [
         "12J"
@@ -375,7 +375,10 @@
       "priority": 22,
       "completion_criteria": [
         "Routing decisions demonstrably shift toward historically higher-success candidates without starving the others of all traffic",
-        "No change to the safety-relevant fallback-on-failure behavior"
+        "No change to the safety-relevant fallback-on-failure behavior",
+        "A materialized rolling health-metrics summary (success rate, P95 latency per provider) is available without re-scanning the full ai_usage_history.json on every read",
+        "A degraded-state (pre-failure) demotion mechanism exists in provider_health, distinct from and in addition to the existing binary quota_exceeded skip",
+        "Ambiguous catch-all task_types (law_chat/general_reasoning) get a zero-network-call complexity heuristic that can adjust candidate ordering; task_types that already carry an explicit classification are left untouched"
       ],
       "tests_required": true
     },
@@ -1064,7 +1067,7 @@
       "id": "17K",
       "name": "Full Kai chat parity via Telegram -- not just build Q&A routing",
       "description": "User directive 2026-07-30: full access to Kai chat via Telegram, not just the existing build-approval Q&A routing. Confirmed live: core.telegram_bridge.route_inbound_reply() ONLY routes a message to submit_answer/approve/reject when a build is actively WAITING_FOR_USER_INPUT or awaiting an approval decision -- with no pending build it replies \"No build is currently awaiting input.\" and does nothing else. There is no path from Telegram to the actual open-ended chat capability (13X/POST /kai/chat) at all today. Fix: when route_inbound_reply() finds no pending build to route to, forward the message to the SAME chat-handling logic POST /kai/chat uses (refactor core.api's kai_chat_endpoint to expose a shared internal function -- e.g. handle_kai_chat(text, operator) -- that both the FastAPI route and the Telegram bridge call, rather than duplicating the command-dispatch/approval-intent/open-ended-answer logic a second time) and reply with the result via telegram_bridge.send_message(). This makes Telegram a genuinely equal-access surface to Kai -- same memory (13X chat history), same grounding, same command patterns, and (once 17J ships) the same ability to trigger a new build -- not a second, more limited interface with different rules. Every existing safety guarantee is unchanged: the shared handler is the same one 13X already enforces approval-intent-resolves-through-the-real-approval-system on, so nothing new needs inventing here.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13X"
       ],
@@ -1193,6 +1196,44 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-31 directly from the user's Telegram request, explicitly deferred by the user's own instruction to run last, after every other currently-queued phase completes. Do not reprioritize ahead of anything else."
+    },
+    {
+      "id": "17V",
+      "name": "Kai conversation memory: session envelope, single-operator long-term store, and guarded compression",
+      "description": "Follow-on to 13F (Kai Memory System, build-learning lessons -- a different subsystem) and 13X (POST /kai/chat). Sourced from the 'AI Operating System' audit delivered 2026-08-01 and accepted by the operator the same day. Distinct from 15F (multi-user conversation history), which is gated behind 15A (auth) and explicitly deferred -- this phase is single-operator scoped and buildable now, with zero user-account dependency.\n\nCurrent reality: kai_chat_history.json (core/api.py) is a flat, ever-growing array of raw message objects -- no short/long-term separation, no compression, full history replayed into every call.\n\nShort-term memory: restructure the flat array into a structured session envelope (session_id, active_goal, recent_messages, ephemeral_context including last_referenced_document) so pronoun/reference resolution (\"use the previous document\", \"continue from yesterday\") has something concrete to resolve against, without requiring a database or user accounts.\n\nLong-term memory (single-operator scope only): a static, operator-scoped store (memory/operator_long_term.json) governed by an explicit-control principle -- nothing auto-writes to it. The operator explicitly says \"remember that...\" and Kai calls a dedicated write path; every ai_router.delegate() call for chat/legal tasks injects its contents into the system prompt prefix as a read path.\n\nCompression: when history exceeds a threshold (e.g. 30 messages / ~12,000 estimated tokens), summarize older turns via a structured JSON distillation (delegate() call, not a new subsystem) while keeping the most recent turns verbatim. Guardrail, non-negotiable: exact statutory citations/case names/act numbers, operator directives (\"always\"/\"never\"/\"do not\" statements), and explicit operator corrections must NEVER be summarized away -- they get extracted into a permanent key_entities list or the long-term store instead of being compressed with the rest.\n\nExplicitly NOT in scope: any multi-user/per-user memory scoping (that is 15F's job, after 15A lands) -- this phase must not build anything that assumes more than one operator exists.",
+      "status": "pending",
+      "dependencies": [
+        "13X"
+      ],
+      "priority": 33,
+      "tests_required": true,
+      "completion_criteria": [
+        "kai_chat_history.json (or its replacement) is restructured into a session-envelope shape (active_goal, recent_messages, ephemeral_context) rather than a flat message array",
+        "memory/operator_long_term.json exists and is write-gated behind an explicit operator command -- nothing auto-writes to it",
+        "Every ai_router.delegate() call for chat/legal task_types injects the long-term store contents into the system prompt prefix",
+        "A compression trigger (message-count or token-estimate threshold) summarizes older turns into a structured JSON block while preserving the most recent N turns verbatim",
+        "Tests cover: exact statutory citations/case names, operator \"always\"/\"never\" directives, and explicit operator corrections all survive compression unsummarized -- a synthetic long conversation that would otherwise get compressed is asserted to retain these verbatim",
+        "This phase does not introduce any per-user scoping, multi-tenant storage, or dependency on 15A -- covered by a structural test matching the existing core.law_tutor import-boundary pattern"
+      ],
+      "note": "Queued 2026-08-01 from the AI Operating System audit, operator-accepted the same day. Deliberately scoped to single-operator use so it does not wait on 15A/15F."
+    },
+    {
+      "id": "17W",
+      "name": "Telegram native UX: typing indicators, inline-keyboard approvals, voice transcription",
+      "description": "Direct follow-on to 17K (full Kai chat parity via Telegram, shipped 2026-08-01). Sourced from the 'AI Operating System' audit's Telegram/Web UX section, delivered 2026-08-01 and accepted by the operator the same day. Scoped to native Telegram Bot API features only -- the web dashboard streaming/SSE/file-viewer items from the same audit section are explicitly deferred to 15F, which already owns the web chat surface and is correctly gated behind 15A.\n\nAdds, using core.telegram_bridge and the existing @KaiEnzo_bot: (1) typing indicators (sendChatAction) during long-running ai_router.delegate() calls, so a multi-minute architecture/build response does not look hung; (2) inline keyboards for build approval/question flows (approve/reject/answer as tappable buttons, reusing the existing core.approval and submit_answer/approve_architecture/approve_deploy call paths -- deploy approval keeps requiring the same operator-identity attribution it has today, this only changes the input affordance, not who is allowed to approve); (3) voice message transcription -- incoming .ogg voice notes routed through a transcription step before being handed to the same handle_kai_chat() path 17K already wired up, using whatever low-cost transcription option is actually available (evaluate at build time, do not assume Whisper capacity exists on Site A's modest hardware without checking first).\n\nExplicitly NOT in scope: file/photo upload handling into the document pipeline (blocked on 17O's ingestion pipeline existing first), web dashboard streaming responses (15F's job), and any change to who is authorized to approve builds -- inline keyboards are a UI convenience over the exact same approval codepaths, never a new approval path.",
+      "status": "pending",
+      "dependencies": [
+        "17K"
+      ],
+      "priority": 24,
+      "tests_required": true,
+      "completion_criteria": [
+        "Typing indicators fire during in-flight ai_router.delegate() calls initiated from Telegram and clear on completion or error",
+        "Build approval/question/deploy flows offer inline keyboard buttons that call the exact same core.approval / submit_answer / approve_architecture / approve_deploy functions 17K and earlier phases already use -- no new approval codepath, covered by a test asserting identical behavior to the existing text-command path",
+        "Incoming voice messages are transcribed and routed through the same handle_kai_chat() path as text messages",
+        "Tests cover: inline-keyboard approval produces an identical audit trail (operator attribution, approval record) to the existing text-based approval flow"
+      ],
+      "note": "Queued 2026-08-01 from the AI Operating System audit, operator-accepted the same day. Web dashboard UX items from the same audit section are intentionally left to 15F, not duplicated here."
     }
   ]
 }

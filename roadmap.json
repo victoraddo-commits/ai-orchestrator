@@ -278,14 +278,15 @@
       "id": "13H",
       "name": "Kai Controlled Autonomy Levels",
       "description": "Replace the binary memory/autonomous_mode.json (Phase 12L) with 6 numbered levels (0=manual, 1=observe+report [default], 2=create proposals, 3=create branches/builds, 4=execute through deploy-approval [today's 'enabled: true' behavior], 5=continuously manages roadmap incl. self-generated phases). Deprecate the binary flag outright rather than maintain both. The Overview tab's toggle becomes a 6-position control instead of on/off. Policy tests proving each level only unlocks what it claims to, and that no level ever bypasses ARCHITECTURE_APPROVED/DEPLOY_APPROVAL.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13B",
         "13C"
       ],
       "priority": 17,
       "note": "Re-prioritized 2026-07-30 per user directive: autonomy levels are how Kai decides what it can execute unsupervised when driven through the new chat interface (13X) -- this is the users stated Priority 3 (\"Kai autonomous operations through that interface\"). Existing approval gates (architecture/deploy) are unaffected -- this phase governs the space of actions Kai can take BEFORE those gates, not a bypass.",
-      "build_id": null
+      "build_id": "8b6eda89",
+      "requires_plugin": true
     },
     {
       "id": "13I",
@@ -632,7 +633,7 @@
       "id": "14A",
       "name": "Stuck-phase detection, Fable self-answer for judgment calls, auto-filed bug phases",
       "description": "User directive 2026-07-29, following the same incident as 13Y/13Z: 13P silently bounced WAITING_FOR_USER_INPUT <-> PLANNING with no human-visible signal that it was stuck (not merely waiting on a real decision) until this session noticed by reading builds.json history directly. Three related capabilities, all downstream of 13Z's Telegram bridge existing: (1) STUCK DETECTION -- advance_roadmap()/advance_builds() should recognize a phase that revisits the same status (or status pair, e.g. WAITING_FOR_USER_INPUT<->PLANNING) some threshold number of times without net progress, and flag it distinctly from an ordinary in-progress build (e.g. a stuck_count on the build record, or a new incident type) rather than looping forever indistinguishably from healthy back-and-forth. (2) FABLE SELF-ANSWER -- for a WAITING_FOR_USER_INPUT clarification that is a genuine judgment call with no real ambiguity requiring the human specifically (e.g. 'should the interval be 30, 45, or 60 seconds' has no wrong answer within the stated constraint 'well under WatchdogSec') delegate() to opencode_claude/Fable for an answer via submit_answer(), escalating to a human via 13Z's Telegram bridge only when the question is genuinely undecidable without the human (e.g. touches product/business tradeoffs, security posture, or anything in core.kai.policies.PROTECTED_FILES) -- must never let this path call approve_architecture/approve_deploy itself, exactly as core/kai/policies.py + tests/test_kai_identity.py's grep check already enforces for every other module under core/kai/; this capability likely belongs alongside that same enforced boundary, not as a bypass of it. (3) AUTO-FILED BUG PHASES -- when Kai's own code is the actual cause of a stuck/failed state (as with 13P's _plan_needs_clarification false positive, or 13S's original hallucinated-plan-markup incident), draft and queue a new roadmap phase describing the bug with the same evidence-based rigor as every existing 13-series phase (confirmed-live incident description, concrete file/line references, completion criteria) rather than requiring a human to notice, write it up, and add it manually as happened for 13P/13Q/13S/13Y themselves tonight.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13Z"
       ],
@@ -644,7 +645,8 @@
         "When Kai's own code is identified as the root cause of a stuck/failed build, a new roadmap phase is drafted and queued automatically, matching the existing phase-authoring style (description with confirmed-live evidence, completion criteria, tests_required)",
         "New tests cover: stuck detection triggers past the threshold and not before it, a judgment-call question is auto-answered while a PROTECTED_FILES-adjacent question is escalated instead, and an auto-filed phase has the required fields populated"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "98d53e0d"
     },
     {
       "id": "14B",
@@ -889,7 +891,7 @@
       "name": "Parallel self-build execution: serialize only the merge step, not the whole phase",
       "exclusive": true,
       "description": "Discovered live 2026-07-30 while investigating why 16A ran before the newly-reprioritized 13X: core.roadmap_manager.advance_roadmap() hard-limits self-modifying builds to exactly one phase in flight at a time, with a comment justifying this by builds sharing SELF_PROJECT_PATH's live working directory -- but that rationale is stale. K3 (completed) already gives every self-build its own isolated clone (_create_isolated_self_clone(), under ~/.ai-orchestrator/self-build-workspaces/), so planning, generation, code review, and security review for multiple phases can safely run concurrently today -- each operates entirely inside its own clone. The one real shared resource is the final merge into the live repo (core.deployment_manager._merge_branch_into_live_repo()) during DEPLOYING, which must still happen one at a time to avoid two builds racing on the same git HEAD. This phase relaxes advance_roadmap()'s single-in-flight check to only serialize the merge/deploy step (e.g. a merge lock or queue), letting build_manager.advance_builds()'s existing MAX_CONCURRENT_BUILDS-based thread pool actually parallelize the earlier lifecycle stages for self-modifying phases the way it already does for regular app builds. Must also handle a build going stale relative to another build that merged first while it was still generating -- e.g. re-checking for merge conflicts and re-running tests against the latest live HEAD immediately before merge, not trusting a plan/generation that ran against an now-outdated base.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "K3"
       ],

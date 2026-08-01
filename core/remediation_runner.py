@@ -7,8 +7,20 @@ from core.decision_engine import load_decisions
 
 
 def get_approved():
-
-    return [r for r in load_requests() if r.get("status") == "approved"]
+    # Confirmed live 2026-07-28 (13N): build architecture/deploy approvals
+    # (core.approval.create_build_approval, which sets build_id) share this
+    # same approval-queue/status field with genuine incident-remediation
+    # approvals (core.approval.create_request, which never sets build_id).
+    # Without this filter, an approved build request -- e.g.
+    # service="kai-build:5353f7e0", action="approve_deploy" -- gets swept
+    # into process() below and run through container_status()/
+    # create_remediation() as if it were a real Docker action against a
+    # container named "kai-build:5353f7e0", corrupting remediation history
+    # for every build/deploy approval.
+    return [
+        r for r in load_requests()
+        if r.get("status") == "approved" and not r.get("build_id")
+    ]
 
 
 def find_root_cause(incident_id, action, fallback):

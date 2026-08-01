@@ -1,11 +1,44 @@
-from core.approval import create_request, load_requests, approve
+from core.approval import create_request, create_build_approval, load_requests, approve, transition_request
 from core.remediation import load_remediations
 from core.remediation_memory import get_history
-from core.remediation_runner import process
+from core.remediation_runner import process, get_approved
 from core.execution_audit import history as audit_history
 
 
 NONEXISTENT_SERVICE = "definitely-not-a-real-container-xyz"
+
+
+def test_get_approved_excludes_build_architecture_and_deploy_approvals():
+    # 13N: build approvals (build_id set) share the same status="approved"
+    # queue as genuine incident-remediation approvals (build_id never set)
+    # -- get_approved() must not sweep the former into Docker remediation.
+    incident_request = create_request("restart_container", NONEXISTENT_SERVICE, "reason", incident_id="inc1")
+    approve(incident_request["id"])
+
+    build_request = create_build_approval(
+        build_id="build-123", phase_id="17X", approval_type="deploy",
+        title="Approve deployment for 17X", description="desc", risk="low",
+        requested_action="approve_deploy",
+    )
+    transition_request(build_request["id"], "approved")
+
+    approved = get_approved()
+
+    assert [r["id"] for r in approved] == [incident_request["id"]]
+
+
+def test_process_does_not_execute_an_approved_build_deploy_request():
+    build_request = create_build_approval(
+        build_id="build-123", phase_id="17X", approval_type="deploy",
+        title="Approve deployment for 17X", description="desc", risk="low",
+        requested_action="approve_deploy",
+    )
+    transition_request(build_request["id"], "approved")
+
+    results = process()
+
+    assert results == []
+    assert load_requests()[0]["status"] == "approved"
 
 
 def test_process_executes_approved_request_against_missing_container():

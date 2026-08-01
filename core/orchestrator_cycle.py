@@ -9,12 +9,7 @@ from core.build_manager import advance_builds, load_builds
 from core.roadmap_manager import advance_roadmap
 from core.approval_watchdog import check_stale_approvals, check_stale_failures
 from core.logger import info
-from core.telegram_bridge import (
-    detect_state_changes,
-    poll_updates,
-    route_inbound_reply,
-    send_message,
-)
+from core.telegram_bridge import detect_state_changes, send_message
 
 
 def _safe_send(message_text):
@@ -22,36 +17,6 @@ def _safe_send(message_text):
         send_message(message_text)
     except Exception as error:
         info(f"telegram outbound failed: {type(error).__name__}")
-
-
-def _safe_process_inbound():
-    # Deliberately a short poll (timeout=0, the default) run at most once
-    # per 60s cycle -- this bot token is SHARED with the Claude Code
-    # Telegram plugin's own always-on long-poll consumer (confirmed live
-    # 2026-08-01: a dedicated long-poll process for this same token
-    # collided with 409 Conflict on essentially every call, and even rapid
-    # short polls collided ~40% of the time in testing). Until
-    # ai-orchestrator has its own dedicated bot token (see
-    # core/telegram_poller.py, built and ready, deliberately not wired up
-    # yet), this occasional short poll is the only reliable way to read
-    # inbound messages without fighting the plugin for the same stream.
-    try:
-        updates = poll_updates()
-    except Exception as error:
-        info(f"telegram inbound poll failed: {type(error).__name__}")
-        return
-
-    for msg in updates:
-        try:
-            result = route_inbound_reply(msg)
-        except Exception as error:
-            info(f"telegram inbound routing error: {type(error).__name__}")
-            continue
-
-        reply_text = result.get("reply")
-
-        if reply_text:
-            _safe_send(reply_text)
 
 
 def _safe_check_stale_approvals():
@@ -93,12 +58,11 @@ def run_cycle():
     decisions = evaluate_incidents()
 
 
-    # Poll and route any inbound Telegram replies before advancing builds,
-    # so a human-answered question or approval is already applied when
-    # advance_builds() decides what to do this cycle.
-    _safe_process_inbound()
-
-
+    # Inbound Telegram messages are handled entirely by the dedicated
+    # core.telegram_poller process (ai-orchestrator-telegram.service), which
+    # now owns its own bot (@KaiEnzo_bot) with no other consumer -- see that
+    # module's docstring. A build's answer/approval may already be applied
+    # here as a result of a message that arrived seconds ago via that path.
     builds_before = load_builds()
 
 

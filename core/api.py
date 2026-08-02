@@ -43,6 +43,7 @@ from core.build_manager import (
     start_generation,
     approve_deploy,
     rollback_deployment,
+    get_scheduler_snapshot,
 )
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
@@ -483,6 +484,12 @@ def providers_endpoint():
 @app.get("/providers/dashboard")
 def providers_dashboard_endpoint():
     return get_provider_dashboard()
+
+
+@app.get("/scheduler/snapshot")
+def scheduler_snapshot_endpoint():
+    """13J: read-only scheduler state for the Kai Control Center."""
+    return get_scheduler_snapshot()
 
 
 class DelegateRequest(BaseModel):

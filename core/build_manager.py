@@ -785,6 +785,48 @@ def _run_deployment(build):
 # (e.g. a crash between transitions).
 _ACTIONABLE_STATUSES = {"REQUESTED", "PLANNING", "GENERATING", "CODE_REVIEW", "DEPLOYING"}
 
+_RUNNING_STATUSES = {"PLANNING", "GENERATING", "CODE_REVIEW", "DEPLOYING"}
+_WAITING_STATUSES = {"REQUESTED", "ARCHITECTURE_APPROVED"}
+
+
+def get_scheduler_snapshot():
+    """13J: read-only snapshot of the build scheduler state.
+
+    Returns a dict safe to expose over the API -- no private fields,
+    no mutable references to live build objects."""
+    builds = load_builds() or []
+
+    running = []
+    waiting = []
+    worker_assignments = {}
+
+    for b in builds:
+        status = b.get("status", "")
+        build_entry = {
+            "id": b.get("id"),
+            "name": b.get("name"),
+            "status": status,
+            "phase": b.get("template"),
+            "created_at": b.get("created_at"),
+            "provider": b.get("generated_by") if status == "GENERATING" else None,
+        }
+
+        if status in _RUNNING_STATUSES:
+            running.append(build_entry)
+            if status == "GENERATING" and build_entry["provider"]:
+                worker_assignments[build_entry["provider"]] = build_entry["id"]
+        elif status in _WAITING_STATUSES:
+            waiting.append(build_entry)
+
+    return {
+        "waiting_builds": waiting,
+        "running_builds": running,
+        "worker_assignments": worker_assignments,
+        "parallel_capacity": MAX_CONCURRENT_BUILDS,
+        "parallel_enabled": MAX_CONCURRENT_BUILDS > 1,
+        "total_builds": len(builds),
+    }
+
 
 def _persist_build(build):
     # Update just this build's on-disk record by id, atomically (one flock

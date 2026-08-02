@@ -26,25 +26,43 @@ ai_provider.OPENCODE_MINIMAX_MODEL), not by changing this default. 3 attempts
 is below core.ai.provider_evidence.MIN_SAMPLE_SIZE, which is enough to earn a
 slot in the rotation and nothing more; deepseek-v4-pro stays the default for
 an unpinned run.
+
+13J (2026-08-02): replaced plain subprocess.run(timeout=N) with a
+SubprocessWatchdog that enforces wall-clock and idle-CPU timeouts, runs the
+subprocess in its own process group so children are killed on timeout, and
+captures partial output on kill. The 2026-08-02 live incident was a 4+ hour
+near-zero-CPU subprocess hang blocking the entire scheduler -- a plain
+subprocess.run timeout fires eventually but leaves child processes alive, and
+a stuck process can still deadlock the scheduler's ThreadPoolExecutor.
 """
 
 import json
+import os
 import shutil
 import subprocess
+
+from core.subprocess_watchdog import SubprocessWatchdog, GenerationTimeoutError
 
 
 OPENCODE_DEFAULT_MODEL = "opencode/deepseek-v4-pro"
 DEFAULT_TIMEOUT = 600
+DEFAULT_IDLE_CPU_TIMEOUT = int(os.environ.get(
+    "GENERATION_SUBPROCESS_IDLE_CPU_TIMEOUT_SECONDS", "300"
+))
+DEFAULT_GRACE_KILL_SECONDS = int(os.environ.get(
+    "GENERATION_SUBPROCESS_GRACE_KILL_SECONDS", "5"
+))
 
 
 def _run_opencode_process(project_path, instruction, model, timeout):
     opencode_path = shutil.which("opencode") or "opencode"
-    return subprocess.run(
+    wd = SubprocessWatchdog(
         [opencode_path, "run", instruction, "--dir", project_path, "--model", model, "--format", "json", "--auto"],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
+        wall_timeout_seconds=timeout,
+        idle_cpu_seconds=DEFAULT_IDLE_CPU_TIMEOUT,
+        grace_kill_seconds=DEFAULT_GRACE_KILL_SECONDS,
     )
+    return wd.run()
 
 
 def _parse_events(stdout):

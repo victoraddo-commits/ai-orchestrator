@@ -584,6 +584,25 @@ def get_provider_dashboard():
     history = get_usage_history()
     providers = ai_provider.list_providers()
 
+    # 13J: cross-reference builds to show current job and queue depth per
+    # provider.  Imported lazily -- core.build_manager imports ai_router at
+    # module level.
+    from core.build_manager import load_builds as _load_builds
+
+    builds = []
+    try:
+        builds = _load_builds() or []
+    except Exception:
+        builds = []
+
+    running_builds = {
+        b["generated_by"]: b
+        for b in builds
+        if b.get("status") == "GENERATING" and b.get("generated_by")
+    }
+
+    actionable = {"REQUESTED", "PLANNING", "ARCHITECTURE_APPROVED", "GENERATING"}
+
     dashboard = {}
 
     for name, info in providers.items():
@@ -617,6 +636,21 @@ def get_provider_dashboard():
                 "detail": "quota not yet checked -- no request has been made to this provider",
             }
 
+        # 13J: derive a health status word from the available signals.
+        success_rate = (len(successes) / len(attempts)) if attempts else None
+        current_job = running_builds.get(name)
+
+        # queue_depth is the number of builds that are waiting for a slot
+        # (actionable but not currently assigned to *this* provider) plus
+        # any running build on this provider -- i.e. the total active work
+        # pool the provider might serve.
+        own_job_id = current_job["id"] if current_job else None
+        queue_depth = sum(
+            1 for b in builds
+            if b.get("status") in actionable
+            and b.get("id") != own_job_id
+        )
+
         dashboard[name] = {
             "status": "connected" if info["available"] else "not_configured",
             "description": info["description"],
@@ -632,6 +666,32 @@ def get_provider_dashboard():
             "average_duration_ms": (sum(durations) / len(durations)) if durations else None,
             "percent_remaining": quota.get("percent_remaining"),
             "quota_detail": quota.get("detail"),
+            # 13J additions:
+            "health": _derive_health(name, info, attempts, success_rate, quota, current_job),
+            "success_rate": success_rate,
+            "current_job": current_job["id"] if current_job else None,
+            "current_job_name": current_job["name"] if current_job else None,
+            "queue_depth": queue_depth,
         }
 
     return dashboard
+
+
+def _derive_health(name, info, attempts, success_rate, quota, current_job):
+    if not info["available"]:
+        return "unknown"
+    if quota and quota.get("status") == "quota_exceeded":
+        return "quota_exceeded"
+    if quota and quota.get("status") == "error":
+        return "degraded"
+    if current_job is not None:
+        return "busy"
+    if not attempts:
+        return "idle"
+    if success_rate is not None:
+        if success_rate >= 0.8:
+            return "healthy"
+        if success_rate >= 0.5:
+            return "degraded"
+        return "error"
+    return "healthy"

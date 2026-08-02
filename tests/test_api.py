@@ -357,7 +357,9 @@ def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
 def test_delegate_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("gemini", "openrouter", "minimax", "deepseek", "claude"):
+    # opencode_claude gained a real text_task route 2026-08-02 and sits in
+    # "planning" -- included so every candidate really is unavailable.
+    for name in ("gemini", "openrouter", "minimax", "deepseek", "claude", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
@@ -952,7 +954,9 @@ def test_kai_chat_endpoint_approval_returns_no_pending_after_request_handled():
 def test_kai_chat_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("gemini", "openrouter", "deepseek", "claude"):
+    # opencode_claude gained a real text_task route 2026-08-02 and sits in
+    # "planning" -- included so every candidate really is unavailable.
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "claude", "gemini", "opencode_claude", "deepseek_native_pro"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 

@@ -32,24 +32,31 @@ _SEND_FAIL = _http_resp(json_body={"ok": False, "description": "chat not found"}
 def _make_updates(*messages):
     updates = []
     for i, msg in enumerate(messages):
+        message = {
+            "message_id": 2000 + i,
+            "chat": {
+                "id": int(msg.get("chat_id", 612786480)),
+                "type": "private",
+            },
+            "from": {
+                "id": int(msg.get("from_id", 612786480)),
+                "is_bot": False,
+                "first_name": msg.get("first_name", "User"),
+                "username": msg.get("username", "testuser"),
+            },
+            "date": 1753810000,
+            "text": msg.get("text", ""),
+        }
+
+        # Telegram only includes reply_to_message when the user actually
+        # used the native reply feature -- mirror that: absent by default.
+        if msg.get("reply_to") is not None:
+            message["reply_to_message"] = {"message_id": msg["reply_to"]}
+
         updates.append(
             {
                 "update_id": msg.get("update_id", 1000 + i),
-                "message": {
-                    "message_id": 2000 + i,
-                    "chat": {
-                        "id": int(msg.get("chat_id", 612786480)),
-                        "type": "private",
-                    },
-                    "from": {
-                        "id": int(msg.get("from_id", 612786480)),
-                        "is_bot": False,
-                        "first_name": msg.get("first_name", "User"),
-                        "username": msg.get("username", "testuser"),
-                    },
-                    "date": 1753810000,
-                    "text": msg.get("text", ""),
-                },
+                "message": message,
             }
         )
 
@@ -135,6 +142,69 @@ def test_format_state_change_waiting_for_deploy_approval():
 
     assert "Waiting for Deploy Approval" in msg
     assert "Action needed" in msg
+
+
+def test_format_state_change_architecture_approval_includes_plan_and_reply_hint():
+    msg = tb.format_state_change(
+        {
+            "id": "abc",
+            "name": "13Z",
+            "status": "WAITING_FOR_ARCHITECTURE_APPROVAL",
+            "plan": "Add a new /widgets endpoint backed by a JSON file store.",
+        },
+    )
+
+    assert "Add a new /widgets endpoint" in msg
+    assert 'Reply "yes" to approve or "no" to reject.' in msg
+
+
+def test_format_state_change_architecture_approval_truncates_long_plan():
+    long_plan = "x" * (tb._PLAN_EXCERPT_CHARS + 500)
+
+    msg = tb.format_state_change(
+        {
+            "id": "abc",
+            "name": "13Z",
+            "status": "WAITING_FOR_ARCHITECTURE_APPROVAL",
+            "plan": long_plan,
+        },
+    )
+
+    assert "x" * tb._PLAN_EXCERPT_CHARS in msg
+    assert "500 more chars" in msg
+    assert len(msg) < len(long_plan) + 500  # excerpt, not the full plan
+
+
+def test_format_state_change_deploy_approval_includes_security_and_review_summary():
+    msg = tb.format_state_change(
+        {
+            "id": "abc",
+            "name": "13Y",
+            "status": "WAITING_FOR_DEPLOY_APPROVAL",
+            "security_report": {"total_findings": 2, "highest_severity": "low"},
+            "code_review": {"reviewer": "gemini", "findings": "Looks fine, one nit."},
+        },
+    )
+
+    assert "2 finding(s)" in msg
+    assert "highest severity: low" in msg
+    assert "Looks fine, one nit." in msg
+    assert 'Reply "yes" to approve or "no" to reject.' in msg
+
+
+def test_format_state_change_deploy_approval_notes_skipped_code_review():
+    msg = tb.format_state_change(
+        {
+            "id": "abc",
+            "name": "13Y",
+            "status": "WAITING_FOR_DEPLOY_APPROVAL",
+            "security_report": {"total_findings": 0},
+            "code_review": {"skipped": True, "reason": "no reviewer configured"},
+        },
+    )
+
+    assert "0 finding(s)" in msg
+    assert "Code review skipped: no reviewer configured." in msg
 
 
 def test_format_state_change_failed_with_reason():

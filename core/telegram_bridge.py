@@ -31,6 +31,7 @@ import requests
 from dotenv import load_dotenv
 
 import core.build_manager as _bm
+import core.memory as _memory
 
 # Imported lazily inside route_inbound_reply to avoid circular imports at
 # module load time (core.api imports core.telegram_bridge indirectly through
@@ -199,6 +200,13 @@ def poll_updates(token=None, chat_id=None, poll_timeout=0):
                 "update_id": update_id,
                 "chat_id": msg_chat_id,
                 "text": text,
+                # 2026-08-02: present only when the operator used Telegram's
+                # native reply-to (long-press/swipe to quote a message).
+                # route_inbound_reply uses it to resolve exactly which build
+                # a reply targets when several are pending at once.
+                "reply_to_message_id": (msg.get("reply_to_message") or {}).get(
+                    "message_id"
+                ),
                 "from": {
                     "id": str((msg.get("from") or {}).get("id", "")),
                     "username": (msg.get("from") or {}).get("username", ""),
@@ -223,6 +231,51 @@ def reset_offset():
             path.unlink()
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Sent-message -> build correlation: which build did Kai's message announce?
+# ---------------------------------------------------------------------------
+
+# 2026-08-02: typing out which build a plain "approve" refers to is painful
+# on a phone, so instead the operator can long-press/swipe-reply to Kai's
+# original approval/question message. That only works if we remember which
+# build each outbound message announced -- this map (message_id -> build_id)
+# is that memory. Persisted so a poller/scheduler restart between the
+# notification going out and the operator replying doesn't lose the link.
+_MESSAGE_BUILD_MAP_FILE = "telegram_message_builds.json"
+
+# Telegram message_ids grow forever; without a cap this file would too.
+# 200 comfortably covers any realistic backlog of still-answerable
+# notifications -- a reply to something older just falls back to the
+# ordinary pending-build matching, same as before this feature existed.
+_MESSAGE_BUILD_MAP_LIMIT = 200
+
+
+def record_sent_build_message(message_id, build_id):
+    def mutate(state):
+        state = state if isinstance(state, dict) else {}
+        # JSON object keys are always strings, so normalize the int
+        # message_id Telegram gives us here and in _build_id_for_message.
+        state[str(message_id)] = build_id
+        # dicts preserve insertion order, and memory_manager round-trips
+        # through json which keeps it -- so the front of the map is always
+        # the oldest entry.
+        while len(state) > _MESSAGE_BUILD_MAP_LIMIT:
+            state.pop(next(iter(state)))
+        return state
+
+    # Same flock critical section as ai_router._rotate_candidates (13R):
+    # the scheduler and the dedicated poller are separate processes, so a
+    # plain load+save could drop one side's writes.
+    _memory.update(_MESSAGE_BUILD_MAP_FILE, mutate)
+
+
+def _build_id_for_message(message_id):
+    mapping = _memory.load(_MESSAGE_BUILD_MAP_FILE)
+    if not isinstance(mapping, dict):
+        return None
+    return mapping.get(str(message_id))
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +307,20 @@ _STATE_LABEL = {
 }
 
 
+# Telegram's hard message cap is 4096 chars -- this leaves plenty of room
+# for the rest of the message (name/status/reply instructions) around a
+# truncated plan excerpt. Full untruncated plan is always available via
+# `python -m core.approval_cli list` / the dashboard -- this is a preview,
+# not the system of record.
+_PLAN_EXCERPT_CHARS = 1200
+
+# Telegram-reply vocabulary a pending approval actually accepts (see
+# _APPROVAL_PATTERNS / _REJECT_PATTERNS above) -- spelled out here so the
+# operator doesn't have to go find approval_cli.py's syntax to act on a
+# notification.
+_APPROVAL_REPLY_HINT = "Reply \"yes\" to approve or \"no\" to reject."
+
+
 def format_state_change(build, previous_status=None):
     name = build.get("name", "unknown")
     status = build.get("status", "unknown")
@@ -276,6 +343,29 @@ def format_state_change(build, previous_status=None):
     if question and status == "WAITING_FOR_USER_INPUT":
         lines.append(f"Question: {question}")
 
+    if status == "WAITING_FOR_ARCHITECTURE_APPROVAL":
+        plan = (build.get("plan") or "").strip()
+        if plan:
+            excerpt = plan[:_PLAN_EXCERPT_CHARS]
+            if len(plan) > _PLAN_EXCERPT_CHARS:
+                excerpt += f"... ({len(plan) - _PLAN_EXCERPT_CHARS} more chars, see approval_cli/dashboard)"
+            lines.append(f"\nProposed plan:\n{excerpt}")
+        lines.append(f"\n{_APPROVAL_REPLY_HINT}")
+
+    if status == "WAITING_FOR_DEPLOY_APPROVAL":
+        security_report = build.get("security_report") or {}
+        findings = security_report.get("total_findings")
+        if findings is not None:
+            severity = security_report.get("highest_severity")
+            severity_note = f", highest severity: {severity}" if severity else ""
+            lines.append(f"\nSecurity review: {findings} finding(s){severity_note}.")
+        code_review = build.get("code_review") or {}
+        if code_review.get("skipped"):
+            lines.append(f"Code review skipped: {code_review.get('reason')}.")
+        elif code_review.get("findings"):
+            lines.append(f"Code review ({code_review.get('reviewer', 'advisory')}): {code_review.get('findings')}")
+        lines.append(f"\n{_APPROVAL_REPLY_HINT}")
+
     failure = build.get("failure_reason")
     if failure and status == "FAILED":
         lines.append(f"Reason: {failure}")
@@ -292,14 +382,12 @@ def _build_state_key(build):
     return build.get("id", "")
 
 
-def detect_state_changes(builds_before, builds_after):
+def _iter_state_changes(builds_before, builds_after):
     before_map = {}
     for b in builds_before:
         bid = _build_state_key(b)
         if bid:
             before_map[bid] = b.get("status")
-
-    messages_to_send = []
 
     for b in builds_after:
         bid = _build_state_key(b)
@@ -311,11 +399,24 @@ def detect_state_changes(builds_before, builds_after):
 
         if old_status is None:
             # New build.
-            messages_to_send.append(format_state_change(b))
+            yield b, format_state_change(b)
         elif new_status != old_status:
-            messages_to_send.append(format_state_change(b, previous_status=old_status))
+            yield b, format_state_change(b, previous_status=old_status)
 
-    return messages_to_send
+
+def detect_state_changes(builds_before, builds_after):
+    return [text for _, text in _iter_state_changes(builds_before, builds_after)]
+
+
+def detect_state_changes_with_build_ids(builds_before, builds_after):
+    # 2026-08-02: same detection as detect_state_changes, but the caller
+    # (orchestrator cycle) also needs to know WHICH build each message is
+    # about, so it can remember the sent Telegram message_id -> build_id
+    # link for native reply-to disambiguation (record_sent_build_message).
+    return [
+        (build.get("id", ""), text)
+        for build, text in _iter_state_changes(builds_before, builds_after)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -334,18 +435,16 @@ def _word_matches_any(text, word_set):
     return lowered in word_set
 
 
+_PENDING_STATUSES = {
+    "WAITING_FOR_USER_INPUT",
+    "WAITING_FOR_ARCHITECTURE_APPROVAL",
+    "WAITING_FOR_DEPLOY_APPROVAL",
+}
+
+
 def _find_pending_build():
     builds = _bm.load_builds()
-    pending = [
-        b
-        for b in builds
-        if b.get("status")
-        in {
-            "WAITING_FOR_USER_INPUT",
-            "WAITING_FOR_ARCHITECTURE_APPROVAL",
-            "WAITING_FOR_DEPLOY_APPROVAL",
-        }
-    ]
+    pending = [b for b in builds if b.get("status") in _PENDING_STATUSES]
 
     return pending
 
@@ -376,9 +475,43 @@ def _operator_name(from_info):
     return " ".join(parts)
 
 
+def _build_from_reply_to(message):
+    # 2026-08-02: when the operator used Telegram's native reply-to feature
+    # to quote one of Kai's build notifications, that quote pins down
+    # exactly which build they mean -- no need to type the build name on a
+    # phone, and no ambiguity even with several builds pending at once.
+    reply_to_message_id = message.get("reply_to_message_id")
+    if reply_to_message_id is None:
+        return None
+
+    build_id = _build_id_for_message(reply_to_message_id)
+    if not build_id:
+        return None
+
+    build = _bm.get_build(build_id)
+    if build is None:
+        return None
+
+    # A reply to an old notification for a build that has since moved on
+    # (answered/approved via another surface) must not hijack routing --
+    # fall back to the normal pending-build matching instead of erroring.
+    if build.get("status") not in _PENDING_STATUSES:
+        return None
+
+    return build
+
+
 def route_inbound_reply(message, pending_builds=None):
     if pending_builds is None:
-        pending_builds = _find_pending_build()
+        replied_build = _build_from_reply_to(message)
+        if replied_build is not None:
+            # Bypasses _find_pending_build() and the "Multiple builds are
+            # awaiting input" branch entirely -- the whole point is that a
+            # native reply routes correctly even when OTHER builds are also
+            # pending.
+            pending_builds = [replied_build]
+        else:
+            pending_builds = _find_pending_build()
 
     if not pending_builds:
         # No build is awaiting input -- fall through to the full Kai chat

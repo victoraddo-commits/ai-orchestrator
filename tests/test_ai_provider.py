@@ -261,12 +261,15 @@ def test_opencode_provider_available_when_cli_present_and_authenticated(monkeypa
     assert ai_provider.list_providers()["opencode"]["available"] is True
 
 
-def test_opencode_claude_provider_is_registered_with_coding_agent_capability_only():
+def test_opencode_claude_provider_is_registered_with_both_capabilities():
+    # 2026-08-02 operator directive: Fable 5 gained a text_task route
+    # (Q&A, see ai_provider._opencode_claude_run_text_task) alongside its
+    # original coding_agent one -- was coding_agent-only until this.
     providers = ai_provider.list_providers()
 
     assert "opencode_claude" in providers
     assert "coding_agent" in providers["opencode_claude"]["capabilities"]
-    assert "text_task" not in providers["opencode_claude"]["capabilities"]
+    assert "text_task" in providers["opencode_claude"]["capabilities"]
 
 
 def test_opencode_claude_provider_defaults_to_a_claude_model_via_zen(monkeypatch, tmp_path):
@@ -457,6 +460,124 @@ def test_opencode_deepseek_provider_is_registered_with_coding_agent_capability_o
     assert "text_task" not in providers["opencode_deepseek"]["capabilities"]
 
 
+# --- 2026-08-02: qwen3_coding -- self-hosted Qwen3-Coder as a real coding_agent, via a custom opencode provider ---
+
+def test_qwen3_coding_provider_is_registered_with_coding_agent_capability_only():
+    providers = ai_provider.list_providers()
+    assert "qwen3_coding" in providers
+    assert "coding_agent" in providers["qwen3_coding"]["capabilities"]
+    assert "text_task" not in providers["qwen3_coding"]["capabilities"]
+
+
+def test_qwen3_coding_provider_defaults_to_correct_model(monkeypatch, tmp_path):
+    import core.opencode_bridge as opencode_bridge
+
+    captured = {}
+
+    def fake_run_coding_task(project_path, instruction, **kwargs):
+        captured["model"] = kwargs.get("model")
+        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+
+    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+
+    provider = ai_provider.get_provider("qwen3_coding")
+    provider["run_coding_task"](str(tmp_path), "build a widget")
+
+    assert captured["model"] == "qwen3-runpod/QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ"
+
+
+def test_qwen3_coding_provider_availability_requires_opencode_and_both_env_vars(monkeypatch):
+    import core.ai_provider as provider_module
+
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
+    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://example.proxy.runpod.net/v1")
+    assert ai_provider.list_providers()["qwen3_coding"]["available"] is True
+
+    monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
+    assert ai_provider.list_providers()["qwen3_coding"]["available"] is False
+
+    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://example.proxy.runpod.net/v1")
+    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    assert ai_provider.list_providers()["qwen3_coding"]["available"] is False
+
+
+# --- 17R item 1: native DeepSeek providers (api.deepseek.com, no OpenRouter/Zen quota exposure) ---
+
+def test_deepseek_native_pro_provider_availability_reflects_env_var(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_NATIVE_PRO_API_KEY", raising=False)
+    assert ai_provider.list_providers()["deepseek_native_pro"]["available"] is False
+
+    monkeypatch.setenv("DEEPSEEK_NATIVE_PRO_API_KEY", "test-key")
+    assert ai_provider.list_providers()["deepseek_native_pro"]["available"] is True
+
+
+def test_deepseek_native_flash_provider_availability_reflects_env_var(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_NATIVE_FLASH_API_KEY", raising=False)
+    assert ai_provider.list_providers()["deepseek_native_flash"]["available"] is False
+
+    monkeypatch.setenv("DEEPSEEK_NATIVE_FLASH_API_KEY", "test-key")
+    assert ai_provider.list_providers()["deepseek_native_flash"]["available"] is True
+
+
+def test_deepseek_native_pro_run_text_task_calls_llm_clients_call_deepseek_native_pro(monkeypatch):
+    import core.llm_clients as llm_clients
+
+    monkeypatch.setenv("DEEPSEEK_NATIVE_PRO_API_KEY", "test-key")
+    captured = {}
+
+    def fake_call(prompt, timeout=60):
+        captured["prompt"] = prompt
+        return "deepseek native pro response"
+
+    monkeypatch.setattr(llm_clients, "call_deepseek_native_pro", fake_call)
+
+    provider = ai_provider.get_provider("deepseek_native_pro")
+    result = provider["run_text_task"]("hello")
+    assert result == "deepseek native pro response"
+    assert captured["prompt"] == "hello"
+
+
+def test_deepseek_native_flash_run_text_task_calls_llm_clients_call_deepseek_native_flash(monkeypatch):
+    import core.llm_clients as llm_clients
+
+    monkeypatch.setenv("DEEPSEEK_NATIVE_FLASH_API_KEY", "test-key")
+    captured = {}
+
+    def fake_call(prompt, timeout=60):
+        captured["prompt"] = prompt
+        return "deepseek native flash response"
+
+    monkeypatch.setattr(llm_clients, "call_deepseek_native_flash", fake_call)
+
+    provider = ai_provider.get_provider("deepseek_native_flash")
+    result = provider["run_text_task"]("hello")
+    assert result == "deepseek native flash response"
+    assert captured["prompt"] == "hello"
+
+
+def test_deepseek_native_providers_have_text_task_capability_only():
+    providers = ai_provider.list_providers()
+    for name in ("deepseek_native_pro", "deepseek_native_flash"):
+        assert name in providers
+        assert "text_task" in providers[name]["capabilities"]
+        assert "coding_agent" not in providers[name]["capabilities"]
+
+
+def test_deepseek_native_flash_does_not_use_the_shared_openrouter_or_zen_credentials(monkeypatch):
+    # Confirms this route has no shared-quota exposure to OpenRouter/Zen --
+    # the whole point of registering it (2026-08-02: gemini and every
+    # OpenRouter-routed candidate were simultaneously credit/quota-exhausted).
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_NATIVE_FLASH_API_KEY", "test-key")
+
+    import core.llm_clients as llm_clients
+    monkeypatch.setattr(llm_clients, "call_deepseek_native_flash", lambda prompt, timeout=60: "ok")
+
+    assert ai_provider.get_provider("deepseek_native_flash")["run_text_task"]("hello") == "ok"
+
+
 def test_opencode_deepseek_provider_defaults_to_correct_model(monkeypatch, tmp_path):
     import core.opencode_bridge as opencode_bridge
 
@@ -514,9 +635,17 @@ def test_every_registered_provider_has_a_valid_cost_tier():
         ("opencode_claude", "free_or_low_cost"),
         ("opencode_minimax", "free_or_low_cost"),
         ("opencode_deepseek", "free_or_low_cost"),
+        # 2026-08-02: qwen3_coding -- same self-hosted RunPod GPU as "openai"
+        # below, own-hardware billing rather than per-call.
+        ("qwen3_coding", "free_or_low_cost"),
+        # 2026-08-02: "openai" now means the self-hosted Qwen3-Coder vLLM
+        # instance (own RunPod GPU pod, not per-call billing) -- moved out
+        # of "paid" the same day it was repointed away from the real OpenAI
+        # API. See core.llm_clients.call_openai / core.ai_provider's
+        # "openai" registration.
+        ("openai", "free_or_low_cost"),
         # real per-call billing / materially expensive models
         ("claude", "paid"),
-        ("openai", "paid"),
         ("openrouter", "paid"),
         ("opencode_claude_sonnet", "paid"),
         ("opencode_claude_opus", "paid"),

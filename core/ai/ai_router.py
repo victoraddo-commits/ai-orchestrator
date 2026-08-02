@@ -108,22 +108,46 @@ ROLE_PROVIDERS = {
     # 13M (2026-07-30): the direct Claude/Anthropic subscription's credit is
     # preserved by never trying "claude" first. The three alt-Claude routes
     # (Opus 4.7 + Sonnet 4.6 via the OpenRouter account, Fable 5 via OpenCode
-    # Zen -- all billed independently of the subscription) form a rotating
-    # front group (CODING_ROTATING_FRONT, see _candidates_for): only they
-    # take turns as the first attempt, openrouter_claude_opus first per
-    # explicit user directive (2026-07-30). Everything after them is a fixed
-    # fallback tail, always walked in this order: the Zen Claude escalation
-    # tiers (still alt-billing, still Claude-family), then direct "claude"
-    # as the last Claude-family resort, then the non-Claude routes exactly
-    # as before.
+    # Zen -- all billed independently of the subscription) formed a rotating
+    # front group (CODING_ROTATING_FRONT, see _candidates_for), openrouter_
+    # claude_opus first per explicit user directive (2026-07-30).
+    #
+    # 2026-08-02 operator directive: both the direct Claude/Anthropic
+    # subscription AND the OpenRouter account are out of credit right now.
+    # openrouter_claude_opus, openrouter_claude_sonnet, and opencode_deepseek
+    # (all billed through the OpenRouter account, the last via opencode's
+    # own stored OpenRouter credential) are pulled from this list entirely --
+    # same "still registered in core.ai_provider, easy to re-add once quota
+    # clears" treatment as gemini got the same day. opencode_claude (Fable 5,
+    # billed through OpenCode Zen -- a separate, unaffected account) is now
+    # CODING_ROTATING_FRONT's only member and this list's primary. Direct
+    # "claude" stays in the fixed tail as a fallback (not disabled -- the
+    # operator asked to reroute its work, not remove it) rather than being
+    # pulled outright, so it resumes taking real traffic automatically once
+    # its credit renews.
+    #
+    # qwen3_coding joined CODING_ROTATING_FRONT once tool-calling was
+    # confirmed live on the RunPod pod (see core.ai_provider's
+    # QWEN3_CODING_MODEL comment), rotating 50/50 with Fable 5 at first --
+    # later the same day, explicit operator directive assigned it the
+    # roadmap outright ("priority is the roadmap... qwen3 builds and fable
+    # checks and approves"): qwen3_coding is now CODING_ROTATING_FRONT's
+    # sole member and this list's primary, maximizing real usage of the
+    # pay-per-use GPU rather than splitting its attempts with Fable 5.
+    # opencode_claude drops to the fixed tail's first entry -- still the
+    # immediate fallback if qwen3_coding fails, but its new primary job is
+    # advisory code review (core.build_manager._opencode_claude_code_review,
+    # née _claude_code_review) rather than co-primary generation. "fable...
+    # approves" is advisory only, same as the pre-existing code review step
+    # it replaced -- it does not call approve_architecture/approve_deploy
+    # (see tests/test_kai_identity.py's structural guarantee); a human still
+    # makes every approve/reject decision.
     "coding": [
-        "openrouter_claude_opus",
+        "qwen3_coding",
         "opencode_claude",
-        "openrouter_claude_sonnet",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
         "claude",
-        "opencode_deepseek",
         "opencode",
         "opencode_minimax",
     ],
@@ -158,7 +182,33 @@ ROLE_PROVIDERS = {
     # gemini was only tried first ~1-in-4 calls despite being the
     # demonstrably better choice. User flagged this live 2026-07-31 ("why is
     # kai not using gemini mainly for planning where it exceeds").
-    "planning": ["gemini", "openrouter", "deepseek", "claude"],
+    # 2026-08-02 operator directive: gemini is quota-exhausted (429, its own
+    # Google billing) -- delegated its primary slot to deepseek_native_flash
+    # (native api.deepseek.com, no shared-quota exposure to gemini's or
+    # OpenRouter's outage). Initially moved to last rather than removed;
+    # operator then directed disabling it outright ("disable gemini for
+    # now") after an 18-phase pileup confirmed every one of those failures
+    # traced to this same gemini/openrouter quota wall -- removed from every
+    # role's candidate list below, not merely deprioritized. Still a
+    # registered provider (core.ai_provider) and easy to re-add to any list
+    # once its quota clears; this overrides the 2026-07-31 evidence-based
+    # "gemini first" ordering only for as long as the operator's disable
+    # stands.
+    # openrouter dropped 2026-08-02 (OpenRouter account out of credit, same
+    # operator directive as "coding" and "architecture" below). opencode_claude
+    # (Fable 5, via its new text_task route -- see core.ai_provider's
+    # _opencode_claude_run_text_task) added same day per operator directive:
+    # Fable 5 answers Kai's operator-chat questions (this role is what
+    # core.ai.ai_router.chat/Kai's Telegram Q&A actually calls) alongside the
+    # deepseek family. Never touches approvals -- those stay human-only,
+    # unrelated to this role entirely.
+    #
+    # deepseek_native_pro joins the same day, explicit operator directive
+    # ("assign DeepSeek-V4-Pro to help kai with the chats") -- another real,
+    # independently-billed (native api.deepseek.com, no OpenRouter/Zen quota
+    # exposure) candidate for Kai's Q&A redundancy/quality, alongside its
+    # already-routed sibling deepseek_native_flash.
+    "planning": ["deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "claude"],
     # 13V: the Chief Architect chain -- a *named priority list* distinct from
     # general "planning": Claude's judgment is the product here, so unlike
     # every other role this one never rotates its starting candidate (see
@@ -168,14 +218,24 @@ ROLE_PROVIDERS = {
     # explicit task_type="architecture" (classify_task maps the word
     # "architecture" to "planning"); core.ai.chief_architect wraps this and
     # records each call to memory/chief_architect_history.json.
-    "architecture": ["claude", "gemini", "deepseek", "openrouter_claude", "openai"],
-    "log_analysis": ["groq", "openrouter", "claude"],
-    "documentation": ["gemini", "groq", "openrouter", "deepseek", "claude"],
+    # gemini disabled 2026-08-02, same rationale as "planning" above.
+    # 2026-08-02 operator directive: openrouter_claude dropped (OpenRouter
+    # account out of credit -- same directive that hit "coding"). Direct
+    # "claude" is also out of credit right now, but unlike "coding" this role
+    # has no coding_agent-only Fable 5 route to reassign to (opencode_claude
+    # never registered a run_text_task), so it's simply moved off the
+    # primary slot rather than replaced -- deepseek_native_flash takes over
+    # as primary until claude's credit renews, matching "planning" above.
+    # claude stays in the tail (not removed) so it resumes automatically.
+    "architecture": ["deepseek_native_flash", "deepseek", "openai", "claude"],
+    "log_analysis": ["groq", "claude"],
+    "documentation": ["deepseek_native_flash", "groq", "deepseek", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
-    "review": ["openai", "gemini", "deepseek", "claude"],
+    # gemini disabled 2026-08-02, same rationale as "planning" above.
+    "review": ["openai", "deepseek_native_flash", "deepseek", "claude"],
     # 2026-07-31, user directive: route short, structured, high-volume calls
     # (intent detection, request classification, JSON/command extraction,
     # SQL generation, categorization) to groq first -- these are exactly the
@@ -190,7 +250,8 @@ ROLE_PROVIDERS = {
     # using task_type="planning" for what is really intent classification,
     # paying for gemini's long-context planning strength on a task that
     # doesn't need it.
-    "classification": ["groq", "gemini", "deepseek", "claude"],
+    # gemini disabled 2026-08-02, same rationale as "planning" above.
+    "classification": ["groq", "deepseek_native_flash", "deepseek", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -207,16 +268,20 @@ LAW_TUTOR_ROLE_PROVIDERS = {
     # Long-document / textbook / lecture-note reading -- gemini's long
     # context window is the whole reason this role exists separately from
     # law_teaching.
-    "law_document": ["gemini", "claude", "openai", "deepseek"],
+    # gemini disabled 2026-08-02 (quota-exhausted, same rationale as the
+    # operational roles above) -- note this trades away gemini's
+    # long-context advantage for law_document specifically while it's
+    # disabled; re-add once gemini's quota clears.
+    "law_document": ["deepseek_native_flash", "claude", "openai", "deepseek"],
     # Case/judgment analysis -- benefits from careful, deep reasoning over a
     # fixed set of facts more than from speed or context length.
-    "law_case_analysis": ["claude", "gemini", "openai", "deepseek"],
+    "law_case_analysis": ["claude", "deepseek_native_flash", "openai", "deepseek"],
     # Teaching/explaining concepts, Socratic questioning -- this system has
     # no evidence either way for "which model teaches better", so this is a
     # genuine judgment call, not a measured pick.
-    "law_teaching": ["openai", "claude", "gemini", "deepseek"],
+    "law_teaching": ["openai", "claude", "deepseek_native_flash", "deepseek"],
     # Exam questions, IRAC structuring, mock exams -- moderate depth, moderate cost.
-    "law_exam": ["claude", "openai", "deepseek", "gemini"],
+    "law_exam": ["claude", "openai", "deepseek"],
     # Flashcards -- short, structured, low-stakes, high-volume; cheap and fast matter more than depth here.
     "law_flashcards": ["deepseek", "groq", "claude", "openai"],
     # Fast general chat / quick answers -- groq's exact strength.
@@ -281,7 +346,14 @@ def classify_task(description):
 # put direct "claude" first on a fraction of calls, defeating the
 # credit-preservation goal -- so only these rotate; every other coding
 # candidate is a fixed tail, always tried last and in ROLE_PROVIDERS order.
-CODING_ROTATING_FRONT = ["openrouter_claude_opus", "opencode_claude", "openrouter_claude_sonnet"]
+# 2026-08-02: openrouter_claude_opus/sonnet dropped (OpenRouter account out
+# of credit, see ROLE_PROVIDERS["coding"]) -- opencode_claude (Fable 5) was
+# briefly the sole remaining member, then rotated 50/50 with qwen3_coding
+# once its tool-calling gap was fixed server-side. Same day, operator
+# directive assigned the roadmap to qwen3_coding outright -- it's now the
+# sole front-group member; opencode_claude moved to the fixed tail (see
+# ROLE_PROVIDERS["coding"]'s comment -- its new primary job is code review).
+CODING_ROTATING_FRONT = ["qwen3_coding"]
 
 
 def _candidates_for(task_type):

@@ -161,11 +161,32 @@ def _application_build_signals():
     ]
 
 
+# 2026-08-02 operator directive: "tell kai to prioritise everything that
+# will help qwen3 work better" -- qwen3_coding (self-hosted Qwen3-Coder on a
+# pay-per-use RunPod GPU) is the roadmap's primary builder as of the same
+# day (see core.ai.ai_router.ROLE_PROVIDERS["coding"]). Surfaced in every
+# proposal-generation cycle rather than a one-off chat message, since
+# Kai's chat history isn't fed into these signals/this prompt -- a durable
+# directive here is the only way it actually shapes future proposals.
+OPERATOR_PRIORITY = (
+    "Operator priority: when weighing which improvements to propose, favor "
+    "ones that make qwen3_coding (the self-hosted Qwen3-Coder route, now "
+    "the roadmap's primary builder, billed per-second on a RunPod GPU) "
+    "more reliable or more capable -- e.g. monitoring its success/failure "
+    "rate in recent_ai_usage_failures, hardening its opencode tool-calling "
+    "integration, expanding what it can safely handle, or catching "
+    "regressions before they cost pay-per-use GPU time. This is a "
+    "standing priority, not a signal that only applies when qwen3_coding "
+    "appears in the signals below."
+)
+
+
 def _build_prompt(signals):
     return (
         "You are Kai, the AI Orchestrator's continuous-improvement planner. "
         "Do NOT write, edit, or modify any files, and do NOT run commands that "
         "change anything -- only analyze the signals below and respond with text.\n\n"
+        f"{OPERATOR_PRIORITY}\n\n"
         f"Current system signals (JSON):\n{json.dumps(signals, indent=2, default=str)}\n\n"
         "Based on these signals, propose 0-3 concrete improvements to the "
         "system (e.g. addressing a recurring build failure, a health "

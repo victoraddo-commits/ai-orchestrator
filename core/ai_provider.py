@@ -163,6 +163,36 @@ def _opencode_claude_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# 2026-08-02 operator directive: give Fable 5 a text_task route too (Q&A --
+# e.g. Kai's operator chat, task_type="planning") alongside its existing
+# coding_agent one, same "text only, don't touch files" wrapper pattern as
+# _claude_run_text_task above (reuses the coding-task path with an
+# instruction prefix + the same scratch workspace, since opencode has no
+# separate non-agentic text endpoint). NOT wired into any approval flow --
+# approvals stay human-only (see core.build_manager.approve_architecture/
+# approve_deploy and tests/test_kai_identity.py's structural guarantee that
+# nothing under core/kai/ calls them); "answer questions" is the entire
+# scope of this route.
+def _opencode_claude_run_text_task(prompt, timeout=60, project_path=None):
+    if project_path is None:
+        create_local_repo(_SCRATCH_WORKSPACE)
+        project_path = _SCRATCH_WORKSPACE
+
+    instruction = (
+        "Answer the following as text only. Do NOT write, edit, or modify "
+        "any files, and do not run commands that change anything.\n\n"
+        f"{prompt}"
+    )
+    result = _opencode_claude_run_coding_task(project_path, instruction, timeout=timeout)
+
+    if not result.get("success"):
+        errors = result.get("tool_errors") or []
+        detail = "; ".join(e.get("content", "") for e in errors) or "opencode run did not succeed"
+        raise RuntimeError(f"opencode_claude text task failed: {detail}")
+
+    return result.get("response_text", "")
+
+
 # Escalation tier above Fable 5: same Zen credential/billing, confirmed live
 # via `opencode models` to be valid model strings (2026-07-29, user directive
 # after Claude's weekly subscription limit hit mid-session). Fable 5 stays
@@ -222,6 +252,32 @@ OPENCODE_DEEPSEEK_MODEL = "openrouter/deepseek/deepseek-v4-pro"
 
 def _opencode_deepseek_run_coding_task(project_path, instruction, **kwargs):
     kwargs.setdefault("model", OPENCODE_DEEPSEEK_MODEL)
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
+# 2026-08-02 operator directive: self-hosted Qwen3-Coder-30B-A3B-Instruct-AWQ
+# (RunPod, pay-per-use GPU) as a real coding_agent, not just the text_task
+# route already wired on "openai" (core.llm_clients.call_openai). Driven
+# through the opencode CLI via a custom provider entry (not the Zen/
+# OpenRouter auth.json credential store -- see ~/.config/opencode/
+# opencode.jsonc's "qwen3-runpod" provider, an @ai-sdk/openai-compatible
+# pointed at VLLM_QWEN3_CODER_BASE_URL/API_KEY). Blocked until this date on
+# a server-side gap: the vLLM instance wasn't launched with
+# --enable-auto-tool-choice --tool-call-parser qwen3_coder, so opencode's
+# tool-use loop 400'd on every attempt ("'auto' tool choice requires
+# --enable-auto-tool-choice...") -- confirmed fixed live same day (file-write
+# spike succeeded) once the pod's vllm serve command included those flags.
+QWEN3_CODING_MODEL = "qwen3-runpod/QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ"
+
+
+def _qwen3_coding_available():
+    if shutil.which("opencode") is None:
+        return False
+    return bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL"))
+
+
+def _qwen3_coding_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", QWEN3_CODING_MODEL)
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
@@ -354,10 +410,14 @@ register_provider(
 register_provider(
     "openai",
     run_text_task=_openai_run_text_task,
-    available_fn=lambda: bool(os.getenv("OPENAI_API_KEY")),
+    # 2026-08-02 operator directive: backed by the self-hosted Qwen3-Coder
+    # vLLM instance now, not the real OpenAI API -- see
+    # core.llm_clients.call_openai. Availability follows the credential it
+    # actually uses.
+    available_fn=lambda: bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL")),
     kind="cloud",
-    description="OpenAI -- available, not currently assigned a primary role",
-    cost_tier="paid",
+    description="Qwen3-Coder-30B-A3B-Instruct-AWQ, self-hosted vLLM on RunPod (was real OpenAI API until 2026-08-02) -- heavy-lifting text_task capacity, roadmap expediting per operator directive",
+    cost_tier="free_or_low_cost",
 )
 
 register_provider(
@@ -403,6 +463,38 @@ register_provider(
     cost_tier="free_or_low_cost",
 )
 
+
+def _deepseek_native_pro_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_deepseek_native_pro(prompt, timeout=timeout)
+
+
+def _deepseek_native_flash_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_deepseek_native_flash(prompt, timeout=timeout)
+
+
+# 17R item 1: direct api.deepseek.com calls (not proxied through OpenRouter
+# or OpenCode Zen), so these have no shared-quota exposure to any OpenRouter
+# key or the Zen account -- confirmed live 2026-08-02 while every OpenRouter-
+# routed candidate (openrouter, deepseek, both Claude-family OpenRouter
+# routes) and Gemini were simultaneously credit/quota-exhausted.
+register_provider(
+    "deepseek_native_pro",
+    run_text_task=_deepseek_native_pro_run_text_task,
+    available_fn=lambda: bool(os.getenv("DEEPSEEK_NATIVE_PRO_API_KEY")),
+    kind="cloud",
+    description="DeepSeek V4 Pro via native api.deepseek.com (DEEPSEEK_NATIVE_PRO_API_KEY) -- no OpenRouter/Zen quota exposure",
+    cost_tier="free_or_low_cost",
+)
+
+register_provider(
+    "deepseek_native_flash",
+    run_text_task=_deepseek_native_flash_run_text_task,
+    available_fn=lambda: bool(os.getenv("DEEPSEEK_NATIVE_FLASH_API_KEY")),
+    kind="cloud",
+    description="DeepSeek V4 Flash via native api.deepseek.com (DEEPSEEK_NATIVE_FLASH_API_KEY) -- fast, no OpenRouter/Zen quota exposure",
+    cost_tier="free_or_low_cost",
+)
+
 register_provider(
     "opencode",
     run_coding_task=_opencode_run_coding_task,
@@ -415,9 +507,10 @@ register_provider(
 register_provider(
     "opencode_claude",
     run_coding_task=_opencode_claude_run_coding_task,
+    run_text_task=_opencode_claude_run_text_task,
     available_fn=_opencode_available,
     kind="cloud",
-    description="Claude Fable 5 (opencode/claude-fable-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits",
+    description="Claude Fable 5 (opencode/claude-fable-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits; also handles Q&A (text_task) since 2026-08-02",
     cost_tier="free_or_low_cost",
 )
 
@@ -454,6 +547,15 @@ register_provider(
     available_fn=_opencode_available,
     kind="cloud",
     description="DeepSeek V4 Pro (openrouter/deepseek/deepseek-v4-pro via opencode CLI) -- OpenRouter credential, no Zen key collision",
+    cost_tier="free_or_low_cost",
+)
+
+register_provider(
+    "qwen3_coding",
+    run_coding_task=_qwen3_coding_run_coding_task,
+    available_fn=_qwen3_coding_available,
+    kind="cloud",
+    description="Qwen3-Coder-30B-A3B-Instruct-AWQ, self-hosted vLLM on RunPod (pay-per-use GPU) via a custom opencode provider -- confirmed live tool-calling 2026-08-02 after the pod's vllm serve gained --enable-auto-tool-choice --tool-call-parser qwen3_coder",
     cost_tier="free_or_low_cost",
 )
 

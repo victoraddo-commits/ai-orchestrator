@@ -24,6 +24,17 @@ def _force_status(build_id, status):
     build_manager.save_builds(builds)
 
 
+def _disable_code_review(monkeypatch):
+    # Same helper as tests/test_build_manager.py -- code review is a
+    # fallback chain (build_manager.CODE_REVIEW_CANDIDATES: opencode_claude
+    # then deepseek_native_pro), both real env-credential-available
+    # providers on this host/process, so tests that don't care about the
+    # review step's outcome must disable the whole chain, not just one name.
+    import core.ai_provider as ai_provider
+    for name in build_manager.CODE_REVIEW_CANDIDATES:
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+
 def _create_build_via_api():
     response = client.post(
         "/builds",
@@ -97,7 +108,7 @@ def test_advance_builds_creates_a_deploy_approval_after_security_review(monkeypa
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -106,6 +117,7 @@ def test_advance_builds_creates_a_deploy_approval_after_security_review(monkeypa
         "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 2, "highest_severity": "medium"},
     )
+    _disable_code_review(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -177,7 +189,7 @@ def test_approving_deploy_approval_resumes_the_build(monkeypatch):
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -186,6 +198,7 @@ def test_approving_deploy_approval_resumes_the_build(monkeypatch):
         "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
+    _disable_code_review(monkeypatch)
     build_manager.advance_builds()
 
     approval = _approval_for_build(build_id)

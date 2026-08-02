@@ -611,7 +611,7 @@ def test_generation_with_no_files_changed_but_a_real_commit_is_not_treated_as_no
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True,
                 "response_text": "Done.",
@@ -625,6 +625,9 @@ def test_generation_with_no_files_changed_but_a_real_commit_is_not_treated_as_no
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
+    # Irrelevant to what this test actually verifies (no-op detection) --
+    # avoids real calls to the code review fallback chain.
+    _disable_code_review(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -645,12 +648,13 @@ def test_run_generation_uses_the_longer_generation_timeout_not_the_planning_one(
     def fake_delegate(description, **kwargs):
         captured["timeout"] = kwargs.get("timeout")
         return {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         }
 
     monkeypatch.setattr(build_manager, "delegate", fake_delegate)
     monkeypatch.setattr(build_manager, "run_all_scans", lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None})
+    _disable_code_review(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -683,6 +687,11 @@ def test_advance_builds_drives_generating_to_deploy_approval_via_security_review
             "scanners": {}, "total_findings": 2, "highest_severity": "medium",
         },
     )
+    # generated_by stays "claude" here (asserted below) -- unlike the other
+    # generation tests, this one can't dodge the review call by swapping to
+    # "opencode_claude", so stub the reviewer instead of hitting a real
+    # opencode call.
+    _stub_opencode_claude_reviewer(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -705,7 +714,7 @@ def test_advance_builds_reaches_deploy_approval_even_with_critical_findings(monk
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -714,6 +723,7 @@ def test_advance_builds_reaches_deploy_approval_even_with_critical_findings(monk
         "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 5, "highest_severity": "critical"},
     )
+    _disable_code_review(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -817,14 +827,34 @@ def test_max_concurrent_builds_defaults_when_config_is_missing_or_bad(tmp_path, 
 
 # -- 13R: concurrent dispatch --------------------------------------------------
 
-def _stub_claude_reviewer(monkeypatch, findings="No issues found."):
+def _disable_code_review(monkeypatch):
+    # 2026-08-02: code review is a fallback chain now (CODE_REVIEW_CANDIDATES
+    # -- opencode_claude then deepseek_native_pro, see build_manager's
+    # module-level comment above it), both real, env-credential-available
+    # providers on this host/process (core.api's load_dotenv() leaks
+    # VLLM_QWEN3_CODER_*/DEEPSEEK_NATIVE_PRO_API_KEY into the whole pytest
+    # session). Tests that don't care about the review step's outcome
+    # should call this rather than only neutralizing one candidate by name
+    # (e.g. via generated_by) -- that only skips that one candidate, the
+    # chain still tries the rest for real.
+    import core.ai_provider as ai_provider
+    for name in build_manager.CODE_REVIEW_CANDIDATES:
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+
+def _stub_opencode_claude_reviewer(monkeypatch, findings="No issues found."):
+    # Renamed from _stub_claude_reviewer 2026-08-02: code review moved from
+    # the direct "claude" provider to "opencode_claude" (Fable 5) -- see
+    # build_manager's CODE_REVIEW_CANDIDATES comment. opencode_claude is
+    # first in the fallback chain, so stubbing it alone is enough to make
+    # the review succeed without ever reaching deepseek_native_pro.
     fake = {
         "available_fn": lambda: True,
         "run_text_task": lambda prompt, timeout=60, project_path=None: findings,
     }
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
-        lambda name: fake if name == "claude" else None,
+        lambda name: fake if name == "opencode_claude" else None,
     )
     return fake
 
@@ -859,7 +889,7 @@ def test_advance_builds_runs_two_ready_builds_concurrently_without_cross_talk(mo
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
-    _stub_claude_reviewer(monkeypatch)
+    _stub_opencode_claude_reviewer(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -886,7 +916,7 @@ def test_one_builds_crash_does_not_lose_the_other_builds_result(monkeypatch, tmp
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -897,6 +927,7 @@ def test_one_builds_crash_does_not_lose_the_other_builds_result(monkeypatch, tmp
         return {"scanners": {}, "total_findings": 0, "highest_severity": None}
 
     monkeypatch.setattr(build_manager, "run_all_scans", scan)
+    _disable_code_review(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -922,14 +953,20 @@ def test_persist_build_updates_only_that_builds_record():
 
 # -- 13R: CODE_REVIEW ----------------------------------------------------------
 
-def test_code_review_is_skipped_for_claude_generated_builds(monkeypatch):
+def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_generated_it(monkeypatch):
+    # 2026-08-02: CODE_REVIEW_CANDIDATES is a fallback chain now, not a
+    # single reviewer -- self-review isn't independent oversight, but that
+    # only rules out opencode_claude specifically when it's the build's own
+    # generator. deepseek_native_pro (the fallback, "add DeepSeek-V4-Pro as
+    # fallback reviewer... behind fable 5") still gets a real attempt rather
+    # than the whole review being skipped outright.
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -937,26 +974,39 @@ def test_code_review_is_skipped_for_claude_generated_builds(monkeypatch):
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
+
+    fake_deepseek = {
+        "available_fn": lambda: True,
+        "run_text_task": lambda prompt, timeout=60, project_path=None: "Advisory: looks fine.",
+    }
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
-        lambda name: pytest.fail("claude must not be asked to review its own work"),
+        lambda name: (
+            pytest.fail("opencode_claude must not be asked to review its own work") if name == "opencode_claude"
+            else fake_deepseek if name == "deepseek_native_pro"
+            else None
+        ),
     )
 
     build_manager.advance_builds()
 
     updated = build_manager.get_build(build["id"])
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
-    assert updated["code_review"] == {"skipped": True, "reason": "generated by claude"}
+    assert updated["code_review"] == {
+        "skipped": False,
+        "reviewer": "deepseek_native_pro",
+        "findings": "Advisory: looks fine.",
+    }
 
 
-def test_code_review_attaches_claude_findings_for_non_claude_builds(monkeypatch, tmp_path):
+def test_code_review_attaches_opencode_claude_findings_for_other_builds(monkeypatch, tmp_path):
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode", "task_type": "coding", "duration_ms": 10,
+            "provider": "qwen3_coding", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True, "response_text": "Done.",
                 "files_changed": ["app/main.py"],
@@ -969,7 +1019,7 @@ def test_code_review_attaches_claude_findings_for_non_claude_builds(monkeypatch,
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
-    _stub_claude_reviewer(monkeypatch, findings="Advisory: app/main.py has no tests.")
+    _stub_opencode_claude_reviewer(monkeypatch, findings="Advisory: app/main.py has no tests.")
 
     build_manager.advance_builds()
 
@@ -977,7 +1027,7 @@ def test_code_review_attaches_claude_findings_for_non_claude_builds(monkeypatch,
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["code_review"] == {
         "skipped": False,
-        "reviewer": "claude",
+        "reviewer": "opencode_claude",
         "findings": "Advisory: app/main.py has no tests.",
     }
 
@@ -999,7 +1049,7 @@ def test_code_review_findings_never_block_the_build(monkeypatch, tmp_path):
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
-    _stub_claude_reviewer(monkeypatch, findings="CRITICAL: this code is broken and must not ship.")
+    _stub_opencode_claude_reviewer(monkeypatch, findings="CRITICAL: this code is broken and must not ship.")
 
     build_manager.advance_builds()
 
@@ -1008,7 +1058,10 @@ def test_code_review_findings_never_block_the_build(monkeypatch, tmp_path):
     assert "must not ship" in updated["code_review"]["findings"]
 
 
-def test_code_review_skips_gracefully_when_claude_is_unavailable(monkeypatch, tmp_path):
+def test_code_review_skips_gracefully_when_every_reviewer_candidate_is_unavailable(monkeypatch, tmp_path):
+    # Both opencode_claude and its fallback deepseek_native_pro unavailable
+    # -- the whole review comes back skipped, with each candidate's reason
+    # joined rather than only the first one reported.
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
@@ -1032,10 +1085,53 @@ def test_code_review_skips_gracefully_when_claude_is_unavailable(monkeypatch, tm
 
     updated = build_manager.get_build(build["id"])
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
-    assert updated["code_review"] == {"skipped": True, "reason": "claude unavailable"}
+    assert updated["code_review"] == {
+        "skipped": True,
+        "reason": "opencode_claude unavailable; deepseek_native_pro unavailable",
+    }
 
 
-def test_code_review_skips_gracefully_when_the_claude_call_fails(monkeypatch, tmp_path):
+def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_is_unavailable(monkeypatch, tmp_path):
+    build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
+    _force_status(build["id"], "GENERATING")
+
+    monkeypatch.setattr(
+        build_manager, "delegate",
+        lambda description, **kwargs: {
+            "provider": "opencode", "task_type": "coding", "duration_ms": 10,
+            "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
+        },
+    )
+    monkeypatch.setattr(
+        build_manager, "run_all_scans",
+        lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
+    )
+
+    fake_deepseek = {
+        "available_fn": lambda: True,
+        "run_text_task": lambda prompt, timeout=60, project_path=None: "Advisory: no issues.",
+    }
+    monkeypatch.setattr(
+        build_manager.ai_provider, "get_provider",
+        lambda name: (
+            {"available_fn": lambda: False, "run_text_task": None} if name == "opencode_claude"
+            else fake_deepseek if name == "deepseek_native_pro"
+            else None
+        ),
+    )
+
+    build_manager.advance_builds()
+
+    updated = build_manager.get_build(build["id"])
+    assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
+    assert updated["code_review"] == {
+        "skipped": False,
+        "reviewer": "deepseek_native_pro",
+        "findings": "Advisory: no issues.",
+    }
+
+
+def test_code_review_skips_gracefully_when_the_opencode_claude_call_fails(monkeypatch, tmp_path):
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
@@ -1052,7 +1148,7 @@ def test_code_review_skips_gracefully_when_the_claude_call_fails(monkeypatch, tm
     )
 
     def boom(prompt, timeout=60, project_path=None):
-        raise RuntimeError("Claude usage limit reached")
+        raise RuntimeError("Fable 5 usage limit reached")
 
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
@@ -1074,16 +1170,20 @@ def test_advance_builds_picks_up_a_build_stranded_in_code_review(monkeypatch):
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "CODE_REVIEW")
 
+    # "opencode_claude" only skips itself in the review fallback chain
+    # (self-authorship) -- deepseek_native_pro would still get a real
+    # attempt, so also disable the whole chain.
     builds = build_manager.load_builds()
     for b in builds:
         if b["id"] == build["id"]:
-            b["generated_by"] = "claude"
+            b["generated_by"] = "opencode_claude"
     build_manager.save_builds(builds)
 
     monkeypatch.setattr(
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
+    _disable_code_review(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -1109,7 +1209,7 @@ def test_deploy_approval_surfaces_code_review_findings(monkeypatch, tmp_path):
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 1, "highest_severity": "low"},
     )
-    _stub_claude_reviewer(monkeypatch, findings="Advisory: missing input validation.")
+    _stub_opencode_claude_reviewer(monkeypatch, findings="Advisory: missing input validation.")
 
     build_manager.advance_builds()
 
@@ -1162,7 +1262,7 @@ def test_full_lifecycle_happy_path(monkeypatch):
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True,
                 "response_text": "Implemented.",
@@ -1177,6 +1277,7 @@ def test_full_lifecycle_happy_path(monkeypatch):
         "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
+    _disable_code_review(monkeypatch)
     build_manager.advance_builds()
     build = build_manager.get_build(build["id"])
     assert build["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
@@ -1320,6 +1421,18 @@ _JSON_TOOL_CALL_LEAK = """Here is the plan:
 {"tool_calls": [{"type": "function", "name": "create_file"}]}
 This is the architecture."""
 
+# Confirmed live 2026-08-02: deepseek_native_flash's raw special-token
+# tool-call control sequence (fullwidth U+FF5C "｜" delimiters), produced
+# as the entire "plan" for builds 17U and 17X.
+_DEEPSEEK_DSML_TOOL_CALL_LEAK = (
+    'I’ll inspect the existing project structure first.\n'
+    '<｜｜DSML｜｜tool_calls>\n'
+    '<｜｜DSML｜｜invoke name="shell_execute">\n'
+    '<｜｜DSML｜｜parameter name="command">pwd && ls -la</｜｜DSML｜｜parameter>\n'
+    '</｜｜DSML｜｜invoke>\n'
+    '</｜｜DSML｜｜tool_calls>'
+)
+
 _VALID_PROSE_PLAN = "Architecture: use FastAPI + React with a PostgreSQL database."
 
 _EMPTY_STRING = ""
@@ -1338,6 +1451,9 @@ class TestLooksLikeToolCallLeak:
 
     def test_json_tool_call_shape_rejected(self):
         assert build_manager._looks_like_tool_call_leak(_JSON_TOOL_CALL_LEAK) is True
+
+    def test_deepseek_dsml_special_token_leak_rejected(self):
+        assert build_manager._looks_like_tool_call_leak(_DEEPSEEK_DSML_TOOL_CALL_LEAK) is True
 
     def test_empty_text_rejected(self):
         assert build_manager._looks_like_tool_call_leak(_EMPTY_STRING) is True

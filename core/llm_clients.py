@@ -79,18 +79,29 @@ def _post_json(provider_key, url, **kwargs):
     # in a raised exception message (e.g. via a requests error that echoes
     # request internals) -- re-raise with just the exception type, not the
     # original exception object.
+    detail = None
     try:
         response = requests.post(url, **kwargs)
 
-        if response.status_code == 429:
-            # Quota/rate-limit signal is useful even on failure -- capture it
-            # before raising, using whatever detail the provider's own error
-            # body gives (never the request itself, so this can't leak the key).
+        if response.status_code >= 400:
+            # Diagnostic signal is useful even on failure -- capture it before
+            # raising, using whatever detail the provider's own error body
+            # gives (never the request itself, so this can't leak the key).
             try:
                 detail = response.json()
             except ValueError:
                 detail = response.text[:300]
-            provider_health.capture_quota_exceeded(provider_key, detail=str(detail)[:300])
+            detail = str(detail)[:300]
+
+            # 402 (e.g. OpenRouter "requires more credits") is functionally
+            # the same as 429 for routing purposes -- this candidate has no
+            # headroom right now, so treat both as quota_exceeded (skippable
+            # by ai_router.delegate()) rather than the ambiguous "error"
+            # status, which delegate() deliberately keeps retrying every call.
+            if response.status_code in (429, 402):
+                provider_health.capture_quota_exceeded(provider_key, detail=detail)
+            else:
+                provider_health.capture_provider_error(provider_key, detail=detail)
 
         response.raise_for_status()
 
@@ -98,7 +109,10 @@ def _post_json(provider_key, url, **kwargs):
 
         return response.json()
     except requests.RequestException as error:
-        raise RuntimeError(f"{provider_key} request failed: {type(error).__name__}") from None
+        message = f"{provider_key} request failed: {type(error).__name__}"
+        if detail:
+            message += f" ({detail})"
+        raise RuntimeError(message) from None
 
 
 def call_gemini(prompt, model=GEMINI_DEFAULT_MODEL, timeout=60):
@@ -127,12 +141,25 @@ def call_groq(prompt, model=GROQ_DEFAULT_MODEL, timeout=60):
     return data["choices"][0]["message"]["content"]
 
 
-def call_openai(prompt, model=OPENAI_DEFAULT_MODEL, timeout=60):
-    key = _require_key("OPENAI_API_KEY")
+QWEN3_CODER_BASE_URL = os.getenv("VLLM_QWEN3_CODER_BASE_URL", "").rstrip("/")
+QWEN3_CODER_MODEL = os.getenv("VLLM_QWEN3_CODER_MODEL", "")
+
+
+# 2026-08-02 operator directive: the "openai" provider slot now means the
+# self-hosted Qwen3-Coder vLLM instance, not the real OpenAI API -- same
+# "provider name keeps meaning something different underneath" convention
+# already used for "opencode" (meant minimax, then deepseek-v4-pro). Uses
+# VLLM_QWEN3_CODER_API_KEY/BASE_URL/MODEL (see .env, confirmed live via
+# GET {base_url}/models 2026-08-02) instead of OPENAI_API_KEY/
+# OPENAI_DEFAULT_MODEL/api.openai.com -- those stay defined above for
+# whenever this gets pointed back at the real API.
+def call_openai(prompt, model=None, timeout=60):
+    key = _require_key("VLLM_QWEN3_CODER_API_KEY")
+    model = model or QWEN3_CODER_MODEL
 
     data = _post_json(
         "openai",
-        "https://api.openai.com/v1/chat/completions",
+        f"{QWEN3_CODER_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},
         timeout=timeout,

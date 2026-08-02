@@ -9,14 +9,21 @@ from core.build_manager import advance_builds, load_builds
 from core.roadmap_manager import advance_roadmap
 from core.approval_watchdog import check_stale_approvals, check_stale_failures
 from core.logger import info
-from core.telegram_bridge import detect_state_changes, send_message
+import core.telegram_bridge as telegram_bridge
 
 
 def _safe_send(message_text):
+    # 2026-08-02: returns the sent Telegram message_id on success (None on
+    # failure) so the state-change loop can remember which build each
+    # outbound message announced -- that link is what lets the operator
+    # answer via Telegram's native reply-to instead of typing a build name.
     try:
-        send_message(message_text)
+        body = telegram_bridge.send_message(message_text)
     except Exception as error:
         info(f"telegram outbound failed: {type(error).__name__}")
+        return None
+
+    return (body.get("result") or {}).get("message_id")
 
 
 def _safe_check_stale_approvals():
@@ -100,8 +107,19 @@ def run_cycle():
             attempt_rollback(item.get("remediation_id"))
 
 
-    for message_text in detect_state_changes(builds_before, builds):
-        _safe_send(message_text)
+    for build_id, message_text in telegram_bridge.detect_state_changes_with_build_ids(
+        builds_before, builds
+    ):
+        message_id = _safe_send(message_text)
+
+        if message_id is not None and build_id:
+            # Best-effort: a failed bookkeeping write must not take the
+            # whole cycle down -- worst case the operator falls back to the
+            # old "type which build you mean" flow for this one message.
+            try:
+                telegram_bridge.record_sent_build_message(message_id, build_id)
+            except Exception as error:
+                info(f"telegram message->build record failed: {type(error).__name__}")
 
 
     result = {

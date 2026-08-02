@@ -278,7 +278,7 @@
       "id": "13H",
       "name": "Kai Controlled Autonomy Levels",
       "description": "Replace the binary memory/autonomous_mode.json (Phase 12L) with 6 numbered levels (0=manual, 1=observe+report [default], 2=create proposals, 3=create branches/builds, 4=execute through deploy-approval [today's 'enabled: true' behavior], 5=continuously manages roadmap incl. self-generated phases). Deprecate the binary flag outright rather than maintain both. The Overview tab's toggle becomes a 6-position control instead of on/off. Policy tests proving each level only unlocks what it claims to, and that no level ever bypasses ARCHITECTURE_APPROVED/DEPLOY_APPROVAL.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13B",
         "13C"
@@ -634,7 +634,7 @@
       "id": "14A",
       "name": "Stuck-phase detection, Fable self-answer for judgment calls, auto-filed bug phases",
       "description": "User directive 2026-07-29, following the same incident as 13Y/13Z: 13P silently bounced WAITING_FOR_USER_INPUT <-> PLANNING with no human-visible signal that it was stuck (not merely waiting on a real decision) until this session noticed by reading builds.json history directly. Three related capabilities, all downstream of 13Z's Telegram bridge existing: (1) STUCK DETECTION -- advance_roadmap()/advance_builds() should recognize a phase that revisits the same status (or status pair, e.g. WAITING_FOR_USER_INPUT<->PLANNING) some threshold number of times without net progress, and flag it distinctly from an ordinary in-progress build (e.g. a stuck_count on the build record, or a new incident type) rather than looping forever indistinguishably from healthy back-and-forth. (2) FABLE SELF-ANSWER -- for a WAITING_FOR_USER_INPUT clarification that is a genuine judgment call with no real ambiguity requiring the human specifically (e.g. 'should the interval be 30, 45, or 60 seconds' has no wrong answer within the stated constraint 'well under WatchdogSec') delegate() to opencode_claude/Fable for an answer via submit_answer(), escalating to a human via 13Z's Telegram bridge only when the question is genuinely undecidable without the human (e.g. touches product/business tradeoffs, security posture, or anything in core.kai.policies.PROTECTED_FILES) -- must never let this path call approve_architecture/approve_deploy itself, exactly as core/kai/policies.py + tests/test_kai_identity.py's grep check already enforces for every other module under core/kai/; this capability likely belongs alongside that same enforced boundary, not as a bypass of it. (3) AUTO-FILED BUG PHASES -- when Kai's own code is the actual cause of a stuck/failed state (as with 13P's _plan_needs_clarification false positive, or 13S's original hallucinated-plan-markup incident), draft and queue a new roadmap phase describing the bug with the same evidence-based rigor as every existing 13-series phase (confirmed-live incident description, concrete file/line references, completion criteria) rather than requiring a human to notice, write it up, and add it manually as happened for 13P/13Q/13S/13Y themselves tonight.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13Z"
       ],
@@ -647,7 +647,7 @@
         "New tests cover: stuck detection triggers past the threshold and not before it, a judgment-call question is auto-answered while a PROTECTED_FILES-adjacent question is escalated instead, and an auto-filed phase has the required fields populated"
       ],
       "tests_required": true,
-      "build_id": null
+      "build_id": "f4b7e5ba"
     },
     {
       "id": "14B",
@@ -1239,6 +1239,24 @@
         "Tests cover: inline-keyboard approval produces an identical audit trail (operator attribution, approval record) to the existing text-based approval flow"
       ],
       "note": "Queued 2026-08-01 from the AI Operating System audit, operator-accepted the same day. Web dashboard UX items from the same audit section are intentionally left to 15F, not duplicated here."
+    },
+    {
+      "id": "17R",
+      "name": "AI routing resilience: native DeepSeek registration, file-access-aware routing, wall-clock degraded-state detection",
+      "description": "Operator directive 2026-08-01: accepted the adopted/adopt-modified recommendations from the same-day \"AI Workforce Architecture\" validation report (uploads/kai-ai-workforce-architecture-review-2026-08-01.md), explicitly rejecting the proposal's org-chart staffing model, 9-model parallel pipeline, 2-key-per-provider credential scheme, and 15-factor routing formula -- none of those are in scope for this phase. Three concrete, verified-grounded improvements only:\n\n(1) FORMALIZE NATIVE DEEPSEEK PROVIDERS: core.llm_clients.call_deepseek_native_pro/call_deepseek_native_flash (added 2026-08-01, direct api.deepseek.com calls using dedicated DEEPSEEK_NATIVE_PRO_API_KEY/DEEPSEEK_NATIVE_FLASH_API_KEY, confirmed live: model IDs deepseek-v4-pro/deepseek-v4-flash, ~1.6s response time) exist only as raw llm_clients functions called directly by a scratch script -- register them properly via core.ai_provider.register_provider(), following the exact pattern every other provider in that file already uses (run_text_task, available_fn checking the two new env vars, cost_tier=\"free_or_low_cost\", kind=\"cloud\"). Add them into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity for text_task roles (planning/documentation/review) -- per 17M's already-established rule, new providers slot in AFTER existing top-priority providers, never ahead of or displacing them.\n\n(2) REQUIRES_FILE_ACCESS ROUTING FLAG: add a requires_file_access: bool parameter to core.ai.ai_router.delegate() (default True, matching todays real behavior where coding-capable calls assume file access). When True, candidate filtering excludes providers with no run_coding_task/tool-use capability (i.e. keeps routing through the OpenCode-CLI-mediated family that can read real files and cite verified line numbers). When False, the native DeepSeek providers from (1) and other plain text_task providers become eligible, trading file-grounding for speed -- this directly addresses tonights confirmed-live finding that a file-blind reviewer measurably produced thinner, less-accurate architecture plans than a file-grounded one for the same roadmap phase (13H), so this flag must default to preserving grounding, not defatt to speed.\n\n(3) WALL-CLOCK TIMEOUT-BASED DEGRADED-STATE DETECTION: extend core.ai.provider_health.py to record a temporary degraded/error snapshot when a provider call exceeds a configurable wall-clock threshold (starting point: 120s, tunable), independent of whether the provider ever returns a clean HTTP 429 -- confirmed live tonight that Claude Fable 5 (opencode_claude) hit repeated 300-550s+ silent wall-clock timeouts with no error response at all, which the existing quota_exceeded/error capture never caught since those require an actual HTTP error to fire on. A demoted provider is deprioritized (not hard-excluded) in candidate ordering for a cooldown window (starting point: 15 minutes), then naturally re-evaluated on its next real usage-history read -- this is deliberately the SAME kind of pre-emptive-degradation gap already scoped into roadmap phase 13L (amended 2026-08-01), so implement this as an amendment/companion to 13Ls provider_health work, not a competing mechanism.\n\nExplicitly out of scope (rejected per the review, do not implement): any per-model dedicated-API-key reservation scheme (the real credential structure -- one shared opencode Zen slot across 4 providers, one shared main OpenRouter key across 4 providers -- makes this structurally impossible without the operator acquiring genuinely new keys, which was not requested here), any multi-factor (15-factor) per-request scoring engine, any org-chart-style named division/role restructuring (the existing flat task_type + agent_roles.py model already covers this and is explicitly being kept).\n\nPer operator directive: this phase is to be implemented by Fable (opencode_claude) specifically, not left to normal provider rotation.",
+      "status": "pending",
+      "dependencies": [],
+      "priority": 32,
+      "tests_required": true,
+      "completion_criteria": [
+        "core.llm_clients.call_deepseek_native_pro and call_deepseek_native_flash are registered as real providers via core.ai_provider.register_provider(), following the exact existing pattern (available_fn, cost_tier, kind)",
+        "The two new native DeepSeek providers appear in core.ai.ai_router.ROLE_PROVIDERS for at minimum the planning/documentation/review text_task roles, positioned strictly after (never ahead of or replacing) every existing top-priority provider in each list, per 17Ms established rule",
+        "core.ai.ai_router.delegate() accepts a requires_file_access parameter (default True) that filters candidate providers by real tool-use/file-access capability when True",
+        "core.ai.provider_health.py records a temporary degraded/error state when a provider call exceeds a configurable wall-clock threshold, independent of receiving an HTTP error response, and delegate() demotes (not hard-excludes) that provider in candidate ordering for a cooldown window",
+        "Tests cover: new provider registration and availability-flag behavior, requires_file_access correctly filtering candidates in both directions, and wall-clock-timeout detection triggering degraded-state demotion using the same mocking pattern as existing tests/test_ai_router*.py and tests/test_provider_health.py",
+        "No code path implements per-model dedicated-key reservation, a multi-factor per-request scoring engine, or an org-chart/division-named role restructuring -- these are explicitly out of scope for this phase"
+      ],
+      "note": "Queued 2026-08-01 directly from the AI Workforce Architecture validation report, operator-accepted the same day. Companion/amendment to 13L (provider performance-weighted routing), not a competing or duplicate phase. Operator directive: assign to Fable specifically, not normal rotation."
     }
   ]
 }

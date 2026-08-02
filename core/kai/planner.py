@@ -28,6 +28,7 @@ from core.build_learning import get_build_history
 from core.build_manager import load_builds
 from core.ai.ai_router import delegate, get_usage_history, AllProvidersFailed
 from core.ai import provider_health
+from core import autonomy as _autonomy
 
 
 PROPOSALS_FILE = "improvement_proposals.json"
@@ -225,6 +226,23 @@ def _new_proposal(item, provider):
 
 
 def generate_proposal():
+    # 13H gate: writing an improvement proposal (persisting to
+    # memory/improvement_proposals.json) is a Level-2-or-higher activity.
+    # Below Level 2, the planner is limited to "observe + report"; it
+    # can still be *invoked* (this function returns rather than raising
+    # so that operator UI paths hitting a rate-limited /kai/commands do
+    # not surface a scary traceback) but no proposal is persisted.
+    if not _autonomy.can_create_proposals():
+        current = _autonomy.get_autonomy_level()
+        return {
+            "status": "disabled",
+            "reason": (
+                f"autonomy level {current['level']} does not permit creating proposals; "
+                "raise to level 2 or higher"
+            ),
+            "created": [],
+        }
+
     signals = _gather_signals()
 
     try:
@@ -255,6 +273,20 @@ def generate_proposal():
 
 
 def promote_proposal(proposal_id, phase_id):
+    # 13H gate: promoting an approved proposal into a new roadmap phase
+    # is "phase-generation logic" per the spec's Level 5 row. Below
+    # Level 5, an approved proposal can still exist as advisory text --
+    # the operator must add the phase manually (or raise autonomy to
+    # Level 5 for continuous roadmap management). ARCHITECTURE_APPROVED
+    # / DEPLOY_APPROVAL on any resulting build are ALWAYS still required;
+    # Level 5 does not bypass those.
+    if not _autonomy.can_manage_roadmap_continuously():
+        current = _autonomy.get_autonomy_level()
+        raise PermissionError(
+            f"autonomy level {current['level']} does not permit promoting "
+            "proposals into new roadmap phases; raise to level 5"
+        )
+
     proposal = get_proposal(proposal_id)
 
     if proposal is None:

@@ -1,8 +1,21 @@
 import pytest
 
 import core.kai.planner as planner
+import core.autonomy as autonomy
 from core.lifecycle import InvalidTransition
 from core.ai.ai_router import AllProvidersFailed
+
+
+@pytest.fixture(autouse=True)
+def _autonomy_level_5_for_planner_tests():
+    """13H: proposal-generation gates at Level 2, and phase-promotion
+    gates at Level 5. The pre-13H planner tests were written before
+    those gates existed and expect the raw code paths to run; seed the
+    isolated memory dir at Level 5 so each of them exercises what it
+    always did. The 13H-specific gate tests (test_autonomy_levels.py)
+    override this by calling set_autonomy_level() explicitly."""
+    autonomy.set_autonomy_level(5, "test-fixture")
+    yield
 
 
 def _stub_signals(monkeypatch):

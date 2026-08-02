@@ -9,9 +9,12 @@ calls neither. That split is the entire point of this phase: the system may
 propose, test, and deploy improvements to itself, but it does not get
 unrestricted authority to rewrite its own core code without approval.
 
-Autonomous mode defaults to OFF. Even starting this loop is a deliberate
-human action (POST /roadmap/autonomous/enable), not something that
-activates just because this module is imported.
+Autonomous mode defaults to Level 1 (observe + report). Starting the
+roadmap-advance loop (Level 3+) is a deliberate human action -- setting
+the autonomy level explicitly through PUT /api/autonomy/level or the
+deprecated POST /roadmap/autonomous/enable shim -- not something that
+activates just because this module is imported. See core/autonomy.py
+for the full level catalog.
 """
 
 import shutil
@@ -20,6 +23,13 @@ import uuid
 from pathlib import Path
 
 from core.memory import load, save
+from core import autonomy as _autonomy
+from core.autonomy import (
+    # Re-exported so pre-13H callers (tests, internal helpers) keep working.
+    is_autonomous_mode_enabled,
+    enable_autonomous_mode,
+    disable_autonomous_mode,
+)
 from core.roadmap_engine import get_candidate_phases, update_phase
 from core.build_manager import (
     create_build,
@@ -69,6 +79,10 @@ PLUGIN_CLONE_DIRNAME = "ai-orchestrator-plugin"
 # "ai-orchestrator-plugin" in their descriptions without carrying the flag.
 PLUGIN_KEYWORD = "ai-orchestrator-plugin"
 
+# 13H: replaced by core.autonomy's autonomy_level.json (6 numbered
+# levels). The old binary file's name is still referenced here for
+# backwards-compatible migration reads only -- no code in this module
+# writes to it any more; see core.autonomy._migrate_from_legacy.
 AUTONOMOUS_MODE_FILE = "autonomous_mode.json"
 
 # A failed phase is never retried automatically -- it stops the loop for
@@ -346,16 +360,12 @@ def _select_next_phase():
     return min(candidates, key=lambda p: (-_phase_value_score(p), p["priority"]))
 
 
-def is_autonomous_mode_enabled():
-    return bool((load(AUTONOMOUS_MODE_FILE) or {}).get("enabled"))
-
-
-def enable_autonomous_mode():
-    save(AUTONOMOUS_MODE_FILE, {"enabled": True})
-
-
-def disable_autonomous_mode():
-    save(AUTONOMOUS_MODE_FILE, {"enabled": False})
+def is_autonomous_mode_enabled_local():
+    # Kept as a private symbol for callers inside this module that used
+    # to read the module-level function; the public export
+    # ``is_autonomous_mode_enabled`` is the shim imported from
+    # core.autonomy (see the top-of-file import).
+    return _autonomy.is_autonomous_mode_enabled()
 
 
 def is_self_modifying(project_path):
@@ -621,7 +631,15 @@ def _process_in_progress_phase(phase):
 
 
 def advance_roadmap():
-    if not is_autonomous_mode_enabled():
+    # 13H gate: creating branches / builds is a Level-3-or-higher
+    # activity. Level 4 keeps the exact pre-13H ``enabled: true``
+    # semantics (drive builds all the way through, still respecting
+    # the two human-approval gates in build_manager). Level 5 adds
+    # the ability to promote proposals into new phases -- that is a
+    # separate hook in core/kai/planner.py, not here. Below Level 3
+    # this loop is a no-op, and the plain "disabled" action string
+    # is preserved for the old callers/tests that grep for it.
+    if not _autonomy.can_create_branches_and_builds():
         return {"action": "disabled"}
 
     from core.roadmap_engine import load_roadmap

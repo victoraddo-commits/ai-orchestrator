@@ -69,6 +69,12 @@ from core.roadmap_manager import (
     disable_autonomous_mode,
     is_self_modifying,
 )
+from core.autonomy import (
+    get_autonomy_level,
+    set_autonomy_level,
+    MIN_LEVEL as AUTONOMY_MIN_LEVEL,
+    MAX_LEVEL as AUTONOMY_MAX_LEVEL,
+)
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -517,11 +523,18 @@ def kai_identity_endpoint():
     """Assembles Kai's identity/mission/capabilities/restrictions statements
     (core/kai/identity.py, mission.py, goals.py, policies.py -- each already
     covered by tests/test_kai_identity.py individually) plus the live
-    autonomous-mode flag into the single object the CloudCLI plugin's Kai
+    autonomy state into the single object the CloudCLI plugin's Kai
     Control Center identity card (13G) renders. Read-only and ungated, same
     as the sibling /learning and /roadmap/progress endpoints it sits next to
     on that tab -- nothing here is sensitive beyond what those already
-    expose."""
+    expose.
+
+    13H: the ``autonomous_mode`` boolean is preserved for backward compat
+    (it now maps to ``level >= 4`` -- the exact pre-13H semantics). The
+    new ``autonomy_level`` / ``autonomy_set_by`` fields carry the full
+    6-level state; the plugin's Overview tab renders those to draw the
+    6-position control (replacing the old on/off toggle)."""
+    autonomy_record = get_autonomy_level()
     return {
         "name": "Kai",
         "identity": kai_identity.get_identity(),
@@ -529,6 +542,9 @@ def kai_identity_endpoint():
         "capabilities": kai_goals.get_capabilities(),
         "restrictions": kai_policies.get_restrictions(),
         "autonomous_mode": is_autonomous_mode_enabled(),
+        "autonomy_level": autonomy_record["level"],
+        "autonomy_set_by": autonomy_record["set_by"],
+        "autonomy_updated_at": autonomy_record["updated_at"],
     }
 
 
@@ -882,15 +898,51 @@ def roadmap_autonomous_status_endpoint():
     return {"enabled": is_autonomous_mode_enabled()}
 
 
+# ── 13H: 6-level autonomy control ─────────────────────────────────────────
+# GET is read-only and matches the ungated policy of /kai/identity (the
+# level shows up there too, for the plugin's Overview tab). PUT is a
+# real write and unambiguously requires the bridge token, same as the
+# deprecated enable/disable endpoints below (which are now shims around
+# set_autonomy_level).
+
+class AutonomyLevelUpdate(BaseModel):
+    level: int
+
+
+@app.get("/api/autonomy")
+def autonomy_get_endpoint():
+    return get_autonomy_level()
+
+
+@app.put("/api/autonomy/level")
+def autonomy_set_level_endpoint(
+    body: AutonomyLevelUpdate,
+    operator: str = Depends(require_bridge_token),
+):
+    try:
+        return set_autonomy_level(body.level, operator)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
 @app.post("/roadmap/autonomous/enable")
 def roadmap_autonomous_enable_endpoint(operator: str = Depends(require_bridge_token)):
-    enable_autonomous_mode()
+    # Deprecated: preserved as a wrapper that maps the old binary
+    # "enable" call to Level 4 (the exact pre-13H "enabled: true"
+    # semantics). New callers should use PUT /api/autonomy/level.
+    enable_autonomous_mode(operator)
     return {"enabled": True}
 
 
 @app.post("/roadmap/autonomous/disable")
 def roadmap_autonomous_disable_endpoint(operator: str = Depends(require_bridge_token)):
-    disable_autonomous_mode()
+    # Deprecated: preserved as a wrapper that maps the old binary
+    # "disable" call to Level 1 (observe + report), NOT Level 0.
+    # Level 0 (fully manual) must be selected explicitly through the
+    # level API -- see core/autonomy.py's disable_autonomous_mode
+    # docstring for why "disabled" pre-13H is not the same idea as
+    # Level 0's "nothing automatic at all".
+    disable_autonomous_mode(operator)
     return {"enabled": False}
 
 

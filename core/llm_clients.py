@@ -179,6 +179,46 @@ def call_deepseek(prompt, model=DEEPSEEK_DEFAULT_MODEL, timeout=60):
     return data["choices"][0]["message"]["content"]
 
 
+# Direct DeepSeek platform API (api.deepseek.com), not proxied through
+# OpenRouter or OpenCode CLI's agentic tool-use loop -- a single plain
+# chat-completion request/response, same shape as every other plain
+# text-completion client in this module. Added 2026-08-01 (operator-provided
+# dedicated keys) specifically because the OpenCode-CLI-mediated
+# "opencode_deepseek" coding-agent route was too slow/timeout-prone for
+# quick delegated Q&A/review calls that don't need real tool use -- this
+# trades away live file exploration for a fast, reliable plain response.
+# Model IDs confirmed live via GET https://api.deepseek.com/v1/models on
+# both keys: "deepseek-v4-pro" and "deepseek-v4-flash".
+DEEPSEEK_NATIVE_PRO_MODEL = "deepseek-v4-pro"
+DEEPSEEK_NATIVE_FLASH_MODEL = "deepseek-v4-flash"
+
+
+def call_deepseek_native_pro(prompt, model=DEEPSEEK_NATIVE_PRO_MODEL, timeout=60):
+    key = _require_key("DEEPSEEK_NATIVE_PRO_API_KEY")
+
+    data = _post_json(
+        "deepseek_native_pro",
+        "https://api.deepseek.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+    return data["choices"][0]["message"]["content"]
+
+
+def call_deepseek_native_flash(prompt, model=DEEPSEEK_NATIVE_FLASH_MODEL, timeout=60):
+    key = _require_key("DEEPSEEK_NATIVE_FLASH_API_KEY")
+
+    data = _post_json(
+        "deepseek_native_flash",
+        "https://api.deepseek.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+    return data["choices"][0]["message"]["content"]
+
+
 def call_minimax(prompt, model=MINIMAX_DEFAULT_MODEL, timeout=60):
     key = _require_key("MINIMAX_API_KEY")
 

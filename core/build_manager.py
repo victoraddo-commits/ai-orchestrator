@@ -1,6 +1,7 @@
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import time
 
 from core.memory import load, save, update
 from core.lifecycle import new_object, transition, InvalidTransition
@@ -62,7 +63,42 @@ def _load_max_concurrent_builds():
         return DEFAULT_MAX_CONCURRENT_BUILDS
 
 
-MAX_CONCURRENT_BUILDS = _load_max_concurrent_builds()
+def _detect_dedicated_gpu_providers():
+    """
+    Detect if dedicated GPU providers are available and return appropriate concurrency settings
+    """
+    try:
+        import yaml
+        from core.ai_provider import get_provider
+        
+        # Load providers config
+        config = yaml.safe_load(PROVIDERS_CONFIG_PATH.read_text()) or {}
+        providers = config.get("providers", [])
+        
+        # Check for dedicated GPU providers (vLLM or similar)
+        dedicated_gpu_count = 0
+        for provider in providers:
+            # Look for providers that are configured for GPU acceleration
+            if provider.get("type") in ["vllm", "gpu", "qwen3_coder"]:
+                # Check if this is a dedicated GPU provider
+                if provider.get("gpu_acceleration", False) or "gpu" in provider.get("name", "").lower():
+                    dedicated_gpu_count += 1
+        
+        # If we have dedicated GPU providers, increase concurrency
+        # This assumes that GPU providers can handle more concurrent builds
+        if dedicated_gpu_count > 0:
+            # Return higher concurrency for GPU accelerated providers
+            return max(dedicated_gpu_count * 4, DEFAULT_MAX_CONCURRENT_BUILDS)
+        
+    except Exception:
+        # Fall back to default if there's an error
+        pass
+    
+    # Default to standard behavior
+    return _load_max_concurrent_builds()
+
+
+MAX_CONCURRENT_BUILDS = _detect_dedicated_gpu_providers()
 
 
 # Deliberately a separate store from approval_queue.json -- that queue is

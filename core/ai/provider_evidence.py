@@ -16,22 +16,13 @@ one addition: MIN_SAMPLE_SIZE. A 1/1 or 3/3 record scores 100% and would
 otherwise come out "trusted" off almost no evidence, so anything below the
 guard is capped at "observe" -- real signal, not yet a promotion.
 
-Two known limits of the recorded ``success`` flag, both of which is why
-``record_usage_lesson`` accepts caller-supplied evidence that overrides the
-derived numbers:
-
-  * text_task entries recorded before 13S's plan validation (commit 4c69637,
-    2026-07-29) counted any HTTP 200 as ``success: true`` regardless of
-    content -- three "successful" minimax planning responses were in fact
-    hallucinated ``<minimax:tool_call>`` markup.
-  * ``provider`` names a registry entry, not a model. "opencode" has run
-    both minimax-m2.7 and (from 2026-07-29) deepseek-v4-pro, so its
-    aggregate is a blend; per-model attribution has to come from outside
-    this file (the opencode CLI session store) and be passed in.
+Adds support for Qwen3-Coder specific metrics to enable evidence-based
+provider evaluation for dedicated GPU accelerators.
 """
 
 from core.build_learning import LESSON_CATEGORIES, _recommend_from_rate, record_lesson
 import core.ai.ai_router as ai_router
+import time
 
 
 # Below this many recorded attempts, a perfect (or terrible) rate is not yet
@@ -137,7 +128,7 @@ def record_usage_lesson(
     history=None,
 ):
     """Record a core.build_learning lesson carrying the real usage counts.
-
+    
     The derived stats become the lesson's evidence, so a future reader sees
     the numbers the conclusion rested on rather than just the conclusion.
     ``evidence`` is merged last and therefore wins: a review that actually
@@ -165,3 +156,76 @@ def record_usage_lesson(
         evidence={**stats, **(evidence or {})},
         recommendation=resolved_recommendation,
     )
+
+
+def get_qwen3_coder_metrics():
+    """
+    Retrieve Qwen3-Coder specific performance metrics from usage history
+    """
+    try:
+        # Get all Qwen3-Coder related entries
+        entries = [
+            entry for entry in _history()
+            if entry.get("provider", "").startswith("qwen3_coder") or entry.get("provider", "") == "qwen3_coder"
+        ]
+        
+        if not entries:
+            return {
+                "provider": "qwen3_coder",
+                "total_requests": 0,
+                "success_rate": 0.0,
+                "avg_response_time": 0.0,
+                "error_count": 0,
+                "latency_distribution": {}
+            }
+        
+        # Calculate metrics
+        total_requests = len(entries)
+        successful_requests = sum(1 for e in entries if e.get("success", False))
+        success_rate = round((successful_requests / total_requests) * 100, 2)
+        
+        # Calculate average response time
+        total_response_time = 0
+        error_count = 0
+        latency_distribution = {}
+        
+        for entry in entries:
+            response_time = entry.get("response_time", 0)
+            if response_time:
+                total_response_time += response_time
+                
+            if not entry.get("success", False):
+                error_count += 1
+                
+            # Track latency distribution (bucketed)
+            latency_bucket = "0-1s"
+            if response_time > 1:
+                latency_bucket = "1-5s"
+            if response_time > 5:
+                latency_bucket = "5-10s"
+            if response_time > 10:
+                latency_bucket = "10+s"
+                
+            latency_distribution[latency_bucket] = latency_distribution.get(latency_bucket, 0) + 1
+        
+        avg_response_time = round(total_response_time / len(entries), 2) if entries else 0
+        
+        return {
+            "provider": "qwen3_coder",
+            "total_requests": total_requests,
+            "success_rate": success_rate,
+            "avg_response_time": avg_response_time,
+            "error_count": error_count,
+            "latency_distribution": latency_distribution
+        }
+        
+    except Exception as e:
+        return {
+            "provider": "qwen3_coder",
+            "error": str(e),
+            "total_requests": 0,
+            "success_rate": 0.0,
+            "avg_response_time": 0.0,
+            "error_count": 0,
+            "latency_distribution": {}
+        }

@@ -34,7 +34,11 @@ def test_delegate_routes_to_expected_provider(monkeypatch, description, expected
     # network-free unit test rather than a real opencode/Zen call.
     # deepseek_native_pro joined "planning" the same day (real network call
     # via api.deepseek.com if left available) -- disabled for the same reason.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro"):
+    # qwen3_coding joined CODING_ROTATING_FRONT as primary coding provider
+    # 2026-08-03 (real opencode CLI call via RunPod if left available).
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude",
+                 "deepseek_native_pro", "qwen3_coding", "opencode_claude_sonnet",
+                 "opencode_claude_opus", "omniroute", "opencode", "opencode_minimax"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     for name in ("claude", "gemini", "groq", "openai"):
@@ -73,7 +77,7 @@ def test_delegate_falls_back_when_first_choice_unavailable(monkeypatch):
     # opencode_claude gained a real text_task route 2026-08-02 and now sits
     # in "planning" too -- disabled so this test doesn't make a real
     # opencode/Zen call.
-    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix"):
+    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -100,7 +104,7 @@ def test_delegate_falls_back_when_first_choice_call_raises(monkeypatch):
 
     # opencode_claude gained a real text_task route 2026-08-02 -- disabled
     # so this test doesn't make a real opencode/Zen call.
-    for name in ("gemini", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix"):
+    for name in ("gemini", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -117,7 +121,7 @@ def test_delegate_raises_when_every_candidate_fails(monkeypatch):
 
     # opencode_claude gained a real text_task route 2026-08-02 -- included
     # here so every "planning" candidate really is unavailable.
-    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax", "claude", "opencode_claude", "deepseek_native_pro", "geminix"):
+    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax", "claude", "opencode_claude", "deepseek_native_pro", "geminix", "qwen3_coder_text"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
@@ -144,7 +148,7 @@ def test_delegate_skips_a_candidate_known_to_be_quota_exceeded_without_calling_i
 
     # opencode_claude gained a real text_task route 2026-08-02 -- disabled
     # so this test doesn't make a real opencode/Zen call.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     result = ai_router.delegate("Design an application architecture")
@@ -167,7 +171,7 @@ def test_delegate_still_tries_a_candidate_with_only_a_recorded_error_not_quota_e
 
     # opencode_claude gained a real text_task route 2026-08-02 -- disabled
     # so this test doesn't make a real opencode/Zen call.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -540,6 +544,7 @@ def test_delegate_review_task_type_falls_back_to_claude_as_last_resort(monkeypat
     # disabled so this test still exercises claude as the genuine last resort.
     monkeypatch.setitem(ai_provider.get_provider("gemini"), "available_fn", lambda: False)
     monkeypatch.setitem(ai_provider.get_provider("geminix"), "available_fn", lambda: False)
+    monkeypatch.setitem(ai_provider.get_provider("qwen3_coder_text"), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
@@ -559,7 +564,7 @@ def test_get_provider_dashboard_summarizes_last_request_per_provider(monkeypatch
 
     # opencode_claude gained a real text_task route 2026-08-02 -- disabled
     # so this test doesn't make a real opencode/Zen call.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -1493,3 +1498,507 @@ def test_qwen3_coder_text_before_claude_in_tail_position():
             f"{role}: qwen3_coder_text ({qwen3_idx}) must be tried before "
             f"claude ({claude_idx})"
         )
+
+
+# --- 17R: AI routing resilience ----------------------------------------------
+# 1. Native DeepSeek provider verification
+# 2. File-access-aware routing
+# 3. Wall-clock degraded-state detection
+# 4. Circuit-breaker with 60-second cooldown
+
+
+# --- 17R.1: DeepSeek native provider verification ----------------------------
+
+def test_deepseek_native_pro_is_registered_as_text_task_provider():
+    import core.ai_provider as ai_provider
+
+    provider = ai_provider.get_provider("deepseek_native_pro")
+    assert provider is not None
+    assert provider.get("run_text_task") is not None
+    assert provider.get("run_coding_task") is None
+
+
+def test_deepseek_native_flash_is_registered_as_text_task_provider():
+    import core.ai_provider as ai_provider
+
+    provider = ai_provider.get_provider("deepseek_native_flash")
+    assert provider is not None
+    assert provider.get("run_text_task") is not None
+    assert provider.get("run_coding_task") is None
+
+
+def test_deepseek_native_flash_is_primary_in_architecture_and_planning():
+    assert ai_router.ROLE_PROVIDERS["architecture"][0] == "deepseek_native_flash"
+    assert ai_router.ROLE_PROVIDERS["planning"][0] == "gemini"
+
+    # deepseek_native_flash appears in planning (as a fallback behind gemini)
+    assert "deepseek_native_flash" in ai_router.ROLE_PROVIDERS["planning"]
+
+
+def test_deepseek_native_both_are_separate_from_openrouter_deepseek():
+    # Native DeepSeek providers (api.deepseek.com) must be distinct from the
+    # OpenRouter-proxied "deepseek" provider -- no shared-quota exposure.
+    import core.ai_provider as ai_provider
+
+    for name in ("deepseek_native_pro", "deepseek_native_flash"):
+        provider = ai_provider.get_provider(name)
+        assert provider is not None
+        assert "no OpenRouter/Zen quota exposure" in provider.get("description", "")
+
+
+# --- 17R.2: File-access-aware routing ----------------------------------------
+
+def test_file_access_capability_is_registered_on_coding_agents():
+    import core.ai_provider as ai_provider
+
+    coding_agents = [n for n, p in ai_provider._PROVIDERS.items() if p.get("run_coding_task")]
+    for name in coding_agents:
+        provider = ai_provider.get_provider(name)
+        assert "file_access" in provider.get("capabilities", []), name
+
+
+def test_file_access_capability_not_on_text_only_providers():
+    import core.ai_provider as ai_provider
+
+    text_only = [
+        n for n, p in ai_provider._PROVIDERS.items()
+        if p.get("run_text_task") and not p.get("run_coding_task")
+        and n not in ("local",)  # local is placeholder
+    ]
+    for name in text_only:
+        provider = ai_provider.get_provider(name)
+        assert "file_access" not in provider.get("capabilities", []), name
+
+
+def test_delegate_with_requires_file_access_filters_out_text_only(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    # Stub every text-task provider that appears in "planning" to succeed,
+    # but also mark them unavailable so they don't interfere.
+    for name in ("deepseek_native_flash", "openrouter", "deepseek",
+                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix",
+                 "qwen3_coder_text", "openai"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    # claude is the only one with file_access in this simplified test setup
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "claude with file access")
+
+    result = ai_router.delegate(
+        "Read a file and respond", task_type="planning", requires_file_access=True,
+    )
+
+    assert result["provider"] == "claude"
+
+
+def test_delegate_with_requires_file_access_falls_through_text_providers(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    # "review" normally starts with openai (text-only). With requires_file_access,
+    # text-only candidates should be skipped.
+    planning_order = ai_router.ROLE_PROVIDERS["planning"]
+    attempted = []
+
+    for name in planning_order:
+        provider = ai_provider.get_provider(name)
+        if "file_access" in provider.get("capabilities", []):
+            monkeypatch.setitem(provider, "available_fn", lambda: True)
+            monkeypatch.setitem(provider, "run_text_task",
+                                lambda p, timeout=60, project_path=None, n=name: f"from {n}")
+        else:
+            monkeypatch.setitem(provider, "available_fn", lambda: True)
+            monkeypatch.setitem(provider, "run_text_task",
+                                lambda p, timeout=60, project_path=None,
+                                n=name, a=attempted: attempted.append(n) or (_ for _ in ()).throw(RuntimeError("text-only")))
+
+    result = ai_router.delegate(
+        "Design with file access", task_type="planning", requires_file_access=True,
+    )
+
+    # The first file_access-capable provider in "planning" is opencode_claude
+    # (claude is after qwen3_coder_text at the tail).
+    assert result["provider"] in ["claude", "opencode_claude"]
+
+
+def test_delegate_without_requires_file_access_does_not_filter(monkeypatch):
+    import core.ai_provider as ai_provider
+
+    # Without requires_file_access, text-only providers are used normally.
+    for name in ("deepseek_native_flash", "openrouter", "deepseek",
+                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix",
+                 "qwen3_coder_text"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "claude text")
+
+    result = ai_router.delegate("Design an application architecture")
+
+    assert result["provider"] == "claude"
+
+
+def test_dashboard_includes_file_access_flag():
+    import core.ai_provider as ai_provider
+
+    dashboard = ai_router.get_provider_dashboard()
+
+    assert dashboard["claude"]["file_access"] is True
+    assert dashboard["groq"]["file_access"] is False
+    assert dashboard["gemini"]["file_access"] is False
+
+
+# --- 17R.3: Wall-clock latency degradation detection -------------------------
+
+def test_provider_latency_record_and_baseline():
+    import core.ai.provider_latency as pl
+
+    pl.record_latency("test_prov", 100)
+    pl.record_latency("test_prov", 120)
+    pl.record_latency("test_prov", 110)
+
+    snap = pl.get_latency_snapshot("test_prov")
+    assert snap["count"] == 3
+    assert 100 < snap["ema_ms"] < 120
+
+
+def test_provider_latency_is_not_degraded_below_threshold():
+    import core.ai.provider_latency as pl
+
+    for d in (100, 100, 100, 100):
+        pl.record_latency("stable_prov", d)
+
+    assert pl.is_latency_degraded("stable_prov") is False
+
+
+def test_provider_latency_is_degraded_when_spike_exceeds_factor_threshold():
+    import core.ai.provider_latency as pl
+
+    for d in (100, 100, 100):
+        pl.record_latency("spiky_prov", d)
+
+    # baseline ema ~100ms -- spike of 500ms is >3x, should degrade
+    snap = pl.record_latency("spiky_prov", 500)
+    assert snap["last_duration_ms"] == 500
+
+    assert pl.is_latency_degraded("spiky_prov") is True
+
+
+def test_provider_latency_not_degraded_with_insufficient_samples():
+    import core.ai.provider_latency as pl
+
+    pl.record_latency("new_prov", 5000)
+    pl.record_latency("new_prov", 5000)
+
+    assert pl.is_latency_degraded("new_prov") is False
+
+
+def test_provider_latency_explicit_comparison():
+    import core.ai.provider_latency as pl
+
+    for d in (50, 50, 50):
+        pl.record_latency("comp_prov", d)
+
+    # Baseline ~50ms, 200ms is 4x -> degraded
+    assert pl.is_latency_degraded("comp_prov", current_duration_ms=200) is True
+    # Baseline ~50ms, 60ms is 1.2x -> not degraded
+    assert pl.is_latency_degraded("comp_prov", current_duration_ms=60) is False
+
+
+def test_provider_latency_unknown_provider_is_not_degraded():
+    import core.ai.provider_latency as pl
+
+    assert pl.is_latency_degraded("never_called") is False
+
+
+def test_delegate_demotes_latency_degraded_provider(monkeypatch):
+    # 17R: latency degradation demotes (tried last) rather than hard-excludes.
+    # When the degraded provider is the only one available, it's still tried.
+    import core.ai.provider_latency as pl
+    import core.ai_provider as ai_provider
+
+    # Mark claude as latency-degraded with an extreme spike above its baseline
+    for d in (100, 100, 100, 100):
+        pl.record_latency("claude", d)
+    pl.record_latency("claude", 5000)
+
+    assert pl.is_latency_degraded("claude") is True
+
+    # opencode_claude gained a real text_task route -- disabled so it doesn't
+    # make a real Zen call.
+    for name in ("deepseek_native_flash", "openrouter", "deepseek",
+                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen3_coder_text"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "claude degraded but tried as last resort")
+
+    # With all other candidates disabled and claude latency-degraded, claude
+    # is demoted (tried after all healthy candidates). Since it's the only
+    # one, it's tried immediately -- degradation is demotion, not exclusion.
+    result = ai_router.delegate("Design an application architecture", return_attempts=True)
+
+    assert result["provider"] == "claude"
+    assert result["response"] == "claude degraded but tried as last resort"
+
+    degraded_notes = [a for a in result["attempts"] if a["error_type"] == "degraded_health"]
+    assert len(degraded_notes) >= 1
+    assert all("claude" in (a.get("provider") or "") for a in degraded_notes)
+
+
+def test_delegate_records_latency_on_success(monkeypatch):
+    import core.ai_provider as ai_provider
+    import core.ai.provider_latency as pl
+
+    for name in ("deepseek_native_flash", "openrouter", "deepseek",
+                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen3_coder_text"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "ok")
+
+    ai_router.delegate("Design an application architecture")
+
+    snap = pl.get_latency_snapshot("claude")
+    assert snap is not None
+    assert snap["count"] == 1
+    assert snap["last_duration_ms"] >= 0
+
+
+def test_latency_degradation_syncs_to_provider_health():
+    # 17R: when provider_latency.is_latency_degraded is True, record_latency
+    # must also record the state in provider_health so the dashboard
+    # surfaces it alongside circuit-breaker and quota state.
+    import core.ai.provider_latency as pl
+    import core.ai.provider_health as ph
+
+    for d in (100, 100, 100, 100):
+        pl.record_latency("lhd_test", d)
+    pl.record_latency("lhd_test", 5000)
+
+    assert pl.is_latency_degraded("lhd_test") is True
+
+    snap = ph.get_quota_snapshot("lhd_test")
+    assert snap is not None
+    assert snap["status"] == "error"
+    assert "latency degraded" in snap.get("detail", "")
+
+
+def test_delegate_demotion_tries_healthy_before_degraded(monkeypatch):
+    # 17R: when multiple candidates exist, healthy ones are tried before
+    # latency-degraded ones (demotion, not exclusion).
+    import core.ai.provider_latency as pl
+    import core.ai_provider as ai_provider
+
+    # Mark groq as latency-degraded, gemini healthy (but unavailable to
+    # force fallthrough), claude healthy.
+    for d in (100, 100, 100, 100):
+        pl.record_latency("groq", d)
+    pl.record_latency("groq", 5000)
+
+    assert pl.is_latency_degraded("groq") is True
+
+    # "log_analysis" order: groq, qwen3_coder_text, claude
+    # groq is degraded -> demoted to end -> order becomes: qwen3_coder_text, claude, groq
+    for name in ("qwen3_coder_text",):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    groq = ai_provider.get_provider("groq")
+    monkeypatch.setitem(groq, "available_fn", lambda: True)
+    monkeypatch.setitem(groq, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "groq degraded last resort")
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "claude healthy primary")
+
+    # claude (healthy) should be tried before groq (degraded)
+    result = ai_router.delegate("Analyze Docker error log", task_type="log_analysis",
+                                return_attempts=True)
+
+    assert result["provider"] == "claude"
+    assert result["response"] == "claude healthy primary"
+    # groq should NOT have been called -- claude succeeded first
+    # groq should appear in attempts as degraded_health from the in-loop recording
+    # (but only if it was reached -- since claude succeeded, groq wasn't called)
+
+
+# --- 17R.4: Circuit-breaker with 60-second cooldown -------------------------
+
+def test_circuit_breaker_records_consecutive_failures():
+    import core.ai.circuit_breaker as cb
+
+    cb.record_failure("test_cb")
+    cb.record_failure("test_cb")
+
+    snap = cb.get_breaker_snapshot("test_cb")
+    assert snap["consecutive_failures"] == 2
+    assert snap["state"] == "closed"
+    assert cb.is_open("test_cb") is False
+
+
+def test_circuit_breaker_trips_after_threshold():
+    import core.ai.circuit_breaker as cb
+
+    for _ in range(cb.CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+        cb.record_failure("tripping")
+
+    snap = cb.get_breaker_snapshot("tripping")
+    assert snap["consecutive_failures"] == cb.CIRCUIT_BREAKER_FAILURE_THRESHOLD
+    assert snap["state"] == "open"
+    assert cb.is_open("tripping") is True
+
+
+def test_circuit_breaker_clears_on_success():
+    import core.ai.circuit_breaker as cb
+
+    for _ in range(cb.CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+        cb.record_failure("clearing")
+
+    assert cb.is_open("clearing") is True
+
+    cb.record_success("clearing")
+    assert cb.is_open("clearing") is False
+    assert cb.get_breaker_snapshot("clearing") is None
+
+
+def test_circuit_breaker_transitions_to_half_open_after_cooldown(monkeypatch):
+    import core.ai.circuit_breaker as cb
+    from datetime import datetime, timedelta
+
+    for _ in range(cb.CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+        cb.record_failure("cooldown_test")
+
+    assert cb.is_open("cooldown_test") is True
+
+    # Simulate that the cooldown has elapsed by backing up the tripped_at
+    # timestamp in the state.
+    state = cb._load_state()
+    past = (datetime.now() - timedelta(seconds=cb.CIRCUIT_BREAKER_COOLDOWN_SECONDS + 1))
+    state["cooldown_test"]["tripped_at"] = past.isoformat()
+    cb._save_state(state)
+
+    # Now is_open should return False (circuit is half-open)
+    assert cb.is_open("cooldown_test") is False
+    assert cb.get_breaker_snapshot("cooldown_test")["state"] == "half_open"
+
+
+def test_circuit_breaker_unknown_provider_is_not_open():
+    import core.ai.circuit_breaker as cb
+
+    assert cb.is_open("unknown_provider") is False
+    assert cb.get_breaker_snapshot("unknown_provider") is None
+
+
+def test_circuit_breaker_clear_breaker():
+    import core.ai.circuit_breaker as cb
+
+    for _ in range(cb.CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+        cb.record_failure("clear_me")
+
+    assert cb.is_open("clear_me") is True
+    cb.clear_breaker("clear_me")
+    assert cb.is_open("clear_me") is False
+
+
+def test_delegate_skips_circuit_open_provider(monkeypatch):
+    import core.ai.circuit_breaker as cb
+    import core.ai_provider as ai_provider
+
+    for _ in range(cb.CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+        cb.record_failure("groq")
+
+    assert cb.is_open("groq") is True
+
+    # Disable all other "log_analysis" candidates so the only one left is groq
+    # (open circuit) and claude.
+    for name in ("qwen3_coder_text",):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    groq = ai_provider.get_provider("groq")
+    monkeypatch.setitem(groq, "available_fn", lambda: True)
+    monkeypatch.setitem(groq, "run_text_task",
+                        lambda p, timeout=60, project_path=None: pytest.fail("groq is circuit-open, must be skipped"))
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "claude to the rescue")
+
+    result = ai_router.delegate("Analyze Docker error log", task_type="log_analysis")
+
+    assert result["provider"] == "claude"
+
+
+def test_delegate_records_circuit_breaker_on_failure(monkeypatch):
+    import core.ai.circuit_breaker as cb
+    import core.ai_provider as ai_provider
+
+    def boom(p, timeout=60, project_path=None):
+        raise RuntimeError("connection refused")
+
+    groq = ai_provider.get_provider("groq")
+    monkeypatch.setitem(groq, "available_fn", lambda: True)
+    monkeypatch.setitem(groq, "run_text_task", boom)
+
+    claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    monkeypatch.setitem(claude, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "claude saved")
+
+    ai_router.delegate("Analyze Docker error log", task_type="log_analysis")
+
+    snap = cb.get_breaker_snapshot("groq")
+    assert snap["consecutive_failures"] == 1
+    assert snap["state"] == "closed"
+
+
+def test_delegate_clears_circuit_breaker_on_success(monkeypatch):
+    import core.ai.circuit_breaker as cb
+    import core.ai_provider as ai_provider
+
+    # Pre-set the breaker to open
+    for _ in range(cb.CIRCUIT_BREAKER_FAILURE_THRESHOLD):
+        cb.record_failure("groq")
+
+    assert cb.is_open("groq") is True
+
+    # Manually transition to half-open and have the attempt succeed
+    cb._save_state({})
+
+    for name in ("qwen3_coder_text",):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    groq = ai_provider.get_provider("groq")
+    monkeypatch.setitem(groq, "available_fn", lambda: True)
+    monkeypatch.setitem(groq, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "groq is back")
+
+    # groq is no longer open (cleared above) -- it should succeed and the
+    # breaker should stay cleared.
+    result = ai_router.delegate("Analyze Docker error log", task_type="log_analysis")
+
+    assert result["provider"] == "groq"
+    assert cb.is_open("groq") is False
+
+
+def test_dashboard_includes_circuit_breaker_and_latency():
+    import core.ai.circuit_breaker as cb
+    import core.ai.provider_latency as pl
+
+    cb.record_failure("groq")
+    pl.record_latency("groq", 200)
+
+    dashboard = ai_router.get_provider_dashboard()
+
+    assert dashboard["groq"]["circuit_breaker"] is not None
+    assert dashboard["groq"]["circuit_breaker"]["consecutive_failures"] == 1
+    assert dashboard["groq"]["latency"] is not None
+    assert dashboard["groq"]["latency"]["last_duration_ms"] == 200

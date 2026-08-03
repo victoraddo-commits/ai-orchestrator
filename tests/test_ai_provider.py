@@ -86,7 +86,7 @@ def test_minimax_provider_availability_reflects_env_var(monkeypatch):
 def test_claude_provider_has_both_capabilities():
     providers = ai_provider.list_providers()
 
-    assert set(providers["claude"]["capabilities"]) == {"coding_agent", "text_task"}
+    assert set(providers["claude"]["capabilities"]) == {"coding_agent", "text_task", "file_access"}
 
 
 def test_gemini_provider_availability_reflects_env_var(monkeypatch):

@@ -26,6 +26,8 @@ from datetime import datetime
 
 import core.ai_provider as ai_provider
 import core.ai.provider_health as provider_health
+import core.ai.circuit_breaker as circuit_breaker
+import core.ai.provider_latency as provider_latency
 from core.memory import load, save, update
 
 
@@ -569,6 +571,10 @@ def _classify_failure_reason(provider_name, detail):
 
     if status == "quota_exceeded" or any(marker in lowered for marker in _QUOTA_EXCEEDED_MARKERS):
         return "quota_exceeded"
+    if "circuit" in lowered or "open" in lowered:
+        return "circuit_open"
+    if "latency degraded" in lowered:
+        return "degraded_health"
     if "timeout" in lowered or "timed out" in lowered:
         return "timeout"
     if status == "error":
@@ -588,13 +594,17 @@ def _response_cost(response):
     return None
 
 
-def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task", return_attempts=False):
+def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task", return_attempts=False, requires_file_access=False):
     # 13V: return_attempts=True adds an "attempts" key to the result -- the
     # structured log of every candidate that failed before the winner, each
     # {"provider", "error_type", "error"} with error_type in
     # {quota_exceeded, timeout, unavailable, degraded_health, error}. The
     # default return shape is unchanged. On full exhaustion the same log
     # rides on AllProvidersFailed.attempts regardless of the flag.
+    #
+    # 17R: requires_file_access=True signals that this call needs a provider
+    # that can read/write files (coding_agent capability); text-only
+    # providers are filtered out entirely rather than deprioritized.
     resolved_type = task_type or classify_task(description)
     candidates = _candidates_for(resolved_type)
     # "coding" is excluded from the outer rotation: _candidates_for already
@@ -604,6 +614,14 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
     # first-try turns.
     if resolved_type not in FIXED_ORDER_TASK_TYPES and resolved_type != "coding":
         candidates = _rotate_candidates(resolved_type, candidates)
+
+    # 17R: wall-clock latency degradation -- demote providers whose latency
+    # has spiked significantly above their historical baseline rather than
+    # hard-excluding them. Degraded providers are tried only after all
+    # healthy ones have been exhausted.
+    healthy_candidates = [n for n in candidates if not provider_latency.is_latency_degraded(n)]
+    latency_degraded_candidates = [n for n in candidates if provider_latency.is_latency_degraded(n)]
+    candidates = healthy_candidates + latency_degraded_candidates
 
     attempts = []
 
@@ -636,6 +654,31 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             record_failure(name, "unavailable", f"does not support {capability}")
             continue
 
+        # 17R: file-access-aware routing -- when a caller needs file access,
+        # skip text-only providers that lack it.
+        if requires_file_access and "file_access" not in provider.get("capabilities", []):
+            record_failure(name, "unavailable", f"does not support file access (text-only provider)")
+            continue
+
+        # 17R: circuit-breaker -- skip providers whose breaker is open
+        # (consecutive errors exceeded threshold) until the cooldown elapses.
+        if circuit_breaker.is_open(name):
+            breaker = circuit_breaker.get_breaker_snapshot(name) or {}
+            record_failure(name, "circuit_open", f"circuit breaker open ({breaker.get('consecutive_failures', '?')} consecutive failures)")
+            continue
+
+        # 17R: latency degradation demotion -- record the degraded state
+        # so attempts log reflects the demotion, but still try the call
+        # (this candidate arrived here from the latency_degraded reordering
+        # above, after all healthy candidates were exhausted).
+        if provider_latency.is_latency_degraded(name):
+            latency = provider_latency.get_latency_snapshot(name) or {}
+            record_failure(name, "degraded_health", (
+                f"latency degraded (demoted, tried as last resort): "
+                f"last {latency.get('last_duration_ms')}ms vs "
+                f"ema {latency.get('ema_ms', '?')}ms"
+            ))
+
         start = time.time()
         try:
             if capability == "coding_agent":
@@ -647,6 +690,9 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error))
             if capability == "coding_agent":
                 _record_coding_failure_health(name, str(error))
+            # 17R: record circuit breaker failure and latency on every error
+            circuit_breaker.record_failure(name)
+            provider_latency.record_latency(name, duration_ms)
             record_failure(name, _classify_failure_reason(name, str(error)), str(error))
             continue
 
@@ -663,6 +709,9 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             # reported for it -- record that too.
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail, cost=_response_cost(response))
             _record_coding_failure_health(name, detail)
+            # 17R: record circuit breaker failure and latency
+            circuit_breaker.record_failure(name)
+            provider_latency.record_latency(name, duration_ms)
             record_failure(name, _classify_failure_reason(name, detail), detail)
             continue
 
@@ -671,6 +720,9 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         # verdict is out of date -- clear it immediately rather than waiting
         # out provider_health.QUOTA_EXCEEDED_EXPIRY_SECONDS.
         provider_health.clear_quota_exceeded(name)
+        # 17R: success clears circuit breaker and records healthy latency
+        circuit_breaker.record_success(name)
+        provider_latency.record_latency(name, duration_ms)
 
         result = {
             "provider": name,
@@ -794,6 +846,10 @@ def get_provider_dashboard():
             "current_job": current_job["id"] if current_job else None,
             "current_job_name": current_job["name"] if current_job else None,
             "queue_depth": queue_depth,
+            # 17R additions: circuit breaker and latency snapshots
+            "circuit_breaker": circuit_breaker.get_breaker_snapshot(name),
+            "latency": provider_latency.get_latency_snapshot(name),
+            "file_access": "file_access" in info.get("capabilities", []),
         }
 
     return dashboard
@@ -802,6 +858,10 @@ def get_provider_dashboard():
 def _derive_health(name, info, attempts, success_rate, quota, current_job):
     if not info["available"]:
         return "unknown"
+    if circuit_breaker.is_open(name):
+        return "circuit_open"
+    if provider_latency.is_latency_degraded(name):
+        return "latency_degraded"
     if quota and quota.get("status") == "quota_exceeded":
         return "quota_exceeded"
     if quota and quota.get("status") == "error":

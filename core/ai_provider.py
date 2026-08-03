@@ -52,6 +52,11 @@ def register_provider(name, run_coding_task=None, run_text_task=None, available_
     capabilities = []
     if run_coding_task is not None:
         capabilities.append("coding_agent")
+        # 17R: file-access-aware routing -- coding agents inherently have
+        # filesystem access; text_task providers do not. This is registered
+        # as an explicit capability so delegate() can filter/deprioritize on
+        # requires_file_access without guessing from the run_* function shape.
+        capabilities.append("file_access")
     if run_text_task is not None:
         capabilities.append("text_task")
 

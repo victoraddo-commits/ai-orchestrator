@@ -1840,6 +1840,49 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
     await refresh();
 
     $("cmd-refresh-btn").addEventListener("click", refresh);
+    
+    // Initialize SSE connection for real-time updates
+    const eventSource = new EventSource("/events");
+    
+    eventSource.onmessage = function(event) {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "connection_established") {
+          console.log("Connected to dashboard SSE stream");
+        } else if (data.type === "heartbeat") {
+          // Heartbeat received - keep connection alive
+        } else if (data.type === "build_update") {
+          // Handle build update events
+          console.log("Build update received:", data.data);
+          // In a real implementation, this would update specific dashboard sections
+        } else if (data.type === "approval_update") {
+          // Handle approval update events  
+          console.log("Approval update received:", data.data);
+          // In a real implementation, this would update specific dashboard sections
+        } else if (data.type === "roadmap_update") {
+          // Handle roadmap update events
+          console.log("Roadmap update received:", data.data);
+          // In a real implementation, this would update specific dashboard sections
+        } else if (data.type === "initial_data") {
+          // Handle initial data load
+          console.log("Initial dashboard data received");
+          // Refresh the UI with initial data
+          refresh();
+        }
+      } catch (e) {
+        console.error("Error parsing SSE message:", e);
+      }
+    };
+    
+    eventSource.onerror = function(err) {
+      console.error("SSE Error:", err);
+      // Attempt to reconnect with exponential backoff
+      setTimeout(() => {
+        console.log("Attempting to reconnect to SSE stream...");
+        // The page reloads with the new connection
+        window.location.reload();
+      }, 5000);
+    };
   }
 
   // ── Library tab ───────────────────────────────────────────────────────

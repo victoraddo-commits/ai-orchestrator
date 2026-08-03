@@ -1,0 +1,8 @@
+{
+  "name": "klaus",
+  "description": "Kai Legal Knowledge Acquisition & Update System — automated legal document discovery, ingestion, and indexing for Ghana Legal Brain",
+  "endpoints": ["/api/klaus/documents", "/api/klaus/sources", "/api/klaus/search"],
+  "capabilities": ["legal_research", "document_ingestion", "citation_extraction", "embeddings"],
+  "dependencies": ["core.klaus.schema", "core.klaus.document_processor", "core.klaus.vector_indexer"],
+  "version": "0.1.0"
+}

@@ -536,6 +536,8 @@ def approve_request(
         result = approve(request_id, note=action.note, operator=operator)
     except InvalidTransition as error:
         raise HTTPException(status_code=409, detail=str(error))
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
 
     if result is None:
         raise HTTPException(status_code=404, detail="Approval request not found")
@@ -1499,10 +1501,22 @@ def approve_architecture_endpoint(
     action: ApprovalAction = ApprovalAction(),
     operator: str = Depends(_require_write_capability("builds.approve_architecture")),
 ):
+    from core.build_manager import get_build
+    build = get_build(build_id)
+
+    if build and build.get("risk") == "security-critical":
+        from core import authz
+        if not authz.is_bridge_token_operator(operator):
+            role = authz.resolve_role(operator)
+            if role != "operator":
+                raise HTTPException(status_code=403, detail="Security-critical build approvals require operator role")
+
     try:
         result = approve_architecture(build_id, operator=operator, note=action.note)
     except InvalidTransition as error:
         raise HTTPException(status_code=409, detail=str(error))
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
 
     if result is None:
         raise HTTPException(status_code=404, detail="Build not found")
@@ -1532,10 +1546,22 @@ def approve_deploy_endpoint(
     action: ApprovalAction = ApprovalAction(),
     operator: str = Depends(_require_write_capability("builds.approve_deploy")),
 ):
+    from core.build_manager import get_build
+    build = get_build(build_id)
+
+    if build and build.get("risk") == "security-critical":
+        from core import authz
+        if not authz.is_bridge_token_operator(operator):
+            role = authz.resolve_role(operator)
+            if role != "operator":
+                raise HTTPException(status_code=403, detail="Security-critical build approvals require operator role")
+
     try:
         result = approve_deploy(build_id, operator=operator, note=action.note)
     except InvalidTransition as error:
         raise HTTPException(status_code=409, detail=str(error))
+    except PermissionError as error:
+        raise HTTPException(status_code=403, detail=str(error))
 
     if result is None:
         raise HTTPException(status_code=404, detail="Build not found")

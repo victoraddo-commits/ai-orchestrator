@@ -18,6 +18,21 @@ from pathlib import Path
 import bcrypt
 
 # ---------------------------------------------------------------------------
+# Security-critical paths for self-modifying builds
+# ---------------------------------------------------------------------------
+
+# List of files that when modified by a build, require special security handling
+# These are the core authentication/authorization and credential handling files
+# that could potentially be abused to escalate privileges
+SECURITY_CRITICAL_PATHS = {
+    "core/authz.py",
+    "core/security.py",
+    "memory/accounts.json",
+    "core/llm_clients.py",
+    "core/api.py",
+}
+
+# ---------------------------------------------------------------------------
 # Capability definitions
 # ---------------------------------------------------------------------------
 
@@ -179,4 +194,6 @@ def resolve_role(token: str) -> str | None:
 def is_bridge_token_operator(operator: str) -> bool:
     """True when *operator* is the existing bridge-token path, which always
     has full operator capabilities and doesn't need role resolution."""
-    return isinstance(operator, str) and ("bridge-token" in operator.lower())
+    return isinstance(operator, str) and (
+        "bridge-token" in operator.lower() or operator in _BRIDGE_OPERATORS
+    )

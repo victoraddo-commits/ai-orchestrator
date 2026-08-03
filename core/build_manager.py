@@ -211,6 +211,16 @@ def approve_architecture(build_id, operator=None, note=None):
 
     _require_status(build, "WAITING_FOR_ARCHITECTURE_APPROVAL")
 
+    if build.get("risk") == "security-critical":
+        from core import authz
+
+        if not authz.is_bridge_token_operator(operator or ""):
+            role = authz.resolve_role(operator) if operator else None
+            if role != "operator":
+                raise PermissionError(
+                    "Security-critical build approvals require operator role"
+                )
+
     def mutate(b):
         transition(b, "ARCHITECTURE_APPROVED", BUILD_TRANSITIONS, note=note)
         b["architecture_approved_by"] = operator
@@ -253,6 +263,16 @@ def approve_deploy(build_id, operator=None, note=None):
         return None
 
     _require_status(build, "WAITING_FOR_DEPLOY_APPROVAL")
+
+    if build.get("risk") == "security-critical":
+        from core import authz
+
+        if not authz.is_bridge_token_operator(operator or ""):
+            role = authz.resolve_role(operator) if operator else None
+            if role != "operator":
+                raise PermissionError(
+                    "Security-critical build approvals require operator role"
+                )
 
     def mutate(b):
         transition(b, "DEPLOYING", BUILD_TRANSITIONS, note=note)
@@ -552,13 +572,29 @@ def _roadmap_phase_id_for_build(build_id):
 
 
 def _create_architecture_approval(build):
+    # Check if the build plan touches any security-critical files
+    # This check will happen when analyzing the changes that would be made
+    # We need to check the files changed in the generation result
+    risk = None
+    
+    # Check if there's a generation result with files changed
+    generation_result = build.get("generation_result")
+    if generation_result and generation_result.get("files_changed"):
+        files_changed = generation_result["files_changed"]
+        # Import security-critical paths from authz module
+        from core.authz import SECURITY_CRITICAL_PATHS
+        
+        # Check if any changed files are in the security-critical list
+        if any(file_path in SECURITY_CRITICAL_PATHS for file_path in files_changed):
+            risk = "security-critical"
+    
     create_build_approval(
         build_id=build["id"],
         phase_id=_roadmap_phase_id_for_build(build["id"]),
         approval_type="architecture",
         title=f"Approve architecture plan for {build['name']}",
         description=build.get("plan") or "",
-        risk=None,
+        risk=risk,
         requested_action="approve_architecture",
     )
 

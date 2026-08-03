@@ -492,6 +492,394 @@ def scheduler_snapshot_endpoint():
     return get_scheduler_snapshot()
 
 
+@app.get("/api/command-center/summary")
+def command_center_summary_endpoint():
+    """13O: consolidated read-only payload for the Kai Command Center tab.
+
+    Aggregates every section the Command Center renders from existing
+    backend services/registries/workflows -- no duplicated business logic,
+    no parallel data sources.  Fetch-on-open, no polling responsibility."""
+    from datetime import datetime, timezone
+
+    from core.ai.ai_router import get_usage_history, ROLE_PROVIDERS
+    from core.ai.provider_health import get_all_quota_snapshots
+    from core.build_manager import load_builds as _load_builds
+    from core.build_manager import _RUNNING_STATUSES, _WAITING_STATUSES
+    from core.build_learning import summarize_lessons, get_build_history
+    from core.approval import load_requests
+    from core.learning import summarize as learning_summarize
+
+    now = datetime.now(timezone.utc)
+
+    # ── 1. AI Workforce ────────────────────────────────────────────────
+    pd = get_provider_dashboard()
+    providers = list_providers()
+    history = get_usage_history()
+
+    workforce = {}
+    for name, info in providers.items():
+        d = pd.get(name, {})
+        roles = []
+        for role, candidates in ROLE_PROVIDERS.items():
+            if name in candidates:
+                priority = candidates.index(name) + 1
+                roles.append({"role": role, "priority": priority})
+        workforce[name] = {
+            "name": name,
+            "kind": info.get("kind"),
+            "model": info.get("description"),
+            "roles": roles,
+            "capabilities": info.get("capabilities", []),
+            "coding_agent": "coding_agent" in (info.get("capabilities") or []),
+            "available": info.get("available", False),
+            "cost_tier": info.get("cost_tier"),
+            "status": d.get("status", "unknown"),
+            "health": d.get("health", "unknown"),
+            "current_build": d.get("current_job"),
+            "current_build_name": d.get("current_job_name"),
+            "routing_priority": roles[0]["priority"] if roles else None,
+            "success_rate": d.get("success_rate"),
+            "average_duration_ms": d.get("average_duration_ms"),
+            "queue_depth": d.get("queue_depth", 0),
+            "total_attempts": d.get("total_attempts", 0),
+            "total_successes": d.get("total_successes", 0),
+        }
+
+    # ── 2. Live Build Queue ────────────────────────────────────────────
+    all_builds = []
+    try:
+        all_builds = _load_builds() or []
+    except Exception:
+        pass
+
+    running = []
+    waiting = []
+    waiting_for_approval = []
+    failed = []
+    recently_completed = []
+
+    _APPROVAL_STATUSES = {"WAITING_FOR_ARCHITECTURE_APPROVAL", "WAITING_FOR_DEPLOY_APPROVAL"}
+
+    for b in all_builds:
+        status = b.get("status", "")
+        created_at = b.get("created_at")
+        try:
+            elapsed_s = int((now - datetime.fromisoformat(created_at.replace("Z", "+00:00"))).total_seconds()) if created_at else None
+        except (ValueError, TypeError):
+            elapsed_s = None
+
+        entry = {
+            "id": b.get("id"),
+            "name": b.get("name"),
+            "status": status,
+            "phase": b.get("template"),
+            "assigned_worker": b.get("generated_by"),
+            "start_time": created_at,
+            "elapsed_seconds": elapsed_s,
+            "elapsed_display": _fmt_duration(elapsed_s) if elapsed_s is not None else None,
+            "failure_reason": b.get("failure_reason"),
+        }
+
+        if status in _RUNNING_STATUSES:
+            running.append(entry)
+        elif status in _WAITING_STATUSES:
+            waiting.append(entry)
+        elif status in _APPROVAL_STATUSES:
+            waiting_for_approval.append(entry)
+        elif status == "FAILED":
+            failed.append(entry)
+        elif status == "COMPLETED":
+            recently_completed.append(entry)
+
+    recently_completed = recently_completed[-10:]
+
+    # ── 3. Provider Health (extended) ──────────────────────────────────
+    quota_snapshots = get_all_quota_snapshots()
+    provider_health_data = {}
+    for name, info in providers.items():
+        d = pd.get(name, {})
+        qs = quota_snapshots.get(name, {})
+
+        # consecutive failures & last failure from usage history
+        provider_entries = [e for e in history if e["provider"] == name]
+        last_failure = None
+        consecutive_failures = 0
+        for e in reversed(provider_entries):
+            if not e.get("success"):
+                if last_failure is None:
+                    last_failure = e.get("timestamp")
+                consecutive_failures += 1
+            else:
+                break
+
+        # health score: 100-based, -20 per consecutive failure, -10 if quota_exceeded, capped at 0
+        hscore = 100
+        if consecutive_failures:
+            hscore -= consecutive_failures * 20
+        if qs.get("status") == "quota_exceeded":
+            hscore -= 10
+        health_score = max(hscore, 0)
+
+        provider_health_data[name] = {
+            "name": name,
+            "health": d.get("health", "unknown"),
+            "health_score": health_score,
+            "last_failure": last_failure,
+            "consecutive_failures": consecutive_failures,
+            "quota_status": qs.get("status"),
+            "quota_detail": qs.get("detail"),
+            "percent_remaining": d.get("percent_remaining"),
+            "average_latency_ms": d.get("average_duration_ms"),
+            "cooldown_until": None,  # no cooldown mechanism yet
+        }
+
+    # ── 4. Kai Status ──────────────────────────────────────────────────
+    roadmap_progress = get_progress_summary()
+    scheduler = get_scheduler_snapshot()
+    identity = {
+        "name": "Kai",
+        "identity": kai_identity.get_identity(),
+        "mission": kai_mission.get_mission(),
+        "capabilities": kai_goals.get_capabilities(),
+        "restrictions": kai_policies.get_restrictions(),
+    }
+    kai_status = {
+        "name": identity["name"],
+        "identity": identity["identity"],
+        "current_objective": identity["mission"],
+        "active_builds": scheduler["running_builds"][0]["name"] if scheduler["running_builds"] else None,
+        "active_build_id": scheduler["running_builds"][0]["id"] if scheduler["running_builds"] else None,
+        "roadmap_phase": None,
+        "task": None,
+        "waiting_on": None,
+        "next_planned_action": None,
+        "last_completed_action": None,
+    }
+
+    # 13O: fill Kai Status from active build context when one exists
+    active_running = scheduler["running_builds"]
+    if active_running:
+        rb = active_running[0]
+        kai_status["roadmap_phase"] = rb.get("phase")
+        kai_status["task"] = rb.get("status")
+        # If there are waiting builds, Kai is also waiting on them
+        if scheduler["waiting_builds"]:
+            kai_status["waiting_on"] = "build queue: " + ", ".join(
+                wb["name"] for wb in scheduler["waiting_builds"][:3]
+            )
+
+    # last completed build
+    completed_builds = [b for b in all_builds if b.get("status") == "COMPLETED"]
+    if completed_builds:
+        kai_status["last_completed_action"] = completed_builds[-1].get("name")
+
+    # next planned: check for next roadmap phase
+    try:
+        next_phase = get_next_phase()
+        if next_phase and next_phase.get("id"):
+            kai_status["next_planned_action"] = f"Phase {next_phase['id']}: {next_phase.get('name', '')}"
+    except Exception:
+        pass
+
+    # ── 5. Human Approval Feed ─────────────────────────────────────────
+    try:
+        approval_requests = load_requests() or []
+    except Exception:
+        approval_requests = []
+
+    approval_feed = []
+    for ar in approval_requests:
+        approval_feed.append({
+            "id": ar.get("id"),
+            "build_id": ar.get("build_id"),
+            "approval_type": ar.get("approval_type"),
+            "title": ar.get("title"),
+            "status": ar.get("status"),
+            "description": ar.get("description", "")[:200],
+            "risk": ar.get("risk"),
+            "created_at": ar.get("created_at") if ar.get("created_at") else None,
+        })
+
+    # ── 6 & 7: Workforce Utilization & Worker Performance ──────────────
+    # computed from execution history -- no separate data store
+    utilization = {}
+    performance = {}
+    for name in providers:
+        provider_entries = [e for e in history if e["provider"] == name]
+        total = len(provider_entries)
+        successes = sum(1 for e in provider_entries if e.get("success"))
+        failures = total - successes
+        durations = [e["duration_ms"] for e in provider_entries if e.get("duration_ms") is not None]
+
+        utilization[name] = {
+            "name": name,
+            "total_tasks": total,
+            "max_tasks": max(total, 1),
+        }
+
+        performance[name] = {
+            "name": name,
+            "tasks_completed": successes,
+            "total_tasks": total,
+            "success_rate": (successes / total) if total else None,
+            "failure_rate": (failures / total) if total else None,
+            "avg_runtime_ms": (sum(durations) / len(durations)) if durations else None,
+            "avg_retries": None,  # retries not tracked per-worker
+            "last_execution": provider_entries[-1]["timestamp"] if provider_entries else None,
+        }
+
+    # ── 8. Build Timelines ─────────────────────────────────────────────
+    build_timelines = []
+    for b in all_builds:
+        timeline_entry = {
+            "build_id": b.get("id"),
+            "name": b.get("name"),
+            "status": b.get("status"),
+            "phase": b.get("template"),
+            "created_at": b.get("created_at"),
+            "stages": {},
+        }
+        build_timelines.append(timeline_entry)
+
+    # ── 9. Expanded Learning Summary ───────────────────────────────────
+    try:
+        lessons = summarize_lessons()
+    except Exception:
+        lessons = {}
+    try:
+        actions = learning_summarize()
+    except Exception:
+        actions = {}
+
+    preferred_architectures = []
+    successful_patterns = []
+    common_failures = []
+    rejected_trends = []
+    avoided_approaches = []
+
+    for subject, data in (lessons or {}).items():
+        cat = data.get("category", "")
+        item = {
+            "subject": subject,
+            "attempts": data.get("attempts", 0),
+            "success_rate": data.get("success_rate"),
+            "recommendation": data.get("recommendation"),
+        }
+        if cat == "preferred_architecture":
+            preferred_architectures.append(item)
+        elif cat == "successful_solution":
+            successful_patterns.append(item)
+        elif cat == "common_failure":
+            common_failures.append(item)
+        elif cat == "avoided_approach":
+            avoided_approaches.append(item)
+
+    learning_summary = {
+        "preferred_architectures": preferred_architectures,
+        "successful_patterns": successful_patterns,
+        "common_failures": common_failures,
+        "avoided_approaches": avoided_approaches,
+        "action_categories": [],
+    }
+
+    if isinstance(actions, dict):
+        for k, v in actions.items():
+            if isinstance(v, dict) and "total" in v:
+                learning_summary["action_categories"].append({
+                    "name": k,
+                    "total": v.get("total", 0),
+                })
+
+    return {
+        "workforce": workforce,
+        "build_queue": {
+            "running": running,
+            "waiting": waiting,
+            "waiting_for_approval": waiting_for_approval,
+            "failed": failed[-10:],
+            "recently_completed": recently_completed,
+        },
+        "provider_health": provider_health_data,
+        "kai_status": kai_status,
+        "approval_feed": approval_feed,
+        "utilization": utilization,
+        "performance": performance,
+        "build_timelines": build_timelines,
+        "learning_summary": learning_summary,
+    }
+
+
+def _fmt_duration(seconds):
+    if seconds is None:
+        return None
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h}h {m}m {s}s"
+    if m:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
+@app.get("/command-center/summary")
+def command_center_summary():
+    """13G: Fetches all data for the Kai Command Center dashboard."""
+    # Build status data
+    builds = list_builds()
+    active_builds = [b for b in builds if b.get("status") in ("generating", "building", "waiting")]
+    completed_builds = [b for b in builds if b.get("status") == "completed"]
+    
+    # Provider data
+    providers = list_providers()
+    
+    # Approval requests
+    pending_approvals = list_pending()
+    
+    # Learning data
+    learning_summary = summarize()
+    
+    # Incident data
+    incidents = load_incidents()
+    open_incidents = [i for i in incidents if i.get("status") == "open"]
+    
+    # Verification history
+    verification_history = load_verification_history()
+    
+    # Roadmap data
+    roadmap_data = {
+        "phases": get_remaining_work(),
+        "next_phase": get_next_phase(),
+        "progress": get_progress_summary(),
+    }
+    
+    return {
+        "build_status": {
+            "active_count": len(active_builds),
+            "completed_count": len(completed_builds),
+            "active_builds": active_builds[:5],  # Limit to 5 for performance
+            "completed_builds": completed_builds[:5],
+        },
+        "provider_status": {
+            "total_count": len(providers),
+            "providers": providers,
+        },
+        "approval_requests": {
+            "pending_count": len(pending_approvals),
+            "requests": pending_approvals[:10],  # Limit to 10 for performance
+        },
+        "learning_summary": learning_summary,
+        "incident_status": {
+            "open_count": len(open_incidents),
+            "incidents": open_incidents[:10],  # Limit to 10 for performance
+        },
+        "verification_history": {
+            "recent_count": len(verification_history),
+            "history": verification_history[:10],  # Limit to 10 for performance
+        },
+        "roadmap_status": roadmap_data,
+    }
+
+
 class DelegateRequest(BaseModel):
     description: str
     task_type: str | None = None

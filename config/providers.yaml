@@ -1,5 +1,6 @@
 # How many ready builds advance_builds() may run at the same time (13R).
-max_concurrent_builds: 2
+# 2026-08-03 operator directive (full parallel sweep): raised 2 -> 4.
+max_concurrent_builds: 4
 
 providers:
 

@@ -24,6 +24,22 @@ from core.memory import load, save
 
 QUOTA_STATE_FILE = "provider_quota.json"
 
+# 2026-08-02 operator directive ("make sure fallbacks kick in the moment
+# credit limit is hit"): quota_exceeded previously persisted forever once
+# set -- confirmed live, gemini and the whole opencode_claude family were
+# still being silently skipped by ai_router.delegate() hours (opencode_claude:
+# over a day) after their quota_exceeded flags were set, even after gemini's
+# credit was reloaded and opencode_claude's real calls were succeeding all
+# day, because nothing ever re-checked or expired the flag. A quota_exceeded
+# snapshot now naturally expires after this window -- get_quota_snapshot()
+# reports an expired one as "unknown" instead of "quota_exceeded", so
+# delegate() (and core.build_manager's advisory code review) gives the
+# provider a real retry instead of trusting a possibly-outdated (or
+# outright misclassified -- see ai_router._classify_failure_reason's
+# marker-matching) verdict indefinitely. See also clear_quota_exceeded():
+# a real success clears it immediately, well before this window elapses.
+QUOTA_EXCEEDED_EXPIRY_SECONDS = 3600
+
 
 def _load_state():
     return load(QUOTA_STATE_FILE) or {}
@@ -49,12 +65,42 @@ def record_quota_snapshot(provider, status, percent_remaining=None, detail=None,
     return state[provider]
 
 
+def _apply_quota_exceeded_expiry(snapshot):
+    if snapshot is None or snapshot.get("status") != "quota_exceeded":
+        return snapshot
+
+    checked_at = snapshot.get("checked_at")
+    try:
+        age_seconds = (datetime.now() - datetime.fromisoformat(checked_at)).total_seconds()
+    except (TypeError, ValueError):
+        return snapshot
+
+    if age_seconds < QUOTA_EXCEEDED_EXPIRY_SECONDS:
+        return snapshot
+
+    return {**snapshot, "status": "unknown", "expired_quota_exceeded_detail": snapshot.get("detail")}
+
+
 def get_quota_snapshot(provider):
-    return _load_state().get(provider)
+    return _apply_quota_exceeded_expiry(_load_state().get(provider))
 
 
 def get_all_quota_snapshots():
-    return _load_state()
+    return {name: _apply_quota_exceeded_expiry(snapshot) for name, snapshot in _load_state().items()}
+
+
+def clear_quota_exceeded(provider):
+    # Called from delegate()'s (and the advisory code review's) success
+    # path -- a real success is stronger, more immediate evidence than the
+    # QUOTA_EXCEEDED_EXPIRY_SECONDS safety-net expiry above, so this clears
+    # the flag right away rather than waiting out the window. A no-op when
+    # the provider isn't currently marked quota_exceeded, so callers can
+    # call this unconditionally after every success.
+    state = _load_state()
+    if state.get(provider, {}).get("status") != "quota_exceeded":
+        return None
+
+    return record_quota_snapshot(provider, status="ok", percent_remaining=None, detail="cleared after a real success")
 
 
 def capture_from_response_headers(provider, headers):

@@ -449,6 +449,31 @@ def _find_pending_build():
     return pending
 
 
+def _get_build_list_with_numbers(pending_builds):
+    """Generate a list of builds with numbered prefixes for disambiguation."""
+    build_list = []
+    for i, build in enumerate(pending_builds, 1):
+        name = build.get("name", "unknown")
+        build_id = build.get("id", "")
+        project_path = build.get("project_path", "")
+        
+        # Create a distinguishable representation that includes build ID and project path
+        if project_path:
+            display_name = f"{name} ({project_path})"
+        else:
+            display_name = name
+            
+        build_list.append({
+            "number": i,
+            "name": name,
+            "display_name": display_name,
+            "build_id": build_id,
+            "build": build
+        })
+    
+    return build_list
+
+
 def _resolve_approval_intent(text):
     if _word_matches_any(text, _APPROVAL_PATTERNS):
         return "approve"
@@ -551,15 +576,190 @@ def route_inbound_reply(message, pending_builds=None):
         }
 
     if len(pending_builds) > 1:
-        names = [b.get("name", "?") for b in pending_builds]
-        return {
-            "routed": False,
-            "reply": (
-                f"Multiple builds are awaiting input: {', '.join(names)}. "
-                "Please specify which build you are responding to."
-            ),
-        }
+        # Check if the message contains a number or name for build selection
+        text = (message.get("text") or "").strip()
+        build_list = _get_build_list_with_numbers(pending_builds)
+        
+        # Parse build selection and intent from the text
+        selected_build = None
+        remaining_text = text
+        
+        # Check if the message starts with a number that identifies a build
+        if text.isdigit():
+            # Handle case where user sends just a number (like "3")
+            number = int(text)
+            for build_info in build_list:
+                if build_info["number"] == number:
+                    selected_build = build_info["build"]
+                    # Consume the number, leaving the rest for intent checking
+                    remaining_text = ""
+                    break
+        elif text.startswith("1 ") or text.startswith("2 ") or text.startswith("3 ") or text.startswith("4 ") or text.startswith("5 ") or text.startswith("6 ") or text.startswith("7 ") or text.startswith("8 ") or text.startswith("9 "):
+            # Handle case like "1 build-name" - extract number and potential name match
+            parts = text.split()
+            if len(parts) >= 2 and parts[0].isdigit():
+                number = int(parts[0])
+                # Look for a build that matches the number
+                for build_info in build_list:
+                    if build_info["number"] == number:
+                        selected_build = build_info["build"]
+                        # Consume the number and build name from text
+                        # Remove the number part and the build name part
+                        # First, try to consume the build name if it exists
+                        build_name_parts = []
+                        # Extract the build name parts
+                        for i in range(1, len(parts)):
+                            part = parts[i]
+                            # Stop if we hit a pattern like approve, reject, etc.
+                            if part in _APPROVAL_PATTERNS or part in _REJECT_PATTERNS:
+                                break
+                            build_name_parts.append(part)
+                        
+                        # If we found the build name, remove it
+                        if build_name_parts:
+                            # Reconstruct the remaining text after removing matched parts
+                            consumed = parts[0]  # The number part
+                            consumed += " " + " ".join(build_name_parts) # The build name part
+                            remaining_text = text[len(consumed):].strip()
+                        else:
+                            # No build name matched, so just remove the number
+                            remaining_text = " ".join(parts[1:])
+                        break
+        else:
+            # Try to match by build name (more flexible pattern matching)
+            # Check if the text contains a build name
+            for build_info in build_list:
+                # Check if message contains build name (exact or as substring)
+                if build_info["name"].lower() in text.lower():
+                    selected_build = build_info["build"]
+                    # Consume the name, leaving the rest for intent checking
+                    # Make sure we don't accidentally remove too much
+                    remaining_text = text.replace(build_info["name"], "", 1).strip()
+                    # Remove extra spaces
+                    if remaining_text:
+                        remaining_text = " ".join(remaining_text.split())
+                    break
+        
+        # If we have a selected build, process it
+        if selected_build:
+            # Continue with the processing for a single build
+            # But use the remaining text for intent resolution
+            build = selected_build
+            status = build.get("status")
+            from_info = message.get("from", {})
+            operator = _operator_name(from_info)
+            # Use the remaining text for approval/intent checking
+            intent_text = remaining_text
+            intent = _resolve_approval_intent(intent_text)
+            
+            # Return appropriate action based on the intent
+            if status == "WAITING_FOR_USER_INPUT":
+                updated = _bm.submit_answer(build["id"], intent_text)
+                return {
+                    "routed": True,
+                    "action": "submit_answer",
+                    "build_id": build["id"],
+                    "operator": operator,
+                    "reply": (
+                        f"Answer recorded for build {build.get('name')}. "
+                        "Resuming planning."
+                    ),
+                    "build": updated,
+                }
 
+            # For approval/rejection paths, we only proceed if there's intent
+            if intent == "approve":
+                if status == "WAITING_FOR_ARCHITECTURE_APPROVAL":
+                    updated = _bm.approve_architecture(build["id"], operator=operator)
+                    return {
+                        "routed": True,
+                        "action": "approve_architecture",
+                        "build_id": build["id"],
+                        "operator": operator,
+                        "reply": f"Architecture approved for build {build.get('name')}.",
+                        "build": updated,
+                    }
+                elif status == "WAITING_FOR_DEPLOY_APPROVAL":
+                    updated = _bm.approve_deploy(build["id"], operator=operator)
+                    return {
+                        "routed": True,
+                        "action": "approve_deploy",
+                        "build_id": build["id"],
+                        "operator": operator,
+                        "reply": f"Deploy approved for build {build.get('name')}.",
+                        "build": updated,
+                    }
+            elif intent == "reject":
+                if status == "WAITING_FOR_ARCHITECTURE_APPROVAL":
+                    updated = _bm.reject_architecture(build["id"], operator=operator)
+                    return {
+                        "routed": True,
+                        "action": "reject_architecture",
+                        "build_id": build["id"],
+                        "operator": operator,
+                        "reply": f"Architecture rejected for build {build.get('name')}.",
+                        "build": updated,
+                    }
+                elif status == "WAITING_FOR_DEPLOY_APPROVAL":
+                    updated = _bm.reject_deploy(build["id"], operator=operator)
+                    return {
+                        "routed": True,
+                        "action": "reject_deploy",
+                        "build_id": build["id"],
+                        "operator": operator,
+                        "reply": f"Deploy rejected for build {build.get('name')}.",
+                        "build": updated,
+                    }
+            else:
+                # No intent - return the normal prompt for approval/rejection
+                if status == "WAITING_FOR_ARCHITECTURE_APPROVAL":
+                    return {
+                        "routed": True,
+                        "build_id": build["id"],
+                        "reply": (
+                            f"Build {build.get('name')} is waiting for architecture "
+                            "approval. Reply 'approve' or 'reject'."
+                        ),
+                    }
+                elif status == "WAITING_FOR_DEPLOY_APPROVAL":
+                    return {
+                        "routed": True,
+                        "build_id": build["id"],
+                        "reply": (
+                            f"Build {build.get('name')} is waiting for deploy "
+                            "approval. Reply 'approve' or 'reject'."
+                        ),
+                    }
+                else:
+                    # Fsother statuses
+                    return {
+                        "routed": True,
+                        "build_id": build["id"],
+                        "reply": (
+                            f"Build {build.get('name')} is in state {status} -- no action taken."
+                        ),
+                    }
+        else:
+            # Show disambiguation message with numbered list
+            build_display_lines = []
+            for build_info in build_list:
+                build_display_lines.append(
+                    f"{build_info['number']}. {build_info['display_name']} "
+                    f"(ID: {build_info['build_id'][:8]})"  # Shortened ID for readability
+                )
+            
+            return {
+                "routed": False,
+                "reply": (
+                    "Multiple builds are awaiting input. Please respond with either:\n"
+                    "- The number of the build (e.g., '1', '2')\n"
+                    "- The name of the build\n"
+                    "- Both number and name (e.g., '1 build-name')\n\n"
+                    "Available builds:\n" + "\n".join(build_display_lines)
+                ),
+            }
+
+    # Process as a single build case - this is the existing logic for single builds
     build = pending_builds[0]
     status = build.get("status")
     from_info = message.get("from", {})

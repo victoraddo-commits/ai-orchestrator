@@ -6,6 +6,7 @@ from core.memory import load, save, update
 from core.lifecycle import new_object, transition, InvalidTransition
 from core.ai.ai_router import delegate, AllProvidersFailed
 import core.ai_provider as ai_provider
+import core.ai.provider_health as provider_health
 from core.repo_manager import create_local_repo
 from core.project_templates import get_template
 from core.security_scanner import run_all_scans
@@ -739,6 +740,20 @@ CODE_REVIEW_CANDIDATES = ["opencode_claude", "deepseek_native_pro"]
 
 
 def _advisory_code_review(build):
+    # 2026-08-02 operator directive ("fable 5 hit limit and fallback did not
+    # kick in ... make sure fallbacks kick in the moment credit limit is
+    # hit"): this loop used to call provider["run_text_task"] directly with
+    # no provider_health check at all -- available_fn() only verifies a
+    # credential/file exists, which stays true even when a provider's quota
+    # is exhausted, so a known-quota_exceeded candidate got a real (wasted)
+    # attempt before falling through, or in a slow/hanging failure mode,
+    # never visibly fell through at all. Now mirrors ai_router.delegate()'s
+    # own pattern exactly: skip a candidate outright on a verified
+    # quota_exceeded snapshot (never trusted forever -- see
+    # provider_health.QUOTA_EXCEEDED_EXPIRY_SECONDS/clear_quota_exceeded),
+    # and record every real attempt's outcome so the next review (or any
+    # other delegate() call for that provider) benefits from what was
+    # learned here instead of starting from zero.
     generated_by = build.get("generated_by")
     skip_reasons = []
 
@@ -753,6 +768,11 @@ def _advisory_code_review(build):
             skip_reasons.append(f"{name} unavailable")
             continue
 
+        quota = provider_health.get_quota_snapshot(name)
+        if quota and quota.get("status") == "quota_exceeded":
+            skip_reasons.append(f"{name}: skipped, known quota_exceeded ({quota.get('detail')})")
+            continue
+
         try:
             findings = provider["run_text_task"](
                 _code_review_prompt(build),
@@ -762,9 +782,15 @@ def _advisory_code_review(build):
         except Exception as error:
             # Advisory checks must never stall the pipeline -- same "must
             # not stall Kai" pattern used throughout ai_router.py.
-            skip_reasons.append(f"{name}: {error}")
+            detail = str(error)
+            if "quota" in detail.lower() or "limit" in detail.lower():
+                provider_health.capture_quota_exceeded(name, detail=detail)
+            else:
+                provider_health.capture_provider_error(name, detail=detail)
+            skip_reasons.append(f"{name}: {detail}")
             continue
 
+        provider_health.clear_quota_exceeded(name)
         return {"skipped": False, "reviewer": name, "findings": findings}
 
     return {"skipped": True, "reason": "; ".join(skip_reasons)}

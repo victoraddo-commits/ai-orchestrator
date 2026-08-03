@@ -240,6 +240,29 @@ def _opencode_minimax_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# 2026-08-03 operator directive: OmniRoute (localhost:20128) as Kai's
+# always-on fallback provider. The gateway exposes OpenAI-compatible /v1
+# endpoints with auto/ routes that pick the best upstream per request, so
+# coding through the opencode CLI (--model omniroute/auto/best-coding) and
+# text through llm_clients.call_omniroute both survive any single upstream's
+# outage/credit state. See llm_clients.OMNIROUTE_* and
+# ~/.config/opencode/opencode.jsonc's "omniroute" provider block.
+OMNIROUTE_CODING_MODEL = llm_clients.OMNIROUTE_CODING_MODEL
+
+
+def _omniroute_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", f"omniroute/{OMNIROUTE_CODING_MODEL}")
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
+def _omniroute_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_omniroute(prompt, model=llm_clients.OMNIROUTE_TEXT_MODEL, timeout=timeout)
+
+
+def _omniroute_available():
+    return llm_clients._omniroute_key() is not None
+
+
 # 13U: DeepSeek V4 Pro routed through OpenRouter via the opencode CLI --
 # reuses the shared openrouter credential in the CLI's own auth.json (no
 # Zen key involved, no collision risk with the existing opencode/
@@ -327,6 +350,11 @@ def _gemini_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_gemini(prompt, timeout=timeout)
 
 
+# 2026-08-02: second Gemini account ("GeminiX") -- see llm_clients.call_geminix.
+def _geminix_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_geminix(prompt, timeout=timeout)
+
+
 def _groq_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_groq(prompt, timeout=timeout)
 
@@ -395,6 +423,15 @@ register_provider(
     available_fn=lambda: bool(os.getenv("GEMINI_API_KEY")),
     kind="cloud",
     description="Google Gemini -- planning, architecture review, documentation",
+    cost_tier="free",
+)
+
+register_provider(
+    "geminix",
+    run_text_task=_geminix_run_text_task,
+    available_fn=lambda: bool(os.getenv("GEMINIX_API_KEY")),
+    kind="cloud",
+    description="Google Gemini, second account (GeminiX) -- immediate fallback right after 'gemini' in every role it serves",
     cost_tier="free",
 )
 
@@ -556,6 +593,16 @@ register_provider(
     available_fn=_qwen3_coding_available,
     kind="cloud",
     description="Qwen3-Coder-30B-A3B-Instruct-AWQ, self-hosted vLLM on RunPod (pay-per-use GPU) via a custom opencode provider -- confirmed live tool-calling 2026-08-02 after the pod's vllm serve gained --enable-auto-tool-choice --tool-call-parser qwen3_coder",
+    cost_tier="free_or_low_cost",
+)
+
+register_provider(
+    "omniroute",
+    run_coding_task=_omniroute_run_coding_task,
+    run_text_task=_omniroute_run_text_task,
+    available_fn=_omniroute_available,
+    kind="cloud",
+    description="OmniRoute self-hosted AI gateway (localhost:20128, v16.2.12) -- always-on fallback aggregating multiple upstreams behind auto/ routes; added 2026-08-03 per operator directive so Kai keeps working when individual providers run out of credit",
     cost_tier="free_or_low_cost",
 )
 

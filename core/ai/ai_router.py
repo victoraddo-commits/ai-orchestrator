@@ -143,10 +143,19 @@ ROLE_PROVIDERS = {
     # (see tests/test_kai_identity.py's structural guarantee); a human still
     # makes every approve/reject decision.
     "coding": [
-        "qwen3_coding",
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
+        "qwen3_coding",
+        # 2026-08-03: OmniRoute (localhost:20128) sits here as the always-on
+        # fallback, ahead of the CloudCLI "claude" provider -- claude is
+        # currently degraded (untrusted self-build workspace + out of credit,
+        # hangs instead of failing fast), while OmniRoute aggregates healthy
+        # upstreams and never hard-fails the same way. delegate() already
+        # skips the quota_exceeded opencode family, so a coding task falls
+        # straight through to omniroute when the Claude/OpenCode credits are
+        # gone.
+        "omniroute",
         "claude",
         "opencode",
         "opencode_minimax",
@@ -189,11 +198,14 @@ ROLE_PROVIDERS = {
     # operator then directed disabling it outright ("disable gemini for
     # now") after an 18-phase pileup confirmed every one of those failures
     # traced to this same gemini/openrouter quota wall -- removed from every
-    # role's candidate list below, not merely deprioritized. Still a
-    # registered provider (core.ai_provider) and easy to re-add to any list
-    # once its quota clears; this overrides the 2026-07-31 evidence-based
-    # "gemini first" ordering only for as long as the operator's disable
-    # stands.
+    # role's candidate list below, not merely deprioritized.
+    #
+    # Re-enabled later the same day ("gemini credit has been reloaded") --
+    # restored to the front per the original 2026-07-31 evidence (97.6%
+    # success, see comparison above); everything added to this role while
+    # gemini was out (opencode_claude, deepseek_native_pro, and their
+    # rationale below) stays, just behind gemini again now that its quota
+    # problem is gone.
     # openrouter dropped 2026-08-02 (OpenRouter account out of credit, same
     # operator directive as "coding" and "architecture" below). opencode_claude
     # (Fable 5, via its new text_task route -- see core.ai_provider's
@@ -208,7 +220,7 @@ ROLE_PROVIDERS = {
     # independently-billed (native api.deepseek.com, no OpenRouter/Zen quota
     # exposure) candidate for Kai's Q&A redundancy/quality, alongside its
     # already-routed sibling deepseek_native_flash.
-    "planning": ["deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "claude"],
+    "planning": ["gemini", "geminix", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "claude"],
     # 13V: the Chief Architect chain -- a *named priority list* distinct from
     # general "planning": Claude's judgment is the product here, so unlike
     # every other role this one never rotates its starting candidate (see
@@ -218,7 +230,10 @@ ROLE_PROVIDERS = {
     # explicit task_type="architecture" (classify_task maps the word
     # "architecture" to "planning"); core.ai.chief_architect wraps this and
     # records each call to memory/chief_architect_history.json.
-    # gemini disabled 2026-08-02, same rationale as "planning" above.
+    # gemini re-enabled 2026-08-02 (credit reloaded) -- restored to the
+    # "Gemini/DeepSeek in between for cost" tier the docstring above already
+    # describes, ahead of openai but still behind the Claude-family/
+    # deepseek_native_flash entries added while it was out.
     # 2026-08-02 operator directive: openrouter_claude dropped (OpenRouter
     # account out of credit -- same directive that hit "coding"). Direct
     # "claude" is also out of credit right now, but unlike "coding" this role
@@ -227,15 +242,16 @@ ROLE_PROVIDERS = {
     # primary slot rather than replaced -- deepseek_native_flash takes over
     # as primary until claude's credit renews, matching "planning" above.
     # claude stays in the tail (not removed) so it resumes automatically.
-    "architecture": ["deepseek_native_flash", "deepseek", "openai", "claude"],
+    "architecture": ["deepseek_native_flash", "gemini", "geminix", "deepseek", "openai", "claude"],
     "log_analysis": ["groq", "claude"],
     "documentation": ["deepseek_native_flash", "groq", "deepseek", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
-    # gemini disabled 2026-08-02, same rationale as "planning" above.
-    "review": ["openai", "deepseek_native_flash", "deepseek", "claude"],
+    # gemini re-enabled 2026-08-02 (credit reloaded), restored to its
+    # original spot ahead of claude.
+    "review": ["openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "claude"],
     # 2026-07-31, user directive: route short, structured, high-volume calls
     # (intent detection, request classification, JSON/command extraction,
     # SQL generation, categorization) to groq first -- these are exactly the
@@ -250,8 +266,10 @@ ROLE_PROVIDERS = {
     # using task_type="planning" for what is really intent classification,
     # paying for gemini's long-context planning strength on a task that
     # doesn't need it.
-    # gemini disabled 2026-08-02, same rationale as "planning" above.
-    "classification": ["groq", "deepseek_native_flash", "deepseek", "claude"],
+    # gemini re-enabled 2026-08-02 (credit reloaded), restored as a fallback
+    # behind groq (this role's real primary, per the 2026-07-31 directive
+    # above -- gemini's long-context strength was never the fit here).
+    "classification": ["groq", "deepseek_native_flash", "gemini", "geminix", "deepseek", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -268,11 +286,10 @@ LAW_TUTOR_ROLE_PROVIDERS = {
     # Long-document / textbook / lecture-note reading -- gemini's long
     # context window is the whole reason this role exists separately from
     # law_teaching.
-    # gemini disabled 2026-08-02 (quota-exhausted, same rationale as the
-    # operational roles above) -- note this trades away gemini's
-    # long-context advantage for law_document specifically while it's
-    # disabled; re-add once gemini's quota clears.
-    "law_document": ["deepseek_native_flash", "claude", "openai", "deepseek"],
+    # gemini re-enabled 2026-08-02 (credit reloaded) -- restored to the
+    # front, since this role exists specifically for gemini's long-context
+    # strength (see comment above).
+    "law_document": ["gemini", "geminix", "deepseek_native_flash", "claude", "openai", "deepseek"],
     # Case/judgment analysis -- benefits from careful, deep reasoning over a
     # fixed set of facts more than from speed or context length.
     "law_case_analysis": ["claude", "deepseek_native_flash", "openai", "deepseek"],
@@ -349,11 +366,14 @@ def classify_task(description):
 # 2026-08-02: openrouter_claude_opus/sonnet dropped (OpenRouter account out
 # of credit, see ROLE_PROVIDERS["coding"]) -- opencode_claude (Fable 5) was
 # briefly the sole remaining member, then rotated 50/50 with qwen3_coding
-# once its tool-calling gap was fixed server-side. Same day, operator
-# directive assigned the roadmap to qwen3_coding outright -- it's now the
-# sole front-group member; opencode_claude moved to the fixed tail (see
-# ROLE_PROVIDERS["coding"]'s comment -- its new primary job is code review).
-CODING_ROTATING_FRONT = ["qwen3_coding"]
+# once its tool-calling gap was fixed server-side. 2026-08-03: operator
+# directive -- qwen3 runs on a pay-per-use RunPod GPU that is OFF when idle
+# (only powered on when a build needs it), so it must not lead the coding
+# rotation. opencode_claude (Fable 5, billed through the unaffected OpenCode
+# Zen account) is the sole front-group member again; qwen3_coding moved to
+# the fixed tail as a fallback, and OmniRoute sits in the tail as the
+# always-on gateway fallback (see ROLE_PROVIDERS["coding"]'s comment).
+CODING_ROTATING_FRONT = ["opencode_claude"]
 
 
 def _candidates_for(task_type):
@@ -610,6 +630,10 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             continue
 
         record_usage(name, resolved_type, description, success=True, duration_ms=duration_ms, cost=_response_cost(response))
+        # A real success is the strongest signal a stale/wrong quota_exceeded
+        # verdict is out of date -- clear it immediately rather than waiting
+        # out provider_health.QUOTA_EXCEEDED_EXPIRY_SECONDS.
+        provider_health.clear_quota_exceeded(name)
 
         result = {
             "provider": name,

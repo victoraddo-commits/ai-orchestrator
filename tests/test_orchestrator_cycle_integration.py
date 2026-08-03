@@ -79,6 +79,77 @@ def test_run_cycle_advances_pending_builds(monkeypatch):
     assert result["builds"][0]["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
 
 
+def test_run_cycle_records_sent_message_id_for_state_change_builds(monkeypatch):
+    # After a state-change notification is actually sent, the cycle must
+    # remember which build that Telegram message announced
+    # (record_sent_build_message) -- that link is what lets the operator
+    # answer via native reply-to when several builds are pending at once.
+    import core.telegram_bridge as telegram_bridge
+
+    build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning", "duration_ms": 10,
+            "response": "Plan: FastAPI + SQLite.",
+        },
+    )
+
+    monkeypatch.setattr(
+        telegram_bridge,
+        "send_message",
+        lambda text: {"ok": True, "result": {"message_id": 4242}},
+    )
+
+    recorded = []
+    monkeypatch.setattr(
+        telegram_bridge,
+        "record_sent_build_message",
+        lambda message_id, build_id: recorded.append((message_id, build_id)),
+    )
+
+    result = run_cycle()
+
+    assert result["builds"][0]["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
+    assert (4242, build["id"]) in recorded
+
+
+def test_run_cycle_skips_recording_when_send_fails(monkeypatch):
+    # A failed send returns no message_id -- there is nothing for the
+    # operator to reply to, so no mapping must be written.
+    import core.telegram_bridge as telegram_bridge
+
+    build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
+
+    monkeypatch.setattr(
+        build_manager,
+        "delegate",
+        lambda description, **kwargs: {
+            "provider": "gemini", "task_type": "planning", "duration_ms": 10,
+            "response": "Plan: FastAPI + SQLite.",
+        },
+    )
+
+    def failing_send(text):
+        raise RuntimeError("Telegram sendMessage failed: ConnectionError")
+
+    monkeypatch.setattr(telegram_bridge, "send_message", failing_send)
+
+    recorded = []
+    monkeypatch.setattr(
+        telegram_bridge,
+        "record_sent_build_message",
+        lambda message_id, build_id: recorded.append((message_id, build_id)),
+    )
+
+    result = run_cycle()
+
+    assert result["builds"][0]["status"] == "WAITING_FOR_ARCHITECTURE_APPROVAL"
+    assert recorded == []
+
+
 def test_run_cycle_incidents_have_unified_lifecycle_fields():
     result = run_cycle()
 

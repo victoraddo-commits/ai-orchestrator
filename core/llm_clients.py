@@ -128,6 +128,23 @@ def call_gemini(prompt, model=GEMINI_DEFAULT_MODEL, timeout=60):
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
+# 2026-08-02: second Gemini account ("GeminiX", operator directive) -- same
+# API/model/request shape as call_gemini above, different key and a distinct
+# "geminix" provider_key so provider_health tracks its quota separately
+# (different account, can be healthy/exhausted independently of "gemini").
+def call_geminix(prompt, model=GEMINI_DEFAULT_MODEL, timeout=60):
+    key = _require_key("GEMINIX_API_KEY")
+
+    data = _post_json(
+        "geminix",
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+        params={"key": key},
+        json={"contents": [{"parts": [{"text": prompt}]}]},
+        timeout=timeout,
+    )
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+
 def call_groq(prompt, model=GROQ_DEFAULT_MODEL, timeout=60):
     key = _require_key("GROQ_API_KEY")
 
@@ -260,5 +277,49 @@ def call_minimax(prompt, model=MINIMAX_DEFAULT_MODEL, timeout=60):
     if not data.get("choices"):
         status = (data.get("base_resp") or {}).get("status_msg", "unknown error")
         raise RuntimeError(f"minimax request failed: {status}")
+
+    return data["choices"][0]["message"]["content"]
+
+
+# 2026-08-03: OmniRoute (localhost:20128, the operator's self-hosted AI
+# gateway, v16.2.12) as Kai's always-on fallback -- the operator directive
+# was "i want kai to add omniroute as a provider so it has access to them,
+# that will be kai's always on fallback". It aggregates multiple upstream
+# providers (OpenRouter, native DeepSeek, minimax, north, etc.) behind one
+# OpenAI-compatible /v1 endpoint, and its own gateway account has the API
+# key independent of any single upstream's quota. Reuses the same
+# ANTHROPIC_AUTH_TOKEN / OPENAI_API_KEY credential the Claude Code session
+# itself uses to reach the gateway (confirmed live: auto/best-fast routed to
+# minimax-m2.5 and auto/pro-coding -> north-mini-code-free, HTTP 200).
+OMNIROUTE_BASE_URL = os.getenv("OMNIROUTE_BASE_URL", "http://localhost:20128/v1").rstrip("/")
+# auto/ routes let the gateway pick the best upstream per request, so a
+# single model slot never bakes in one upstream's outage/credit state.
+OMNIROUTE_CODING_MODEL = os.getenv("OMNIROUTE_CODING_MODEL", "auto/best-coding")
+OMNIROUTE_TEXT_MODEL = os.getenv("OMNIROUTE_TEXT_MODEL", "auto/best-fast")
+
+
+def _omniroute_key():
+    # The gateway authenticates whichever key the operator configured it
+    # with; this session's own ANTHROPIC_AUTH_TOKEN already works against
+    # localhost:20128 (verified live above).
+    return os.getenv("ANTHROPIC_AUTH_TOKEN") or os.getenv("OPENAI_API_KEY")
+
+
+def call_omniroute(prompt, model=None, timeout=60):
+    key = _omniroute_key()
+    if not key:
+        raise ProviderUnavailable("OmniRoute needs ANTHROPIC_AUTH_TOKEN or OPENAI_API_KEY")
+
+    data = _post_json(
+        "omniroute",
+        f"{OMNIROUTE_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model or OMNIROUTE_TEXT_MODEL, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+
+    if not data.get("choices"):
+        detail = (data.get("error") or {}).get("message", "unknown error")
+        raise RuntimeError(f"omniroute request failed: {detail}")
 
     return data["choices"][0]["message"]["content"]

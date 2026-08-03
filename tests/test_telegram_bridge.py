@@ -950,3 +950,307 @@ def test_17k_real_shared_history_end_to_end(monkeypatch):
     all_user_msgs = [m["content"] for m in history_after if m["role"] == "user"]
     assert "API question" in all_user_msgs, "API question vanished from history after Telegram message"
     assert "Telegram question" in all_user_msgs, "Telegram question not saved to shared history"
+
+
+# ---------------------------------------------------------------------------
+# Native reply-to disambiguation: replying to a specific Kai notification
+# resolves directly to that build, even with multiple builds pending
+# ---------------------------------------------------------------------------
+
+
+def test_poll_updates_extracts_reply_to_message_id_when_present(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+    tb.reset_offset()
+
+    monkeypatch.setattr(
+        tb.requests, "get",
+        lambda url, params=None, timeout=None: _make_updates(
+            {"text": "approve", "reply_to": 4242},
+        ),
+    )
+
+    messages = tb.poll_updates(token="test-token", chat_id="612786480")
+
+    assert len(messages) == 1
+    assert messages[0]["reply_to_message_id"] == 4242
+
+
+def test_poll_updates_reply_to_message_id_is_none_when_absent(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+    tb.reset_offset()
+
+    monkeypatch.setattr(
+        tb.requests, "get",
+        lambda url, params=None, timeout=None: _make_updates(
+            {"text": "approve"},
+        ),
+    )
+
+    messages = tb.poll_updates(token="test-token", chat_id="612786480")
+
+    assert len(messages) == 1
+    assert messages[0]["reply_to_message_id"] is None
+
+
+def test_record_sent_build_message_round_trip():
+    tb.record_sent_build_message(42, "build-abc")
+
+    # message_id arrives as int from Telegram but the JSON store keys are
+    # strings -- the round-trip must work with the int the caller has.
+    assert tb._build_id_for_message(42) == "build-abc"
+
+
+def test_build_id_for_message_returns_none_when_unknown():
+    assert tb._build_id_for_message(999999) is None
+
+
+def test_record_sent_build_message_evicts_oldest_beyond_cap():
+    for i in range(tb._MESSAGE_BUILD_MAP_LIMIT + 5):
+        tb.record_sent_build_message(i, f"build-{i}")
+
+    # Oldest 5 evicted, newest survivors intact.
+    assert tb._build_id_for_message(0) is None
+    assert tb._build_id_for_message(4) is None
+    assert tb._build_id_for_message(5) == "build-5"
+    assert (
+        tb._build_id_for_message(tb._MESSAGE_BUILD_MAP_LIMIT + 4)
+        == f"build-{tb._MESSAGE_BUILD_MAP_LIMIT + 4}"
+    )
+
+
+def test_route_inbound_reply_reply_to_disambiguates_among_multiple_pending(monkeypatch):
+    """Core scenario: 2+ builds pending, plain 'approve' would be ambiguous,
+    but a native reply-to on the deploy build's notification must route to
+    exactly that build -- bypassing the 'Multiple builds' branch."""
+    arch_build = {"id": "b-arch", "name": "13Z", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"}
+    deploy_build = {"id": "b-deploy", "name": "13Y", "status": "WAITING_FOR_DEPLOY_APPROVAL"}
+
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: [arch_build, deploy_build])
+
+    import core.build_manager as bm
+    monkeypatch.setattr(
+        bm, "get_build",
+        lambda build_id: deploy_build if build_id == "b-deploy" else arch_build,
+    )
+
+    calls = {}
+
+    def fake_approve_deploy(build_id, operator=None):
+        calls["build_id"] = build_id
+        return {"id": build_id, "status": "DEPLOYING"}
+
+    monkeypatch.setattr(bm, "approve_deploy", fake_approve_deploy)
+
+    # Kai announced the deploy approval as Telegram message 42.
+    tb.record_sent_build_message(42, "b-deploy")
+
+    result = tb.route_inbound_reply(
+        {
+            "text": "approve",
+            "reply_to_message_id": 42,
+            "from": {"id": "612786480", "first_name": "Dev"},
+        },
+    )
+
+    assert result["routed"] is True
+    assert result["action"] == "approve_deploy"
+    assert calls["build_id"] == "b-deploy"
+    assert "Multiple builds" not in result.get("reply", "")
+
+
+def test_route_inbound_reply_falls_back_to_ambiguity_without_reply_to(monkeypatch):
+    builds = [
+        {"id": "b1", "name": "13Z", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"},
+        {"id": "b2", "name": "13Y", "status": "WAITING_FOR_DEPLOY_APPROVAL"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    result = tb.route_inbound_reply(
+        {"text": "approve", "from": {"id": "612786480"}},
+    )
+
+    assert result["routed"] is False
+    assert "Multiple builds" in result["reply"]
+
+
+def test_route_inbound_reply_falls_back_when_reply_to_unknown(monkeypatch):
+    builds = [
+        {"id": "b1", "name": "13Z", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"},
+        {"id": "b2", "name": "13Y", "status": "WAITING_FOR_DEPLOY_APPROVAL"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    # Nothing was ever recorded for message 777 -- e.g. a reply to an old
+    # message that fell off the capped map. Must not error, must fall
+    # through to the existing multi-pending behavior.
+    result = tb.route_inbound_reply(
+        {"text": "approve", "reply_to_message_id": 777, "from": {"id": "612786480"}},
+    )
+
+    assert result["routed"] is False
+    assert "Multiple builds" in result["reply"]
+
+
+def test_route_inbound_reply_falls_back_when_replied_build_already_resolved(monkeypatch):
+    """A reply to a notification for a build that has since been approved via
+    another surface (dashboard/CLI) must not hijack routing -- fall back to
+    the normal pending-build matching."""
+    resolved_build = {"id": "b-done", "name": "13X", "status": "COMPLETED"}
+    builds = [
+        {"id": "b1", "name": "13Z", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"},
+        {"id": "b2", "name": "13Y", "status": "WAITING_FOR_DEPLOY_APPROVAL"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    import core.build_manager as bm
+    monkeypatch.setattr(bm, "get_build", lambda build_id: resolved_build)
+
+    tb.record_sent_build_message(43, "b-done")
+
+    result = tb.route_inbound_reply(
+        {"text": "approve", "reply_to_message_id": 43, "from": {"id": "612786480"}},
+    )
+
+    assert result["routed"] is False
+    assert "Multiple builds" in result["reply"]
+
+
+def test_route_inbound_reply_falls_back_when_replied_build_missing(monkeypatch):
+    builds = [
+        {"id": "b1", "name": "13Z", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"},
+        {"id": "b2", "name": "13Y", "status": "WAITING_FOR_DEPLOY_APPROVAL"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    import core.build_manager as bm
+    monkeypatch.setattr(bm, "get_build", lambda build_id: None)
+
+    # Mapping exists but the build itself was deleted since.
+    tb.record_sent_build_message(44, "b-vanished")
+
+    result = tb.route_inbound_reply(
+        {"text": "approve", "reply_to_message_id": 44, "from": {"id": "612786480"}},
+    )
+
+    assert result["routed"] is False
+    assert "Multiple builds" in result["reply"]
+
+
+def test_detect_state_changes_with_build_ids_returns_pairs():
+    before = [
+        {"id": "b1", "name": "13Z", "status": "PLANNING"},
+        {"id": "b2", "name": "13Y", "status": "GENERATING"},
+    ]
+    after = [
+        {"id": "b1", "name": "13Z", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL"},
+        {"id": "b2", "name": "13Y", "status": "GENERATING"},
+        {"id": "b3", "name": "13X", "status": "REQUESTED"},
+    ]
+
+    pairs = tb.detect_state_changes_with_build_ids(before, after)
+
+    assert [(bid, "13Z" in text) for bid, text in pairs if bid == "b1"] == [("b1", True)]
+    assert {bid for bid, _ in pairs} == {"b1", "b3"}
+
+    # Message texts must be identical to what detect_state_changes emits --
+    # same helper underneath, just paired with the build id.
+    assert [text for _, text in pairs] == tb.detect_state_changes(before, after)
+
+
+def test_route_inbound_reply_build_selection_by_number(monkeypatch):
+    """Test selecting a build by number"""
+    builds = [
+        {"id": "b1", "name": "telegra-approval-responder", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL", "project_path": "/project/telegra-approval-responder"},
+        {"id": "b2", "name": "telegra-approval-responder", "status": "WAITING_FOR_DEPLOY_APPROVAL", "project_path": "/project/telegra-approval-responder-2"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    # Test with numeric input to select first build - should not auto-approve
+    result = tb.route_inbound_reply(
+        {"text": "1", "from": {"id": "612786480", "first_name": "Dev"}},
+        pending_builds=builds,
+    )
+
+    assert result["routed"] is True
+    assert "action" not in result  # Should not auto-approve
+    assert "waiting for architecture approval" in result["reply"]  # Should prompt for approval
+
+
+def test_route_inbound_reply_build_selection_by_name(monkeypatch):
+    """Test selecting a build by name"""
+    builds = [
+        {"id": "b1", "name": "telegra-approval-responder", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL", "project_path": "/project/telegra-approval-responder"},
+        {"id": "b2", "name": "telegra-approval-responder", "status": "WAITING_FOR_DEPLOY_APPROVAL", "project_path": "/project/telegra-approval-responder-2"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    # Test with name input to select first build - should not auto-approve
+    result = tb.route_inbound_reply(
+        {"text": "telegra-approval-responder", "from": {"id": "612786480", "first_name": "Dev"}},
+        pending_builds=builds,
+    )
+
+    assert result["routed"] is True
+    assert "action" not in result  # Should not auto-approve
+    assert "waiting for architecture approval" in result["reply"]  # Should prompt for approval
+
+
+def test_route_inbound_reply_build_selection_by_number_and_name(monkeypatch):
+    """Test selecting a build by number and name combination"""
+    builds = [
+        {"id": "b1", "name": "telegra-approval-responder", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL", "project_path": "/project/telegra-approval-responder"},
+        {"id": "b2", "name": "telegra-approval-responder", "status": "WAITING_FOR_DEPLOY_APPROVAL", "project_path": "/project/telegra-approval-responder-2"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    # Test with combination input to select first build - should not auto-approve
+    # We'll test the case with explicit intent to show the combined functionality works
+    result = tb.route_inbound_reply(
+        {"text": "1 telegra-approval-responder approve", "from": {"id": "612786480", "first_name": "Dev"}},
+        pending_builds=builds,
+    )
+
+    assert result["routed"] is True
+    assert "action" in result  # Should auto-approve because intent is provided
+    assert result["action"] == "approve_architecture"
+
+
+def test_route_inbound_reply_build_selection_disambiguation_message(monkeypatch):
+    """Test that when multiple builds exist, a disambiguation message is shown"""
+    builds = [
+        {"id": "b1", "name": "telegra-approval-responder", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL", "project_path": "/project/telegra-approval-responder"},
+        {"id": "b2", "name": "telegra-approval-responder", "status": "WAITING_FOR_DEPLOY_APPROVAL", "project_path": "/project/telegra-approval-responder-2"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    # Test that a proper disambiguation message is generated
+    result = tb.route_inbound_reply(
+        {"text": "approve", "from": {"id": "612786480", "first_name": "Dev"}},
+        pending_builds=builds,
+    )
+
+    assert result["routed"] is False
+    assert "Multiple builds are awaiting input" in result["reply"]
+    assert "1. telegra-approval-responder" in result["reply"]
+    assert "2. telegra-approval-responder" in result["reply"]
+    assert "ID:" in result["reply"]
+
+
+def test_route_inbound_reply_build_selection_with_same_names(monkeypatch):
+    """Test build selection when multiple builds have the same name (issue scenario)"""
+    builds = [
+        {"id": "b1", "name": "telegra-approval-responder", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL", "project_path": "/project/telegra-approval-responder"},
+        {"id": "b2", "name": "telegra-approval-responder", "status": "WAITING_FOR_DEPLOY_APPROVAL", "project_path": "/project/telegra-approval-responder-2"},
+    ]
+    monkeypatch.setattr(tb, "_find_pending_build", lambda: list(builds))
+
+    # Test selection by number (index) - should not auto-approve
+    result = tb.route_inbound_reply(
+        {"text": "2", "from": {"id": "612786480", "first_name": "Dev"}},
+        pending_builds=builds,
+    )
+
+    assert result["routed"] is True
+    assert "action" not in result  # Should not auto-approve
+    assert result["build_id"] == "b2"  # Should indicate build b2 was selected
+    assert "waiting for deploy approval" in result["reply"]  # Should prompt for approval

@@ -190,6 +190,39 @@ def test_gemini_groq_openai_run_text_task_ignores_project_path(monkeypatch):
     assert result == "response text"
 
 
+def test_geminix_provider_availability_reflects_env_var(monkeypatch):
+    monkeypatch.delenv("GEMINIX_API_KEY", raising=False)
+    assert ai_provider.list_providers()["geminix"]["available"] is False
+
+    monkeypatch.setenv("GEMINIX_API_KEY", "test-key")
+    assert ai_provider.list_providers()["geminix"]["available"] is True
+
+
+def test_geminix_run_text_task_calls_llm_clients_call_geminix(monkeypatch):
+    import core.llm_clients as llm_clients
+
+    monkeypatch.setenv("GEMINIX_API_KEY", "test-key")
+    captured = {}
+
+    def fake_call_geminix(prompt, timeout=60):
+        captured["prompt"] = prompt
+        return "geminix response"
+
+    monkeypatch.setattr(llm_clients, "call_geminix", fake_call_geminix)
+
+    provider = ai_provider.get_provider("geminix")
+    result = provider["run_text_task"]("hello")
+    assert result == "geminix response"
+    assert captured["prompt"] == "hello"
+
+
+def test_geminix_provider_has_text_task_capability_only():
+    providers = ai_provider.list_providers()
+    assert "geminix" in providers
+    assert "text_task" in providers["geminix"]["capabilities"]
+    assert "coding_agent" not in providers["geminix"]["capabilities"]
+
+
 def test_claude_provider_availability_reflects_bridge_key_presence(tmp_path, monkeypatch):
     import core.coding_bridge as bridge
 

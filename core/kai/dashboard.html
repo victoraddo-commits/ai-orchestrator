@@ -931,14 +931,58 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
           el.innerHTML = '<span class="empty">no approval requests</span>';
           return;
         }
-        const pending = approvals.filter(a => a.status === "pending");
+        
+        // Group approvals by approval_type
+        const architectureApprovals = approvals.filter(a => a.approval_type === "architecture" && a.status === "pending");
+        const deployApprovals = approvals.filter(a => a.approval_type === "deploy" && a.status === "pending");
+        const otherApprovals = approvals.filter(a => a.status === "pending" && a.approval_type !== "architecture" && a.approval_type !== "deploy");
         const resolved = approvals.filter(a => a.status !== "pending");
 
         let html = "";
-        if (pending.length) {
-          html += '<h4 style="color:var(--muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Pending</h4>';
+
+        // Architecture Plan Approvals
+        if (architectureApprovals.length) {
+          html += '<h4 style="color:var(--muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Approval Center</h4>';
           html += '<table><thead><tr><th>Type</th><th>Service / Title</th><th>Reason</th><th>Actions</th></tr></thead><tbody>';
-          for (const a of pending) {
+          for (const a of architectureApprovals) {
+            html += `<tr data-req-id="${esc(a.id)}">
+              <td><span class="badge pending">Architecture Plan</span></td>
+              <td>${esc(a.service||a.title||"-")}</td>
+              <td>${esc(a.reason||a.description||"-")}</td>
+              <td class="approval-actions">
+                <button class="btn-approve" data-req-id="${esc(a.id)}" data-action="approve">Approve</button>
+                <button class="btn-danger" data-req-id="${esc(a.id)}" data-action="reject">Reject</button>
+              </td>
+            </tr>`;
+          }
+          html += "</tbody></table>";
+        }
+
+        // Deploy Approvals
+        if (deployApprovals.length) {
+          if (architectureApprovals.length) html += "<br>"; // Add spacing between sections
+          html += '<h4 style="color:var(--muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Deployment Center</h4>';
+          html += '<table><thead><tr><th>Type</th><th>Service / Title</th><th>Reason</th><th>Actions</th></tr></thead><tbody>';
+          for (const a of deployApprovals) {
+            html += `<tr data-req-id="${esc(a.id)}">
+              <td><span class="badge pending">Deploy</span></td>
+              <td>${esc(a.service||a.title||"-")}</td>
+              <td>${esc(a.reason||a.description||"-")}</td>
+              <td class="approval-actions">
+                <button class="btn-approve" data-req-id="${esc(a.id)}" data-action="approve">Approve</button>
+                <button class="btn-danger" data-req-id="${esc(a.id)}" data-action="reject">Reject</button>
+              </td>
+            </tr>`;
+          }
+          html += "</tbody></table>";
+        }
+
+        // Other Approvals
+        if (otherApprovals.length) {
+          if (architectureApprovals.length || deployApprovals.length) html += "<br>"; // Add spacing between sections
+          html += '<h4 style="color:var(--muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">Other Approvals</h4>';
+          html += '<table><thead><tr><th>Type</th><th>Service / Title</th><th>Reason</th><th>Actions</th></tr></thead><tbody>';
+          for (const a of otherApprovals) {
             html += `<tr data-req-id="${esc(a.id)}">
               <td><span class="badge pending">${esc(a.action||a.approval_type||"-")}</span></td>
               <td>${esc(a.service||a.title||"-")}</td>
@@ -952,6 +996,7 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
           html += "</tbody></table>";
         }
 
+        // Resolved approvals
         if (resolved.length) {
           html += '<h4 style="color:var(--muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.05em;margin:16px 0 8px">Resolved</h4>';
           html += '<table><thead><tr><th>Type</th><th>Service / Title</th><th>Status</th><th>By</th></tr></thead><tbody>';

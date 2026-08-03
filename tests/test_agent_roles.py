@@ -32,7 +32,8 @@ def test_research_agent_routes_to_claude_fallback(monkeypatch):
     # joined "planning" the same day -- disabled for the same reason (real
     # api.deepseek.com call).
     import core.ai_provider as ai_provider
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro"):
+    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "planning".
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     _stub_provider(monkeypatch, "claude", "claude answered")
@@ -67,7 +68,8 @@ def test_general_reasoning_agent_falls_back_to_claude_when_openai_unavailable(mo
     import core.ai_provider as ai_provider
 
     monkeypatch.setitem(ai_provider.get_provider("openai"), "available_fn", lambda: False)
-    for name in ("deepseek_native_flash", "deepseek"):
+    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review".
+    for name in ("deepseek_native_flash", "deepseek", "gemini"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     _stub_provider(monkeypatch, "claude", "claude answered")

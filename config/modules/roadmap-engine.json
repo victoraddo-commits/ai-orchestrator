@@ -1,0 +1,8 @@
+{
+  "name": "roadmap-engine",
+  "version": "1.0.0",
+  "description": "Phase tracking and auto-roadmap execution -- the source of truth for what's done, in-progress, and next in Kai's development",
+  "endpoints": ["/roadmap", "/roadmap/next", "/roadmap/remaining", "/roadmap/progress", "/roadmap/phases", "/roadmap/autonomous/status"],
+  "capabilities": ["roadmap-tracking", "autonomous-planning", "phase-management"],
+  "dependencies": []
+}

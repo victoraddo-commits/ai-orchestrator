@@ -1,0 +1,8 @@
+{
+  "name": "kai-chat",
+  "version": "1.0.0",
+  "description": "Kai conversational interface -- operator chat, command dispatch, approval intent resolution, and build-request extraction",
+  "endpoints": ["/kai/chat", "/kai/chat/stream", "/kai/command", "/kai/identity", "/kai/conversations"],
+  "capabilities": ["chat", "command-dispatch", "conversation-memory"],
+  "dependencies": ["ai-workforce"]
+}

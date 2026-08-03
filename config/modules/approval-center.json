@@ -1,0 +1,8 @@
+{
+  "name": "approval-center",
+  "version": "1.0.0",
+  "description": "Human approval gate for infrastructure actions and application builds -- all remediation, deployment, and architecture decisions flow through here",
+  "endpoints": ["/approvals", "/builds/{build_id}/approve-architecture", "/builds/{build_id}/approve-deploy"],
+  "capabilities": ["approval-management", "human-gate", "security-review"],
+  "dependencies": []
+}

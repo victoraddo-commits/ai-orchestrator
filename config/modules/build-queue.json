@@ -1,0 +1,8 @@
+{
+  "name": "build-queue",
+  "version": "1.0.0",
+  "description": "Application builder lifecycle management -- creates, monitors, approves, and deploys application builds through the full pipeline",
+  "endpoints": ["/builds", "/builds/{build_id}", "/builds/{build_id}/answer", "/builds/{build_id}/generate", "/builds/{build_id}/rollback"],
+  "capabilities": ["build-management", "application-builder", "deployment"],
+  "dependencies": ["approval-center"]
+}

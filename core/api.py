@@ -48,6 +48,7 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.ai_provider import list_providers
+from core.module_registry import get_registered_modules
 from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
@@ -588,6 +589,11 @@ def providers_dashboard_endpoint():
     return get_provider_dashboard()
 
 
+@app.get("/api/modules")
+def modules_endpoint():
+    return {"modules": get_registered_modules()}
+
+
 @app.get("/scheduler/snapshot")
 def scheduler_snapshot_endpoint():
     """13J: read-only scheduler state for the Kai Control Center."""
@@ -908,6 +914,7 @@ def command_center_summary_endpoint():
         "performance": performance,
         "build_timelines": build_timelines,
         "learning_summary": learning_summary,
+        "modules": get_registered_modules(),
     }
 
 

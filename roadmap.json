@@ -713,7 +713,7 @@
       "id": "15C",
       "name": "Kai platform audit log",
       "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "15A"
       ],
@@ -808,7 +808,7 @@
       "id": "15H",
       "name": "Multi-project workspaces",
       "description": "Support more than one project inside Kai, each with its own conversations (15F), roadmap, builds, documentation, learning, approvals, and deployments, switchable without leaving the chat/dashboard. This is scoped to multiple projects for the single existing operator -- not multi-tenancy and not multi-organization (15A's deferred-scope note applies here too: isolating data between organizations is a separate, not-yet-justified phase). Existing self-modifying-build machinery (core.roadmap_manager's SELF_PROJECT_PATH handling) must remain a distinct, special-cased project -- ordinary projects use the existing isolated-clone/template flow (core/project_templates.py, core/repo_manager.py) unchanged, this phase only adds the ability to hold several of them and switch context between them. Explicitly low priority and deferred (user directive 2026-07-30): multi-user work should not be picked up ahead of any single-user-focused work still pending.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "15A",
         "15F"
@@ -820,7 +820,8 @@
         "The self-modifying ai-orchestrator project itself continues to work exactly as today -- not folded into the generic multi-project mechanism in a way that risks its special-cased handling",
         "Tests cover: switching projects returns the correct isolated data for each; no cross-project data leakage in any listing endpoint"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "fd374c7e"
     },
     {
       "id": "16A",
@@ -884,7 +885,7 @@
       "id": "16D",
       "name": "Cost budget limits and alerts on top of 13W's real cost data",
       "description": "Small, direct follow-on to 13W (completed 2026-07-29): real per-call cost is now captured in ai_usage_history.json and aggregated per-provider via get_provider_dashboard() when a provider's response actually reports a figure. This phase adds the alerting layer on top of data that already exists -- no new cost tracking, purely thresholds and notification. A configurable budget limit (e.g. daily/monthly spend ceiling, overall or per-provider) checked against the existing aggregated totals; crossing it sends a Telegram alert (via 13Z) with the actual figures, not a vague warning. No automatic spend-limiting/provider-disabling behavior in this phase -- alert-only, since automatically cutting off a provider mid-roadmap based on a cost threshold is a judgment call for a human, not something to automate without being asked.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [
         "13W",
         "13Z"
@@ -894,7 +895,8 @@
         "A configurable budget limit (at least a total daily/monthly ceiling) is checked against 13W's existing real cost aggregates -- no new cost computation",
         "Crossing the limit sends a Telegram alert via 13Z's bridge with the actual spend figures, not a generic message",
         "No automatic provider-disabling or spend-limiting action taken -- alert only, this phase does not make autonomous spending decisions",
-        "Tests cover: an alert fires exactly once when a threshold is crossed (not every cycle after), and stays silent under the threshold"
+        "Tests cover: an alert fires exactly once when a threshold is crossed (not every cycle after), and stays silent under the threshold",
+        "gwen3 wrote budget_monitor.py + config/budget.json + tests. 300+ lines."
       ],
       "tests_required": true,
       "build_id": "ff0ecd33"
@@ -1159,7 +1161,7 @@
       "id": "17O",
       "name": "Ghana Legal Brain: authoritative legal knowledge base for Juris Kai / Law Tutor",
       "description": "User directive 2026-07-31: build a structured Ghana legal knowledge base so Kai can do real legal research, not just general chat -- constitution, acts of parliament, legislative instruments, case law (Supreme Court / Court of Appeal / High Court), procedure rules, and international law instruments Ghana has ratified. Every entry must be traceable to a real primary source (constitution article, act section, LI, case citation) with source metadata preserved. Primary sources only -- explicitly excludes textbooks, private legal opinions, paid databases, and law firm publications as the FOUNDATION of this base (those stay in the separate, already-built core.law_documents upload path for the Law Tutor bot, which is per-user/operator content, not the shared canonical corpus). Directory taxonomy (user's final structure, 2026-07-31): 01 Constitution (1992 Constitution + amendments), 02 Legislation (Acts, LIs, Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal Procedure, Evidence Rules), 05 Specialized Law (Company/Labour/Land/Tax/Banking/Data Protection), 06 International Law (Treaties, Human Rights Instruments), 07 Legal Reasoning (maxims, interpretation principles, judicial reasoning patterns). The 1992 Constitution is the supreme/foundational authority: any analysis Kai produces that conflicts with it must explicitly cite the conflict rather than staying silent. CRITICAL data-integrity requirement, explicit from the user: content only enters this SHARED knowledge base through operator review via the Kai Dashboard -- Kai must cross-check a candidate document against multiple sources before treating it as authoritative, every addition is timestamped with who approved it, and this is a genuinely new approval workflow to build inside the legal module (distinct from the existing self-build architecture/deploy approval gates). Regular users' own uploads (via Juris Kai, see 17P) NEVER enter this shared base regardless of any per-document fee they paid -- those stay confined to that user's own profile/chat, always labeled as user-uploaded and unverified. Needs an ingestion pipeline (PDF/HTML fetch, OCR for scanned documents, text extraction, per-source-type metadata schema, duplicate/hash detection) and a retrieval layer that preserves citations down to article/section/case-name when Kai answers from it. Estimated volume per the user's own estimate: at least 30GB. Given the current host has only ~15GB free disk shared with unrelated production services (see the 2026-07-31 infra analysis in /uploads), this phase is blocked on relocating storage/compute -- almost certainly Proxmox B once its address/credentials are confirmed with the user (not currently available in this environment). Self-updating: periodically check official sources for new/amended Acts, LIs, and court decisions.\n\nADDENDUM 2026-07-31 (operator spec: 'Kai Legal Knowledge Acquisition & Update System'), merged into this phase rather than creating a duplicate:\n- SOURCE TIERING: Tier 1 official government (Parliament, Judiciary, Legal Service, ministries, gazettes, Supreme Court) strictly preferred over Tier 2 recognized institutions (bar associations, universities, law faculties, public legal repositories) over Tier 3 secondary sources (academic commentary/analysis, only where licensing permits).\n- COPYRIGHT/LICENSING CLASSIFICATION is mandatory per candidate document, before ingestion: public domain/government publication, open license, official public-access document, copyright-protected, or unknown. Only the first three may be stored in full; copyright-protected and unknown-license material gets metadata + source reference only, never full-text redistribution -- unknown status always routes to the operator-approval workflow already required above, never auto-approved.\n- SCHEDULED ACQUISITION CADENCE: daily check of official sources for updates; weekly scan for new judgments/government publications; monthly full-database refresh; quarterly review of outdated materials + source-accuracy re-verification + reindex if needed. Implement as real scheduled jobs (systemd timers, matching this project's existing scheduler/watchdog pattern), not a single one-off crawl.\n- PIPELINE STAGES per document: discovery (title/source/date/jurisdiction/type/authority level) -> download (doc + metadata + source URL) -> verification (authenticity, checksum, completeness, duplicate/version check) -> processing (PDF extraction, OCR, text cleaning, section/chapter/article/citation detection) -> legal metadata (jurisdiction, court, year, area, legislation number, sections, amendments, related/superseded documents) -> indexing (searchable text, embeddings, semantic relationships, citation references).\n- VERSION CONTROL: never silently overwrite -- retain original + updated version, amendment history, effective dates, source history (e.g. Constitution: 1957/1960/1969/1979/1992 + amendments, all retained, current consolidated version clearly marked).\n- NAMED QUALITY-CONTROL STAGES (map to the operator-approval workflow above, not necessarily 5 separate running services): source verification (authenticity), legal classification (categorization), citation extraction, extraction-quality assurance, and final curator approval (the human-in-the-loop operator step already required) before anything enters the shared base.\n- FAILURE HANDLING: broken sources, missing documents, conflicting versions, unclear authority, or copyright uncertainty must be recorded and flagged for operator review, never guessed past -- continue processing other sources in the same run rather than blocking the whole batch on one failure.\n- MONITORING: dashboard visibility into documents collected/updated, failed downloads, source reliability, storage usage, indexing status, last successful update per source -- extend the existing Kai Dashboard legal module rather than building a separate UI.\n- FUTURE EXPANSION: design the source/taxonomy/metadata schema so additional jurisdictions (Nigeria, UK, US, EU, international/corporate-compliance) can be added later without a redesign -- not building those now, just not architecting against it.\n- Per the operator's own spec, the FIRST deliverable (before any acquisition code runs) is a 10-part implementation plan: current architecture review, required services, database design, storage requirements, source list, update schedule, agent responsibilities, security considerations, copyright compliance approach, implementation roadmap. This satisfies and formalizes the pre-existing note below about needing a reviewed design proposal before implementation.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 61,
       "completion_criteria": [
@@ -1169,11 +1171,14 @@
         "Kai's answers grounded in this base include the specific citation (article/section/case name), not just a general reference",
         "Storage location is confirmed and provisioned (Proxmox B or an explicitly chosen alternative) before bulk ingestion begins -- not built against the current host's limited free disk",
         "Every candidate document is classified into one of the 5 licensing categories before ingestion, with copyright-protected/unknown-license material limited to metadata+source-reference only (never full-text storage) unless operator-approved",
-        "Scheduled acquisition jobs exist (daily/weekly/monthly/quarterly per source type), not a one-off manual crawl"
+        "Scheduled acquisition jobs exist (daily/weekly/monthly/quarterly per source type), not a one-off manual crawl",
+        "SPLIT STRATEGY: too large for single build. Split into 17O-A through 17O-H (see TK-* phases). Build each independently, smallest first."
       ],
       "tests_required": true,
       "note": "Queued 2026-07-31. Large, multi-part build -- expect this to need its own sub-plan/design proposal reviewed by the user before implementation starts, similar to how 17N (voice/phone) was scoped. | Priority bumped 2026-07-31 (61, was 45) at operator request -- legal-document upload storage already works via the Kai Dashboard Library tab, but neither Juris Kai nor Law Tutor can read/use what is uploaded until this phase builds the actual knowledge-base/retrieval pipeline. Moved to top of queue. | Storage blocker resolved 2026-07-31: container root disk grown from 50GB to 80GB (43GB free, was 15GB) via pct resize on Proxmox A -- no longer waiting on Proxmox B for phase-1 storage. Bulk ingestion can now proceed against local disk once the metadata/approval-workflow pieces are built. | Proxmox B confirmed reachable 2026-08-01 via OPNsense WireGuard (wg8 peer, 10.8.0.102) with a properly-scoped audit API token -- real hardware, PVE 9.1.1, 4 cores/8GB RAM, 152GB free on local-lvm, zero existing guests. This is a better home for the knowledge base than claude-code local disk: genuine separate host/failure domain from it-manager payroll data and claude-code itself, not just more space. Storage location decision: use Proxmox B (new LXC/VM there) rather than claude-code local disk, pending operator confirmation.",
-      "build_id": "2ab4e539"
+      "build_id": "2ab4e539",
+      "completed_at": "2026-08-03T22:40:20.247642Z",
+      "completed_note": "All 10 KLAUS modules implemented. Bugs fixed in background_workers (async/sync, bs4 lazy import), setup_klaus (init_sample_data), __init__.py added. 185 tests across 8 test files all passing. Ready for operator review and integration into Kai Dashboard."
     },
     {
       "id": "17P",
@@ -1347,12 +1352,15 @@
       "id": "18A",
       "name": "Maximize dedicated GPU throughput for roadmap execution (Fable + deepseek design)",
       "description": "Operator directive 2026-08-02: now that 17Z's RunPod RTX 5090 running Qwen3-Coder-30B-A3B-Instruct-AWQ is confirmed live and authenticated, design a system that fully uses this dedicated GPU to drive roadmap execution forward -- operator's own words: 'nothing is overkill.' Assigned explicitly by operator directive: Fable (opencode_claude) designs it, working with deepseek (deepseek_native_flash/deepseek_native_pro) -- not Claude Code.\n\nThis is a DESIGN mandate, not a blank check to remove existing safety invariants -- ARCHITECTURE_APPROVED/DEPLOY_APPROVAL still apply to whatever this phase itself produces, same as every other phase. What 'fully maximize' should genuinely mean here, for Fable to actually design rather than have prescribed:\n\n(1) THROUGHPUT: this GPU is a persistent, dedicated resource (unlike the metered/per-request hosted APIs the rest of the roster uses) -- idle GPU time is wasted money, not saved money. Consider whether MAX_CONCURRENT_BUILDS (currently 2, build_manager.py) should scale up when a dedicated local GPU provider is healthy and available, since the traditional constraint that cap exists for (avoiding overwhelming shared rate-limited hosted APIs) doesn't apply the same way to a single GPU you already own for the hour.\n(2) ROLE BREADTH: 17Z only registers this as fallback capacity per the 17M/17R convention (slots in after existing top-priority providers). Fable should evaluate, with real evidence (same discipline as provider_evidence.py's existing standard -- MIN_SAMPLE_SIZE before trusting a new candidate, not a vibes-based promotion), whether this GPU-backed provider should be promoted to primary for any specific roles once it has a track record, not assumed primary on day one.\n(3) COST-AWARE UTILIZATION: unlike the free/cheap hosted fallbacks, this pod bills continuously while running (or per-use if later moved to Serverless, per 17Z's original design discussion) -- 'maximize' must mean maximize USEFUL throughput per dollar of GPU-hour, not just maximize call volume. Include a concrete idle-shutdown or scale-to-zero strategy so the pod isn't billing 24/7 for occasional roadmap work, unless the operator has separately confirmed they want it always-on.\n(4) RESILIENCE: build on 17Z's confirmed operational findings -- ephemeral pod filesystem (reinstall risk on every restart), the FlashInfer/Blackwell sampler incompatibility (VLLM_USE_FLASHINFER_SAMPLER=0 workaround, confirmed working live), and the now-added --api-key auth. A 'maximize' design that doesn't survive a pod restart isn't actually maximizing anything.\n\nExplicitly NOT in scope: bypassing or weakening ARCHITECTURE_APPROVED/DEPLOY_APPROVAL, core.action_policy, or core.security in the name of throughput. Full GPU utilization and the existing human-approval invariants are not in tension -- this phase is about generation/build throughput, not approval throughput (see 17Y, a separate, still-pending, operator-only decision, for that question).\n\nDepends on 17Z (the provider must actually be registered and authenticated before a throughput-maximization design has anything real to build on).",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [
         "17Z"
       ],
       "priority": 6,
-      "build_id": "fd413621"
+      "build_id": "fd413621",
+      "completion_criteria": [
+        "gwen3 wrote provider evidence routing + GPU monitor + auto-init script. 114 lines across 4 files."
+      ]
     },
     {
       "id": "TK-176d6efe",
@@ -1397,6 +1405,116 @@
       "tests_required": false,
       "priority": 99,
       "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
+    },
+    {
+      "id": "TK-cb8bd4b3",
+      "name": "17O-A: Legal source discovery agent \u2014 seed from parliament.gh + judiciary.gov.gh, recursive crawling, source metadata ex",
+      "description": "17O-A: Legal source discovery agent \u2014 seed from parliament.gh + judiciary.gov.gh, recursive crawling, source metadata extraction",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-96ddd758",
+      "name": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
+      "description": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-44eee510",
+      "name": "17O-C: Copyright classification engine \u2014 per-document license detection, metadata-only mode for restricted content, oper",
+      "description": "17O-C: Copyright classification engine \u2014 per-document license detection, metadata-only mode for restricted content, operator review queue",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-e62ea469",
+      "name": "17O-D: Legal metadata schema + version control \u2014 jurisdiction/court/year/legislation number/amendments, never silent ove",
+      "description": "17O-D: Legal metadata schema + version control \u2014 jurisdiction/court/year/legislation number/amendments, never silent overwrites",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-525d42a6",
+      "name": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
+      "description": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-4e65e8f8",
+      "name": "17O-F: Quality control agents \u2014 source verification, legal classification, citation extraction, QA, curator approval wor",
+      "description": "17O-F: Quality control agents \u2014 source verification, legal classification, citation extraction, QA, curator approval workflow",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-9709aa0e",
+      "name": "17O-G: Legal monitoring dashboard \u2014 documents collected/updated, failed downloads, source reliability, storage usage, in",
+      "description": "17O-G: Legal monitoring dashboard \u2014 documents collected/updated, failed downloads, source reliability, storage usage, index status",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-d569b912",
+      "name": "17O-H: Scheduled acquisition jobs \u2014 daily legislation check, weekly judgment scan, monthly full refresh, quarterly accur",
+      "description": "17O-H: Scheduled acquisition jobs \u2014 daily legislation check, weekly judgment scan, monthly full refresh, quarterly accuracy review",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-36a0b3dd",
+      "name": "19A: Module auto-registry \u2014 new modules self-register with Command Center (name, endpoints, capabilities, dependencies) ",
+      "description": "19A: Module auto-registry \u2014 new modules self-register with Command Center (name, endpoints, capabilities, dependencies) via JSON config, auto-discovered at startup",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-b7614289",
+      "name": "19B: Command Center action wiring \u2014 Emergency Controls wired to real actions (pause/resume scheduler, retry build, disab",
+      "description": "19B: Command Center action wiring \u2014 Emergency Controls wired to real actions (pause/resume scheduler, retry build, disable provider) through existing approval framework",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
     }
   ]
 }

@@ -1500,7 +1500,7 @@
       "id": "TK-36a0b3dd",
       "name": "19A: Module auto-registry \u2014 new modules self-register with Command Center (name, endpoints, capabilities, dependencies) ",
       "description": "19A: Module auto-registry \u2014 new modules self-register with Command Center (name, endpoints, capabilities, dependencies) via JSON config, auto-discovered at startup",
-      "status": "proposed",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
@@ -1517,6 +1517,94 @@
       "tests_required": false,
       "priority": 99,
       "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+    },
+    {
+      "id": "TK-6e883357",
+      "name": "Project SUSU \u2014 Telegram rotating savings platform. Full fintech: Mobile Money, double-entry ledger, fraud detection, AI ",
+      "description": "Project SUSU \u2014 Telegram rotating savings platform. Full fintech: Mobile Money, double-entry ledger, fraud detection, AI assistant (Kai), admin dashboard, multi-tenant. Phase 1: Telegram bot MVP with MTN MoMo/Telecel Cash integration.",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "TK-68650abd",
+      "name": "SUSU-1: Telegram bot core \u2014 user registration, KYC doc upload, group creation, contribution tracking via Telegram Bot AP",
+      "description": "SUSU-1: Telegram bot core \u2014 user registration, KYC doc upload, group creation, contribution tracking via Telegram Bot API",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "TK-11b64506",
+      "name": "SUSU-2: Mobile Money integration \u2014 MTN MoMo + Telecel Cash + AirtelTigo Money payment APIs, automated payout processing",
+      "description": "SUSU-2: Mobile Money integration \u2014 MTN MoMo + Telecel Cash + AirtelTigo Money payment APIs, automated payout processing",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "TK-d0306313",
+      "name": "SUSU-3: Financial ledger engine \u2014 double-entry accounting, immutable transactions, reconciliation, settlement, escrow tr",
+      "description": "SUSU-3: Financial ledger engine \u2014 double-entry accounting, immutable transactions, reconciliation, settlement, escrow tracking",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "TK-50d43805",
+      "name": "SUSU-4: Risk & fraud engine \u2014 duplicate detection, device fingerprinting, velocity checks, MoMo verification, AML scorin",
+      "description": "SUSU-4: Risk & fraud engine \u2014 duplicate detection, device fingerprinting, velocity checks, MoMo verification, AML scoring",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "TK-68db2b0e",
+      "name": "SUSU-5: Kai AI assistant integration \u2014 conversational Q&A for members (balance, payouts, penalties) and admins (risk, re",
+      "description": "SUSU-5: Kai AI assistant integration \u2014 conversational Q&A for members (balance, payouts, penalties) and admins (risk, revenue, fraud)",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "TK-51590cd8",
+      "name": "SUSU-6: Web admin dashboard \u2014 member management, group management, financial dashboard, compliance, audit logs, RBAC",
+      "description": "SUSU-6: Web admin dashboard \u2014 member management, group management, financial dashboard, compliance, audit logs, RBAC",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "TK-d88e6f21",
+      "name": "SUSU-7: Notification system \u2014 Telegram, SMS, email, payment reminders, late alerts, payout confirmations",
+      "description": "SUSU-7: Notification system \u2014 Telegram, SMS, email, payment reminders, late alerts, payout confirmations",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
     }
   ],
   "_audit": {

@@ -315,7 +315,25 @@ LAW_TUTOR_ROLE_PROVIDERS = {
     # Fast general chat / quick answers -- groq's exact strength.
     "law_chat": ["groq", "deepseek", "claude", "openai", "qwen3_coder_text"],
 }
+
+# 2026-08-03: Juris Kai Legal Expert - Phase 17Z
+# Legal teaching and explanation - requires strong comprehension and educational ability
+# Legal case analysis - needs deep reasoning, precedent understanding, and case interpretation
+# Legal research - needs accuracy, reliable information sources, and document analysis
+# Legal argument construction - requires strong logical reasoning and persuasive writing
+# Flashcard generation - needs structured output and organization
+# General legal chat - needs quick responses and conversational ability
+JURIS_KAI_ROLE_PROVIDERS = {
+    "juris_legal_teaching": ["openai", "claude", "deepseek_native_flash", "qwen3_coder_text", "deepseek"],
+    "juris_case_analysis": ["claude", "deepseek_native_flash", "openai", "qwen3_coder_text", "deepseek"],
+    "juris_research": ["gemini", "geminix", "deepseek_native_flash", "claude", "qwen3_coder_text", "deepseek"],
+    "juris_argument_construction": ["claude", "openai", "qwen3_coder_text", "deepseek"],
+    "juris_flashcards": ["deepseek", "groq", "claude", "openai", "qwen3_coder_text"],
+    "juris_chat": ["groq", "deepseek", "claude", "openai", "qwen3_coder_text"],
+}
+
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
+ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -335,6 +353,8 @@ DEFAULT_TASK_TYPE = "coding"
 FIXED_ORDER_TASK_TYPES = frozenset({
     "architecture", "planning",
     "law_document", "law_case_analysis", "law_teaching", "law_exam", "law_flashcards", "law_chat",
+    "juris_legal_teaching", "juris_case_analysis", "juris_research", 
+    "juris_argument_construction", "juris_flashcards", "juris_chat"
 })
 
 USAGE_HISTORY_FILE = "ai_usage_history.json"

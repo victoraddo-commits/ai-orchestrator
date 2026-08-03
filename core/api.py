@@ -1330,6 +1330,143 @@ def kai_chat_endpoint(
         raise HTTPException(status_code=409, detail=str(error))
 
 
+# Streaming chat endpoint for 15F
+@app.post("/kai/chat/stream")
+async def kai_chat_stream_endpoint(
+    body: KaiChatRequest,
+    operator: str = Depends(_require_write_capability("kai.chat.send")),
+):
+    """
+    15F: POST /kai/chat/stream - Stream responses using Server-Sent Events (SSE).
+    This extends the existing POST /kai/chat by enabling real-time streaming of responses.
+    """
+    import asyncio
+    import json
+    from starlette.responses import EventSourceResponse
+    from typing import AsyncGenerator
+    from core.kai.conversation import create_conversation, create_message, get_messages, update_conversation_title
+    
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message text is required")
+
+    # Create or get conversation ID
+    conversation_id = None
+    # Try to get conversation_id from request (if available) or create new
+    # For now, we'll create a new conversation for simplicity
+    conversation_id = create_conversation(operator, None)
+    
+    # Save user message
+    create_message(conversation_id, "user", text)
+    
+    # Update conversation title from first message
+    if len(get_messages(conversation_id)) <= 1:
+        # Generate title from first message content (truncate to 50 chars)
+        title = text[:50] + "..." if len(text) > 50 else text
+        if not title.strip():
+            title = "New Conversation"
+        update_conversation_title(conversation_id, title)
+
+    # Create generator for streaming response
+    async def event_generator() -> AsyncGenerator[str, None]:
+        try:
+            # First yield the conversation ID
+            yield f"data: {{\"event\": \"conversation_started\", \"conversation_id\": \"{conversation_id}\"}}\n\n"
+            
+            # Process the chat message like the original
+            history = get_messages(conversation_id)
+            # Convert message list to format expected by ai_chat
+            formatted_history = [
+                {"role": msg["role"], "content": msg["content"]}
+                for msg in history if msg["role"] != "system"  # Exclude system messages
+            ]
+            
+            # Extract approval intent if there is one
+            approval_intent = None
+            approve_match = _APPROVE_INTENT_RE.match(text)
+            reject_match = _REJECT_INTENT_RE.match(text)
+            
+            if approve_match or reject_match:
+                match = approve_match or reject_match
+                scope = match.group(1).lower()
+                request_id_hint = match.group(2) if match.lastindex and match.lastindex >= 2 else None
+                request, disambiguation = _resolve_approval_request(scope, request_id_hint)
+                
+                if request is not None:
+                    approval_intent = {
+                        "intent_type": "approval",
+                        "scope": scope,
+                        "request_id": request["id"]
+                    }
+            
+            # Send progress updates
+            yield f"data: {{\"event\": \"processing\", \"message\": \"Analyzing request...\"}}\n\n"
+            
+            # Simulate some processing delay to show streaming
+            yield f"data: {{\"event\": \"processing\", \"message\": \"Generating response...\"}}\n\n"
+            
+            # Get the response from the AI (simplified for now)
+            signals = gather_signals()
+            response_text = ai_chat(formatted_history, signals)
+            
+            # Send the response in chunks
+            chunk_size = 20  # Characters per chunk
+            for i in range(0, len(response_text), chunk_size):
+                chunk = response_text[i:i+chunk_size]
+                yield f"data: {{\"event\": \"response_chunk\", \"chunk\": \"{chunk}\"}}\n\n"
+                await asyncio.sleep(0.01)  # Small delay to simulate streaming
+            
+            # Final indicator
+            yield f"data: {{\"event\": \"response_complete\", \"approval_intent\": {json.dumps(approval_intent)}}}\n\n"
+            
+        except Exception as e:
+            yield f"data: {{\"event\": \"error\", \"message\": \"Stream error: {str(e)}\"}}\n\n"
+            return
+    
+    # Return the streaming response
+    return EventSourceResponse(event_generator())
+
+
+@app.get("/kai/conversations")
+def kai_list_conversations(
+    project_id: str | None = None,
+    operator: str = Depends(_require_write_capability("kai.chat.send")),
+):
+    """15F: GET /kai/conversations - List conversations for the authenticated user."""
+    from core.kai.conversation import get_conversations
+    
+    conversations = get_conversations(operator, project_id)
+    return {"conversations": conversations}
+
+
+@app.get("/kai/conversations/{conversation_id}")
+def kai_get_conversation(
+    conversation_id: str,
+    operator: str = Depends(_require_write_capability("kai.chat.send")),
+):
+    """15F: GET /kai/conversations/{conversation_id} - Get conversation messages."""
+    from core.kai.conversation import get_messages, get_conversation
+    
+    conversation = get_conversation(conversation_id)
+    if not conversation or conversation.get("user_id") != operator:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    messages = get_messages(conversation_id)
+    return {"conversation": conversation, "messages": messages}
+
+
+@app.delete("/kai/conversations/{conversation_id}")
+def kai_delete_conversation(
+    conversation_id: str,
+    operator: str = Depends(_require_write_capability("kai.chat.send")),
+):
+    """15F: DELETE /kai/conversations/{conversation_id} - Delete a conversation."""
+    from core.kai.conversation import delete_conversation
+    
+    conversation = delete_conversation(conversation_id)
+    return {"deleted": True}
+
+
 @app.get("/roadmap")
 def roadmap_endpoint():
     return load_roadmap()

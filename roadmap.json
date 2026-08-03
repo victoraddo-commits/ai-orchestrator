@@ -1353,6 +1353,50 @@
       ],
       "priority": 6,
       "build_id": "fd413621"
+    },
+    {
+      "id": "TK-176d6efe",
+      "name": "configure VPN failover for Proxmox B",
+      "description": "configure VPN failover for Proxmox B",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
+    },
+    {
+      "id": "TK-8650700c",
+      "name": "fix gwen3 zero-code commit issue",
+      "description": "fix gwen3 zero-code commit issue",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
+    },
+    {
+      "id": "TK-a5394cd2",
+      "name": "add health dashboard for RunPod pod uptime",
+      "description": "add health dashboard for RunPod pod uptime",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
+    },
+    {
+      "id": "TK-41173c52",
+      "name": "implement automated pod restart when gwen3 goes down",
+      "description": "implement automated pod restart when gwen3 goes down",
+      "status": "proposed",
+      "dependencies": [],
+      "completion_criteria": [],
+      "tests_required": false,
+      "priority": 99,
+      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
     }
   ]
 }

@@ -80,6 +80,63 @@ def _handle_recall():
     return {"reply": f"Here's what I remember:\n\n{ctx}"}
 
 
+def _handle_add_task(description):
+    """Add a task to the roadmap as a proposed phase.  Assigns a unique
+    task-id prefixed with 'TK-' so it never collides with numbered phases."""
+    import json, os, uuid
+    from datetime import datetime, timezone
+
+    roadmap_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "roadmap.json")
+
+    with open(roadmap_path) as f:
+        data = json.load(f)
+
+    # Generate a unique task ID
+    task_id = f"TK-{uuid.uuid4().hex[:8]}"
+
+    new_phase = {
+        "id": task_id,
+        "name": description[:120],
+        "description": description,
+        "status": "proposed",
+        "dependencies": [],
+        "completion_criteria": [],
+        "tests_required": False,
+        "priority": 99,
+        "note": f"Auto-added by operator via Kai command on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC",
+    }
+
+    data["phases"].append(new_phase)
+
+    with open(roadmap_path + ".tmp", "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(roadmap_path + ".tmp", roadmap_path)
+
+    return {"reply": f"Added to roadmap: {task_id} — \"{description[:100]}\""}
+
+
+def _handle_list_tasks():
+    """List all proposed and pending tasks from the roadmap."""
+    import json, os
+
+    roadmap_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "roadmap.json")
+    with open(roadmap_path) as f:
+        data = json.load(f)
+
+    open_tasks = [p for p in data["phases"] if p["status"] in ("proposed", "pending")]
+    open_tasks.sort(key=lambda p: (p["status"], p.get("priority", 99)))
+
+    if not open_tasks:
+        return {"reply": "No open tasks. Everything is either completed, in progress, or failed."}
+
+    lines = []
+    for t in open_tasks:
+        icon = {"proposed": "💡", "pending": "⏳"}.get(t["status"], "")
+        lines.append(f"  {icon} {t['id']} — {t.get('name', t.get('description', ''))[:100]}")
+
+    return {"reply": f"Open tasks ({len(open_tasks)}):\n" + "\n".join(lines)}
+
+
 COMMAND_PATTERNS = (
     (
         re.compile(r"^kai,\s*analyze\s+system\s+health\.?$", re.IGNORECASE),
@@ -113,9 +170,14 @@ def dispatch(text):
     cleaned = (text or "").strip()
 
     for pattern, handler, description in COMMAND_PATTERNS:
-        if pattern.match(cleaned):
+        match = pattern.match(cleaned)
+        if match:
             try:
-                result = handler()
+                import inspect
+                if inspect.signature(handler).parameters:
+                    result = handler(match)
+                else:
+                    result = handler()
             except Exception as e:
                 return {"matched": True, "description": description, "result": None, "error": str(e)}
 
@@ -155,5 +217,16 @@ COMMAND_PATTERNS += (
         re.compile(r"^(?:kai,\s*)?(?:what do you remember|recall|long-term memory)\.?$", re.IGNORECASE),
         lambda match: _handle_recall(),
         "What do you remember? — show long-term memory contents.",
+    ),
+    # Auto-task: add tasks to the roadmap so nothing is forgotten
+    (
+        re.compile(r"^(?:kai,\s*)?(?:task|todo|add\s+to\s+roadmap)[:\s]+(.+)$", re.IGNORECASE | re.DOTALL),
+        lambda match: _handle_add_task(str(match.group(1)).strip()),
+        "Add a task to the roadmap — 'Kai, task: description' or 'Kai, todo: description'.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:show\s+open\s+tasks|pending\s+tasks|what\s+tasks\s+are\s+open)\.?$", re.IGNORECASE),
+        lambda match: _handle_list_tasks(),
+        "Show open tasks — returns all proposed/pending roadmap items.",
     ),
 )

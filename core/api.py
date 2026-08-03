@@ -4,11 +4,13 @@ import json
 import os
 import re
 import secrets
+import asyncio
 from pathlib import Path
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
 import httpx
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -48,7 +50,6 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.ai_provider import list_providers
-from core.module_registry import get_registered_modules
 from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
@@ -82,6 +83,26 @@ from core.audit_aggregator import (
     get_audit_entries, format_audit_entries_as_csv, format_audit_entries_as_json,
     extract_client_ip,
 )
+
+# ── Phase 15D + 19A: SSE + Module registry imports ───────────────────────────
+import asyncio
+import json as _sse_json
+from datetime import datetime as _datetime, timezone as _timezone
+
+_SSE_CLIENTS: list[asyncio.Queue] = []
+
+
+def _sse_notify(event_type: str, data: dict):
+    """Push an event to all connected SSE clients."""
+    payload = f"event: {event_type}\ndata: {_sse_json.dumps(data, default=str)}\n\n"
+    for q in _SSE_CLIENTS[:]:
+        try:
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            pass
+
+
+_MODULE_REGISTRY: dict[str, dict] = {}
 
 from core.klaus.api_endpoints import klaus_router as klaus_api_router
 from core.klaus.scheduler import start_scheduler as start_klaus_scheduler
@@ -296,6 +317,11 @@ _PROXY_BASE_URL = os.environ.get("AI_ORCHESTRATOR_PROXY_BASE_URL", _PROXY_BASE_U
 _proxy_client: httpx.AsyncClient | None = None
 
 
+# Global variables for SSE connections and event broadcasting
+
+
+_sse_event_queue = asyncio.Queue()
+
 def _set_proxy_client(client: "httpx.AsyncClient | None") -> None:
     """Override the proxy's httpx client.  For tests only."""
     global _proxy_client
@@ -478,6 +504,70 @@ def auth_status(
         caps = sorted(authz.ROLE_CAPABILITIES.get(role, set()))
         return {"role": role, "auth_method": "session", "capabilities": caps}
     return {"role": "anonymous", "auth_method": "none", "capabilities": []}
+
+
+# ── Phase 15D: SSE endpoint ──────────────────────────────────────────────
+
+
+@app.get("/events")
+async def sse_events(request: Request):
+    """SSE endpoint for real-time dashboard updates. Clients receive push
+    events for build status transitions, new pending approvals, and roadmap
+    phase completions. Falls back gracefully to poll if SSE unavailable."""
+    queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+    _SSE_CLIENTS.append(queue)
+
+    async def event_stream():
+        try:
+            yield f"event: connected\ndata: {_sse_json.dumps({'status': 'connected'})}\n\n"
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield data
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            if queue in _SSE_CLIENTS:
+                _SSE_CLIENTS.remove(queue)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ── Phase 19A: Module auto-registry ──────────────────────────────────────
+
+
+def _discover_modules():
+    """Scan config/modules/ for *.json descriptors and populate registry."""
+    import glob as _glob
+    modules_dir = Path(__file__).resolve().parent / "config" / "modules"
+    if not modules_dir.is_dir():
+        return
+    for desc_path in _glob.glob(str(modules_dir / "*.json")):
+        try:
+            desc = _sse_json.loads(Path(desc_path).read_text())
+            name = desc.get("name", Path(desc_path).stem)
+            _MODULE_REGISTRY[name] = {
+                "name": name,
+                "description": desc.get("description", ""),
+                "endpoints": desc.get("endpoints", []),
+                "capabilities": desc.get("capabilities", []),
+                "dependencies": desc.get("dependencies", []),
+                "version": desc.get("version", "0.1.0"),
+                "registered_at": _datetime.now(_timezone.utc).isoformat(),
+            }
+        except Exception:
+            pass
+
+
+_discover_modules()
+
+
+@app.get("/api/modules")
+def modules_endpoint():
+    """Return auto-discovered modules registered with Kai Command Center."""
+    return {"modules": list(_MODULE_REGISTRY.values())}
 
 
 @app.get("/health")
@@ -1837,3 +1927,49 @@ def delete_law_document_endpoint(doc_id: str, operator: str = Depends(_require_w
     if not existed:
         raise HTTPException(status_code=404, detail="Document not found")
     return {"ok": True}
+
+
+# ── SSE Event Streaming for Real-Time Dashboard Updates ─────────────────────────────
+
+# Global variables for SSE connections
+
+
+
+# Simple SSE endpoint for dashboard updates
+@app.get("/events")
+async def sse_endpoint(request: Request):
+    """SSE endpoint that streams real-time dashboard updates to connected clients"""
+    
+    # Generate a unique connection ID
+    connection_id = secrets.token_urlsafe(16)
+    
+    # Add connection to tracking set
+    with _sse_connections_lock:
+        _sse_connections.add(connection_id)
+    
+    try:
+        # Send initial connection confirmation
+        async def event_generator() -> AsyncGenerator[str, None]:
+            # Send initial data to establish connection
+            yield f"data: {json.dumps({'type': 'connection_established', 'connection_id': connection_id})}\n\n"
+            
+            # Keep connection alive with heartbeat
+            while True:
+                yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                await asyncio.sleep(30)  # Heartbeat every 30 seconds
+        
+        # Use StreamingResponse as fallback
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+        
+    except Exception as e:
+        # Remove connection on error
+        with _sse_connections_lock:
+            if connection_id in _sse_connections:
+                _sse_connections.remove(connection_id)
+        raise HTTPException(status_code=500, detail=f"Failed to establish SSE connection: {str(e)}")
+    
+    finally:
+        # Remove connection when client disconnects
+        with _sse_connections_lock:
+            if connection_id in _sse_connections:
+                _sse_connections.remove(connection_id)

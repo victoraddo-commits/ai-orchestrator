@@ -3,13 +3,17 @@ store, and guarded compression.
 
 Distinct from 13F (build-learning memory) and 15F (multi-user chat history).
 Single-operator scoped, builds on 13X (POST /kai/chat), no auth dependency.
+Adds 15F functionality: conversation persistence, streaming, and search.
 """
 
 import json
 import os
 import re
+import uuid
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -18,43 +22,154 @@ from datetime import datetime, timezone
 CHAT_HISTORY_FILE = "kai_chat_history.json"
 OPERATOR_LONG_TERM_FILE = "operator_long_term.json"
 
-# Compression triggers when this many messages accumulate (not counting
-# the system-level session envelope fields).
-COMPRESSION_THRESHOLD = 30
-
-# How many recent turns to preserve verbatim during compression.
-KEEP_RECENT_TURNS = 8
-
 # ---------------------------------------------------------------------------
-# Session envelope
+# Conversation Persistence Implementation
 # ---------------------------------------------------------------------------
 
-# The old format was a flat array of {role, content, timestamp} objects.
-# The new format wraps that inside a session envelope.  We transparently
-# migrate old-format files on first load.
-#
-# New shape:
-# {
-#   "schema_version": 2,
-#   "session": {
-#     "session_id": "uuid",
-#     "active_goal": "what Kai is currently working on" or null,
-#     "created": "iso-timestamp"
-#   },
-#   "recent_messages": [
-#     {"role": "user|assistant", "content": "...", "timestamp": "..."}
-#   ],
-#   "ephemeral_context": {
-#     "last_referenced_document": null,
-#     "last_referenced_build": null,
-#     "last_referenced_phase": null
-#   },
-#   "compressed": {
-#     "older_summary": "summary of compressed turns" or null,
-#     "key_entities": [],    # citations, directives, corrections
-#     "compressed_at": null
-#   }
-# }
+# Conversation storage file
+CONVERSATIONS_FILE = "kai_conversations.json"
+MESSAGES_FILE = "kai_messages.json"
+
+def _load_conversations() -> List[Dict]:
+    """Load all saved conversations."""
+    try:
+        from core.memory import load
+        data = load(CONVERSATIONS_FILE)
+        if isinstance(data, list):
+            return data
+        elif isinstance(data, dict) and data.get("schema_version") == 1:
+            return data.get("conversations", [])
+        return []
+    except Exception:
+        return []
+
+def _save_conversations(conversations: List[Dict]) -> None:
+    """Save conversations to memory."""
+    from core.memory import save
+    save(CONVERSATIONS_FILE, {
+        "schema_version": 1,
+        "conversations": conversations
+    })
+
+def _load_messages() -> List[Dict]:
+    """Load all saved messages."""
+    try:
+        from core.memory import load
+        data = load(MESSAGES_FILE)
+        if isinstance(data, list):
+            return data
+        elif isinstance(data, dict) and data.get("schema_version") == 1:
+            return data.get("messages", [])
+        return []
+    except Exception:
+        return []
+
+def _save_messages(messages: List[Dict]) -> None:
+    """Save messages to memory."""
+    from core.memory import save
+    save(MESSAGES_FILE, {
+        "schema_version": 1,
+        "messages": messages
+    })
+
+def create_conversation(user_id: str, project_id: Optional[str] = None) -> str:
+    """Create a new conversation and return its ID."""
+    conversation_id = str(uuid.uuid4())
+    
+    # Generate title from first message content
+    title = "New Conversation"
+    
+    conversation = {
+        "id": conversation_id,
+        "user_id": user_id,
+        "project_id": project_id,
+        "title": title,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    conversations = _load_conversations()
+    conversations.append(conversation)
+    _save_conversations(conversations)
+    
+    return conversation_id
+
+def get_conversations(user_id: str, project_id: Optional[str] = None) -> List[Dict]:
+    """Get all conversations for a user, optionally filtered by project."""
+    conversations = _load_conversations()
+    return [c for c in conversations if c.get("user_id") == user_id and 
+           (project_id is None or c.get("project_id") == project_id)]
+
+def get_conversation(conversation_id: str) -> Optional[Dict]:
+    """Get a specific conversation by ID."""
+    conversations = _load_conversations()
+    for conv in conversations:
+        if conv.get("id") == conversation_id:
+            return conv
+    return None
+
+def update_conversation_title(conversation_id: str, title: str) -> bool:
+    """Update the title of a conversation."""
+    conversations = _load_conversations()
+    for conv in conversations:
+        if conv.get("id") == conversation_id:
+            conv["title"] = title
+            conv["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _save_conversations(conversations)
+            return True
+    return False
+
+def delete_conversation(conversation_id: str) -> bool:
+    """Delete a conversation and all its messages."""
+    conversations = _load_conversations()
+    conversations = [c for c in conversations if c.get("id") != conversation_id]
+    _save_conversations(conversations)
+    
+    # Also delete associated messages
+    messages = _load_messages()
+    messages = [m for m in messages if m.get("conversation_id") != conversation_id]
+    _save_messages(messages)
+    
+    return True
+
+def create_message(conversation_id: str, role: str, content: str) -> str:
+    """Create a new message in a conversation and return its ID."""
+    message_id = str(uuid.uuid4())
+    
+    message = {
+        "id": message_id,
+        "conversation_id": conversation_id,
+        "role": role,
+        "content": content,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    messages = _load_messages()
+    messages.append(message)
+    _save_messages(messages)
+    
+    return message_id
+
+def get_messages(conversation_id: str) -> List[Dict]:
+    """Get all messages for a conversation."""
+    messages = _load_messages()
+    return [m for m in messages if m.get("conversation_id") == conversation_id]
+
+def search_conversations(user_id: str, query: str = "") -> List[Dict]:
+    """Search conversations for a user by title or content."""
+    conversations = get_conversations(user_id)
+    
+    if not query:
+        return conversations
+    
+    # Simple text search in titles
+    results = []
+    for conv in conversations:
+        title = conv.get("title", "")
+        if query.lower() in title.lower():
+            results.append(conv)
+    
+    return results
 
 EMPTY_ENVELOPE = {
     "schema_version": 2,

@@ -1,0 +1,8 @@
+{
+  "name": "ai-workforce",
+  "version": "1.0.0",
+  "description": "AI provider workforce panel -- displays provider health, quota, routing priority and current build assignments",
+  "endpoints": ["/providers", "/providers/dashboard", "/api/command-center/summary"],
+  "capabilities": ["provider-management", "health-monitoring", "workforce-visualization"],
+  "dependencies": []
+}

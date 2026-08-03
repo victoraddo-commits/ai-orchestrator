@@ -1185,7 +1185,7 @@
       "id": "17P",
       "name": "Juris Kai: multi-tenant paid legal-assistant Telegram bot (subscriptions + per-document billing)",
       "description": "User directive 2026-07-31: turn the Juris Kai bot (@Juriskai_bot, token already configured) into a paid, multi-tenant product distinct from the private single-user Law Tutor bot (core.law_tutor, built 2026-07-31 for one non-operational family member). Requirements as given: every user gets their own account, no shared accounts; monthly subscription tier; separate small per-document fee for users who want Kai to analyze a specific uploaded document, billed by counting files/pages; if the bot is added to a Telegram group, billing must still apply (not a free loophole); new users get an onboarding disclaimer message ('this is a tutor/research assistant, not a lawyer') before first use. User-uploaded documents/analysis stay scoped to that user's own profile/chat only and are never merged into the shared Ghana Legal Brain corpus (17O) -- always labeled as user-uploaded and unverified when referenced back to that user. Payment provider: user is deciding between Telegram's built-in Payments API and Hubtel (already integrated in this environment for SMS, and the natural fit for Ghana Mobile Money, which the target audience likely uses more than cards) -- do not build billing against a specific provider until that decision is final. New requirement: a dedicated 'Juris Kai' tab on the Kai Dashboard for managing billing, subscriptions, per-user usage, and the document-approval workflow described in 17O. Security boundary: this is NOT the same trust model as core.law_tutor (single trusted family member) -- Juris Kai is open to paying strangers, so it needs real per-user auth/accounts and must NOT gain any path to Kai's operational capabilities (same core.build_manager/core.approval/core.deployment_manager import boundary already enforced and tested for core.law_tutor applies here, arguably with even less room for error given the larger, less-trusted user base).",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "17O"
       ],
@@ -1605,6 +1605,22 @@
       "tests_required": false,
       "priority": 99,
       "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+    },
+    {
+      "id": "19A",
+      "name": "Module Auto-Registry for Kai Command Center",
+      "description": "Every new module self-registers with the Command Center at startup via a simple JSON config. No manual wiring needed. Modules auto-appear in the workforce panel.",
+      "status": "completed",
+      "dependencies": ["13O"],
+      "completion_criteria": [
+        "core/module_registry.py scans config/modules/ for JSON descriptors",
+        "GET /api/modules returns registered modules",
+        "Auto-discovered modules appear in /api/command-center/summary",
+        "Missing/malformed descriptors handled gracefully, no crash on startup",
+        "22 tests covering registry, API endpoint, and edge cases"
+      ],
+      "tests_required": true,
+      "priority": 20
     }
   ],
   "_audit": {

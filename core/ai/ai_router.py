@@ -670,23 +670,12 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
 
 
 def chat(messages, signals):
-    history_text = "\n".join(
-        f"{'Operator' if m.get('role') == 'user' else 'Kai'}: {m.get('content', '')}"
-        for m in messages[-CHAT_HISTORY_MAX_MESSAGES:]
-    )
+    # 17V: delegate prompt construction to the conversation memory module,
+    # which injects long-term operator context, compressed history, and
+    # preserved citations/directives before the recent messages.
+    from core.kai.conversation import build_chat_prompt
 
-    import json as _json
-    prompt = (
-        "You are Kai, the operator's assistant. Answer questions truthfully "
-        "using only the provided state below. Do not perform any actions, "
-        "do not make any changes to the system, and do not suggest any "
-        "actions the system could take on its own. You are a conversational "
-        "interface for a human operator -- answer the question directly and "
-        "concisely.\n\n"
-        f"Current system state:\n{_json.dumps(signals, indent=2, default=str)}\n\n"
-        f"Conversation history:\n{history_text}\n\n"
-        "Now respond to the operator's most recent message."
-    )
+    prompt = build_chat_prompt(messages, signals)
 
     result = delegate(prompt, task_type="planning", capability="text_task")
 

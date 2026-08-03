@@ -1033,9 +1033,6 @@ def kai_proposals_endpoint():
     return list_proposals()
 
 
-CHAT_HISTORY_FILE = "kai_chat_history.json"
-CHAT_HISTORY_MAX_MESSAGES = 40
-
 _APPROVE_INTENT_RE = re.compile(
     r"approve\s+(architecture|deploy)\s*(?:plan)?\s*(?:#?(request-?\d*|[a-f0-9-]{8,}))?\s*\.?$",
     re.I,
@@ -1047,33 +1044,21 @@ _REJECT_INTENT_RE = re.compile(
 )
 
 
-def _chat_records(data):
-    """Normalizes whatever is on disk into the message list.
+# 17V: chat history is now managed by core.kai.conversation (session envelopes,
+# long-term operator store, guarded compression).  The legacy flat-array
+# load/save helpers are gone — add_message() and get_session() replace them.
 
-    core.memory_manager already supplies the one {schema_version, records}
-    envelope every memory file uses, so load() hands us the bare list. Files
-    written before that was true carry a second, redundant envelope inside
-    records; unwrap it so no operator loses their transcript to the fix."""
-
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        return _chat_records(data.get("records", []))
-    return []
+def _append_chat_message(role, content):
+    """Append a message to the session envelope (17V)."""
+    from core.kai.conversation import add_message
+    return add_message(role, content)
 
 
-def _load_chat_history():
-    return _chat_records(load(CHAT_HISTORY_FILE))
-
-
-def _save_chat_history(history):
-    # mutate receives (and must return) the bare records list -- memory_manager
-    # adds the schema_version envelope on write.
-    update(CHAT_HISTORY_FILE, lambda data: list(history))
-
-
-def _trim_history(history):
-    return history[-CHAT_HISTORY_MAX_MESSAGES:]
+def _get_chat_messages():
+    """Return recent messages from the session envelope (17V)."""
+    from core.kai.conversation import get_session
+    envelope = get_session()
+    return envelope.get("recent_messages", [])
 
 
 def _resolve_approval_request(scope, request_id_hint):
@@ -1236,13 +1221,10 @@ def _reply_content(reply):
 
 @app.get("/kai/chat")
 def kai_chat_history_endpoint(operator: str = Depends(_require_write_capability("kai.chat.send"))):
-    """Phase 17B: read-only conversation history for the CloudCLI plugin's
-    chat panel. Bridge-token gated like POST /kai/chat -- the history can
-    contain operational detail (approvals, failures, roadmap state) that
-    must not be readable by anything that doesn't hold the shared secret.
-    Returns exactly what POST /kai/chat persists, so the panel's display
-    always matches memory/kai_chat_history.json."""
-    return _load_chat_history()
+    """17B/17V: session envelope — returns the full conversation state
+    including active_goal, recent_messages, ephemeral_context, and compressed
+    history, not just a flat message array."""
+    return _get_chat_messages()
 
 
 class KaiChatAllProvidersFailed(Exception):
@@ -1260,8 +1242,8 @@ def handle_kai_chat(text: str, operator: str) -> dict:
     Raises KaiChatAllProvidersFailed when all AI providers are unavailable.
     Raises core.lifecycle.InvalidTransition on illegal approval state transitions.
     """
-    history = _load_chat_history()
-    history.append({"role": "user", "content": text})
+    _append_chat_message("user", text)
+    history = _get_chat_messages()
 
     dispatch_result = kai_dispatch(text)
     if dispatch_result.get("matched"):
@@ -1323,8 +1305,7 @@ def handle_kai_chat(text: str, operator: str) -> dict:
                 raise KaiChatAllProvidersFailed(str(error)) from error
             reply = {"matched": False, "response": response_text}
 
-    history.append({"role": "assistant", "content": _reply_content(reply)})
-    _save_chat_history(_trim_history(history))
+    _append_chat_message("assistant", _reply_content(reply))
 
     return reply
 

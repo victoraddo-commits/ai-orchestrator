@@ -43,6 +43,43 @@ def _handle_next_phase():
 
 
 # (compiled pattern, handler, description)
+# 17V: long-term memory handlers
+def _handle_remember(text):
+    from core.kai.conversation import remember_fact
+    # Store the fact under a key derived from the first few words
+    key = text[:60].strip()
+    remember_fact(key, text)
+    return {"reply": f"Got it — I'll remember that: {text[:200]}"}
+
+
+def _handle_always_never(text):
+    from core.kai.conversation import remember_directive
+    remember_directive(text)
+    return {"reply": f"Understood — directive stored: {text[:200]}"}
+
+
+def _handle_forget(text):
+    from core.kai.conversation import _read_long_term
+    store = _read_long_term()
+    # Try to find a matching fact
+    text_lower = text.lower().strip()
+    for fact in store.get("facts", []):
+        if text_lower in fact.get("value", "").lower() or text_lower in fact.get("key", "").lower():
+            store["facts"] = [f for f in store["facts"] if f != fact]
+            from core.kai.conversation import _write_long_term
+            _write_long_term(store)
+            return {"reply": f"Removed: {fact['key']}"}
+    return {"reply": f"I don't have anything matching '{text[:100]}'."}
+
+
+def _handle_recall():
+    from core.kai.conversation import get_long_term_context
+    ctx = get_long_term_context()
+    if not ctx:
+        return {"reply": "I don't remember anything specific yet. Say 'Kai, remember that...' to store something."}
+    return {"reply": f"Here's what I remember:\n\n{ctx}"}
+
+
 COMMAND_PATTERNS = (
     (
         re.compile(r"^kai,\s*analyze\s+system\s+health\.?$", re.IGNORECASE),
@@ -97,5 +134,26 @@ COMMAND_PATTERNS += (
         re.compile(r"^(?:kai,\s*)?(?:what should we do next|next step|what is next)\.?$", re.IGNORECASE),
         _handle_next_phase,
         "Show next engineering phase.",
+    ),
+    # 17V: long-term memory commands
+    (
+        re.compile(r"^(?:kai,\s*)?remember\s+that\s+(.+)$", re.IGNORECASE | re.DOTALL),
+        lambda match: _handle_remember(str(match.group(1)).strip()),
+        "Remember that <fact> — store in Kai's long-term memory.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:always|never)\s+(.+)$", re.IGNORECASE | re.DOTALL),
+        lambda match: _handle_always_never(str(match.group(0)).strip()),
+        "Always/Never <directive> — store an operator directive.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:forget|remove)\s+(?:that\s+)?(.+)$", re.IGNORECASE | re.DOTALL),
+        lambda match: _handle_forget(str(match.group(1)).strip()),
+        "Forget <fact> — remove from long-term memory.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:what do you remember|recall|long-term memory)\.?$", re.IGNORECASE),
+        lambda match: _handle_recall(),
+        "What do you remember? — show long-term memory contents.",
     ),
 )

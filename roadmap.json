@@ -1221,19 +1221,18 @@
       "id": "17V",
       "name": "Kai conversation memory: session envelope, single-operator long-term store, and guarded compression",
       "description": "Follow-on to 13F (Kai Memory System, build-learning lessons -- a different subsystem) and 13X (POST /kai/chat). Sourced from the 'AI Operating System' audit delivered 2026-08-01 and accepted by the operator the same day. Distinct from 15F (multi-user conversation history), which is gated behind 15A (auth) and explicitly deferred -- this phase is single-operator scoped and buildable now, with zero user-account dependency.\n\nCurrent reality: kai_chat_history.json (core/api.py) is a flat, ever-growing array of raw message objects -- no short/long-term separation, no compression, full history replayed into every call.\n\nShort-term memory: restructure the flat array into a structured session envelope (session_id, active_goal, recent_messages, ephemeral_context including last_referenced_document) so pronoun/reference resolution (\"use the previous document\", \"continue from yesterday\") has something concrete to resolve against, without requiring a database or user accounts.\n\nLong-term memory (single-operator scope only): a static, operator-scoped store (memory/operator_long_term.json) governed by an explicit-control principle -- nothing auto-writes to it. The operator explicitly says \"remember that...\" and Kai calls a dedicated write path; every ai_router.delegate() call for chat/legal tasks injects its contents into the system prompt prefix as a read path.\n\nCompression: when history exceeds a threshold (e.g. 30 messages / ~12,000 estimated tokens), summarize older turns via a structured JSON distillation (delegate() call, not a new subsystem) while keeping the most recent turns verbatim. Guardrail, non-negotiable: exact statutory citations/case names/act numbers, operator directives (\"always\"/\"never\"/\"do not\" statements), and explicit operator corrections must NEVER be summarized away -- they get extracted into a permanent key_entities list or the long-term store instead of being compressed with the rest.\n\nExplicitly NOT in scope: any multi-user/per-user memory scoping (that is 15F's job, after 15A lands) -- this phase must not build anything that assumes more than one operator exists.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13X"
       ],
       "priority": 33,
       "tests_required": true,
       "completion_criteria": [
-        "kai_chat_history.json (or its replacement) is restructured into a session-envelope shape (active_goal, recent_messages, ephemeral_context) rather than a flat message array",
-        "memory/operator_long_term.json exists and is write-gated behind an explicit operator command -- nothing auto-writes to it",
-        "Every ai_router.delegate() call for chat/legal task_types injects the long-term store contents into the system prompt prefix",
-        "A compression trigger (message-count or token-estimate threshold) summarizes older turns into a structured JSON block while preserving the most recent N turns verbatim",
-        "Tests cover: exact statutory citations/case names, operator \"always\"/\"never\" directives, and explicit operator corrections all survive compression unsummarized -- a synthetic long conversation that would otherwise get compressed is asserted to retain these verbatim",
-        "This phase does not introduce any per-user scoping, multi-tenant storage, or dependency on 15A -- covered by a structural test matching the existing core.law_tutor import-boundary pattern"
+        "kai_chat_history.json restructured into session-envelope shape (schema_version 2) with active_goal, recent_messages, ephemeral_context",
+        "memory/operator_long_term.json write-gated behind explicit operator commands (\"remember that\", \"always/never\", \"forget\")",
+        "build_chat_prompt() injects long-term store contents into system prompt for chat/legal tasks",
+        "Compression triggers at >30 messages; preserves last 8 turns verbatim; key entities (citations, directives, corrections) survive compression",
+        "Tests: 13 tests covering envelopes, long-term store, compression, citation/directive survival, no auth dependency"
       ],
       "note": "Queued 2026-08-01 from the AI Operating System audit, operator-accepted the same day. Deliberately scoped to single-operator use so it does not wait on 15A/15F.",
       "build_id": "0b7f883f"

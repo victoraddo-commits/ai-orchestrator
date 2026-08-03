@@ -1026,11 +1026,10 @@ def test_kai_chat_history_empty_when_no_conversation_yet():
 
 
 def test_kai_chat_history_matches_what_post_persists(monkeypatch):
-    """Completion criterion for 17B: the history the panel displays (served
-    by GET /kai/chat) must match exactly what POST /kai/chat persists to
-    memory/kai_chat_history.json."""
+    """Completion criterion for 17B+17V: the session envelope the panel
+    displays must match what POST /kai/chat persists."""
     import core.api as api_module
-    from core.memory import load
+    from core.kai.conversation import get_session
 
     monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "All systems nominal.")
 
@@ -1053,8 +1052,11 @@ def test_kai_chat_history_matches_what_post_persists(monkeypatch):
     assert response.status_code == 200
     history = response.json()
 
-    persisted = load("kai_chat_history.json")
-    assert history == persisted
+    # 17V: GET returns the recent_messages list from the session envelope
+    from core.memory import load
+    envelope = load("kai_chat_history.json")
+    persisted_messages = envelope.get("recent_messages", []) if isinstance(envelope, dict) else envelope
+    assert history == persisted_messages
 
     user_messages = [m["content"] for m in history if m["role"] == "user"]
     assert user_messages == ["How are you?", "What's next on the roadmap?"]
@@ -1202,17 +1204,13 @@ def test_kai_chat_persists_command_error_as_prose(monkeypatch):
     assert "'error'" not in content
 
 
-def test_kai_chat_history_file_uses_a_single_schema_envelope(monkeypatch):
-    """memory/kai_chat_history.json must follow the same on-disk convention as
-    every other memory file: core.memory_manager supplies exactly one
-    {schema_version, records: [...]} wrapper, so load() yields a bare list.
-    It used to be wrapped twice (records was itself a {schema_version,
-    records} dict), which only read back correctly because the two extra
-    layers cancelled out -- any other consumer using the normal load()
-    convention got a dict where it expected a list."""
+def test_kai_chat_history_file_uses_session_envelope_format(monkeypatch):
+    """17V: kai_chat_history.json now uses a session-envelope format
+    (schema_version 2) with session/recent_messages/compressed keys
+    rather than a flat message array."""
     import json as _json
     import core.api as api_module
-    from core.memory import MEMORY_DIR, load
+    from core.memory import MEMORY_DIR
 
     monkeypatch.setattr(api_module, "ai_chat", lambda messages, signals: "ok")
 
@@ -1221,14 +1219,19 @@ def test_kai_chat_history_file_uses_a_single_schema_envelope(monkeypatch):
     raw = _json.loads((MEMORY_DIR / "kai_chat_history.json").read_text())
 
     assert set(raw) == {"schema_version", "records"}
-    assert isinstance(raw["records"], list), f"double-wrapped: {raw['records']!r}"
-    assert raw["records"] == [
-        {"role": "user", "content": "hello"},
-        {"role": "assistant", "content": "ok"},
-    ]
-
-    # load() unwraps the single envelope, so callers get the list directly.
-    assert load("kai_chat_history.json") == raw["records"]
+    # 17V: records is a session-envelope dict, not a flat list
+    envelope = raw["records"]
+    assert isinstance(envelope, dict)
+    assert envelope["schema_version"] == 2
+    assert "session" in envelope
+    assert "recent_messages" in envelope
+    assert "compressed" in envelope
+    # The recent_messages list contains our messages
+    messages = envelope["recent_messages"]
+    assert len(messages) >= 2
+    assert messages[-2]["role"] == "user"
+    assert messages[-2]["content"] == "hello"
+    assert messages[-1]["role"] == "assistant"
 
 
 def test_kai_chat_history_reads_legacy_double_wrapped_file(monkeypatch):
@@ -1251,7 +1254,9 @@ def test_kai_chat_history_reads_legacy_double_wrapped_file(monkeypatch):
     assert response.json() == legacy
 
 
-def test_kai_chat_appending_to_a_legacy_file_normalizes_the_envelope(monkeypatch):
+def test_kai_chat_appending_to_a_legacy_file_migrates_to_envelope(monkeypatch):
+    """17V: legacy flat-array format is transparently upgraded to session
+    envelope on first read/write cycle."""
     import json as _json
     import core.api as api_module
     from core.memory import MEMORY_DIR
@@ -1266,8 +1271,12 @@ def test_kai_chat_appending_to_a_legacy_file_normalizes_the_envelope(monkeypatch
 
     raw = _json.loads((MEMORY_DIR / "kai_chat_history.json").read_text())
 
-    assert isinstance(raw["records"], list)
-    assert [m["content"] for m in raw["records"]] == [
+    # 17V: migrated to envelope format
+    envelope = raw["records"]
+    assert isinstance(envelope, dict)
+    assert envelope["schema_version"] == 2
+    messages = envelope["recent_messages"]
+    assert [m["content"] for m in messages] == [
         "old turn",
         "old reply",
         "new turn",

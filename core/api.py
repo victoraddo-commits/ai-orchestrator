@@ -417,11 +417,14 @@ def _require_write_capability(capability: str):
         if authorization and hmac.compare_digest(authorization.encode(), expected.encode()):
             return BRIDGE_OPERATOR
 
-        # Session-token path: viewer accounts
-        if session_token and authz.check_capability(session_token, capability):
-            return session_token
+        # Session-token path: resolve role and check capability
+        if session_token:
+            if authz.check_capability(session_token, capability):
+                return session_token
+            # Authenticated but not authorized → 403
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
 
-        # Neither path succeeded
+        # Neither path — no valid credentials at all → 401
         raise HTTPException(status_code=401, detail="Missing or invalid credentials")
 
     return checker

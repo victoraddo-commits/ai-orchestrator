@@ -245,7 +245,7 @@ def test_viewer_401_on_write_endpoint(accounts_path):
         json={"name": "test", "description": "test", "project_path": "/tmp"},
         headers={"X-Kai-Session": token},
     )
-    assert response.status_code == 401, f"viewer should get 401 on builds.create, got {response.status_code}"
+    assert response.status_code == 403, f"viewer should get 403 on builds.create, got {response.status_code}"
 
 
 def test_viewer_can_read_dashboard_without_auth():
@@ -263,7 +263,7 @@ def test_viewer_401_on_approve(accounts_path):
         "/approvals/nonexistent/approve",
         headers={"X-Kai-Session": token},
     )
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 def test_viewer_401_on_every_write_endpoint(accounts_path):
@@ -291,10 +291,9 @@ def test_viewer_401_on_every_write_endpoint(accounts_path):
         if json_body is not None:
             kwargs["json"] = json_body
         response = client.request(method, path, **kwargs)
-        # 401 (invalid creds) is expected for viewer with no bridge token.
-        # 404 is also acceptable — means the auth gate passed but the
-        # resource doesn't exist, which is a code-path question not a
-        # permissions question.
-        assert response.status_code in (401, 404), (
-            f"{method} {path}: expected 401 or 404 for viewer, got {response.status_code}"
+        # 403 (insufficient permissions) is expected for viewer with valid
+        # session but no write capabilities. 404 is also acceptable — means
+        # the auth gate passed but the resource doesn't exist.
+        assert response.status_code in (403, 404), (
+            f"{method} {path}: expected 403 or 404 for viewer, got {response.status_code}"
         )

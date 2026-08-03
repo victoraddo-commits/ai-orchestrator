@@ -33,7 +33,7 @@ def test_research_agent_routes_to_claude_fallback(monkeypatch):
     # api.deepseek.com call).
     import core.ai_provider as ai_provider
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "planning".
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     _stub_provider(monkeypatch, "claude", "claude answered")
@@ -69,7 +69,7 @@ def test_general_reasoning_agent_falls_back_to_claude_when_openai_unavailable(mo
 
     monkeypatch.setitem(ai_provider.get_provider("openai"), "available_fn", lambda: False)
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review".
-    for name in ("deepseek_native_flash", "deepseek", "gemini"):
+    for name in ("deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     _stub_provider(monkeypatch, "claude", "claude answered")

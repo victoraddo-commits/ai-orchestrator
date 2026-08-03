@@ -220,7 +220,11 @@ ROLE_PROVIDERS = {
     # independently-billed (native api.deepseek.com, no OpenRouter/Zen quota
     # exposure) candidate for Kai's Q&A redundancy/quality, alongside its
     # already-routed sibling deepseek_native_flash.
-    "planning": ["gemini", "geminix", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "claude"],
+    # 17Z: qwen3_coder_text (self-hosted RunPod RTX 5090) added as fallback
+    # capacity after every primary provider and before the universal claude
+    # tail in every text-task role below -- this is capacity, not a
+    # replacement for anything currently working.
+    "planning": ["gemini", "geminix", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "qwen3_coder_text", "claude"],
     # 13V: the Chief Architect chain -- a *named priority list* distinct from
     # general "planning": Claude's judgment is the product here, so unlike
     # every other role this one never rotates its starting candidate (see
@@ -242,16 +246,16 @@ ROLE_PROVIDERS = {
     # primary slot rather than replaced -- deepseek_native_flash takes over
     # as primary until claude's credit renews, matching "planning" above.
     # claude stays in the tail (not removed) so it resumes automatically.
-    "architecture": ["deepseek_native_flash", "gemini", "geminix", "deepseek", "openai", "claude"],
-    "log_analysis": ["groq", "claude"],
-    "documentation": ["deepseek_native_flash", "groq", "deepseek", "claude"],
+    "architecture": ["deepseek_native_flash", "gemini", "geminix", "deepseek", "openai", "qwen3_coder_text", "claude"],
+    "log_analysis": ["groq", "qwen3_coder_text", "claude"],
+    "documentation": ["deepseek_native_flash", "groq", "deepseek", "qwen3_coder_text", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
     # gemini re-enabled 2026-08-02 (credit reloaded), restored to its
     # original spot ahead of claude.
-    "review": ["openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "claude"],
+    "review": ["openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen3_coder_text", "claude"],
     # 2026-07-31, user directive: route short, structured, high-volume calls
     # (intent detection, request classification, JSON/command extraction,
     # SQL generation, categorization) to groq first -- these are exactly the
@@ -269,7 +273,7 @@ ROLE_PROVIDERS = {
     # gemini re-enabled 2026-08-02 (credit reloaded), restored as a fallback
     # behind groq (this role's real primary, per the 2026-07-31 directive
     # above -- gemini's long-context strength was never the fit here).
-    "classification": ["groq", "deepseek_native_flash", "gemini", "geminix", "deepseek", "claude"],
+    "classification": ["groq", "deepseek_native_flash", "gemini", "geminix", "deepseek", "qwen3_coder_text", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -289,20 +293,20 @@ LAW_TUTOR_ROLE_PROVIDERS = {
     # gemini re-enabled 2026-08-02 (credit reloaded) -- restored to the
     # front, since this role exists specifically for gemini's long-context
     # strength (see comment above).
-    "law_document": ["gemini", "geminix", "deepseek_native_flash", "claude", "openai", "deepseek"],
+    "law_document": ["gemini", "geminix", "deepseek_native_flash", "claude", "openai", "qwen3_coder_text", "deepseek"],
     # Case/judgment analysis -- benefits from careful, deep reasoning over a
     # fixed set of facts more than from speed or context length.
-    "law_case_analysis": ["claude", "deepseek_native_flash", "openai", "deepseek"],
+    "law_case_analysis": ["claude", "deepseek_native_flash", "openai", "qwen3_coder_text", "deepseek"],
     # Teaching/explaining concepts, Socratic questioning -- this system has
     # no evidence either way for "which model teaches better", so this is a
     # genuine judgment call, not a measured pick.
-    "law_teaching": ["openai", "claude", "deepseek_native_flash", "deepseek"],
+    "law_teaching": ["openai", "claude", "deepseek_native_flash", "qwen3_coder_text", "deepseek"],
     # Exam questions, IRAC structuring, mock exams -- moderate depth, moderate cost.
-    "law_exam": ["claude", "openai", "deepseek"],
+    "law_exam": ["claude", "openai", "qwen3_coder_text", "deepseek"],
     # Flashcards -- short, structured, low-stakes, high-volume; cheap and fast matter more than depth here.
-    "law_flashcards": ["deepseek", "groq", "claude", "openai"],
+    "law_flashcards": ["deepseek", "groq", "claude", "openai", "qwen3_coder_text"],
     # Fast general chat / quick answers -- groq's exact strength.
-    "law_chat": ["groq", "deepseek", "claude", "openai"],
+    "law_chat": ["groq", "deepseek", "claude", "openai", "qwen3_coder_text"],
 }
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 

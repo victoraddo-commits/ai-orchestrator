@@ -925,6 +925,53 @@ def test_openrouter_run_text_task_uses_the_rotated_model(monkeypatch):
     assert models_used == llm_clients.OPENROUTER_MODELS[:2]
 
 
+# 17Z: Qwen3-Coder-30B-A3B-Instruct-AWQ text-task provider on RunPod RTX 5090
+def test_qwen3_coder_text_provider_is_registered():
+    provider = ai_provider.get_provider("qwen3_coder_text")
+    assert provider is not None
+    assert provider["run_text_task"] is not None
+    assert provider["run_coding_task"] is None  # text-task only, no coding agent
+    assert provider["cost_tier"] == "paid"  # real per-request GPU billing
+
+
+def test_qwen3_coder_text_availability_reflects_env_vars(monkeypatch):
+    monkeypatch.delenv("VLLM_QWEN3_CODER_API_KEY", raising=False)
+    monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
+    assert ai_provider.list_providers()["qwen3_coder_text"]["available"] is False
+
+    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
+    assert ai_provider.list_providers()["qwen3_coder_text"]["available"] is False  # still needs URL
+
+    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://test.runpod.net/v1")
+    assert ai_provider.list_providers()["qwen3_coder_text"]["available"] is True
+
+
+def test_qwen3_coder_text_run_text_task_calls_llm_clients(monkeypatch):
+    import core.llm_clients as llm_clients
+
+    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
+    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://test.runpod.net/v1")
+    captured = {}
+
+    def fake_call_qwen3_coder_text(prompt, timeout=60):
+        captured["prompt"] = prompt
+        return "qwen3_coder_text response"
+
+    monkeypatch.setattr(llm_clients, "call_qwen3_coder_text", fake_call_qwen3_coder_text)
+
+    provider = ai_provider.get_provider("qwen3_coder_text")
+    result = provider["run_text_task"]("what is the capital of ghana?")
+
+    assert result == "qwen3_coder_text response"
+    assert captured["prompt"] == "what is the capital of ghana?"
+
+
+def test_qwen3_coder_text_has_text_task_capability_only():
+    entry = ai_provider.list_providers()["qwen3_coder_text"]
+    assert "text_task" in entry["capabilities"]
+    assert "coding_agent" not in entry["capabilities"]
+
+
 @pytest.mark.integration
 @pytest.mark.external_api
 def test_openrouter_claude_sonnet_coding_path_against_real_api(tmp_path):

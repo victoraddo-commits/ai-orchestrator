@@ -532,6 +532,28 @@ register_provider(
     cost_tier="free_or_low_cost",
 )
 
+
+# 17Z: proper text-task registration of the self-hosted Qwen3-Coder RunPod
+# endpoint. This is a plain OpenAI-compatible chat-completions endpoint
+# (same as call_deepseek_native_flash — no tool-calling, no agentic loop).
+# The "openai" provider slot was hijacked to point here (see llm_clients.
+# call_openai); this gives it its own properly-named provider entry that
+# can be tracked/rotated independently. run_text_task only — the coding-
+# agent route (tool-use loop via opencode CLI) is already registered as
+# "qwen3_coding" above.
+def _qwen3_coder_text_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_qwen3_coder_text(prompt, timeout=timeout)
+
+
+register_provider(
+    "qwen3_coder_text",
+    run_text_task=_qwen3_coder_text_run_text_task,
+    available_fn=lambda: bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL")),
+    kind="cloud",
+    description="Qwen3-Coder-30B-A3B-Instruct-AWQ, self-hosted vLLM on RunPod RTX 5090 (text-task only, OpenAI-compatible endpoint) — Phase 17Z proper registration, paid per-request GPU billing",
+    cost_tier="paid",
+)
+
 register_provider(
     "opencode",
     run_coding_task=_opencode_run_coding_task,

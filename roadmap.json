@@ -729,7 +729,7 @@
       "id": "15D",
       "name": "Real-time update infrastructure for the Kai dashboard",
       "description": "Everything the dashboard reads today is pull/poll-based (plain GET endpoints, no push). The original proposal's 'dashboard must update in near real-time' is its own sub-project, not a checkbox on 15E -- this phase decides and implements the actual mechanism (Server-Sent Events is the natural fit: one-way server-to-browser push, no new bidirectional protocol needed, works through the existing CloudCLI plugin proxy) and defines exactly which state changes trigger a push (build status transitions, new approval requests, roadmap phase completions) versus what stays poll-on-tab-open (static/rarely-changing data). Reuses existing state -- this phase adds a push transport on top of data that's already computed elsewhere, it does not recompute anything new.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13G"
       ],
@@ -741,7 +741,7 @@
         "Tests cover: a build status transition produces a push event with correct payload; a dropped connection does not crash the dashboard or lose state on reconnect"
       ],
       "tests_required": true,
-      "build_id": "dd71716c"
+      "build_id": "ab2f15cf"
     },
     {
       "id": "15E",
@@ -798,7 +798,7 @@
         "Data is sourced entirely from existing provider-rotation/usage records -- no duplicate tracking added"
       ],
       "tests_required": true,
-      "build_id": "76154484"
+      "build_id": "f7245bfe"
     },
     {
       "id": "15H",
@@ -880,7 +880,7 @@
       "id": "16D",
       "name": "Cost budget limits and alerts on top of 13W's real cost data",
       "description": "Small, direct follow-on to 13W (completed 2026-07-29): real per-call cost is now captured in ai_usage_history.json and aggregated per-provider via get_provider_dashboard() when a provider's response actually reports a figure. This phase adds the alerting layer on top of data that already exists -- no new cost tracking, purely thresholds and notification. A configurable budget limit (e.g. daily/monthly spend ceiling, overall or per-provider) checked against the existing aggregated totals; crossing it sends a Telegram alert (via 13Z) with the actual figures, not a vague warning. No automatic spend-limiting/provider-disabling behavior in this phase -- alert-only, since automatically cutting off a provider mid-roadmap based on a cost threshold is a judgment call for a human, not something to automate without being asked.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13W",
         "13Z"
@@ -893,7 +893,7 @@
         "Tests cover: an alert fires exactly once when a threshold is crossed (not every cycle after), and stays silent under the threshold"
       ],
       "tests_required": true,
-      "build_id": "6ed6953b"
+      "build_id": "ff0ecd33"
     },
     {
       "id": "17A",
@@ -1140,7 +1140,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1149,7 +1149,7 @@
       ],
       "tests_required": false,
       "note": "Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
-      "build_id": "2093dd88"
+      "build_id": "640764f5"
     },
     {
       "id": "17O",
@@ -1326,20 +1326,30 @@
       "id": "17Z",
       "name": "Wire in self-hosted Qwen3-Coder RunPod provider",
       "description": "Operator set up a RunPod pod 2026-08-02: 1x RTX 5090 (32GB VRAM), 60GB RAM, 15 vCPU (AMD EPYC 9354), running the official RunPod vLLM Serverless template with model QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ (4-bit AWQ, ~16GB weights), quantization=awq, max_model_len=65536 as a starting point. Intended role: an additional fallback text/coding provider in Kai's rotation, not a primary -- billed per-request via RunPod Serverless (on-demand, not always-on), no hard budget ceiling set by the operator.\n\nRUNPOD_API_KEY stored in .env 2026-08-02. NOT YET VERIFIED -- returned 401 on every standard RunPod auth pattern tried live (REST API Bearer token against rest.runpod.io/v1/pods, GraphQL api_key query param and Bearer header against api.runpod.io/graphql, plain non-Bearer Authorization header). Key is 64 characters, doesn't look truncated. Before any code is written for this phase: (1) confirm with the operator that this key shows as active in the RunPod dashboard (Settings > API Keys), regenerate if not; (2) once a working key is confirmed, get the actual pod endpoint URL (RunPod Serverless exposes this as https://api.runpod.io/v2/<endpoint-id>/openai/v1 or similar -- confirm the exact live URL from the RunPod console's 'Connect' tab rather than assuming the pattern) and confirm the vLLM worker actually finished loading the model (watch pod logs for 'Uvicorn running on...' with no AWQ kernel/compute-capability errors -- RTX 5090 is very new Blackwell silicon, flagged live as a real risk, not yet confirmed either way).\n\nOnce both are confirmed: register as a new provider via core.ai_provider.register_provider() (run_text_task only, no coding_agent -- this is a plain OpenAI-compatible chat-completions endpoint, not an agentic tool-use loop, same category as call_deepseek_native_flash), available_fn checking RUNPOD_API_KEY and the pod endpoint responding, cost_tier='paid' (real per-request GPU billing, unlike the free-tier/native-key providers). Add into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- slots in after existing top-priority providers, never ahead of or displacing them; this is capacity, not a replacement for anything currently working.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nUPDATE 2026-08-02: RUNPOD_API_KEY confirmed working (200 from rest.runpod.io/v1/pods, correct key was rpa_Q8XL0NLBHLYVNSK4EYRBCD0MH1ERKZBBDNFJCFIG...qpl8al, operator's paste had it run together with the pod ID). Pod cp937mgptqc1kp confirmed live: 1x GPU, 125GB RAM, 21 vCPU, image runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404 (bare PyTorch/Jupyter template, not the vLLM Serverless template originally discussed), $0.99/hr always-on billing (not the Serverless on-demand option originally chosen). Operator confirmed they set this pod up themselves/manually rather than via the vLLM Hub template.\n\nConfirmed live: pod is reachable (Jupyter on 8888 responds normally via https://cp937mgptqc1kp-8888.proxy.runpod.net/), but port 8000 (where vLLM would serve) returns 404 through RunPod's proxy -- that port was never declared as exposed on this pod (only 8888/http and 22/tcp are), so even if vLLM is running inside the container, nothing outside can reach it yet. This needs the operator to add the actual serving port to the pod's exposed ports in the RunPod console (Edit Pod) and restart it before this phase can proceed to real provider registration.\n\nUPDATE 2026-08-02 (live debugging session): first real vLLM start attempt confirmed the model itself loads fine on this RTX 5090 (AWQ/Marlin kernel, FlashAttention v2, torch.compile all succeeded, 15.74 GiB into VRAM) -- the actual crash was narrower than initially feared: FlashInfer (vLLM's optional sampling-kernel library, separate from AWQ/quantization) doesn't yet recognize this GPU's Blackwell compute capability ('FlashInfer requires GPUs with sm75 or higher' -- a misleading message; the real issue is an unrecognized-architecture check, not insufficient hardware). Trying VLLM_USE_FLASHINFER_SAMPLER=0 (falls back to vLLM's default sampler) and/or upgrading flashinfer-python as the fix -- not yet confirmed working as of this note.\n\nAlso confirmed live: this pod's root filesystem is EPHEMERAL -- only /workspace (the attached network volume) persists across a pod restart. A pip-installed vllm vanished after one restart (container ID changed 89754eaa8f69 -> 86d104907baa mid-session), requiring a full reinstall. Whatever this phase eventually builds must account for this: either install into a venv under /workspace, or bake a custom pod image with vllm/flashinfer pre-installed, or provision via RunPod Serverless (ephemeral by design, expects a proper image) rather than a hand-configured persistent pod. Do not assume a manual pip install survives a restart.\n\nCONFIRMED WORKING 2026-08-02: full stack verified live end-to-end -- vLLM 0.26.0 serving QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ on RunPod pod cp937mgptqc1kp (RTX 5090), started with VLLM_USE_FLASHINFER_SAMPLER=0 (bypasses the FlashInfer/Blackwell sampling-kernel incompatibility). Real chat completion request returned a correct response through https://cp937mgptqc1kp-8000.proxy.runpod.net/v1/chat/completions (OpenAI-compatible). Port 8000 is reachable via RunPod's proxy despite not appearing in the pod's declared 'ports' list via the REST API -- the proxy evidently doesn't require explicit port declaration the way earlier testing assumed.\n\nSECURITY GAP, must be fixed before real provider registration: this endpoint currently has NO AUTHENTICATION -- anyone with the URL can submit inference requests and consume GPU time at the operator's expense. vLLM supports an --api-key flag (or VLLM_API_KEY env var) requiring a bearer token on every request -- this must be set before core.ai_provider.register_provider() wires this in, and the key stored in .env the same way every other provider credential is.\n\nOperational risk carried over from the earlier note: pod restarts wipe the root filesystem, so vllm/flashinfer need reinstalling and the server needs restarting (with --api-key once that's added) after every restart until this is made durable (venv under /workspace, or a custom image).",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 45,
-      "build_id": "81c1938d"
+      "build_id": "81c1938d",
+      "completion_criteria": [
+        "qwen3_coder_text provider registered via core.ai_provider.register_provider() with run_text_task only",
+        "call_qwen3_coder_text() in llm_clients.py uses the same VLLM_QWEN3_CODER_* env vars as the existing call_openai hijack but under its own provider key",
+        "cost_tier paid (real per-request GPU billing, distinct from free-tier providers)",
+        "available_fn checks both VLLM_QWEN3_CODER_API_KEY and VLLM_QWEN3_CODER_BASE_URL",
+        "Added to all text-task ROLE_PROVIDERS as fallback capacity after primaries, before universal claude tail",
+        "Tests cover: registration, availability, text_task dispatch, routing position across all 12 text roles"
+      ],
+      "tests_required": true
     },
     {
       "id": "18A",
       "name": "Maximize dedicated GPU throughput for roadmap execution (Fable + deepseek design)",
       "description": "Operator directive 2026-08-02: now that 17Z's RunPod RTX 5090 running Qwen3-Coder-30B-A3B-Instruct-AWQ is confirmed live and authenticated, design a system that fully uses this dedicated GPU to drive roadmap execution forward -- operator's own words: 'nothing is overkill.' Assigned explicitly by operator directive: Fable (opencode_claude) designs it, working with deepseek (deepseek_native_flash/deepseek_native_pro) -- not Claude Code.\n\nThis is a DESIGN mandate, not a blank check to remove existing safety invariants -- ARCHITECTURE_APPROVED/DEPLOY_APPROVAL still apply to whatever this phase itself produces, same as every other phase. What 'fully maximize' should genuinely mean here, for Fable to actually design rather than have prescribed:\n\n(1) THROUGHPUT: this GPU is a persistent, dedicated resource (unlike the metered/per-request hosted APIs the rest of the roster uses) -- idle GPU time is wasted money, not saved money. Consider whether MAX_CONCURRENT_BUILDS (currently 2, build_manager.py) should scale up when a dedicated local GPU provider is healthy and available, since the traditional constraint that cap exists for (avoiding overwhelming shared rate-limited hosted APIs) doesn't apply the same way to a single GPU you already own for the hour.\n(2) ROLE BREADTH: 17Z only registers this as fallback capacity per the 17M/17R convention (slots in after existing top-priority providers). Fable should evaluate, with real evidence (same discipline as provider_evidence.py's existing standard -- MIN_SAMPLE_SIZE before trusting a new candidate, not a vibes-based promotion), whether this GPU-backed provider should be promoted to primary for any specific roles once it has a track record, not assumed primary on day one.\n(3) COST-AWARE UTILIZATION: unlike the free/cheap hosted fallbacks, this pod bills continuously while running (or per-use if later moved to Serverless, per 17Z's original design discussion) -- 'maximize' must mean maximize USEFUL throughput per dollar of GPU-hour, not just maximize call volume. Include a concrete idle-shutdown or scale-to-zero strategy so the pod isn't billing 24/7 for occasional roadmap work, unless the operator has separately confirmed they want it always-on.\n(4) RESILIENCE: build on 17Z's confirmed operational findings -- ephemeral pod filesystem (reinstall risk on every restart), the FlashInfer/Blackwell sampler incompatibility (VLLM_USE_FLASHINFER_SAMPLER=0 workaround, confirmed working live), and the now-added --api-key auth. A 'maximize' design that doesn't survive a pod restart isn't actually maximizing anything.\n\nExplicitly NOT in scope: bypassing or weakening ARCHITECTURE_APPROVED/DEPLOY_APPROVAL, core.action_policy, or core.security in the name of throughput. Full GPU utilization and the existing human-approval invariants are not in tension -- this phase is about generation/build throughput, not approval throughput (see 17Y, a separate, still-pending, operator-only decision, for that question).\n\nDepends on 17Z (the provider must actually be registered and authenticated before a throughput-maximization design has anything real to build on).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "17Z"
       ],
-      "priority": 6
+      "priority": 6,
+      "build_id": "fd413621"
     }
   ]
 }

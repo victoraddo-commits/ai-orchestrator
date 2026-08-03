@@ -186,7 +186,7 @@ def test_delegate_records_usage_on_success(monkeypatch):
     # make a real opencode/Zen call.
     import core.ai_provider as ai_provider
 
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -218,7 +218,7 @@ def test_delegate_records_usage_on_failure_too(monkeypatch):
     # so this test doesn't make a real opencode/Zen call (it would otherwise
     # be tried between deepseek_native_flash's failure and claude's success,
     # breaking the exact 2-entry history this test asserts below).
-    for name in ("openrouter", "deepseek", "minimax", "gemini", "geminix", "opencode_claude", "deepseek_native_pro"):
+    for name in ("openrouter", "deepseek", "minimax", "gemini", "geminix", "opencode_claude", "deepseek_native_pro", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -619,15 +619,17 @@ def test_delegate_rotates_starting_candidate_across_successive_calls(monkeypatch
     # gemini's lead there is evidence-backed, not just a default.)
     import core.ai_provider as ai_provider
 
-    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review" --
-    # a real rotation member again, at the end of ROLE_PROVIDERS["review"].
-    review_candidates = ["openai", "deepseek_native_flash", "deepseek", "gemini", "claude"]
+    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review".
+    # qwen3_coder_text added 2026-08-03 (17Z) as fallback capacity.
+    review_candidates = ["openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen3_coder_text", "claude"]
     for name in review_candidates:
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: True)
         monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None, n=name: f"from {n}")
 
-    seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(6)]
+    # Call n+1 times (rotate through all candidates once, wrapping back to
+    # the first entry "openai" on call 8).
+    seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(8)]
 
     assert seen == review_candidates + ["openai"]
 
@@ -699,6 +701,9 @@ def test_delegate_rotation_still_falls_through_to_next_candidate_on_failure(monk
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review" --
     # disabled so the fallback walk still reaches claude, not gemini, here.
     monkeypatch.setitem(ai_provider.get_provider("gemini"), "available_fn", lambda: False)
+    # 17Z: qwen3_coder_text and geminix disabled so the fallback reaches claude.
+    monkeypatch.setitem(ai_provider.get_provider("geminix"), "available_fn", lambda: False)
+    monkeypatch.setitem(ai_provider.get_provider("qwen3_coder_text"), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
     monkeypatch.setitem(claude, "available_fn", lambda: True)
@@ -1077,7 +1082,7 @@ def test_classification_role_falls_back_to_claude_when_groq_has_no_credentials(m
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined
     # "classification" -- disabled so this still exercises claude as the
     # fallback.
-    for name in ("deepseek_native_flash", "deepseek", "gemini"):
+    for name in ("deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen3_coder_text"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     claude = ai_provider.get_provider("claude")
@@ -1404,3 +1409,88 @@ def test_gemini_reenabled_after_credit_reload_2026_08_02(role):
     candidates = ai_router.ROLE_PROVIDERS[role]
     assert "gemini" in candidates
     assert "deepseek_native_flash" in candidates
+
+
+# 17Z: qwen3_coder_text (self-hosted RunPod RTX 5090) -- must appear in every
+# text-task role as fallback capacity behind primaries, ahead of the universal
+# "claude" tail, and must never displace or appear ahead of any primary.
+TEXT_ROLES_WITH_QWEN3 = [
+    "planning",
+    "architecture",
+    "log_analysis",
+    "documentation",
+    "review",
+    "classification",
+    "law_document",
+    "law_case_analysis",
+    "law_teaching",
+    "law_exam",
+    "law_flashcards",
+    "law_chat",
+]
+
+
+@pytest.mark.parametrize("role", TEXT_ROLES_WITH_QWEN3)
+def test_qwen3_coder_text_appears_in_fallback_position_in_text_roles(role):
+    candidates = ai_router.ROLE_PROVIDERS[role]
+    assert "qwen3_coder_text" in candidates, f"qwen3_coder_text missing from {role}: {candidates}"
+
+
+def test_qwen3_coder_text_not_in_coding_role():
+    # qwen3_coder_text is text-task only (OpenAI-compatible chat-completions,
+    # no tool-use loop). The coding role uses qwen3_coding instead.
+    assert "qwen3_coder_text" not in ai_router.ROLE_PROVIDERS["coding"]
+
+
+@pytest.mark.parametrize("role", TEXT_ROLES_WITH_QWEN3)
+def test_qwen3_coder_text_never_displaces_known_primaries(role):
+    # 17Z/17M rule: this is fallback capacity, not a replacement.
+    # It must appear AFTER every known primary for its role, never ahead of
+    # or displacing them.
+    candidates = ai_router.ROLE_PROVIDERS[role]
+    qwen3_idx = candidates.index("qwen3_coder_text")
+
+    known_primaries = {
+        "planning": ["gemini", "geminix", "deepseek_native_flash"],
+        "architecture": ["deepseek_native_flash", "gemini"],
+        "log_analysis": ["groq"],
+        "documentation": ["deepseek_native_flash", "groq"],
+        "review": ["openai", "deepseek_native_flash"],
+        "classification": ["groq", "deepseek_native_flash"],
+        "law_document": ["gemini", "geminix"],
+        "law_case_analysis": ["claude", "deepseek_native_flash"],
+        "law_teaching": ["openai", "claude"],
+        "law_exam": ["claude", "openai"],
+        "law_flashcards": ["deepseek", "groq"],
+        "law_chat": ["groq", "deepseek"],
+    }
+
+    for primary in known_primaries.get(role, []):
+        primary_idx = candidates.index(primary)
+        assert primary_idx < qwen3_idx, (
+            f"{role}: qwen3_coder_text at index {qwen3_idx} but primary "
+            f"{primary} is at index {primary_idx} -- fallback must not "
+            f"displace or appear ahead of any primary"
+        )
+
+
+def test_qwen3_coder_text_before_claude_in_tail_position():
+    # In roles where claude is the universal last-resort tail (the last
+    # candidate in the list), qwen3_coder_text should be tried before it
+    # so the paid GPU capacity gets used before the depleted Anthropic
+    # subscription. Law roles (law_*) position claude mid-chain
+    # intentionally (e.g., law_flashcards: deepseek -> groq -> claude -> ...),
+    # so this assertion only covers the non-law operational text roles.
+    claude_tail_roles = [
+        "planning", "architecture", "log_analysis", "documentation",
+        "review", "classification",
+    ]
+    for role in claude_tail_roles:
+        candidates = ai_router.ROLE_PROVIDERS[role]
+        assert "claude" in candidates
+        qwen3_idx = candidates.index("qwen3_coder_text")
+        claude_idx = candidates.index("claude")
+        assert qwen3_idx < claude_idx, (
+            f"{role}: qwen3_coder_text ({qwen3_idx}) must be tried before "
+            f"claude ({claude_idx})"
+        )

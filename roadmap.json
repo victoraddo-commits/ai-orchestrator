@@ -769,7 +769,7 @@
       "id": "15F",
       "name": "Kai Chat: multi-user, project-aware, conversation history",
       "description": "Extends 13X's POST /kai/chat rather than replacing it. Adds: persisted conversation history per authenticated user (15A), project-aware context (conversations scoped to a project once multi-project workspaces exist -- see 15H), markdown/code-block rendering on the frontend, streaming responses, and conversation search. Every constraint 13X already established stays load-bearing and unchanged here: chat is a UI surface for an authenticated human to act through, never a new autonomous action path -- an approval-intent expressed in chat still resolves through core.approval.approve()/reject() with the real authenticated user attributed as operator, and tests/test_kai_identity.py's grep-based restriction (no approve_architecture/approve_deploy call anywhere under core/kai/) must still pass. A 'viewer'-role user can chat and ask questions but any approval/deploy intent expressed in chat is rejected by 15A's capability check exactly as it would be via the API directly -- chat must not become a side channel around the permission system.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "13X",
         "15A"

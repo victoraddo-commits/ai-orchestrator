@@ -1,0 +1,9 @@
+{
+    "enabled": true,
+    "daily_limit_usd": 10.00,
+    "monthly_limit_usd": 100.00,
+    "per_provider_limits": {
+        "openrouter": {"daily": 5.00},
+        "gemini": {"daily": 5.00}
+    }
+}

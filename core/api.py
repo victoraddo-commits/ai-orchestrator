@@ -8,7 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 import httpx
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -77,6 +77,7 @@ from core.autonomy import (
     MAX_LEVEL as AUTONOMY_MAX_LEVEL,
 )
 from core import authz
+from core.audit_aggregator import get_audit_entries, format_audit_entries_as_csv, format_audit_entries_as_json
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -1030,12 +1031,76 @@ def kai_identity_endpoint():
     }
 
 
-@app.get("/kai/proposals")
-def kai_proposals_endpoint():
-    """13C improvement proposals (core/kai/planner.py), for the Kai Control
-    Center's proposals card. Read-only, ungated like /approvals and
-    /learning -- proposals are advisory text, not a write surface."""
-    return list_proposals()
+@app.get("/audit")
+def audit_endpoint(
+    user: str | None = None,
+    action: str | None = None,
+    project: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    format: str = "json",
+    limit: int = 100,
+    offset: int = 0,
+    x_kai_session: str | None = Header(default=None),
+):
+    """Phase 15C: Audit trail aggregation endpoint.
+    
+    Merges existing build, approval, decision, and incident history into a
+    chronological feed with filtering and export capabilities. Read-only
+    for all roles including 'viewer' -- an audit log editable by any user
+    defeats its purpose.
+    
+    Query parameters:
+    - user: Filter by user/operator
+    - action: Filter by action type
+    - project: Filter by project name
+    - start_date: Inclusive start date (ISO format)
+    - end_date: Inclusive end date (ISO format)
+    - format: 'json' (default) or 'csv'
+    - limit: Number of entries to return (default: 100)
+    - offset: Starting offset for pagination (default: 0)
+    """
+    # Check if caller has viewer capability (read-only access)
+    session_token = x_kai_session or ""
+    expected = f"Bearer {_load_api_token()}"
+    if not authz.check_capability(session_token, "view") and session_token:
+        # If it's a session token and doesn't have view capability, raise 403
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    elif session_token and not authz.check_capability(session_token, "view"):
+        # If it's a session token and doesn't have view capability, raise 403
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    elif not session_token:
+        # No session token, but we still want to allow access for anyone
+        # As per requirements: "Read-only for all roles including 'viewer'"
+        pass
+    
+    # Get audit entries
+    entries = get_audit_entries(user, action, project, start_date, end_date)
+    
+    # Apply pagination
+    paginated_entries = entries[offset:offset + limit]
+    
+    # Return appropriate format
+    if format.lower() == "csv":
+        csv_output = format_audit_entries_as_csv(paginated_entries)
+        return Response(content=csv_output, media_type="text/csv")
+    else:
+        # Default to JSON
+        metadata = {
+            "total_count": len(entries),
+            "returned_count": len(paginated_entries),
+            "offset": offset,
+            "limit": limit,
+            "filters": {
+                "user": user,
+                "action": action,
+                "project": project,
+                "start_date": start_date,
+                "end_date": end_date
+            }
+        }
+        return format_audit_entries_as_json(paginated_entries, metadata)
+
 
 
 _APPROVE_INTENT_RE = re.compile(

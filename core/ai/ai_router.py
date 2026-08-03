@@ -143,10 +143,17 @@ ROLE_PROVIDERS = {
     # (see tests/test_kai_identity.py's structural guarantee); a human still
     # makes every approve/reject decision.
     "coding": [
+        # 2026-08-03 operator directive ("disable open code for now, assign
+        # jobs to qwen3"): qwen3_coding is now the sole member of
+        # CODING_ROTATING_FRONT and this list's primary — self-hosted RunPod
+        # RTX 5090, pay-per-use GPU, the only coding route with real capacity
+        # right now. opencode_claude (Fable 5) moved to the fixed tail as a
+        # fallback — Zen account quota_exceeded 2026-08-03. OmniRoute also
+        # quota_exceeded but stays as the always-on gateway fallback.
+        "qwen3_coding",
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
-        "qwen3_coding",
         # 2026-08-03: OmniRoute (localhost:20128) sits here as the always-on
         # fallback, ahead of the CloudCLI "claude" provider -- claude is
         # currently degraded (untrusted self-build workspace + out of credit,
@@ -377,7 +384,13 @@ def classify_task(description):
 # Zen account) is the sole front-group member again; qwen3_coding moved to
 # the fixed tail as a fallback, and OmniRoute sits in the tail as the
 # always-on gateway fallback (see ROLE_PROVIDERS["coding"]'s comment).
-CODING_ROTATING_FRONT = ["opencode_claude"]
+# 2026-08-03 operator directive ("disable open code for now, assign jobs to
+# qwen3"): qwen3_coding is now the sole front-group member and primary
+# coding provider. opencode_claude (Fable 5) moved to the fixed tail as a
+# fallback (Zen account quota_exceeded 2026-08-03); OmniRoute also
+# quota_exceeded. qwen3_coding is the only route with real capacity
+# (self-hosted RunPod RTX 5090, pay-per-use, always-on billing).
+CODING_ROTATING_FRONT = ["qwen3_coding"]
 
 
 def _candidates_for(task_type):

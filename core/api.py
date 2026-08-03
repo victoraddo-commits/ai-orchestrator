@@ -76,6 +76,7 @@ from core.autonomy import (
     MIN_LEVEL as AUTONOMY_MIN_LEVEL,
     MAX_LEVEL as AUTONOMY_MAX_LEVEL,
 )
+from core import authz
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
@@ -379,6 +380,87 @@ class AnswerAction(BaseModel):
     answer: str
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+# ── Phase 15A: capability-based auth (login/logout + viewer sessions) ────────
+# Every write endpoint below calls require_write_capability(cap) to gate access.
+# Bridge-token callers (the CloudCLI plugin bridge) continue to work unchanged
+# with full operator capabilities.  Viewer accounts authenticate via
+# username/password to get a session token with read-only access.
+
+_SESSION_HEADER_NAME = "X-Kai-Session"
+
+
+def _require_session_token(x_kai_session: str | None = Header(default=None)) -> str:
+    """Extract the session token from the X-Kai-Session header.  Returns the
+    raw token for downstream capability resolution — does NOT validate on its
+    own, since read endpoints don't gate on sessions at all."""
+    return x_kai_session or ""
+
+
+def _require_write_capability(capability: str):
+    """FastAPI dependency factory.  Returns a callable that checks the caller
+    has *capability* — either via the bridge token (always operator) or via
+    a valid session token with the matching role capability."""
+
+    def checker(
+        authorization: str | None = Header(default=None),
+        x_kai_session: str | None = Header(default=None),
+    ) -> str:
+        session_token = x_kai_session or ""
+
+        # Bridge-token path: the existing mechanism, always operator
+        expected = f"Bearer {_load_api_token()}"
+        if authorization and hmac.compare_digest(authorization.encode(), expected.encode()):
+            return BRIDGE_OPERATOR
+
+        # Session-token path: viewer accounts
+        if session_token and authz.check_capability(session_token, capability):
+            return session_token
+
+        # Neither path succeeded
+        raise HTTPException(status_code=401, detail="Missing or invalid credentials")
+
+    return checker
+
+
+@app.post("/auth/login")
+def auth_login(body: LoginRequest):
+    """Authenticate with username/password, return a session token.
+    The caller receives a Bearer-style token scoped to their role."""
+    token = authz.authenticate(body.username, body.password)
+    if token is None:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    return {"token": token, "token_type": "session"}
+
+
+@app.post("/auth/logout")
+def auth_logout(x_kai_session: str | None = Header(default=None)):
+    """Invalidate a session token."""
+    authz.invalidate_session(x_kai_session or "")
+    return {"status": "ok"}
+
+
+@app.get("/auth/status")
+def auth_status(
+    authorization: str | None = Header(default=None),
+    x_kai_session: str | None = Header(default=None),
+):
+    """Return the current caller's role and capabilities."""
+    session_token = x_kai_session or ""
+    expected = f"Bearer {_load_api_token()}"
+    if authorization and hmac.compare_digest(authorization.encode(), expected.encode()):
+        return {"role": "operator", "auth_method": "bridge_token"}
+    role = authz.resolve_role(session_token)
+    if role:
+        caps = sorted(authz.ROLE_CAPABILITIES.get(role, set()))
+        return {"role": role, "auth_method": "session", "capabilities": caps}
+    return {"role": "anonymous", "auth_method": "none", "capabilities": []}
+
+
 @app.get("/health")
 def health():
 
@@ -444,7 +526,7 @@ def learning_lessons_endpoint():
 def approve_request(
     request_id: str,
     action: ApprovalAction = ApprovalAction(),
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("approvals.approve")),
 ):
 
     try:
@@ -462,7 +544,7 @@ def approve_request(
 def reject_request(
     request_id: str,
     action: ApprovalAction = ApprovalAction(),
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("approvals.reject")),
 ):
 
     try:
@@ -889,7 +971,7 @@ class DelegateRequest(BaseModel):
 @app.post("/delegate")
 def delegate_endpoint(
     body: DelegateRequest,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("delegate.use")),
 ):
     try:
         return delegate(body.description, task_type=body.task_type, project_path=body.project_path)
@@ -908,7 +990,7 @@ class KaiChatRequest(BaseModel):
 @app.post("/kai/command")
 def kai_command_endpoint(
     body: KaiCommandRequest,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("kai.command")),
 ):
     return kai_dispatch(body.text)
 
@@ -1153,7 +1235,7 @@ def _reply_content(reply):
 
 
 @app.get("/kai/chat")
-def kai_chat_history_endpoint(operator: str = Depends(require_bridge_token)):
+def kai_chat_history_endpoint(operator: str = Depends(_require_write_capability("kai.chat.send"))):
     """Phase 17B: read-only conversation history for the CloudCLI plugin's
     chat panel. Bridge-token gated like POST /kai/chat -- the history can
     contain operational detail (approvals, failures, roadmap state) that
@@ -1250,7 +1332,7 @@ def handle_kai_chat(text: str, operator: str) -> dict:
 @app.post("/kai/chat")
 def kai_chat_endpoint(
     body: KaiChatRequest,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("kai.chat.send")),
 ):
     text = (body.text or "").strip()
     if not text:
@@ -1312,7 +1394,7 @@ def autonomy_get_endpoint():
 @app.put("/api/autonomy/level")
 def autonomy_set_level_endpoint(
     body: AutonomyLevelUpdate,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("autonomy.configure")),
 ):
     try:
         return set_autonomy_level(body.level, operator)
@@ -1321,7 +1403,7 @@ def autonomy_set_level_endpoint(
 
 
 @app.post("/roadmap/autonomous/enable")
-def roadmap_autonomous_enable_endpoint(operator: str = Depends(require_bridge_token)):
+def roadmap_autonomous_enable_endpoint(operator: str = Depends(_require_write_capability("roadmap.autonomy"))):
     # Deprecated: preserved as a wrapper that maps the old binary
     # "enable" call to Level 4 (the exact pre-13H "enabled: true"
     # semantics). New callers should use PUT /api/autonomy/level.
@@ -1330,7 +1412,7 @@ def roadmap_autonomous_enable_endpoint(operator: str = Depends(require_bridge_to
 
 
 @app.post("/roadmap/autonomous/disable")
-def roadmap_autonomous_disable_endpoint(operator: str = Depends(require_bridge_token)):
+def roadmap_autonomous_disable_endpoint(operator: str = Depends(_require_write_capability("roadmap.autonomy"))):
     # Deprecated: preserved as a wrapper that maps the old binary
     # "disable" call to Level 1 (observe + report), NOT Level 0.
     # Level 0 (fully manual) must be selected explicitly through the
@@ -1353,7 +1435,7 @@ class NewPhaseRequest(BaseModel):
 @app.post("/roadmap/phases")
 def add_roadmap_phase_endpoint(
     body: NewPhaseRequest,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("roadmap.create")),
 ):
     try:
         return add_phase(
@@ -1368,7 +1450,7 @@ def add_roadmap_phase_endpoint(
 def roadmap_status_endpoint(
     phase_id: str,
     body: PhaseStatusUpdate,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("roadmap.modify")),
 ):
     if get_phase(phase_id) is None:
         raise HTTPException(status_code=404, detail="Phase not found")
@@ -1387,7 +1469,7 @@ def templates_endpoint():
 @app.post("/builds")
 def create_build_endpoint(
     body: CreateBuildRequest,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("builds.create")),
 ):
     try:
         return create_build(body.name, body.description, body.project_path, template=body.template)
@@ -1414,7 +1496,7 @@ def build_endpoint(build_id: str):
 def answer_build_endpoint(
     build_id: str,
     body: AnswerAction,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("builds.answer")),
 ):
     try:
         result = submit_answer(build_id, body.answer)
@@ -1431,7 +1513,7 @@ def answer_build_endpoint(
 def approve_architecture_endpoint(
     build_id: str,
     action: ApprovalAction = ApprovalAction(),
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("builds.approve_architecture")),
 ):
     try:
         result = approve_architecture(build_id, operator=operator, note=action.note)
@@ -1447,7 +1529,7 @@ def approve_architecture_endpoint(
 @app.post("/builds/{build_id}/generate")
 def generate_build_endpoint(
     build_id: str,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("builds.generate")),
 ):
     try:
         result = start_generation(build_id)
@@ -1464,7 +1546,7 @@ def generate_build_endpoint(
 def approve_deploy_endpoint(
     build_id: str,
     action: ApprovalAction = ApprovalAction(),
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("builds.approve_deploy")),
 ):
     try:
         result = approve_deploy(build_id, operator=operator, note=action.note)
@@ -1480,7 +1562,7 @@ def approve_deploy_endpoint(
 @app.post("/builds/{build_id}/rollback")
 def rollback_build_endpoint(
     build_id: str,
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("builds.rollback")),
 ):
     try:
         result = rollback_deployment(build_id)
@@ -1506,7 +1588,7 @@ async def upload_law_document_endpoint(
     file: UploadFile = File(...),
     category: str | None = Form(default=None),
     jurisdiction: str | None = Form(default=None),
-    operator: str = Depends(require_bridge_token),
+    operator: str = Depends(_require_write_capability("law.manage")),
 ):
     content = await file.read()
     try:
@@ -1523,12 +1605,12 @@ async def upload_law_document_endpoint(
 
 
 @app.get("/kai/law-documents")
-def list_law_documents_endpoint(operator: str = Depends(require_bridge_token)):
+def list_law_documents_endpoint():
     return {"documents": list_documents()}
 
 
 @app.delete("/kai/law-documents/{doc_id}")
-def delete_law_document_endpoint(doc_id: str, operator: str = Depends(require_bridge_token)):
+def delete_law_document_endpoint(doc_id: str, operator: str = Depends(_require_write_capability("law.manage"))):
     existed = delete_document(doc_id)
     if not existed:
         raise HTTPException(status_code=404, detail="Document not found")

@@ -1138,15 +1138,16 @@ def test_openrouter_billed_coding_routes_disabled_2026_08_02(role):
     assert "opencode_deepseek" not in candidates
 
 
-# --- 13M: Claude-preserving coding order + alt-Claude front rotation ---------
-# 2026-08-02: the front group collapsed to opencode_claude alone (Fable 5,
-# billed through OpenCode Zen, unaffected by the OpenRouter outage above) --
-# see ROLE_PROVIDERS["coding"]'s comment.
+# --- 13M: Claude-preserving coding order + coding front rotation ------------
+# 2026-08-03 operator directive ("disable open code, assign jobs to qwen3"):
+# qwen3_coding is now the sole front-group member. opencode_claude moved to
+# the fixed tail as a fallback (Zen account quota_exceeded).
+# See ROLE_PROVIDERS["coding"]'s comment and ai_router.CODING_ROTATING_FRONT.
 
 CODING_FIXED_TAIL = [
+    "opencode_claude",
     "opencode_claude_sonnet",
     "opencode_claude_opus",
-    "qwen3_coding",
     # 2026-08-03: OmniRoute (localhost:20128) sits ahead of the degraded
     # CloudCLI "claude" provider as Kai's always-on fallback -- claude hangs
     # on its untrusted-workspace/out-of-credit state instead of failing fast,
@@ -1159,18 +1160,13 @@ CODING_FIXED_TAIL = [
 ]
 
 
-def test_coding_rotating_front_is_opencode_claude_again_2026_08_03():
-    # openrouter_claude_opus/sonnet dropped (OpenRouter account out of
-    # credit) -- opencode_claude (Fable 5) was briefly the sole front-group
-    # member, then rotated 50/50 with qwen3_coding once its tool-calling gap
-    # was fixed server-side. On 2026-08-02 the operator assigned the roadmap
-    # to qwen3_coding outright. 2026-08-03: qwen3 runs on a pay-per-use
-    # RunPod GPU that is OFF when idle and only powered on when a build needs
-    # it, so it must not lead the coding rotation -- opencode_claude (Fable 5,
-    # billed through the unaffected OpenCode Zen account) is the sole
-    # front-group member again, and qwen3_coding moved to the fixed tail as a
-    # fallback (see ROLE_PROVIDERS["coding"]'s comment).
-    assert ai_router.CODING_ROTATING_FRONT == ["opencode_claude"]
+def test_coding_rotating_front_is_qwen3_coding_2026_08_03():
+    # 2026-08-03 operator directive ("disable open code for now, assign jobs
+    # to qwen3"): qwen3_coding is now the sole front-group member and primary
+    # coding provider. opencode_claude (Fable 5) moved to the fixed tail as a
+    # fallback — Zen account quota_exceeded 2026-08-03. qwen3 is the only
+    # route with real capacity (self-hosted RunPod RTX 5090).
+    assert ai_router.CODING_ROTATING_FRONT == ["qwen3_coding"]
     assert ai_router.ROLE_PROVIDERS["coding"][:1] == ai_router.CODING_ROTATING_FRONT
     # OmniRoute must sit ahead of the degraded direct claude provider as the
     # always-on fallback (2026-08-03 operator directive).
@@ -1279,8 +1275,11 @@ def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_alt_claude_r
     assert result["provider"] == "claude"
     attempted_before_claude = [a["provider"] for a in result["attempts"]]
     assert attempted_before_claude[:1] == ai_router.CODING_ROTATING_FRONT
+    # 2026-08-03: qwen3_coding is now the front group. opencode_claude moved
+    # to the fixed tail.  The fixed tail order is: opencode_claude →
+    # opencode_claude_sonnet → opencode_claude_opus → omniroute → claude → ...
     assert attempted_before_claude[1:] == [
-        "opencode_claude_sonnet", "opencode_claude_opus", "qwen3_coding", "omniroute",
+        "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "omniroute",
     ]
 
 

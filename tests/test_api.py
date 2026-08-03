@@ -1665,9 +1665,11 @@ def test_upload_law_document_rejects_unsupported_type():
     assert response.status_code == 400
 
 
-def test_list_law_documents_requires_auth():
+def test_list_law_documents_returns_documents_without_auth():
+    # 15A: read endpoints (GET) are unrestricted — this was previously
+    # gated behind require_bridge_token, now open for read-only access.
     response = client.get("/kai/law-documents")
-    assert response.status_code == 401
+    assert response.status_code == 200
 
 
 def test_list_and_delete_law_document_round_trip():

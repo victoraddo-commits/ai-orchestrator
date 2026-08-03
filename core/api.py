@@ -82,8 +82,19 @@ from core.audit_aggregator import (
     extract_client_ip,
 )
 
+from core.klaus.api_endpoints import klaus_router as klaus_api_router
+from core.klaus.scheduler import start_scheduler as start_klaus_scheduler
+
 
 app = FastAPI(title="AI Orchestrator Observability API")
+
+app.include_router(klaus_api_router)
+
+try:
+    start_klaus_scheduler()
+except Exception:
+    import logging
+    logging.getLogger(__name__).warning("KLAUS scheduler failed to start (db not available?)")
 
 
 _DASHBOARD_PATH = Path(__file__).resolve().parent / "kai" / "dashboard.html"

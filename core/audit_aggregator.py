@@ -1,82 +1,101 @@
 import csv
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from core.memory import load
 from core.approval import load_requests
 from core.incident_manager import load_incidents
 from core.decision_engine import load_decisions
 from core.build_manager import load_builds
 
-def normalize_timestamp(timestamp_str: str) -> str:
-    """Normalize timestamp to ISO format if needed."""
-    if not timestamp_str:
-        return datetime.now().isoformat()
-    
-    # If it's already in ISO format, just return it
+
+def extract_client_ip(request: Request) -> str:
+    header = request.headers.get("x-forwarded-for")
+    if header:
+        return header.split(",")[0].strip()
+    header = request.headers.get("x-real-ip")
+    if header:
+        return header.strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "127.0.0.1"
+
+
+def normalize_timestamp(ts: Any) -> str:
+    if not ts:
+        return datetime.now(timezone.utc).isoformat()
+    if isinstance(ts, datetime):
+        return ts.isoformat()
+    s = str(ts)
     try:
-        datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        return timestamp_str
+        datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return s
     except ValueError:
-        # Try to convert if it's in a different format
-        try:
-            dt = datetime.strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S.%f%z")
-            return dt.isoformat()
-        except ValueError:
-            # Fallback to current time if we can't parse
-            return datetime.now().isoformat()
+        pass
+    try:
+        return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f").isoformat()
+    except ValueError:
+        pass
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _safe_status(status: Any) -> str:
+    return str(status).lower() if status else "unknown"
+
 
 def map_build_to_audit_entry(build: Dict[str, Any]) -> Dict[str, Any]:
-    """Map a build record to an audit entry."""
     return {
         "id": build.get("id"),
-        "timestamp": normalize_timestamp(build.get("created_at")),
-        "action": "build_triggered",
+        "timestamp": normalize_timestamp(build.get("created")),
+        "action": "build_" + _safe_status(build.get("status")),
         "user": build.get("operator", "system"),
         "source_ip": build.get("source_ip", "127.0.0.1"),
-        "project": build.get("name"),
+        "project": build.get("name") or "",
         "status": build.get("status"),
         "source_store": "build_history",
         "details": {
             "name": build.get("name"),
             "description": build.get("description"),
             "template": build.get("template"),
-            "status": build.get("status")
-        }
+            "trace_id": build.get("trace_id"),
+        },
     }
 
-def map_approval_to_audit_entry(approval: Dict[str, Any]) -> Dict[str, Any]:
-    """Map an approval record to an audit entry."""
-    action_type = "approval_" + approval.get("approval_type", "unknown").replace("_", "_")
-    
-    return {
-        "id": approval.get("id"),
-        "timestamp": normalize_timestamp(approval.get("created_at")),
-        "action": action_type,
-        "user": approval.get("approved_by") or approval.get("rejected_by", "system"),
-        "source_ip": approval.get("source_ip", "127.0.0.1"),
-        "project": approval.get("project", ""),
-        "status": approval.get("status"),
-        "source_store": "approval_queue",
-        "details": {
-            "approval_type": approval.get("approval_type"),
-            "build_id": approval.get("build_id"),
-            "title": approval.get("title"),
-            "description": approval.get("description"),
-            "status": approval.get("status")
-        }
-    }
+
+def _approval_audit_entries(approval: Dict[str, Any]) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    history: list = approval.get("history") or []
+    for h in history:
+        status = h.get("status", "unknown")
+        action = "approval_" + status.replace("_", "_")
+        entries.append({
+            "id": approval.get("id"),
+            "timestamp": normalize_timestamp(h.get("timestamp")),
+            "action": action,
+            "user": approval.get("approved_by") or "system",
+            "source_ip": approval.get("source_ip", "127.0.0.1"),
+            "project": approval.get("phase_id", ""),
+            "status": status,
+            "source_store": "approval_queue",
+            "details": {
+                "approval_type": approval.get("approval_type"),
+                "build_id": approval.get("build_id"),
+                "title": approval.get("title"),
+                "description": approval.get("description"),
+            },
+        })
+    return entries
+
 
 def map_decision_to_audit_entry(decision: Dict[str, Any]) -> Dict[str, Any]:
-    """Map a decision record to an audit entry."""
     return {
         "id": decision.get("id"),
-        "timestamp": normalize_timestamp(decision.get("created_at")),
-        "action": "decision_made",
+        "timestamp": normalize_timestamp(decision.get("created")),
+        "action": "decision_" + _safe_status(decision.get("status")),
         "user": decision.get("operator", "system"),
         "source_ip": decision.get("source_ip", "127.0.0.1"),
-        "project": decision.get("project", ""),
+        "project": decision.get("incident_id", ""),
         "status": decision.get("status"),
         "source_store": "decision_history",
         "details": {
@@ -84,182 +103,125 @@ def map_decision_to_audit_entry(decision: Dict[str, Any]) -> Dict[str, Any]:
             "problem": decision.get("problem"),
             "recommended_action": decision.get("recommended_action"),
             "risk_level": decision.get("risk_level"),
-            "requires_approval": decision.get("requires_approval")
-        }
+            "requires_approval": decision.get("requires_approval"),
+        },
     }
 
+
 def map_incident_to_audit_entry(incident: Dict[str, Any]) -> Dict[str, Any]:
-    """Map an incident record to an audit entry.""" 
-    action_type = "incident_" + incident.get("status", "reported").replace("_", "_")
-    
+    severity = incident.get("severity", "info")
+    action = "incident_" + str(severity).lower()
     return {
         "id": incident.get("id"),
-        "timestamp": normalize_timestamp(incident.get("created_at")),
-        "action": action_type,
+        "timestamp": normalize_timestamp(incident.get("timestamp")),
+        "action": action,
         "user": incident.get("operator", "system"),
         "source_ip": incident.get("source_ip", "127.0.0.1"),
         "project": incident.get("service", ""),
-        "status": incident.get("status"),
+        "status": severity,
         "source_store": "incidents",
         "details": {
             "service": incident.get("service"),
             "issue": incident.get("issue"),
-            "severity": incident.get("severity"),
-            "occurrences": incident.get("occurrences")
-        }
+            "severity": severity,
+            "occurrences": incident.get("occurrences"),
+        },
     }
 
+
+def _load_source(loader, label: str) -> List[Dict[str, Any]]:
+    try:
+        data = loader()
+        if data is None:
+            return []
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception:
+        return []
+
+
 def get_audit_entries(
-    user_filter: Optional[str] = None,
-    action_filter: Optional[str] = None,
-    project_filter: Optional[str] = None,
+    user: Optional[str] = None,
+    action: Optional[str] = None,
+    project: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Get all audit entries from various sources and merge them chronologically."""
-    
-    # Load data from all sources
-    builds = []
-    try:
-        builds = load_builds() or []
-    except Exception:
-        # Log error if needed, but continue with empty list
-        builds = []
-    
-    approvals = []
-    try:
-        approvals = load_requests() or []
-    except Exception:
-        # Log error if needed, but continue with empty list
-        approvals = []
-    
-    decisions = []
-    try:
-        decisions = load_decisions() or []
-    except Exception:
-        # Log error if needed, but continue with empty list
-        decisions = []
-    
-    incidents = []
-    try:
-        incidents = load_incidents() or []
-    except Exception:
-        # Log error if needed, but continue with empty list
-        incidents = []
-    
-    # Convert all records to audit entries
-    audit_entries = []
-    
-    # Process builds
+    builds = _load_source(load_builds, "builds")
+    approvals = _load_source(load_requests, "approvals")
+    decisions = _load_source(load_decisions, "decisions")
+    incidents = _load_source(load_incidents, "incidents")
+
+    audit_entries: List[Dict[str, Any]] = []
+
     for build in builds:
         try:
-            entry = map_build_to_audit_entry(build)
-            audit_entries.append(entry)
+            audit_entries.append(map_build_to_audit_entry(build))
         except Exception:
-            # Skip bad entries but continue processing
             continue
-        
-    # Process approvals
+
     for approval in approvals:
         try:
-            entry = map_approval_to_audit_entry(approval)
-            audit_entries.append(entry)
+            audit_entries.extend(_approval_audit_entries(approval))
         except Exception:
-            # Skip bad entries but continue processing
             continue
-        
-    # Process decisions
+
     for decision in decisions:
         try:
-            entry = map_decision_to_audit_entry(decision)
-            audit_entries.append(entry)
+            audit_entries.append(map_decision_to_audit_entry(decision))
         except Exception:
-            # Skip bad entries but continue processing
             continue
-        
-    # Process incidents
+
     for incident in incidents:
         try:
-            entry = map_incident_to_audit_entry(incident)
-            audit_entries.append(entry)
+            audit_entries.append(map_incident_to_audit_entry(incident))
         except Exception:
-            # Skip bad entries but continue processing
             continue
-        
-    # Apply filters
-    filtered_entries = []
+
+    filtered: List[Dict[str, Any]] = []
     for entry in audit_entries:
-        # User filter
-        if user_filter and user_filter != entry["user"]:
+        if user and str(user).lower() != str(entry["user"]).lower():
             continue
-            
-        # Action filter  
-        if action_filter and action_filter != entry["action"]:
+        if action and str(action).lower() != str(entry["action"]).lower():
             continue
-            
-        # Project filter
-        if project_filter and project_filter != entry["project"]:
+        if project and str(project).lower() != str(entry["project"]).lower():
             continue
-            
-        # Date range filter
         if start_date:
             try:
                 start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
                 entry_dt = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
                 if entry_dt < start_dt:
                     continue
-            except ValueError:
-                # Skip invalid dates
+            except (ValueError, TypeError):
                 continue
-                
         if end_date:
             try:
                 end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
                 entry_dt = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
                 if entry_dt > end_dt:
                     continue
-            except ValueError:
-                # Skip invalid dates
+            except (ValueError, TypeError):
                 continue
-                
-        filtered_entries.append(entry)
-        
-    # Sort by timestamp descending (most recent first)
-    filtered_entries.sort(key=lambda x: x["timestamp"], reverse=True)
-    
-    return filtered_entries
+        filtered.append(entry)
+
+    filtered.sort(key=lambda x: x["timestamp"], reverse=True)
+    return filtered
+
 
 def format_audit_entries_as_csv(entries: List[Dict[str, Any]]) -> str:
-    """Format audit entries as CSV."""
     if not entries:
         return ""
-        
-    # Define CSV columns
     fields = ["id", "timestamp", "action", "user", "source_ip", "project", "status", "source_store"]
-    
-    # Create CSV in memory
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=fields)
     writer.writeheader()
-    
     for entry in entries:
-        row = {
-            "id": entry["id"],
-            "timestamp": entry["timestamp"],
-            "action": entry["action"],
-            "user": entry["user"],
-            "source_ip": entry["source_ip"],
-            "project": entry["project"],
-            "status": entry["status"],
-            "source_store": entry["source_store"]
-        }
-        writer.writerow(row)
-        
+        writer.writerow({k: entry.get(k, "") for k in fields})
     return output.getvalue()
 
-def format_audit_entries_as_json(entries: List[Dict[str, Any]], metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """Format audit entries as JSON with metadata."""
-    return {
-        "entries": entries,
-        "metadata": metadata
-    }
+
+def format_audit_entries_as_json(
+    entries: List[Dict[str, Any]], metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    return {"entries": entries, "metadata": metadata}

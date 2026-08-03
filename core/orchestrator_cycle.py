@@ -10,6 +10,7 @@ from core.roadmap_manager import advance_roadmap
 from core.approval_watchdog import check_stale_approvals, check_stale_failures
 from core.logger import info
 import core.telegram_bridge as telegram_bridge
+from core.monitoring.budget_monitor import check_budgets
 
 
 def _safe_send(message_text):
@@ -36,6 +37,13 @@ def _safe_check_stale_approvals():
         check_stale_failures()
     except Exception as error:
         info(f"stale failure check failed: {type(error).__name__}")
+
+
+def _safe_check_budget():
+    try:
+        check_budgets()
+    except Exception as error:
+        info(f"budget check failed: {type(error).__name__}")
 
 
 def run_cycle():
@@ -86,6 +94,10 @@ def run_cycle():
     # without a human, flag any that are now stuck waiting -- this is the
     # only point where "stuck" is actually knowable (right after advancing).
     _safe_check_stale_approvals()
+
+    # Check budget thresholds and send alerts if limits are exceeded
+    # (alert-only: no automatic provider disabling)
+    _safe_check_budget()
 
 
     remediation = process()

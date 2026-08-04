@@ -694,6 +694,30 @@ def self_healing_log_endpoint():
     return {"actions": run_self_healing()}
 
 
+@app.get("/improvement/report")
+def improvement_report_endpoint():
+    """16C: Continuous improvement analysis from real data."""
+    from core.continuous_improvement import get_improvement_report
+    return get_improvement_report()
+
+
+@app.get("/apps")
+def list_apps_endpoint():
+    """17L: List existing applications with deployment status."""
+    from core.existing_apps import list_apps
+    return list_apps()
+
+
+@app.post("/apps/{app_name}/deploy")
+def deploy_app_endpoint(
+    app_name: str,
+    operator: str = Depends(_require_write_capability("builds.approve_deploy")),
+):
+    """17L: Deploy to an existing application."""
+    from core.existing_apps import deploy_to_app
+    return deploy_to_app(app_name, "main", operator=operator)
+
+
 @app.get("/proxmox/nodes")
 def proxmox_nodes_endpoint():
     """17F: Multi-node Proxmox health snapshot."""

@@ -687,6 +687,20 @@ def providers_dashboard_endpoint():
     return get_provider_dashboard()
 
 
+@app.get("/self-healing/log")
+def self_healing_log_endpoint():
+    """16B: Return the last self-healing actions taken."""
+    from core.self_healing import run_self_healing
+    return {"actions": run_self_healing()}
+
+
+@app.get("/proxmox/nodes")
+def proxmox_nodes_endpoint():
+    """17F: Multi-node Proxmox health snapshot."""
+    from core.proxmox_monitor import collect_all_nodes
+    return collect_all_nodes()
+
+
 @app.get("/workers")
 def workers_endpoint():
     """15G: Per-worker detail view with performance trends and current tasks."""

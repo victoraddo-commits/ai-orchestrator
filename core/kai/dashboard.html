@@ -310,6 +310,49 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
 
 .approval-feed-row { cursor: pointer; }
 .approval-feed-row:hover { background: rgba(88,166,255,0.08); }
+
+/* ── 17G: UI/UX polish ──────────────────────────────────────────────── */
+.card { transition: box-shadow 0.2s; }
+.card:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.metric {
+  background: var(--card-bg, rgba(255,255,255,0.04));
+  border-radius: 8px; padding: 16px;
+  text-align: center; transition: transform 0.15s;
+}
+.metric:hover { transform: translateY(-2px); }
+.metric .value { font-size: 1.6rem; font-weight: 700; color: var(--accent); display: block; }
+.metric span:last-child { font-size: 0.78rem; color: var(--muted); margin-top: 4px; display: block; }
+
+.status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.status-dot.ok { background: #3fb950; box-shadow: 0 0 6px rgba(63,185,80,0.4); }
+.status-dot.degraded { background: #d29922; box-shadow: 0 0 6px rgba(210,153,34,0.4); }
+.status-dot.critical { background: #f85149; box-shadow: 0 0 6px rgba(248,81,73,0.4); }
+
+.badge { padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
+.badge.ok { background: rgba(63,185,80,0.15); color: #3fb950; }
+.badge.warn { background: rgba(210,153,34,0.15); color: #d29922; }
+.badge.critical { background: rgba(248,81,73,0.15); color: #f85149; }
+
+@media (max-width: 768px) {
+  .tab-nav { overflow-x: auto; flex-wrap: nowrap; gap: 4px; }
+  .tab-btn { font-size: 0.72rem; padding: 6px 10px; white-space: nowrap; }
+  .metric-row { grid-template-columns: repeat(2, 1fr); }
+  table { font-size: 0.8rem; }
+  .metric .value { font-size: 1.2rem; }
+}
+
+.empty { color: var(--muted); font-style: italic; font-size: 0.85rem; }
+.error { color: #f85149; font-size: 0.85rem; }
+
+tr { transition: background 0.1s; }
+tr:hover { background: rgba(255,255,255,0.03); }
 </style>
 </head>
 <body>

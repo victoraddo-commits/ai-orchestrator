@@ -701,6 +701,30 @@ def improvement_report_endpoint():
     return get_improvement_report()
 
 
+@app.get("/stuck-phases")
+def stuck_phases_endpoint():
+    """14A: Detect stuck phases and question loops."""
+    from core.stuck_detector import get_stuck_report
+    return get_stuck_report()
+
+
+@app.post("/stuck-phases/{build_id}/resolve")
+def resolve_stuck_endpoint(
+    build_id: str,
+    operator: str = Depends(_require_write_capability("builds.answer")),
+):
+    """14A: Auto-resolve a question loop."""
+    from core.stuck_detector import auto_resolve_question_loop
+    return auto_resolve_question_loop(build_id)
+
+
+@app.get("/portfolio")
+def portfolio_endpoint():
+    """17I: Application portfolio with maintenance proposals."""
+    from core.app_portfolio import get_portfolio_report
+    return get_portfolio_report()
+
+
 @app.get("/apps")
 def list_apps_endpoint():
     """17L: List existing applications with deployment status."""

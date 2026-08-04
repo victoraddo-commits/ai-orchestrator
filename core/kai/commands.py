@@ -137,6 +137,103 @@ def _handle_list_tasks():
     return {"reply": f"Open tasks ({len(open_tasks)}):\n" + "\n".join(lines)}
 
 
+# 13K: Voice/Text workforce command handlers
+def _handle_list_workers():
+    from core.ai_provider import list_providers
+    from core.ai.provider_health import get_all_snapshots
+
+    providers = list_providers()
+    quota_data = get_all_snapshots() or {}
+    if not isinstance(quota_data, dict):
+        quota_data = {}
+
+    lines = []
+    for name, info in sorted(providers.items()):
+        enabled = info.get("enabled", True)
+        available = info.get("available", False)
+        caps = ", ".join(info.get("capabilities", []))
+        qs = quota_data.get(name, {})
+        qstatus = qs.get("status", "ok") if isinstance(qs, dict) else "ok"
+
+        status_icon = "⏸" if not enabled else "✅" if available else "❌"
+        quota_icon = {"ok": "🟢", "error": "🟡", "quota_exceeded": "🔴"}.get(qstatus, "⚪")
+        lines.append(f"{status_icon}{quota_icon} **{name}** — {caps} ({info.get('cost_tier','?')})")
+
+    return {"reply": f"AI Workforce ({len(lines)} workers):\n" + "\n".join(lines)}
+
+
+def _handle_provider_ranking():
+    from core.weighted_routing import get_weighted_routing_report
+    report = get_weighted_routing_report()
+    sorted_weights = report.get("sorted", [])
+    if not sorted_weights:
+        return {"reply": "No performance data yet. Providers are ranked by default priority order."}
+
+    lines = []
+    for i, (name, weight) in enumerate(sorted_weights[:10]):
+        bar = "█" * int(weight * 10) + "░" * (10 - int(weight * 10))
+        lines.append(f"{i+1}. **{name}** [{bar}] {weight}")
+    return {"reply": "Provider Performance:\n" + "\n".join(lines)}
+
+
+def _handle_available_providers():
+    from core.ai_provider import list_providers
+    from core.ai.provider_health import get_all_snapshots
+
+    providers = list_providers()
+    quota_data = get_all_snapshots() or {}
+
+    online = []
+    offline = []
+    for name, info in providers.items():
+        if not info.get("enabled", True):
+            offline.append(f"⏸ {name} (disabled)")
+        elif info.get("available", False):
+            qs = quota_data.get(name, {}) if isinstance(quota_data, dict) else {}
+            qstatus = qs.get("status", "ok") if isinstance(qs, dict) else "ok"
+            online.append(f"✅ {name} — {info.get('description','')[:60]}")
+        else:
+            offline.append(f"❌ {name} (unavailable)")
+
+    return {"reply": f"Available ({len(online)}):\n" + "\n".join(online[:8]) + "\n\nOffline:\n" + "\n".join(offline[:5])}
+
+
+def _handle_provider_status(name):
+    from core.ai_provider import get_provider
+    from core.ai.provider_health import get_quota_snapshot
+    from core.weighted_routing import get_provider_weights
+
+    provider = get_provider(name)
+    if not provider:
+        return {"reply": f"Provider '{name}' not found. Try: qwen3_coding, opencode_claude, gemini, groq, deepseek_native_flash"}
+
+    info = {
+        "name": name,
+        "available": bool(provider.get("available_fn", lambda: False)()),
+        "enabled": provider.get("enabled", True),
+        "capabilities": provider.get("capabilities", []),
+        "cost_tier": provider.get("cost_tier", "?"),
+        "description": provider.get("description", "")[:100],
+    }
+
+    quota = get_quota_snapshot(name)
+    weights = get_provider_weights()
+    weight = weights.get(name, "no data")
+
+    lines = [
+        f"**{name}**",
+        f"Status: {'✅ Available' if info['available'] else '❌ Unavailable'}",
+        f"Enabled: {'Yes' if info['enabled'] else 'No (operator disabled)'}",
+        f"Cost: {info['cost_tier']}",
+        f"Capabilities: {', '.join(info['capabilities']) or 'none'}",
+        f"Performance weight: {weight}",
+    ]
+    if quota:
+        lines.append(f"Quota: {quota.get('status','ok')}")
+
+    return {"reply": "\n".join(lines)}
+
+
 COMMAND_PATTERNS = (
     (
         re.compile(r"^kai,\s*analyze\s+system\s+health\.?$", re.IGNORECASE),
@@ -218,6 +315,28 @@ COMMAND_PATTERNS += (
         lambda match: _handle_recall(),
         "What do you remember? — show long-term memory contents.",
     ),
+    # 13K: Voice/Text workforce commands
+    (
+        re.compile(r"^(?:kai,\s*)?(?:list\s+(?:ai\s+)?workers?|show\s+(?:ai\s+)?workforce|what\s+workers?\s+(?:are|do we)\s+have)\.?$", re.IGNORECASE),
+        lambda match: _handle_list_workers(),
+        "List AI workers — shows all registered providers with status and capabilities.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:which\s+provider\s+is\s+(?:fastest|best|most\s+reliable)|compare\s+providers?|provider\s+(?:rank|performance))\.?$", re.IGNORECASE),
+        lambda match: _handle_provider_ranking(),
+        "Show provider performance rankings.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:what\s+(?:providers?|workers?)\s+are\s+(?:available|online|running|active|up))\.?$", re.IGNORECASE),
+        lambda match: _handle_available_providers(),
+        "Show available/online providers with status.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:how\s+(?:is|are)\s+)?([a-z0-9_-]+)\s+(?:doing|status|health)\s*\.?$", re.IGNORECASE),
+        lambda match: _handle_provider_status(str(match.group(1)).strip()),
+        "Check a specific provider's status — 'Kai, how is qwen3_coding doing?'",
+    ),
+)
     # Auto-task: add tasks to the roadmap so nothing is forgotten
     (
         re.compile(r"^(?:kai,\s*)?(?:task|todo|add\s+to\s+roadmap)[:\s]+(.+)$", re.IGNORECASE | re.DOTALL),

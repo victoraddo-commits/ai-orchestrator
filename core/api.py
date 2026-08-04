@@ -725,6 +725,13 @@ def roadmap_proposals_endpoint():
     return generate_roadmap_proposals()
 
 
+@app.get("/providers/free")
+def free_providers_endpoint():
+    """17M: Free-tier provider status with evaluation checklist."""
+    from core.free_providers import get_free_provider_status
+    return get_free_provider_status()
+
+
 @app.get("/routing/weights")
 def routing_weights_endpoint():
     """13L: Provider performance weights used for routing."""

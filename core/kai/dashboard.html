@@ -347,6 +347,7 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
   <button class="tab-btn" data-tab="roadmap">Roadmap</button>
   <button class="tab-btn" data-tab="library">Library</button>
   <button class="tab-btn" data-tab="command">Command Center</button>
+  <button class="tab-btn" data-tab="enterprise">Enterprise</button>
 </nav>
 
 <!-- ── Overview ──────────────────────────────────────────────────────── -->
@@ -743,6 +744,29 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
   </div>
 </section>
 
+<!-- ── 15E: Enterprise Dashboard ──────────────────────────────────────────── -->
+<section class="tab-panel" id="tab-enterprise">
+  <div class="card">
+    <h3>Enterprise Overview</h3>
+    <div id="enterprise-loading">Loading...</div>
+    <div id="enterprise-content" style="display:none">
+      <div class="metric-row" id="enterprise-metrics"></div>
+      <div class="card">
+        <h4>Provider Health</h4>
+        <div id="enterprise-providers"></div>
+      </div>
+      <div class="card">
+        <h4>Active Builds</h4>
+        <div id="enterprise-builds"></div>
+      </div>
+      <div class="card">
+        <h4>Approvals</h4>
+        <div id="enterprise-approvals"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <footer>
   Kai Dashboard &middot; Served by core.api &middot; Write actions via same-origin proxy
 </footer>
@@ -955,6 +979,7 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
       case "roadmap":    loadRoadmap(); break;
       case "library":    loadLibrary(); break;
       case "command":   loadCommand(); break;
+      case "enterprise": loadEnterprise(); break;
     }
   }
 
@@ -1929,6 +1954,68 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
       }
     } catch (e) {
       $("library-list-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+    }
+  }
+
+  // ── 15E: Enterprise Dashboard ─────────────────────────────────────────
+
+  async function loadEnterprise() {
+    try {
+      const d = await fetchJSON("/enterprise/dashboard");
+      $("enterprise-loading").style.display = "none";
+      $("enterprise-content").style.display = "block";
+
+      // Metrics row
+      const m = d.usage || {};
+      const b = d.builds || {};
+      const a = d.approvals || {};
+      const r = d.roadmap || {};
+      $("enterprise-metrics").innerHTML =
+        `<div class="metric"><span class="value">${m.total_calls || 0}</span><span>Total API Calls</span></div>` +
+        `<div class="metric"><span class="value">${m.success_rate || 0}%</span><span>Success Rate</span></div>` +
+        `<div class="metric"><span class="value">${b.active ? b.active.length : 0}</span><span>Active Builds</span></div>` +
+        `<div class="metric"><span class="value">${a.pending || 0}</span><span>Pending Approvals</span></div>` +
+        `<div class="metric"><span class="value">${r.completed || 0}/${r.total || 0}</span><span>Roadmap</span></div>`;
+
+      // Providers
+      const provs = d.providers || {};
+      let ph = '<table><thead><tr><th>Provider</th><th>Status</th><th>Quota</th><th>Capabilities</th></tr></thead><tbody>';
+      for (const [name, info] of Object.entries(provs)) {
+        const enabled = info.enabled !== false;
+        const statusIcon = !enabled ? "&#x23F8;" : info.available ? "&#x2705;" : "&#x26D4;";
+        const statusLabel = !enabled ? "disabled" : info.available ? "available" : "unavailable";
+        const quotaBadge = info.quota_status === "quota_exceeded" ? "critical" : info.quota_status === "error" ? "warn" : "ok";
+        ph += `<tr>
+          <td>${esc(name)}</td>
+          <td>${statusIcon} ${statusLabel}</td>
+          <td><span class="badge ${quotaBadge}">${esc(info.quota_status || "ok")}</span></td>
+          <td>${esc((info.capabilities || []).join(", "))}</td>
+        </tr>`;
+      }
+      ph += "</tbody></table>";
+      $("enterprise-providers").innerHTML = ph;
+
+      // Active builds
+      if (b.active && b.active.length) {
+        let bh = '<table><thead><tr><th>ID</th><th>Phase</th><th>Status</th></tr></thead><tbody>';
+        for (const build of b.active) {
+          bh += `<tr><td>${esc(build.id)}</td><td>${esc(build.name)}</td><td>${esc(build.status)}</td></tr>`;
+        }
+        bh += "</tbody></table>";
+        $("enterprise-builds").innerHTML = bh;
+      } else {
+        $("enterprise-builds").innerHTML = '<span class="empty">no active builds</span>';
+      }
+
+      // Approvals
+      $("enterprise-approvals").innerHTML =
+        `<p>Pending: <strong>${a.pending || 0}</strong> &middot; Stale reminders: <strong>${a.stale_reminders || 0}</strong></p>` +
+        (b.failed_today && b.failed_today.length
+          ? `<p>Failed today: <strong>${b.failed_today.length}</strong></p>`
+          : "");
+
+    } catch (e) {
+      $("enterprise-loading").innerHTML = `<span class="error">${esc(e.message)}</span>`;
     }
   }
 

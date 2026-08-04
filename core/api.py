@@ -718,6 +718,27 @@ def resolve_stuck_endpoint(
     return auto_resolve_question_loop(build_id)
 
 
+@app.get("/roadmap/proposals")
+def roadmap_proposals_endpoint():
+    """13I: AI-generated roadmap phase proposals from build patterns + chat."""
+    from core.roadmap_generator import generate_roadmap_proposals
+    return generate_roadmap_proposals()
+
+
+@app.get("/routing/weights")
+def routing_weights_endpoint():
+    """13L: Provider performance weights used for routing."""
+    from core.weighted_routing import get_weighted_routing_report
+    return get_weighted_routing_report()
+
+
+@app.get("/proxmox/registry")
+def proxmox_registry_endpoint():
+    """17E: Full multi-node Proxmox inventory."""
+    from core.proxmox_registry import get_registry_summary
+    return get_registry_summary()
+
+
 @app.get("/portfolio")
 def portfolio_endpoint():
     """17I: Application portfolio with maintenance proposals."""

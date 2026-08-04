@@ -50,7 +50,7 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.ai_provider import list_providers, set_provider_enabled
-from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed, chat as ai_chat
+from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
 import core.kai.identity as kai_identity
@@ -685,6 +685,12 @@ def providers_endpoint():
 @app.get("/providers/dashboard")
 def providers_dashboard_endpoint():
     return get_provider_dashboard()
+
+
+@app.get("/workers")
+def workers_endpoint():
+    """15G: Per-worker detail view with performance trends and current tasks."""
+    return get_worker_details()
 
 
 class ProviderToggle(BaseModel):

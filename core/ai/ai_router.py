@@ -759,6 +759,63 @@ def chat(messages, signals):
     return result["response"]
 
 
+def get_worker_details():
+    """15G: Per-worker detail view — performance trends, current task, queue
+    depth. Reuses existing usage history and provider health data."""
+    history = get_usage_history()
+    providers = ai_provider.list_providers()
+    quota_data = provider_health.get_all_snapshots() or {}
+
+    from core.build_manager import load_builds as _load_builds
+    all_builds = []
+    try:
+        all_builds = _load_builds() or []
+    except Exception:
+        pass
+
+    workers = {}
+    for name, info in providers.items():
+        attempts = [e for e in history if e["provider"] == name]
+        successes = [e for e in attempts if e["success"]]
+        total = len(attempts)
+        success_rate = round(len(successes) / max(total, 1) * 100, 1)
+
+        # Current task — which build is this provider generating right now?
+        current_build = None
+        for b in all_builds:
+            if b.get("generated_by") == name and b.get("status") == "GENERATING":
+                current_build = {"id": b.get("id", "")[:8], "name": b.get("name", "?")}
+                break
+
+        # Avg duration from recent attempts
+        durations = [e.get("duration_ms", 0) for e in attempts[-20:] if e.get("duration_ms")]
+        avg_duration = round(sum(durations) / max(len(durations), 1))
+
+        # Queue depth = builds waiting that this provider could handle
+        queue_depth = len([b for b in all_builds if b.get("status") in ("ARCHITECTURE_APPROVED",)])
+
+        quota = quota_data.get(name, {}) if isinstance(quota_data, dict) else {}
+        quota_status = quota.get("status", "ok") if isinstance(quota, dict) else "ok"
+
+        workers[name] = {
+            "name": name,
+            "description": info.get("description", ""),
+            "available": info.get("available", False),
+            "enabled": info.get("enabled", True),
+            "capabilities": info.get("capabilities", []),
+            "cost_tier": info.get("cost_tier", "unknown"),
+            "quota_status": quota_status,
+            "success_rate": success_rate,
+            "total_attempts": total,
+            "successes": len(successes),
+            "current_task": current_build,
+            "queue_depth": queue_depth,
+            "avg_duration_ms": avg_duration,
+        }
+
+    return workers
+
+
 def get_provider_dashboard():
     history = get_usage_history()
     providers = ai_provider.list_providers()

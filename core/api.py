@@ -669,6 +669,14 @@ def reject_request(
     return result
 
 
+@app.get("/enterprise/dashboard")
+def enterprise_dashboard_endpoint():
+    """15E: Consolidated enterprise dashboard — health, providers, usage,
+    approvals, roadmap, builds. One call for the overview tab."""
+    from core.enterprise_dashboard import get_enterprise_snapshot
+    return get_enterprise_snapshot()
+
+
 @app.get("/providers")
 def providers_endpoint():
     return list_providers()

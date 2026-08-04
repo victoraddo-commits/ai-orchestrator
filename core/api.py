@@ -49,7 +49,7 @@ from core.build_manager import (
 )
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
-from core.ai_provider import list_providers
+from core.ai_provider import list_providers, set_provider_enabled
 from core.ai.ai_router import delegate, get_provider_dashboard, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
@@ -677,6 +677,24 @@ def providers_endpoint():
 @app.get("/providers/dashboard")
 def providers_dashboard_endpoint():
     return get_provider_dashboard()
+
+
+class ProviderToggle(BaseModel):
+    enabled: bool
+
+
+@app.put("/providers/{name}/toggle")
+def toggle_provider_endpoint(
+    name: str,
+    body: ProviderToggle,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Enable or disable a provider.  Disabled providers are never tried
+    by the router, regardless of availability.  Use to manually take a
+    provider offline (e.g. out of credit) or bring it back."""
+    if not set_provider_enabled(name, body.enabled):
+        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+    return {"name": name, "enabled": body.enabled}
 
 
 @app.get("/api/modules")

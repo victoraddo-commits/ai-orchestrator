@@ -750,7 +750,7 @@
       "id": "15E",
       "name": "Kai Enterprise Dashboard: consolidate system health, provider health, usage, and notifications",
       "description": "Extends 13G's Kai Dashboard and 13J's AI Workforce & Build Scheduler Dashboard rather than replacing them -- adds the remaining panels from the original proposal that don't already exist: system health summary, provider health (already partly surfaced via /providers/dashboard, needs a dedicated panel), usage statistics, and a notifications panel (surfacing anything currently requiring human attention -- pending approvals, WAITING_FOR_USER_INPUT builds -- as the visual equivalent of the Telegram alerts 13Z sends). Reuses 15D's push infrastructure for live updates rather than polling. Reuses existing APIs throughout (/health, /incidents, /decisions, /approvals, /learning, /roadmap/progress, /providers/dashboard) -- no new data computation, purely presentation and layout.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "13G",
         "13J",
@@ -763,7 +763,8 @@
         "No duplicate panel/functionality already present in 13G's Kai Dashboard or 13J's workforce dashboard -- extends them, does not fork a competing dashboard",
         "Read access respects 15A roles ('viewer' can see it, cannot trigger any action from it)"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "63c32acb"
     },
     {
       "id": "15F",
@@ -1309,7 +1310,7 @@
       "id": "17U",
       "name": "Provider config editor: operator-set default workers and fallback order",
       "description": "Operator directive 2026-08-02: there is currently no way to set default AI workers/fallback order except by editing core.ai.ai_router.ROLE_PROVIDERS in code (or asking Claude Code to do it, as happened tonight for the kai-chat/digest hardwire in 17R). Build a real editor.\n\nConfirmed gap: every existing/queued dashboard phase (13J failed, 13O proposed, 15E pending) is READ-ONLY -- they surface get_provider_dashboard() output (status, health, success rate, current routing) but none of them let the operator change anything. core/api.py currently has zero write/mutate endpoints for provider config, by original design (see ARCHITECTURE.md's Observability API section) -- that constraint needs to be deliberately lifted for this one case, not worked around.\n\nScope: (1) a new persisted override layer -- store an operator-set {task_type/role: [provider, provider, ...]} mapping in memory/ via core.memory (atomic write, same pattern as everything else), consulted by core.ai.ai_router._candidates_for() BEFORE falling back to the hardcoded ROLE_PROVIDERS default -- the hardcoded dict stays as the shipped default, never deleted, so a fresh install or a cleared override still works; (2) a real write endpoint (e.g. PUT /providers/config), bridge-token gated like every other write endpoint, operator identity recorded the same way approval.py does; (3) a dashboard panel to edit it -- reuse 17D's Standalone Kai Dashboard shell rather than building a new surface, list every registered provider (from ai_provider.list_providers(), never hardcoded in the UI) with drag-or-dropdown reordering per role and a way to exclude a provider from a role entirely; (4) validation -- reject an override that references an unregistered provider name, and warn (not block) if every candidate for a role is currently unavailable/quota_exceeded per provider_health, so the operator can see they're about to configure a role with no working fallback.\n\nExplicitly NOT in scope: this only changes which AI provider handles text/coding generation tasks -- it must not touch core.action_policy/core.security's remediation-action gating, and must not become a way to bypass ARCHITECTURE_APPROVED/DEPLOY_APPROVAL. Once built, the kai-chat/digest hardwire from 17R (deepseek_native_flash + claude fallback) becomes just another editable entry here, not a special case in code.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 4,
       "build_id": "aa50f221"

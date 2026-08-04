@@ -68,6 +68,7 @@ def register_provider(name, run_coding_task=None, run_text_task=None, available_
         "description": description,
         "capabilities": capabilities,
         "cost_tier": cost_tier,
+        "enabled": True,  # Operator can toggle via PUT /api/providers/{name}
     }
 
 
@@ -81,11 +82,28 @@ def list_providers():
             "kind": entry["kind"],
             "description": entry["description"],
             "available": bool(entry["available_fn"]()),
+            "enabled": entry.get("enabled", True),
             "capabilities": entry["capabilities"],
             "cost_tier": entry["cost_tier"],
         }
         for name, entry in _PROVIDERS.items()
     }
+
+
+def set_provider_enabled(name: str, enabled: bool) -> bool:
+    """Toggle a provider on or off.  Returns True if the provider exists,
+    False if not found."""
+    entry = _PROVIDERS.get(name)
+    if entry is None:
+        return False
+    entry["enabled"] = enabled
+    return True
+
+
+def get_provider_enabled(name: str) -> bool:
+    """Check if a provider is enabled (default True for all providers)."""
+    entry = _PROVIDERS.get(name)
+    return entry.get("enabled", True) if entry else False
 
 
 def _claude_available():

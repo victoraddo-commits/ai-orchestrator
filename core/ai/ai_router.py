@@ -639,6 +639,11 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             record_failure(name, "unavailable", "not available (no credentials configured)")
             continue
 
+        # Provider toggle: operator can disable a provider to force it offline
+        if not provider.get("enabled", True):
+            record_failure(name, "disabled", "operator disabled this provider")
+            continue
+
         # Only a verified quota_exceeded status skips the call outright --
         # a plain "error" status is deliberately not treated the same way
         # (see provider_health.capture_provider_error's docstring: it can't

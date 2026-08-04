@@ -72,16 +72,20 @@ def _api_url(method, token):
 # ---------------------------------------------------------------------------
 
 
-def send_message(text, token=None, chat_id=None):
+def send_message(text, token=None, chat_id=None, reply_markup=None):
     if token is None:
         token = _load_token()
     if chat_id is None:
         chat_id = ALLOWED_CHAT_ID
 
+    payload = {"chat_id": chat_id, "text": text}
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
     try:
         response = requests.post(
             _api_url("sendMessage", token),
-            json={"chat_id": chat_id, "text": text},
+            json=payload,
             timeout=15,
         )
         response.raise_for_status()
@@ -97,6 +101,45 @@ def send_message(text, token=None, chat_id=None):
         )
 
     return body
+
+
+def send_typing(chat_id=None, token=None):
+    """17W: Send 'typing...' indicator via Telegram.  Non-blocking — best-effort.
+    Telegram auto-clears the indicator after 5 seconds or on next message."""
+    if token is None:
+        token = _load_token()
+    if chat_id is None:
+        chat_id = ALLOWED_CHAT_ID
+
+    try:
+        requests.post(
+            _api_url("sendChatAction", token),
+            json={"chat_id": chat_id, "action": "typing"},
+            timeout=5,
+        )
+    except Exception:
+        pass  # typing indicator is a nice-to-have, never block on it
+
+
+def send_approval_keyboard(chat_id, build_id, approval_type, token=None):
+    """17W: Send a message with inline Approve/Reject buttons for a build
+    approval.  Returns the sent message response for tracking."""
+    if token is None:
+        token = _load_token()
+
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": f"✅ Approve {approval_type}", "callback_data": f"approve:{build_id}:{approval_type}"},
+            {"text": f"❌ Reject {approval_type}", "callback_data": f"reject:{build_id}:{approval_type}"},
+        ]]
+    }
+
+    return send_message(
+        f"*Approval needed* — {approval_type} for build `{build_id}`",
+        token=token,
+        chat_id=chat_id,
+        reply_markup=keyboard,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -527,6 +570,10 @@ def _build_from_reply_to(message):
 
 
 def route_inbound_reply(message, pending_builds=None):
+    # 17W: Send typing indicator so the operator sees Kai is working
+    chat_id = str((message.get("chat") or {}).get("id", ALLOWED_CHAT_ID))
+    send_typing(chat_id=chat_id)
+
     if pending_builds is None:
         replied_build = _build_from_reply_to(message)
         if replied_build is not None:

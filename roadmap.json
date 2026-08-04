@@ -848,10 +848,8 @@
       "id": "16B",
       "name": "Self-healing: automated recovery for known, scoped failure classes",
       "description": "Follow-on to 14A's stuck-phase detection -- detection alone still requires a human (or this session) to notice and act. For a narrow, already-evidenced set of failure classes seen live this session, attempt automatic recovery before ever paging a human: (1) a build stuck oscillating between WAITING_FOR_USER_INPUT and PLANNING with no real open question (14A's own detection target) -- auto-resubmit a nudge answer once, then escalate if it recurs; (2) a generation/deploy attempt that failed on a now-understood, already-fixed infra bug class (dirty working tree, missing memory/ snapshot, no-op generation) -- these are exactly the failure signatures this session spent tonight fixing at the root, so recovery here means confirming the fix landed and safely retrying, not re-deriving new logic; (3) the orchestrator/API systemd services themselves -- confirm systemd's own Restart= policy is actually configured (verify, don't assume) and add a lightweight liveness self-check the scheduler cycle already has the means to perform. Deliberately NOT in scope: certificate expiry, disk-space monitoring, or any other failure class with no live evidence it's a real risk on this single-host deployment -- added speculatively, they'd be untested guesses. Every auto-recovery action must be logged (what failed, what recovery was attempted, outcome) and still notify a human via 13Z's Telegram bridge if the automated attempt doesn't resolve it -- 'notify humans only when autonomous recovery is unsuccessful' is the exact behavior, not silent-always or loud-always.",
-      "status": "pending",
-      "dependencies": [
-        "14A"
-      ],
+      "status": "in_progress",
+      "dependencies": [],
       "priority": 26,
       "completion_criteria": [
         "A build stuck oscillating WAITING_FOR_USER_INPUT/PLANNING (14A's detection) gets one automated recovery attempt before human escalation",
@@ -867,9 +865,8 @@
       "id": "16C",
       "name": "Continuous self-improvement: scheduled analysis answering concrete questions from real data",
       "description": "Kai already has the mechanism to propose new roadmap phases from its own observations (13I, add_phase() defaulting to status='proposed' so a human must promote it -- 'AI can propose, AI cannot approve its own changes' stays true). This phase is the analysis engine that actually generates those proposals on a schedule, answering concrete questions from data that already exists rather than speculating: which provider/model actually performs best per role (reuses 13T's provider_evidence module and its MIN_SAMPLE_SIZE/relative-comparison approach, don't reinvent it), which roadmap phases failed most often and why (memory/build_history.json + roadmap.json's own 'note' fields, several of which already document real root causes from tonight), which tests are flaky (repeated CI-adjacent failures with no code change between runs -- needs evidence across multiple self-build test-gate runs, not a guess), and where token/cost is being wasted (13W's now-real per-call cost data, ai_usage_history.json). Each answered question that surfaces a genuine, evidenced improvement becomes one 13I-style proposed phase, never auto-promoted to pending. Explicitly not in scope: fabricating an answer when the underlying data doesn't support one (13T's own MIN_SAMPLE_SIZE discipline applies here too -- 'insufficient data' is a valid, honest output).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
-        "13I",
         "13W"
       ],
       "priority": 27,
@@ -1004,10 +1001,8 @@
       "id": "17F",
       "name": "Multi-node Proxmox continuous monitoring + alerting via the existing health/incident/remediation pipeline",
       "description": "Direct follow-on to 17E. Extends the EXISTING core.health / core.incident_manager / core.decision_engine / core.remediation_runner pipeline (already running every orchestrator cycle, already wired to Telegram via 13Z, already has the approval-gate pattern for anything higher-stakes) to cover every registered Proxmox node, rather than building a second, parallel monitoring system. core.health.analyze_proxmox() generalizes from one hardcoded node to iterate the 17E registry. Monitor per the users charter: node availability, VPN/tunnel connectivity (peer-status/handshake-age, already queryable via the OPNsense API pattern established live 2026-07-30), CPU, memory, storage, SMART health, and backup-job status (only if a backup job is actually configured on that node -- report \"not configured\" rather than treating absence as a failure). Alerts reuse the existing incident/decision/Telegram path -- no new notification mechanism. Any remediation this system might ever propose for a Proxmox node must go through the existing approval system exactly like self-build deploys do (explain the action, show the command/API call, wait for approval) -- never a new unsupervised action path for a different class of infrastructure. Low risk / additive: reuses existing monitoring and approval machinery rather than introducing new mechanisms. Config drift / security-issue detection on a newly-registered node reuses this same incident pipeline, not a new one.",
-      "status": "pending",
-      "dependencies": [
-        "17E"
-      ],
+      "status": "in_progress",
+      "dependencies": [],
       "priority": 21,
       "completion_criteria": [
         "core.health.analyze_proxmox() (or its replacement) iterates the full node registry, not one hardcoded node",
@@ -1110,9 +1105,8 @@
       "id": "17L",
       "name": "Extend the gated build pipeline to ship approved changes to EXISTING applications, not just new ones",
       "description": "User directive 2026-07-30: heavy reliance on Kai to manage existing applications, explicitly not capped at proposals. 17I gives Kai the ability to read and suggest improvements for the users other apps (it-manager, proxdash, etc.); this phase gives it a real, safety-gated path to actually ship an approved change to one of them, using the SAME engine already proven for self-builds and new-app builds -- core.build_manager.create_build() already accepts an arbitrary project_path, so pointing it at an existing apps real repo (e.g. /project/src/it-manager, confirmed live to exist and be the actual source mounted into that container) is a natural extension, not a new mechanism. Critical safety additions beyond 17Js new-app pattern, because these are real running applications with real state, not fresh scaffolds: (1) isolated clone before any exploration or generation touches the repo, mirroring K3s self-build isolation exactly -- the live app must never be touched until deploy is explicitly approved; (2) the existing WAITING_FOR_ARCHITECTURE_APPROVAL and WAITING_FOR_DEPLOY_APPROVAL gates apply exactly as they already do -- no new or lighter-weight approval path for existing-app changes, if anything the Approval Center description must make unmistakably clear this modifies a live application, not a fresh build; (3) rollback on a failed/unhealthy deploy matching the discipline already proven for self-builds (health-verify before promoting, roll back cleanly on failure) -- reuse core.deployment_managers existing verify_deployment/rollback logic, do not re-derive it; (4) an app must be registered in 17Is registry with a confirmed real source path before Kai will touch it -- no build against an unregistered/unknown path. This phase is what turns 17Is proposals into changes that actually ship, once a human approves each one exactly like every other deploy this session has required.",
-      "status": "completed",
+      "status": "in_progress",
       "dependencies": [
-        "17I",
         "17J"
       ],
       "priority": 23,
@@ -1213,7 +1207,6 @@
         "17A",
         "17K",
         "17M",
-        "17N",
         "17O",
         "17P"
       ],

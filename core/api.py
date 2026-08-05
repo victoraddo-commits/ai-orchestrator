@@ -49,6 +49,7 @@ from core.build_manager import (
 )
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
+from core.module_registry import get_registered_modules
 from core.ai_provider import list_providers, set_provider_enabled
 from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
@@ -723,6 +724,13 @@ def roadmap_proposals_endpoint():
     """13I: AI-generated roadmap phase proposals from build patterns + chat."""
     from core.roadmap_generator import generate_roadmap_proposals
     return generate_roadmap_proposals()
+
+
+@app.get("/koa/status")
+def koa_status_endpoint():
+    """17Q: Kai Operations Appliance — full system status snapshot."""
+    from core.koa import get_appliance_status
+    return get_appliance_status()
 
 
 @app.get("/providers/free")

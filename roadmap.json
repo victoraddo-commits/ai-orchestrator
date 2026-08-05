@@ -95,7 +95,7 @@
       "id": "13L-1",
       "name": "Provider Performance-Weighted Routing - Complete implementation",
       "description": "Implement provider performance-weighted routing based on latency, success rate, cost, and quality metrics. Route tasks to best-performing providers dynamically.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
@@ -289,11 +289,12 @@
       "id": "17S-1",
       "name": "Dedicated per-model OpenCode Zen keys",
       "description": "Wire in dedicated per-model OpenCode Zen keys for Claude Fable 5 and Gemini 3.1 Pro. Move from floating conversation context to ai-orchestrator credential storage.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 3,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "bfeee97c"
     },
     {
       "id": "12D",
@@ -1985,7 +1986,7 @@
         "User profiles in DB",
         "Manual KYC status updates"
       ],
-      "build_id": "6ba6a9d1"
+      "build_id": "c044e919"
     },
     {
       "id": "SUSU-1b",

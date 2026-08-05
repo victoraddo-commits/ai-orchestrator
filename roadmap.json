@@ -191,7 +191,7 @@
       "id": "17E-1",
       "name": "Multi-node Proxmox Registry + Full Inventory Discovery",
       "description": "Multi-node Proxmox management: (1) Node registry (memory/proxmox_nodes.json) - config-driven, not hardcoded - Proxmox A (192.168.99.2) and Proxmox B (10.8.0.102); (2) Full inventory per node via REST API - version, CPU, RAM, storage, VMs, containers, networks, disk/SMART health; (3) Generated topology doc (markdown + mermaid) from live inventory.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
@@ -331,12 +331,13 @@
       "id": "IT-4",
       "name": "IT-Manager: Unbounded time_logs admin fetch optimization",
       "description": "Add pagination and limits to time_logs admin fetch endpoint to prevent unbounded database queries as database grows.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 4,
       "severity": "medium",
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "02a5c8df"
     },
     {
       "id": "19D",
@@ -2045,14 +2046,15 @@
       "priority": 4,
       "dependencies": [],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "in_progress",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
         "parliament.gh source seeding",
         "judiciary.gov.gh source seeding",
         "Gazette source seeding",
         "Source metadata preserved per document"
-      ]
+      ],
+      "build_id": "927e56bc"
     },
     {
       "id": "17O-B",
@@ -2297,6 +2299,124 @@
         "Project switching without losing context",
         "Context persistence across sessions",
         "Build pipeline integration"
+      ]
+    },
+    {
+      "id": "AI-1",
+      "name": "AI-1: Provider Consolidation + Rename",
+      "status": "pending",
+      "priority": 1,
+      "dependencies": [],
+      "assigned_agent": "qwen3",
+      "description": "Consolidate 24 providers \u2192 15 active. Remove dead providers from routing (openrouter_claude_opus/sonnet, opencode_deepseek). Merge qwen3_coder_text + qwen4_direct \u2192 qwen4_text. Rename qwen3_coding \u2192 qwen4_coding. Finish 17Z: proper qwen4_text registration.",
+      "completion_criteria": [
+        "Dead providers removed from routing",
+        "qwen3_coding renamed to qwen4_coding",
+        "qwen4_text properly registered (no openai hijack)",
+        "15 active providers with clean routing"
+      ]
+    },
+    {
+      "id": "AI-2",
+      "name": "AI-2: Agent Registry",
+      "status": "pending",
+      "priority": 2,
+      "dependencies": [
+        "AI-1"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Agent registry in memory/agents.json: model, version, GPU, cost, benchmarks, status, fallback chain per agent. Management API: list, test, enable/disable, update model, cost history, performance history.",
+      "completion_criteria": [
+        "Agent registry persisted in memory/agents.json",
+        "Agent management API endpoints",
+        "Benchmark test endpoint per agent",
+        "Enable/disable with automatic routing update"
+      ]
+    },
+    {
+      "id": "AI-3",
+      "name": "AI-3: Circuit Breaker per Provider",
+      "status": "pending",
+      "priority": 3,
+      "dependencies": [
+        "AI-1"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Per-provider circuit breaker: track consecutive failures, threshold=3, cooldown=300s. Tripped breaker skips provider in routing. Half-open state allows one probe. Success resets breaker. Integrated into ai_router._candidates_for.",
+      "completion_criteria": [
+        "Circuit breaker per provider with configurable threshold",
+        "Automatic skip of tripped breakers in routing",
+        "Half-open probe and auto-recovery",
+        "Circuit breaker state visible in API"
+      ]
+    },
+    {
+      "id": "AI-4",
+      "name": "AI-4: Serverless Endpoints",
+      "status": "pending",
+      "priority": 4,
+      "dependencies": [
+        "AI-1"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "RunPod serverless endpoints: kai-code-fast (Qwen2.5-Coder-14B), kai-reason (DeepSeek R1), kai-plan (DeepSeek V3). Serverless endpoints scale to zero when idle. Pay-per-token pricing. Integrated into provider routing as fallback options.",
+      "completion_criteria": [
+        "3 serverless endpoints created on RunPod",
+        "Serverless endpoints registered as providers",
+        "Integrated into role-based routing",
+        "Scale-to-zero confirmed working"
+      ]
+    },
+    {
+      "id": "AI-5",
+      "name": "AI-5: Cost Tracking Dashboard",
+      "status": "pending",
+      "priority": 5,
+      "dependencies": [
+        "AI-1"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Per-provider cost aggregation from ai_usage_history. Dashboard: cost by provider, cost by role, cost by phase, daily/weekly/monthly trends. Budget alerts: configurable thresholds, Telegram notification.",
+      "completion_criteria": [
+        "Per-provider cost aggregation",
+        "Cost dashboard in Kai Command Center",
+        "Budget threshold alerts via Telegram",
+        "Cost history export"
+      ]
+    },
+    {
+      "id": "AI-6",
+      "name": "AI-6: Deployment Automation",
+      "status": "pending",
+      "priority": 6,
+      "dependencies": [
+        "AI-4"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "RunPod deployment templates (YAML). Automated pod creation via RunPod API. Benchmark suite for new models. Health check + automatic rollback. Template library: kai-code, kai-code-light, kai-reason.",
+      "completion_criteria": [
+        "RunPod pod creation automated from templates",
+        "Benchmark suite runs on new pods",
+        "Auto-rollback on failure",
+        "Template library with 3+ templates"
+      ]
+    },
+    {
+      "id": "AI-7",
+      "name": "AI-7: Credential Vault (extends 17E-2)",
+      "status": "pending",
+      "priority": 7,
+      "dependencies": [
+        "AI-1",
+        "17E-2"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Encrypted API key storage (AES-256-GCM). Per-provider credential management. Automated 90-day rotation with overlap period. Audit logging for credential access. Extends existing 17E-2 Proxmox credential vault pattern.",
+      "completion_criteria": [
+        "Encrypted credential storage operational",
+        "Automated rotation with 90-day cycle",
+        "Audit log for all credential access",
+        "Migration of existing .env keys to vault"
       ]
     }
   ],

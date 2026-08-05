@@ -314,9 +314,9 @@ def _opencode_deepseek_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
-# 2026-08-05: upgraded pod 0cxdh53zq8ydxo (RTX PRO 6000), newer Qwen3-32B-FP8
-# model (previously Qwen2.5-Coder-32B-Instruct-AWQ). Same vLLM openai-compatible
-# endpoint, now with vLLM 0.26.0 and deepseek_r1 reasoning parser. OpenCode CLI
+# 2026-08-05: Qwen4 pod ldtqgcshb2dwsw (RTX PRO 6000 96GB), model
+# Qwen/Qwen3-32B-FP8. Same vLLM openai-compatible endpoint, vLLM 0.26.0
+# with deepseek_r1 reasoning and hermes tool-call parser. OpenCode CLI
 # provider entry at ~/.config/opencode/opencode.jsonc "qwen3-runpod" block.
 QWEN3_CODING_MODEL = "qwen3-runpod/Qwen/Qwen3-32B-FP8"
 
@@ -576,7 +576,7 @@ register_provider(
     run_text_task=_qwen3_coder_text_run_text_task,
     available_fn=lambda: bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL")),
     kind="cloud",
-    description="Qwen3-32B-FP8, self-hosted vLLM on RunPod RTX PRO 6000 (text-task only, OpenAI-compatible endpoint) — Phase 17Z, paid per-request GPU billing, pod 0cxdh53zq8ydxo",
+    description="Qwen4 (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB (text-task only, OpenAI-compatible) — Phase 17Z, pod ldtqgcshb2dwsw, also in OmniRoute as qwen4",
     cost_tier="paid",
 )
 
@@ -640,7 +640,7 @@ register_provider(
     run_coding_task=_qwen3_coding_run_coding_task,
     available_fn=_qwen3_coding_available,
     kind="cloud",
-    description="Qwen3-32B-FP8, self-hosted vLLM on RunPod RTX PRO 6000 via a custom opencode provider — pod 0cxdh53zq8ydxo, vLLM 0.26.0 with deepseek_r1 reasoning",
+    description="Qwen4 (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB via a custom opencode provider — pod ldtqgcshb2dwsw, vLLM 0.26.0 with deepseek_r1 reasoning + hermes tools",
     cost_tier="free_or_low_cost",
 )
 

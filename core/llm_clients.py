@@ -184,12 +184,10 @@ def call_openai(prompt, model=None, timeout=60):
     return data["choices"][0]["message"]["content"]
 
 
-# 2026-08-03 (Phase 17Z): proper text-task registration of the Qwen3-Coder
-# RunPod endpoint under its own provider name rather than only through the
-# hijacked "openai" slot. Same endpoint/credential as call_openai above
-# (VLLM_QWEN3_CODER_API_KEY/BASE_URL/MODEL) — tracked separately in
-# provider_health under the "qwen3_coder_text" key, cost_tier='paid'
-# (real per-request GPU billing, unlike free-tier providers).
+# 2026-08-05 (Phase 17Z): Qwen4 pod (ldtqgcshb2dwsw, RTX PRO 6000 96GB)
+# — Qwen/Qwen3-32B-FP8. Proper text-task registration under its own
+# provider name. Tracked in provider_health as "qwen3_coder_text",
+# cost_tier='paid' (real per-request GPU billing). Also in OmniRoute as "qwen4".
 def call_qwen3_coder_text(prompt, model=None, timeout=60):
     key = _require_key("VLLM_QWEN3_CODER_API_KEY")
     model = model or QWEN3_CODER_MODEL

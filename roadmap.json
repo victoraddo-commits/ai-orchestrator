@@ -58,32 +58,10 @@
       "build_id": "3d345a20"
     },
     {
-      "id": "18A",
-      "name": "Kai OS Security Hardening: JWT auth, rate limiting, audit logging, Klaus integration",
-      "description": "Implement production-grade security: JWT authentication, rate limiting, audit logging, API token rotation, RBAC middleware. Secure Klaus module with filesystem isolation, temporary upload workspace, file integrity verification.",
-      "status": "failed",
-      "dependencies": [],
-      "completion_criteria": [
-        "/auth/login endpoint with JWT issuance",
-        "/auth/verify endpoint for token validation",
-        "RBAC middleware for operator/viewer/builder roles",
-        "Audit logging in memory/audit_log.json",
-        "Rate limiting on all API endpoints",
-        "Klaus temporary upload isolation (/var/lib/klaus_temp/)",
-        "File integrity verification (SHA-256 hashes)",
-        "Test suite for security features"
-      ],
-      "tests_required": true,
-      "priority": 1,
-      "assigned_provider": null,
-      "assigned_agent": "qwen3",
-      "build_id": "c5240552"
-    },
-    {
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
@@ -94,12 +72,11 @@
       "id": "19A",
       "name": "Cerebrum: Brain Module Mapping - Identify and document all 28 brain modules",
       "description": "Map existing Kai components to Cerebrum brain modules. Document overlaps, gaps, and required refactoring. Create module specifications with clear responsibilities and APIs.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
-      "assigned_agent": "qwen3",
-      "build_id": "aa4f5836"
+      "assigned_agent": "qwen3"
     },
     {
       "id": "19R",
@@ -116,10 +93,9 @@
       "id": "13L-1",
       "name": "Provider Performance-Weighted Routing - Complete implementation",
       "description": "Implement provider performance-weighted routing based on latency, success rate, cost, and quality metrics. Route tasks to best-performing providers dynamically.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 1,
-      "build_id": "f95a82b3",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -151,16 +127,15 @@
       "id": "17S",
       "name": "Wire in dedicated per-model OpenCode Zen keys (Claude Fable 5, Gemini 3.1 Pro)",
       "description": "Operator provided two new OpenCode Zen API keys 2026-08-02, each restricted by the operator's directive to exactly one model: CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY (opencode/claude-fable-5 -- note: this is the same key value previously stored as DEEPSEEK_OPENCODE_ZEN_API_KEY and confirmed live 2026-07-29 for opencode/deepseek-v4-pro; operator has now rescoped it to Fable 5, treat the old deepseek mapping as stale) and GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY (opencode/gemini-3.1-pro, genuinely new, no prior mapping). Both stored in .env, neither wired into core.ai_provider/core.ai.ai_router yet.\n\nThe real problem to solve: ~/.local/share/opencode/auth.json (the opencode CLI's own credential store, see scripts/setup_openrouter_opencode_auth.py) holds exactly ONE 'opencode' credential globally -- that single shared key is what opencode_claude/opencode_claude_sonnet/opencode_claude_opus/opencode_minimax/opencode_deepseek all currently authenticate with. These two new keys are each scoped to a single model on the platform side, which the current one-slot auth.json cannot represent for two different keys at once without breaking the existing shared credential's other models. Confirm with the opencode CLI docs/support whether it supports multiple named auth profiles (e.g. an --auth-path or profile flag per invocation); if not, this may need each key run through its own isolated opencode CLI invocation (separate auth.json per subprocess call, analogous to how core.coding_bridge already scopes work by project_path) rather than trying to force both into the single shared slot. Once resolved: register both as real providers via core.ai_provider.register_provider(), following the exact pattern 17R item (1) established for the native DeepSeek keys, and add them into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- new providers slot in AFTER existing top-priority providers, never ahead of or displacing them. Operator directive: each key must only ever be used to reach its one named model -- do not let either fall back to or get reused for the other, and do not let either touch the existing shared 'opencode' auth.json slot's other models.\n\nPer operator directive 2026-08-02: Kai/Fable implements this, not Claude Code directly.\n\nOPERATOR OVERRIDE 2026-08-02: same directive as 17R's addendum -- once CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY / GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY are wired as real providers, give them HIGHEST priority in ROLE_PROVIDERS for the roles they're eligible for, superseding the default 17M/17R 'slot in after' convention for these two specifically. Applies only to these two entries, not a general reordering.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
-      "priority": 2,
-      "build_id": "be0ef787"
+      "priority": 2
     },
     {
       "id": "18B",
       "name": "Module Consolidation: Health, Approval, Telegram, Klaus",
       "description": "Consolidate duplicate modules: health_monitor.py, approval_system.py, telegram_system.py, Klaus approval workflow",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "completion_criteria": [
         "health.py + proxmox_health.py merged into health_monitor.py",
@@ -172,18 +147,16 @@
       ],
       "tests_required": true,
       "priority": 2,
-      "assigned_agent": "qwen3",
-      "build_id": "8724c4bc"
+      "assigned_agent": "qwen3"
     },
     {
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades - @anthropic-ai/sdk 61 versions behind",
       "description": "Upgrade @anthropic-ai/sdk from 0.39.0 to 0.100.1 (61 minor versions). May require code changes for model deprecation fixes.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
-      "build_id": "da98ed0f",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -191,18 +164,17 @@
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
-      "assigned_agent": "qwen3",
-      "build_id": "88adf8d8"
+      "assigned_agent": "qwen3"
     },
     {
       "id": "19S",
       "name": "Kai Software Factory: Repository Registry - GitHub/GitLab/Gitea integration + local discovery",
       "description": "Create repository registry supporting GitHub, GitLab, Gitea, local repositories. Auto-discover repositories where possible. Support archived repositories.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "assigned_agent": "qwen3",
@@ -212,12 +184,11 @@
       "id": "17E-1",
       "name": "Multi-node Proxmox Registry + Full Inventory Discovery",
       "description": "Multi-node Proxmox management: (1) Node registry (memory/proxmox_nodes.json) - config-driven, not hardcoded - Proxmox A (192.168.99.2) and Proxmox B (10.8.0.102); (2) Full inventory per node via REST API - version, CPU, RAM, storage, VMs, containers, networks, disk/SMART health; (3) Generated topology doc (markdown + mermaid) from live inventory.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
-      "assigned_agent": "qwen3",
-      "build_id": "9b17ba25"
+      "assigned_agent": "qwen3"
     },
     {
       "id": "12C",
@@ -276,7 +247,7 @@
       "id": "IT-3",
       "name": "IT-Manager: Dependency upgrades - React 19, Vite 8, Express 5",
       "description": "Upgrade React, Vite, Express, and related packages to latest versions. Note: react-router-dom 7 has breaking API changes (loader/action model).",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "IT-2"
       ],
@@ -299,7 +270,7 @@
       "id": "19T",
       "name": "Kai Software Factory: Application Discovery - Auto-discover apps, APIs, containers, services",
       "description": "Implement automatic application discovery: repositories, running applications, APIs, Docker containers, Kubernetes workloads, services, databases, domains, infrastructure. Ask before registering unknown systems.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 3,
       "assigned_agent": "qwen3",
@@ -309,10 +280,9 @@
       "id": "17S-1",
       "name": "Dedicated per-model OpenCode Zen keys",
       "description": "Wire in dedicated per-model OpenCode Zen keys for Claude Fable 5 and Gemini 3.1 Pro. Move from floating conversation context to ai-orchestrator credential storage.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 3,
-      "build_id": "2abc1fb7",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -348,33 +318,13 @@
       "build_id": "aa50f221"
     },
     {
-      "id": "17O",
-      "name": "Ghana Legal Brain: Authoritative legal knowledge base for Juris Kai / Law Tutor",
-      "description": "Build structured Ghana legal knowledge base with verified official sources, immutable storage, quality control agents, monitoring dashboard. Depends on 18A/18C for security.",
-      "status": "pending",
-      "dependencies": [],
-      "completion_criteria": [
-        "Verified Ghanaian legal sources only",
-        "Immutable document storage with hash protection",
-        "Quality control agents (5-stage pipeline)",
-        "Monitoring dashboard integration",
-        "Scheduled jobs (daily/weekly/monthly/quarterly)",
-        "Production security review passed"
-      ],
-      "tests_required": true,
-      "priority": 4,
-      "assigned_provider": "omniroute",
-      "assigned_agent": "qwen3"
-    },
-    {
       "id": "IT-4",
       "name": "IT-Manager: Unbounded time_logs admin fetch optimization",
       "description": "Add pagination and limits to time_logs admin fetch endpoint to prevent unbounded database queries as database grows.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 4,
       "severity": "medium",
-      "build_id": "009ab6c6",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -435,11 +385,10 @@
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 5,
       "severity": "medium",
-      "build_id": "fc7431da",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -481,11 +430,10 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
-      "build_id": "48bc448e",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -526,7 +474,7 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "IT-1"
       ],
@@ -571,11 +519,10 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
-      "build_id": "a3964ee8",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -1173,13 +1120,12 @@
       "id": "13I",
       "name": "Kai Future Roadmap Generator",
       "description": "Kai can create NEW roadmap phases (e.g. Phase 14+) from its own observations, using roadmap_engine.add_phase() (Phase 13A) -- always defaulting to status='proposed', never 'pending', so a human must explicitly promote it before get_next_phase()/advance_roadmap() will ever act on it. This is the mechanism that makes 'AI can propose roadmap items, AI cannot approve its own changes' actually true rather than just documented.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13C",
         "13H"
       ],
-      "priority": 19,
-      "build_id": "bb6e61c9"
+      "priority": 19
     },
     {
       "id": "17D",
@@ -1310,7 +1256,7 @@
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
       "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "12J"
       ],
@@ -1322,8 +1268,7 @@
         "A degraded-state (pre-failure) demotion mechanism exists in provider_health, distinct from and in addition to the existing binary quota_exceeded skip",
         "Ambiguous catch-all task_types (law_chat/general_reasoning) get a zero-network-call complexity heuristic that can adjust candidate ordering; task_types that already carry an explicit classification are left untouched"
       ],
-      "tests_required": true,
-      "build_id": "4fc6a5fd"
+      "tests_required": true
     },
     {
       "id": "17I",
@@ -1505,7 +1450,7 @@
       "id": "13K",
       "name": "Kai Workforce Voice/Text Commands",
       "description": "New core.kai.commands.py patterns (\"kai, list AI workers\", \"kai, show AI workforce\", \"kai, worker health\", \"kai, provider statistics\", etc.) that reuse core.ai_provider.list_providers() and core.ai.ai_router.get_provider_dashboard() -- no new provider metadata, same rule-based phrase-matching pattern 13B already established.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13B",
         "13X"
@@ -1523,7 +1468,7 @@
       "id": "17M",
       "name": "Expand AI provider roster with free-tier options, without displacing top-priority providers",
       "description": "User asked 2026-07-30: 'Have kai learn to find top tier free/completely free api workers. Prioritize kai's highest priority workers access.' Today core.ai.ai_router.ROLE_PROVIDERS['coding'] is a fixed, manually-curated list (13M ordering: openrouter_claude_opus first, then opencode_claude, openrouter_claude_sonnet, then a fixed tail of claude/opencode_deepseek/opencode/opencode_minimax). There is no mechanism for Kai to discover NEW free-tier AI API providers on its own and add them as additional rotation capacity. This phase: (1) a repeatable evaluation procedure Kai follows before adding any candidate provider -- confirm the tier is genuinely free (no card-on-file trial that auto-bills), confirm the auth method and rate limits, confirm basic response quality on a small held-out prompt set; (2) a documented, reviewable way to add an evaluated provider into core/ai/ai_router.py's rotation as an additional fallback option; (3) new providers must always slot in AFTER the existing top-priority providers in ROLE_PROVIDERS ordering -- they exist purely as extra redundancy/capacity for when the preferred providers are exhausted or unavailable, never ahead of or competing with them for the same quota. 'Prioritize Kai's highest priority workers access' means exactly this: existing preferred providers keep first call every time; new free-tier additions only ever get used as overflow.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 30,
       "completion_criteria": [
@@ -1699,7 +1644,7 @@
       "id": "15C",
       "name": "Kai platform audit log",
       "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "15A"
       ],
@@ -1711,14 +1656,13 @@
         "Read-only for all roles including 'viewer' -- an audit log editable by any user defeats its purpose",
         "Tests cover: a build approval, a deploy approval, and an incident all appear correctly attributed in the merged feed; filtering and export produce correct subsets"
       ],
-      "tests_required": true,
-      "build_id": "7deb0160"
+      "tests_required": true
     },
     {
       "id": "15D",
       "name": "Real-time update infrastructure for the Kai dashboard",
       "description": "Everything the dashboard reads today is pull/poll-based (plain GET endpoints, no push). The original proposal's 'dashboard must update in near real-time' is its own sub-project, not a checkbox on 15E -- this phase decides and implements the actual mechanism (Server-Sent Events is the natural fit: one-way server-to-browser push, no new bidirectional protocol needed, works through the existing CloudCLI plugin proxy) and defines exactly which state changes trigger a push (build status transitions, new approval requests, roadmap phase completions) versus what stays poll-on-tab-open (static/rarely-changing data). Reuses existing state -- this phase adds a push transport on top of data that's already computed elsewhere, it does not recompute anything new.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13G"
       ],
@@ -1730,7 +1674,6 @@
         "Tests cover: a build status transition produces a push event with correct payload; a dropped connection does not crash the dashboard or lose state on reconnect"
       ],
       "tests_required": true,
-      "build_id": "4e39e01c",
       "assigned_provider": null
     },
     {
@@ -1754,32 +1697,10 @@
       "build_id": "63c32acb"
     },
     {
-      "id": "15F",
-      "name": "Kai Chat: multi-user, project-aware, conversation history",
-      "description": "Extends 13X's POST /kai/chat rather than replacing it. Adds: persisted conversation history per authenticated user (15A), project-aware context (conversations scoped to a project once multi-project workspaces exist -- see 15H), markdown/code-block rendering on the frontend, streaming responses, and conversation search. Every constraint 13X already established stays load-bearing and unchanged here: chat is a UI surface for an authenticated human to act through, never a new autonomous action path -- an approval-intent expressed in chat still resolves through core.approval.approve()/reject() with the real authenticated user attributed as operator, and tests/test_kai_identity.py's grep-based restriction (no approve_architecture/approve_deploy call anywhere under core/kai/) must still pass. A 'viewer'-role user can chat and ask questions but any approval/deploy intent expressed in chat is rejected by 15A's capability check exactly as it would be via the API directly -- chat must not become a side channel around the permission system.",
-      "status": "failed",
-      "dependencies": [
-        "13X",
-        "15A"
-      ],
-      "priority": 55,
-      "completion_criteria": [
-        "Conversation history persists per authenticated user and is retrievable/searchable",
-        "Streaming responses work end to end (backend to frontend)",
-        "Markdown and code blocks render correctly in the frontend",
-        "An approval/deploy intent expressed in chat by a 'viewer'-role account is rejected via the same 15A capability check as the direct API, not silently allowed",
-        "tests/test_kai_identity.py's existing restriction still passes unchanged",
-        "File upload is deferred to a later phase if not already trivial given the existing chat transport -- do not block this phase's completion on image/file support"
-      ],
-      "tests_required": true,
-      "build_id": "3742555d",
-      "assigned_provider": null
-    },
-    {
       "id": "15G",
       "name": "AI Workforce Center: dedicated per-worker view",
       "description": "The Kai Control Center tab (13G's build, plugin repo commit a873340) already has a renderKaiDelegatedTasksCard summarizing per-provider delegation counts and success rates. This phase promotes that into a dedicated page/tab with the full per-worker detail the original proposal asked for: name, role (planning/coding/review/documentation/testing), provider, model, health, availability, current task, queue length, success rate, failure rate, average completion time. Sourced from existing provider-rotation/quota data (core/ai_provider.py, memory/provider_rotation.json, memory/ai_usage_history.json) -- no new tracking infrastructure. New providers/models must appear automatically as they're used, without a UI code change, matching how provider rotation itself already works without hardcoded provider lists.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13J"
       ],
@@ -1791,7 +1712,6 @@
         "Data is sourced entirely from existing provider-rotation/usage records -- no duplicate tracking added"
       ],
       "tests_required": true,
-      "build_id": "45cf70bf",
       "assigned_provider": null
     },
     {
@@ -1817,7 +1737,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1826,33 +1746,7 @@
       ],
       "tests_required": false,
       "note": "Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
-      "build_id": "e76f1e2a",
       "assigned_provider": null
-    },
-    {
-      "id": "17O",
-      "name": "Ghana Legal Brain: authoritative legal knowledge base for Juris Kai / Law Tutor",
-      "description": "User directive 2026-07-31: build a structured Ghana legal knowledge base so Kai can do real legal research, not just general chat -- constitution, acts of parliament, legislative instruments, case law (Supreme Court / Court of Appeal / High Court), procedure rules, and international law instruments Ghana has ratified. Every entry must be traceable to a real primary source (constitution article, act section, LI, case citation) with source metadata preserved. Primary sources only -- explicitly excludes textbooks, private legal opinions, paid databases, and law firm publications as the FOUNDATION of this base (those stay in the separate, already-built core.law_documents upload path for the Law Tutor bot, which is per-user/operator content, not the shared canonical corpus). Directory taxonomy (user's final structure, 2026-07-31): 01 Constitution (1992 Constitution + amendments), 02 Legislation (Acts, LIs, Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal Procedure, Evidence Rules), 05 Specialized Law (Company/Labour/Land/Tax/Banking/Data Protection), 06 International Law (Treaties, Human Rights Instruments), 07 Legal Reasoning (maxims, interpretation principles, judicial reasoning patterns). The 1992 Constitution is the supreme/foundational authority: any analysis Kai produces that conflicts with it must explicitly cite the conflict rather than staying silent. CRITICAL data-integrity requirement, explicit from the user: content only enters this SHARED knowledge base through operator review via the Kai Dashboard -- Kai must cross-check a candidate document against multiple sources before treating it as authoritative, every addition is timestamped with who approved it, and this is a genuinely new approval workflow to build inside the legal module (distinct from the existing self-build architecture/deploy approval gates). Regular users' own uploads (via Juris Kai, see 17P) NEVER enter this shared base regardless of any per-document fee they paid -- those stay confined to that user's own profile/chat, always labeled as user-uploaded and unverified. Needs an ingestion pipeline (PDF/HTML fetch, OCR for scanned documents, text extraction, per-source-type metadata schema, duplicate/hash detection) and a retrieval layer that preserves citations down to article/section/case-name when Kai answers from it. Estimated volume per the user's own estimate: at least 30GB. Given the current host has only ~15GB free disk shared with unrelated production services (see the 2026-07-31 infra analysis in /uploads), this phase is blocked on relocating storage/compute -- almost certainly Proxmox B once its address/credentials are confirmed with the user (not currently available in this environment). Self-updating: periodically check official sources for new/amended Acts, LIs, and court decisions.\n\nADDENDUM 2026-07-31 (operator spec: 'Kai Legal Knowledge Acquisition & Update System'), merged into this phase rather than creating a duplicate:\n- SOURCE TIERING: Tier 1 official government (Parliament, Judiciary, Legal Service, ministries, gazettes, Supreme Court) strictly preferred over Tier 2 recognized institutions (bar associations, universities, law faculties, public legal repositories) over Tier 3 secondary sources (academic commentary/analysis, only where licensing permits).\n- COPYRIGHT/LICENSING CLASSIFICATION is mandatory per candidate document, before ingestion: public domain/government publication, open license, official public-access document, copyright-protected, or unknown. Only the first three may be stored in full; copyright-protected and unknown-license material gets metadata + source reference only, never full-text redistribution -- unknown status always routes to the operator-approval workflow already required above, never auto-approved.\n- SCHEDULED ACQUISITION CADENCE: daily check of official sources for updates; weekly scan for new judgments/government publications; monthly full-database refresh; quarterly review of outdated materials + source-accuracy re-verification + reindex if needed. Implement as real scheduled jobs (systemd timers, matching this project's existing scheduler/watchdog pattern), not a single one-off crawl.\n- PIPELINE STAGES per document: discovery (title/source/date/jurisdiction/type/authority level) -> download (doc + metadata + source URL) -> verification (authenticity, checksum, completeness, duplicate/version check) -> processing (PDF extraction, OCR, text cleaning, section/chapter/article/citation detection) -> legal metadata (jurisdiction, court, year, area, legislation number, sections, amendments, related/superseded documents) -> indexing (searchable text, embeddings, semantic relationships, citation references).\n- VERSION CONTROL: never silently overwrite -- retain original + updated version, amendment history, effective dates, source history (e.g. Constitution: 1957/1960/1969/1979/1992 + amendments, all retained, current consolidated version clearly marked).\n- NAMED QUALITY-CONTROL STAGES (map to the operator-approval workflow above, not necessarily 5 separate running services): source verification (authenticity), legal classification (categorization), citation extraction, extraction-quality assurance, and final curator approval (the human-in-the-loop operator step already required) before anything enters the shared base.\n- FAILURE HANDLING: broken sources, missing documents, conflicting versions, unclear authority, or copyright uncertainty must be recorded and flagged for operator review, never guessed past -- continue processing other sources in the same run rather than blocking the whole batch on one failure.\n- MONITORING: dashboard visibility into documents collected/updated, failed downloads, source reliability, storage usage, indexing status, last successful update per source -- extend the existing Kai Dashboard legal module rather than building a separate UI.\n- FUTURE EXPANSION: design the source/taxonomy/metadata schema so additional jurisdictions (Nigeria, UK, US, EU, international/corporate-compliance) can be added later without a redesign -- not building those now, just not architecting against it.\n- Per the operator's own spec, the FIRST deliverable (before any acquisition code runs) is a 10-part implementation plan: current architecture review, required services, database design, storage requirements, source list, update schedule, agent responsibilities, security considerations, copyright compliance approach, implementation roadmap. This satisfies and formalizes the pre-existing note below about needing a reviewed design proposal before implementation.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
-      "dependencies": [],
-      "priority": 61,
-      "completion_criteria": [
-        "A per-source-type metadata schema and storage layout exists matching the 7-category taxonomy above, with source URL/citation preserved on every record",
-        "An operator-facing review/approval workflow exists in the Kai Dashboard legal module: candidate documents are cross-checked against multiple sources before entering the shared base, and every approval is timestamped with the approving operator's identity",
-        "Content the user uploads through Juris Kai (17P) is verified to never reach this shared base under any code path -- covered by a test",
-        "Kai's answers grounded in this base include the specific citation (article/section/case name), not just a general reference",
-        "Storage location is confirmed and provisioned (Proxmox B or an explicitly chosen alternative) before bulk ingestion begins -- not built against the current host's limited free disk",
-        "Every candidate document is classified into one of the 5 licensing categories before ingestion, with copyright-protected/unknown-license material limited to metadata+source-reference only (never full-text storage) unless operator-approved",
-        "Scheduled acquisition jobs exist (daily/weekly/monthly/quarterly per source type), not a one-off manual crawl",
-        "SPLIT STRATEGY: too large for single build. Split into 17O-A through 17O-H (see TK-* phases). Build each independently, smallest first.",
-        "gwen3 implemented full KLAUS pipeline: 4,663 lines across schema, API, document processor, OCR, quality agents, scheduler, vector indexer, background workers, 7 test files"
-      ],
-      "tests_required": true,
-      "note": "Queued 2026-07-31. Large, multi-part build -- expect this to need its own sub-plan/design proposal reviewed by the user before implementation starts, similar to how 17N (voice/phone) was scoped. | Priority bumped 2026-07-31 (61, was 45) at operator request -- legal-document upload storage already works via the Kai Dashboard Library tab, but neither Juris Kai nor Law Tutor can read/use what is uploaded until this phase builds the actual knowledge-base/retrieval pipeline. Moved to top of queue. | Storage blocker resolved 2026-07-31: container root disk grown from 50GB to 80GB (43GB free, was 15GB) via pct resize on Proxmox A -- no longer waiting on Proxmox B for phase-1 storage. Bulk ingestion can now proceed against local disk once the metadata/approval-workflow pieces are built. | Proxmox B confirmed reachable 2026-08-01 via OPNsense WireGuard (wg8 peer, 10.8.0.102) with a properly-scoped audit API token -- real hardware, PVE 9.1.1, 4 cores/8GB RAM, 152GB free on local-lvm, zero existing guests. This is a better home for the knowledge base than claude-code local disk: genuine separate host/failure domain from it-manager payroll data and claude-code itself, not just more space. Storage location decision: use Proxmox B (new LXC/VM there) rather than claude-code local disk, pending operator confirmation.",
-      "build_id": "2ab4e539",
-      "completed_at": "2026-08-03T22:40:20.247642Z",
-      "completed_note": "All 10 KLAUS modules implemented. Bugs fixed in background_workers (async/sync, bs4 lazy import), setup_klaus (init_sample_data), __init__.py added. 185 tests across 8 test files all passing. Ready for operator review and integration into Kai Dashboard.",
-      "assigned_provider": "omniroute"
     },
     {
       "id": "17Q",
@@ -1923,17 +1817,6 @@
       "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
     },
     {
-      "id": "TK-cb8bd4b3",
-      "name": "17O-A: Legal source discovery agent \u2014 seed from parliament.gh + judiciary.gov.gh, recursive crawling, source metadata ex",
-      "description": "17O-A: Legal source discovery agent \u2014 seed from parliament.gh + judiciary.gov.gh, recursive crawling, source metadata extraction",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
       "id": "TK-96ddd758",
       "name": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
       "description": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
@@ -1956,42 +1839,9 @@
       "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
     },
     {
-      "id": "TK-e62ea469",
-      "name": "17O-D: Legal metadata schema + version control \u2014 jurisdiction/court/year/legislation number/amendments, never silent ove",
-      "description": "17O-D: Legal metadata schema + version control \u2014 jurisdiction/court/year/legislation number/amendments, never silent overwrites",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
       "id": "TK-525d42a6",
       "name": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
       "description": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-4e65e8f8",
-      "name": "17O-F: Quality control agents \u2014 source verification, legal classification, citation extraction, QA, curator approval wor",
-      "description": "17O-F: Quality control agents \u2014 source verification, legal classification, citation extraction, QA, curator approval workflow",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-9709aa0e",
-      "name": "17O-G: Legal monitoring dashboard \u2014 documents collected/updated, failed downloads, source reliability, storage usage, in",
-      "description": "17O-G: Legal monitoring dashboard \u2014 documents collected/updated, failed downloads, source reliability, storage usage, index status",
       "status": "proposed",
       "dependencies": [],
       "completion_criteria": [],
@@ -2033,23 +1883,6 @@
       "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
     },
     {
-      "id": "SUSU-1",
-      "name": "SUSU Telegram Bot + User/Group Management",
-      "status": "failed",
-      "priority": 1,
-      "dependencies": [],
-      "assigned_agent": "qwen3",
-      "description": "Telegram bot core: user registration (phone, name), KYC document upload, group creation for savings cycles, configurable admin compensation (fixed, percentage, joining, monthly, setup fees) with platform-defined max limits, member fee visibility before joining, contribution tracking, user profiles with contact info, KYC status, wallet, contribution/payout history.",
-      "completion_criteria": [
-        "User registration via Telegram with phone/name/KYC upload",
-        "Group creation with configurable admin compensation",
-        "Platform limits enforce max admin fees",
-        "Members see and accept all fees before joining",
-        "Contribution tracking per group per user"
-      ],
-      "build_id": "feb0f5c2"
-    },
-    {
       "id": "SUSU-2",
       "name": "SUSU Mobile Money Integration",
       "status": "pending",
@@ -2065,46 +1898,6 @@
         "AirtelTigo Money integration",
         "Processor fee data available to Fee Engine",
         "Payment webhook/callback handling"
-      ]
-    },
-    {
-      "id": "SUSU-3",
-      "name": "SUSU Financial Ledger + Fee Engine + Payout Engine",
-      "status": "pending",
-      "priority": 3,
-      "dependencies": [
-        "SUSU-1",
-        "SUSU-2"
-      ],
-      "assigned_agent": "qwen3",
-      "description": "Double-entry accounting ledger with immutable transaction log. Centralized Fee Engine supporting: platform service fees, group administrator fees, payment processor fees (passthrough from SUSU-2), taxes (country-specific), discounts, promotions, penalties. Fee types: fixed, percentage, tiered, min/max caps, country-specific, currency-specific, scheduled. Complete fee history and audit logs. Payout Engine: gross\u2192net pipeline calculating platform fee, processor fee, tax, admin fee, other deductions, producing itemized receipt with permanent audit trail.",
-      "completion_criteria": [
-        "Double-entry accounting with immutable transaction log",
-        "Fee Engine with all fee types (platform, admin, processor, tax, discount, promotion, penalty)",
-        "Fee rules: fixed, percentage, tiered, min/max, country, currency, scheduled",
-        "Payout Engine: gross\u2192net calculation with itemized receipt",
-        "All financial transactions have permanent audit trail",
-        "Admin compensation limits enforced"
-      ]
-    },
-    {
-      "id": "SUSU-4",
-      "name": "SUSU Risk, Fraud & Compliance Engine",
-      "status": "pending",
-      "priority": 4,
-      "dependencies": [
-        "SUSU-1",
-        "SUSU-3"
-      ],
-      "assigned_agent": "qwen3",
-      "description": "KYC verification pipeline, AML screening (PEP lists, sanctions), fraud detection (duplicate detection, device fingerprinting, velocity checks, unusual patterns), risk scoring per user and per group, compliance rules engine (country-specific: Ghana, etc.), suspicious activity reporting with auto-flag\u2192operator review workflow, immutable compliance audit trail.",
-      "completion_criteria": [
-        "KYC document upload and verification workflow",
-        "AML screening against sanctions/PEP lists",
-        "Fraud detection with configurable rules",
-        "Risk scoring (user + group level)",
-        "Suspicious activity auto-flagging",
-        "Country-specific compliance rules for Ghana"
       ]
     },
     {
@@ -2124,27 +1917,6 @@
         "Next payout date query",
         "Group status and health summary",
         "Admin insights (payment patterns, risk flags)"
-      ]
-    },
-    {
-      "id": "SUSU-6",
-      "name": "SUSU Admin Dashboard + Financial Reporting",
-      "status": "pending",
-      "priority": 6,
-      "dependencies": [
-        "SUSU-1",
-        "SUSU-3",
-        "SUSU-4"
-      ],
-      "assigned_agent": "qwen3",
-      "description": "Web admin dashboard integrated with Kai Command Center (19Z): user management (profiles, KYC queue, risk scores, suspend/restore), group management (financial summaries, membership, health indicators, disputes, pause/resume, transfer ownership, archive), Fee Engine management (rule CRUD, limits, scheduling), financial reporting (platform revenue, admin revenue, processor costs, contributions, payouts, escrow, growth metrics, country/currency breakdowns), compliance view (AML flags, audit logs), exports (CSV, PDF).",
-      "completion_criteria": [
-        "User management dashboard with search/filter/actions",
-        "Group management with financial summaries and health indicators",
-        "Fee Engine rule management UI",
-        "Financial reports: revenue, transactions, growth, geography",
-        "Compliance dashboard with AML/audit view",
-        "Export to CSV and PDF"
       ]
     },
     {
@@ -2188,6 +1960,331 @@
         "Health monitoring integrated with Kai",
         "Multi-tenancy readiness (tenant isolation design)",
         "Disaster recovery plan documented"
+      ]
+    },
+    {
+      "id": "SUSU-1a",
+      "name": "SUSU-1a: Telegram Bot - User Registration + KYC",
+      "status": "pending",
+      "priority": 1,
+      "dependencies": [],
+      "assigned_agent": "qwen3",
+      "description": "User registration via Telegram: /start flow, phone collection (RequestContact), name (/setname), KYC upload (/uploadkyc), encrypted local storage, user profiles in DB. Manual KYC verification.",
+      "completion_criteria": [
+        "Telegram /start registration flow",
+        "KYC document upload with encrypted storage",
+        "User profiles in DB",
+        "Manual KYC status updates"
+      ]
+    },
+    {
+      "id": "SUSU-1b",
+      "name": "SUSU-1b: Telegram Bot - Group Creation + Admin Fees",
+      "status": "pending",
+      "priority": 2,
+      "dependencies": [
+        "SUSU-1a"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Group creation: /creategroup with fee config (fixed, percentage, joining, monthly, setup). Validation against platform max limits. Fee visibility before joining. Admin compensation tracking.",
+      "completion_criteria": [
+        "Group creation with configurable fees",
+        "Platform max limits enforced",
+        "Fee visibility before member join"
+      ]
+    },
+    {
+      "id": "SUSU-1c",
+      "name": "SUSU-1c: Telegram Bot - Member Joining + Fee Acceptance",
+      "status": "pending",
+      "priority": 3,
+      "dependencies": [
+        "SUSU-1a",
+        "SUSU-1b"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Member joining: view all fees, /acceptfees confirmation, membership tracking, /contribute command, wallet balance.",
+      "completion_criteria": [
+        "Member join with fee acceptance",
+        "Membership tracking",
+        "Contribution tracking per user per group",
+        "Wallet balance stored"
+      ]
+    },
+    {
+      "id": "SUSU-1d",
+      "name": "SUSU-1d: Telegram Bot - Profile + History Views",
+      "status": "pending",
+      "priority": 4,
+      "dependencies": [
+        "SUSU-1a",
+        "SUSU-1c"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "User views: /profile (KYC, wallet, history), /history (contributions + payouts), /mygroups. Admin: /groupstatus (members, contributions, cycle progress).",
+      "completion_criteria": [
+        "User profile command with KYC/wallet/history",
+        "Contribution and payout history viewable",
+        "Group status view for admins"
+      ]
+    },
+    {
+      "id": "17O-A",
+      "name": "17O-A: Legal Source Discovery Agent",
+      "priority": 4,
+      "dependencies": [],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
+      "completion_criteria": [
+        "parliament.gh source seeding",
+        "judiciary.gov.gh source seeding",
+        "Gazette source seeding",
+        "Source metadata preserved per document"
+      ]
+    },
+    {
+      "id": "17O-B",
+      "name": "17O-B: Legal Taxonomy + Directory Structure",
+      "priority": 5,
+      "dependencies": [
+        "17O-A"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",
+      "completion_criteria": [
+        "7-category directory taxonomy created",
+        "1992 Constitution marked as supreme authority",
+        "Conflict detection: any analysis conflicting with Constitution must cite conflict"
+      ]
+    },
+    {
+      "id": "17O-C",
+      "name": "17O-C: Legal Metadata + Version Control",
+      "priority": 6,
+      "dependencies": [
+        "17O-B"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
+      "completion_criteria": [
+        "Metadata schema with all required fields",
+        "Version control for legal documents",
+        "Immutable storage with audit trail"
+      ]
+    },
+    {
+      "id": "17O-D",
+      "name": "17O-D: Legal Quality Control Agents",
+      "priority": 7,
+      "dependencies": [
+        "17O-C"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
+      "completion_criteria": [
+        "Source verification agent running",
+        "Classification accuracy check",
+        "Duplicate detection with 0.85 threshold",
+        "Outdated law detection"
+      ]
+    },
+    {
+      "id": "SUSU-3a",
+      "name": "SUSU-3a: Double-Entry Accounting Ledger",
+      "priority": 3,
+      "dependencies": [
+        "SUSU-1a",
+        "SUSU-2"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Double-entry accounting with immutable transaction log. Account types: assets, liabilities, equity, revenue, expenses. Per-group ledger. Transaction reconciliation.",
+      "completion_criteria": [
+        "Double-entry ledger operational",
+        "Immutable transaction log",
+        "Per-group account segregation",
+        "Reconciliation engine"
+      ]
+    },
+    {
+      "id": "SUSU-3b",
+      "name": "SUSU-3b: Fee Engine",
+      "priority": 4,
+      "dependencies": [
+        "SUSU-3a"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Centralized Fee Engine: platform fees, admin fees, processor fees (passthrough), taxes, discounts, promotions, penalties. Fixed, percentage, tiered, min/max, country-specific, currency-specific, scheduled rules. Fee history + audit log.",
+      "completion_criteria": [
+        "All 7 fee types supported",
+        "Fixed/percentage/tiered rules",
+        "Country and currency specific rules",
+        "Scheduled fee changes",
+        "Fee audit log"
+      ]
+    },
+    {
+      "id": "SUSU-3c",
+      "name": "SUSU-3c: Payout Engine",
+      "priority": 5,
+      "dependencies": [
+        "SUSU-3a",
+        "SUSU-3b"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Payout Engine: gross\u2192net pipeline (platform fee, processor fee, tax, admin fee, deductions \u2192 net payout). Itemized receipt per payout. Permanent audit trail.",
+      "completion_criteria": [
+        "Gross to net calculation pipeline",
+        "Itemized receipt per payout",
+        "Permanent audit trail",
+        "Dispute resolution workflow"
+      ]
+    },
+    {
+      "id": "SUSU-6a",
+      "name": "SUSU-6a: Admin Dashboard - User + Group Management",
+      "priority": 6,
+      "dependencies": [
+        "SUSU-1a",
+        "SUSU-3a",
+        "SUSU-4a"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Admin dashboard: user management (profiles, KYC queue, risk scores, suspend/restore), group management (financial summaries, membership, health indicators, disputes, pause/resume, transfer ownership, archive). Integrated with Kai Command Center (19Z).",
+      "completion_criteria": [
+        "User management with search/filter/actions",
+        "Group management with financial summaries",
+        "Fee Engine rule management UI",
+        "Integrated with Kai Command Center"
+      ]
+    },
+    {
+      "id": "SUSU-6b",
+      "name": "SUSU-6b: Admin Dashboard - Financial Reporting",
+      "priority": 7,
+      "dependencies": [
+        "SUSU-6a",
+        "SUSU-3c"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Financial reporting dashboards: platform revenue, admin revenue, processor costs, contributions, payouts, escrow, growth metrics, country/currency breakdowns. Compliance view (AML flags, audit logs). CSV/PDF exports.",
+      "completion_criteria": [
+        "Revenue dashboard with all fee types",
+        "Transaction volume reporting",
+        "Growth metrics",
+        "Country/currency breakdowns",
+        "CSV and PDF export"
+      ]
+    },
+    {
+      "id": "SUSU-4a",
+      "name": "SUSU-4a: Risk + Fraud Detection Engine",
+      "priority": 4,
+      "dependencies": [
+        "SUSU-1a",
+        "SUSU-3a"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Fraud detection: duplicate detection, device fingerprinting, velocity checks, unusual pattern detection. Risk scoring per user and per group. Configurable detection rules.",
+      "completion_criteria": [
+        "Duplicate detection operational",
+        "Device fingerprinting",
+        "Velocity checks",
+        "Risk scoring (user + group level)",
+        "Configurable detection rules"
+      ]
+    },
+    {
+      "id": "SUSU-4b",
+      "name": "SUSU-4b: Compliance Engine (KYC/AML)",
+      "priority": 5,
+      "dependencies": [
+        "SUSU-4a"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "KYC verification pipeline, AML screening (PEP lists, sanctions checks), country-specific compliance rules (Ghana), suspicious activity auto-flagging\u2192operator review, SAR generation, immutable compliance audit trail.",
+      "completion_criteria": [
+        "KYC verification pipeline",
+        "AML screening against sanctions/PEP lists",
+        "Country-specific compliance rules",
+        "Suspicious activity auto-flagging",
+        "Immutable compliance audit trail"
+      ]
+    },
+    {
+      "id": "18A-a",
+      "name": "18A-a: Kai OS Security - Auth + Rate Limiting",
+      "priority": 1,
+      "dependencies": [],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "JWT-based authentication with capability-based permissions (operator/viewer roles). Rate limiting on all endpoints. Brute-force protection. Session management.",
+      "completion_criteria": [
+        "JWT auth with capability-based permissions",
+        "Rate limiting on all endpoints",
+        "Brute-force protection",
+        "Session management with expiry"
+      ]
+    },
+    {
+      "id": "18A-b",
+      "name": "18A-b: Kai OS Security - Audit + Hardening",
+      "priority": 2,
+      "dependencies": [
+        "18A-a"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Audit logging for all write operations. Input validation hardening. Security headers (CSP, HSTS). Dependency vulnerability scanning. Security documentation.",
+      "completion_criteria": [
+        "Audit log for all write operations",
+        "Input validation on all endpoints",
+        "Security headers configured",
+        "Dependency vulnerability scanning"
+      ]
+    },
+    {
+      "id": "15F-a",
+      "name": "15F-a: Kai Chat - Multi-User Support",
+      "priority": 55,
+      "dependencies": [
+        "18A-a"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Multi-user chat: per-user conversation history, authentication-based access, user isolation (users cannot see other users conversations).",
+      "completion_criteria": [
+        "Per-user conversation history",
+        "Authentication-based chat access",
+        "User conversation isolation"
+      ]
+    },
+    {
+      "id": "15F-b",
+      "name": "15F-b: Kai Chat - Project-Aware Context",
+      "priority": 56,
+      "dependencies": [
+        "15F-a",
+        "15H"
+      ],
+      "assigned_agent": "qwen3",
+      "status": "pending",
+      "description": "Project-aware chat context: conversations scoped to projects, project switching, context persistence across sessions, integration with build pipeline.",
+      "completion_criteria": [
+        "Project-scoped conversations",
+        "Project switching without losing context",
+        "Context persistence across sessions",
+        "Build pipeline integration"
       ]
     }
   ],

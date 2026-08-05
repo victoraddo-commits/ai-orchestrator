@@ -83,11 +83,10 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
-      "build_id": "2d5dd2e4",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -213,11 +212,12 @@
       "id": "17E-1",
       "name": "Multi-node Proxmox Registry + Full Inventory Discovery",
       "description": "Multi-node Proxmox management: (1) Node registry (memory/proxmox_nodes.json) - config-driven, not hardcoded - Proxmox A (192.168.99.2) and Proxmox B (10.8.0.102); (2) Full inventory per node via REST API - version, CPU, RAM, storage, VMs, containers, networks, disk/SMART health; (3) Generated topology doc (markdown + mermaid) from live inventory.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "9b17ba25"
     },
     {
       "id": "12C",
@@ -277,13 +277,12 @@
       "id": "IT-3",
       "name": "IT-Manager: Dependency upgrades - React 19, Vite 8, Express 5",
       "description": "Upgrade React, Vite, Express, and related packages to latest versions. Note: react-router-dom 7 has breaking API changes (loader/action model).",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "IT-2"
       ],
       "priority": 3,
       "severity": "medium",
-      "build_id": "f6081c37",
       "assigned_agent": "qwen3"
     },
     {
@@ -451,12 +450,11 @@
       "id": "19E",
       "name": "Cerebrum: Knowledge Engine - Separate from memory with sources, jurisdiction, versioning",
       "description": "Create Knowledge Engine: stores facts (not experiences). Supports sources, jurisdiction awareness, versioning, trust levels, verification, automatic updates, conflict detection, citation tracking. Knowledge is immutable; memory is Kai experiences.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19D"
       ],
       "priority": 5,
-      "build_id": "99a9bbbd",
       "assigned_agent": "qwen3"
     },
     {
@@ -534,13 +532,12 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "IT-1"
       ],
       "priority": 7,
       "severity": "high",
-      "build_id": "f1ade2b1",
       "assigned_agent": "qwen3"
     },
     {
@@ -781,12 +778,11 @@
       "id": "19K",
       "name": "Cerebrum: Simulation Engine - Run simulations before significant actions",
       "description": "Create Simulation Engine: before significant actions, simulate risk, rollback complexity, cost, time, failure probability, security impact. Recommend safest path.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19G"
       ],
       "priority": 11,
-      "build_id": "56486fb2",
       "assigned_agent": "qwen3"
     },
     {
@@ -888,13 +884,12 @@
       "id": "19M",
       "name": "Cerebrum: Self Improvement - Kai evaluates itself, generates improvement proposals",
       "description": "Build Self Improvement engine: Kai continuously evaluates itself, generates improvement proposals. Never self-approve. Never bypass architecture/review/deployment/security review. Brain improvements follow governed engineering process.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19A",
         "19B"
       ],
       "priority": 13,
-      "build_id": "bc0cd3bd",
       "assigned_agent": "qwen3"
     },
     {
@@ -1047,12 +1042,11 @@
       "id": "19P",
       "name": "Cerebrum: Self Explanation - Kai answers why questions with evidence",
       "description": "Implement Self Explanation: Kai answers Why? Why now? Why not? Why this provider? Why this plan? Why this architecture? Why this confidence? What evidence? What alternatives? What risks? Every important decision explainable with evidence.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19G"
       ],
       "priority": 16,
-      "build_id": "44e64b3e",
       "assigned_agent": "qwen3"
     },
     {
@@ -1103,13 +1097,12 @@
       "id": "19Q",
       "name": "Cerebrum: Brain Health - Monitor reasoning quality, memory integrity, hallucination rates",
       "description": "Create Brain Health Monitor: continuously monitor reasoning quality, memory integrity, knowledge integrity, hallucination rates, provider reliability, learning effectiveness, prediction accuracy, decision quality, planning quality, infrastructure awareness. Detect degradation early.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19A",
         "19B"
       ],
       "priority": 17,
-      "build_id": "a0271eed",
       "assigned_agent": "qwen3"
     },
     {
@@ -1529,7 +1522,7 @@
       "id": "13K",
       "name": "Kai Workforce Voice/Text Commands",
       "description": "New core.kai.commands.py patterns (\"kai, list AI workers\", \"kai, show AI workforce\", \"kai, worker health\", \"kai, provider statistics\", etc.) that reuse core.ai_provider.list_providers() and core.ai.ai_router.get_provider_dashboard() -- no new provider metadata, same rule-based phrase-matching pattern 13B already established.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13B",
         "13X"
@@ -1541,14 +1534,13 @@
       ],
       "tests_required": true,
       "note": "Omniroute - assigned 2026-08-04",
-      "build_id": "91c10f40",
       "assigned_provider": null
     },
     {
       "id": "17M",
       "name": "Expand AI provider roster with free-tier options, without displacing top-priority providers",
       "description": "User asked 2026-07-30: 'Have kai learn to find top tier free/completely free api workers. Prioritize kai's highest priority workers access.' Today core.ai.ai_router.ROLE_PROVIDERS['coding'] is a fixed, manually-curated list (13M ordering: openrouter_claude_opus first, then opencode_claude, openrouter_claude_sonnet, then a fixed tail of claude/opencode_deepseek/opencode/opencode_minimax). There is no mechanism for Kai to discover NEW free-tier AI API providers on its own and add them as additional rotation capacity. This phase: (1) a repeatable evaluation procedure Kai follows before adding any candidate provider -- confirm the tier is genuinely free (no card-on-file trial that auto-bills), confirm the auth method and rate limits, confirm basic response quality on a small held-out prompt set; (2) a documented, reviewable way to add an evaluated provider into core/ai/ai_router.py's rotation as an additional fallback option; (3) new providers must always slot in AFTER the existing top-priority providers in ROLE_PROVIDERS ordering -- they exist purely as extra redundancy/capacity for when the preferred providers are exhausted or unavailable, never ahead of or competing with them for the same quota. 'Prioritize Kai's highest priority workers access' means exactly this: existing preferred providers keep first call every time; new free-tier additions only ever get used as overflow.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 30,
       "completion_criteria": [
@@ -1559,7 +1551,6 @@
       ],
       "tests_required": true,
       "note": "Omniroute - assigned 2026-08-04",
-      "build_id": "b2f16f1d",
       "assigned_provider": null
     },
     {

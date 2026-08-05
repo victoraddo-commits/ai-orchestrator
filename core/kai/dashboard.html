@@ -139,6 +139,26 @@ td { border-bottom: 1px solid rgba(48,54,61,0.5); }
 
 footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.75rem; text-align: center; }
 
+/* ── Toggle switch ─────────────────────────────────────────────────── */
+
+.toggle-switch {
+  position: relative; display: inline-block; width: 44px; height: 24px;
+  vertical-align: middle;
+}
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--muted); border-radius: 24px; transition: background 0.2s;
+}
+.toggle-slider::before {
+  content: ""; position: absolute; height: 18px; width: 18px;
+  left: 3px; bottom: 3px; background: white; border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+.toggle-switch input:disabled + .toggle-slider { opacity: 0.4; cursor: not-allowed; }
+
 /* ── Chat tab ──────────────────────────────────────────────────────── */
 
 .chat-wrap {
@@ -391,6 +411,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
   <button class="tab-btn" data-tab="library">Library</button>
   <button class="tab-btn" data-tab="command">Command Center</button>
   <button class="tab-btn" data-tab="enterprise">Enterprise</button>
+  <button class="tab-btn" data-tab="agents">Agents</button>
 </nav>
 
 <!-- ── Overview ──────────────────────────────────────────────────────── -->
@@ -810,6 +831,16 @@ tr:hover { background: rgba(255,255,255,0.03); }
   </div>
 </section>
 
+<!-- ── Agents ──────────────────────────────────────────────────────────── -->
+<section class="tab-panel" id="tab-agents">
+  <div class="card"><h3>Coding Agents</h3>
+    <div id="agents-coding-content"><span class="loading">loading...</span></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>Text Agents</h3>
+    <div id="agents-text-content"><span class="loading">loading...</span></div>
+  </div>
+</section>
+
 <footer>
   Kai Dashboard &middot; Served by core.api &middot; Write actions via same-origin proxy
 </footer>
@@ -1023,6 +1054,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
       case "library":    loadLibrary(); break;
       case "command":   loadCommand(); break;
       case "enterprise": loadEnterprise(); break;
+      case "agents":     loadAgents(); break;
     }
   }
 
@@ -1106,17 +1138,38 @@ tr:hover { background: rgba(255,255,255,0.03); }
     // Providers overview
     try {
       const pd = await fetchJSON("/providers/dashboard");
-      let html = '<table><thead><tr><th>Provider</th><th>Status</th><th>Cost</th></tr></thead><tbody>';
+      let html = '<table><thead><tr><th>Provider</th><th>Status</th><th>Cost</th><th>Toggle</th></tr></thead><tbody>';
       for (const [name, info] of Object.entries(pd)) {
         const avail = info.available !== false;
         const cost = info.cost || info.estimated_cost;
         const pct = (info.percent_remaining != null) ? Math.round(info.percent_remaining) : null;
         const statusBadge = avail ? "ok" : "critical";
         const statusLabel = avail ? "available" : "unavailable";
-        html += `<tr><td class="provider-name">${esc(name)}</td><td><span class="badge ${statusBadge}">${statusLabel}</span>${pct!=null ? ` <span class="cost">${pct}% left</span>` : ""}</td><td class="cost">${cost != null ? esc(String(cost)) : "-"}</td></tr>`;
+        const toggleLabel = avail ? "Disable" : "Enable";
+        html += `<tr><td class="provider-name">${esc(name)}</td><td><span class="badge ${statusBadge}">${statusLabel}</span>${pct!=null ? ' <span class="cost">' + pct + '% left</span>' : ''}</td><td class="cost">${cost != null ? esc(String(cost)) : "-"}</td><td><button class="toggle-btn" data-name="${esc(name)}" data-enabled="${avail}">${toggleLabel}</button></td></tr>`;
       }
       html += "</tbody></table>";
       $("providers-overview-content").innerHTML = html;
+      // Attach toggle handlers
+      document.querySelectorAll(".toggle-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const name = btn.dataset.name;
+          const currentlyEnabled = btn.dataset.enabled === "true";
+          const newEnabled = !currentlyEnabled;
+          try {
+            await fetch(`/providers/${name}/toggle`, {
+              method: "PUT",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({enabled: newEnabled})
+            });
+            // Refresh providers overview
+            loadOverview();
+          } catch (e) {
+            console.error("Toggle failed:", e);
+            alert("Failed to toggle provider: " + e.message);
+          }
+        });
+      });
     } catch (e) {
       $("providers-overview-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
     }
@@ -2022,21 +2075,44 @@ tr:hover { background: rgba(255,255,255,0.03); }
 
       // Providers
       const provs = d.providers || {};
-      let ph = '<table><thead><tr><th>Provider</th><th>Status</th><th>Quota</th><th>Capabilities</th></tr></thead><tbody>';
+      let ph = '<table><thead><tr><th>Provider</th><th>Status</th><th>Quota</th><th>Capabilities</th><th>Toggle</th></tr></thead><tbody>';
       for (const [name, info] of Object.entries(provs)) {
         const enabled = info.enabled !== false;
         const statusIcon = !enabled ? "&#x23F8;" : info.available ? "&#x2705;" : "&#x26D4;";
         const statusLabel = !enabled ? "disabled" : info.available ? "available" : "unavailable";
         const quotaBadge = info.quota_status === "quota_exceeded" ? "critical" : info.quota_status === "error" ? "warn" : "ok";
+        const toggleLabel = enabled ? "Disable" : "Enable";
         ph += `<tr>
           <td>${esc(name)}</td>
           <td>${statusIcon} ${statusLabel}</td>
           <td><span class="badge ${quotaBadge}">${esc(info.quota_status || "ok")}</span></td>
           <td>${esc((info.capabilities || []).join(", "))}</td>
+          <td><button class="toggle-btn" data-name="${esc(name)}" data-enabled="${enabled}">${toggleLabel}</button></td>
         </tr>`;
       }
       ph += "</tbody></table>";
       $("enterprise-providers").innerHTML = ph;
+
+      // Attach toggle handlers for enterprise providers
+      document.querySelectorAll(".toggle-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const name = btn.dataset.name;
+          const currentlyEnabled = btn.dataset.enabled === "true";
+          const newEnabled = !currentlyEnabled;
+          try {
+            await fetch(`/providers/${name}/toggle`, {
+              method: "PUT",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({enabled: newEnabled})
+            });
+            // Refresh enterprise overview
+            loadEnterprise();
+          } catch (e) {
+            console.error("Toggle failed:", e);
+            alert("Failed to toggle provider: " + e.message);
+          }
+        });
+      });
 
       // Active builds
       if (b.active && b.active.length) {
@@ -2059,6 +2135,81 @@ tr:hover { background: rgba(255,255,255,0.03); }
 
     } catch (e) {
       $("enterprise-loading").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+    }
+  }
+
+  // ── Agents tab ────────────────────────────────────────────────────────
+
+  async function loadAgents() {
+    try {
+      const [providers, pd] = await Promise.all([
+        fetchJSON("/providers"),
+        fetchJSON("/providers/dashboard")
+      ]);
+
+      const coding = []; const text = [];
+      for (const [name, info] of Object.entries(providers)) {
+        const caps = info.capabilities || [];
+        const row = {name, info};
+        if (caps.includes("coding_agent")) coding.push(row);
+        else if (caps.includes("text_task")) text.push(row);
+      }
+
+      function renderTable(rows) {
+        if (!rows.length) return '<span class="empty">none</span>';
+        let h = '<table><thead><tr><th>Agent</th><th>Capabilities</th><th>Cost</th><th>Usage</th><th>On/Off</th></tr></thead><tbody>';
+        for (const {name, info} of rows) {
+          const caps = (info.capabilities||[]).join(", ");
+          const cost = info.cost_tier || "-";
+          const enabled = info.enabled !== false;
+          const avail = info.available !== false;
+          const dash = pd[name] || {};
+          const successRate = dash.success_rate != null ? Math.round(dash.success_rate * 100) + "%" : "-";
+          const statusIcon = !enabled ? "&#x23F8;" : avail ? "&#x2705;" : "&#x26D4;";
+          const statusLabel = !enabled ? "off" : avail ? "on" : "unavailable";
+          const disabledAttr = !avail ? "disabled" : "";
+          const checked = enabled && avail ? "checked" : "";
+          h += `<tr>
+            <td><strong>${esc(name)}</strong><br><small>${esc(info.description||"")}</small></td>
+            <td>${esc(caps)}</td>
+            <td><span class="badge info">${esc(cost)}</span></td>
+            <td>${statusIcon} ${statusLabel} &middot; <small>${successRate}</small></td>
+            <td>
+              <label class="toggle-switch">
+                <input type="checkbox" data-provider="${esc(name)}" ${checked} ${disabledAttr}>
+                <span class="toggle-slider"></span>
+              </label>
+            </td>
+          </tr>`;
+        }
+        h += "</tbody></table>";
+        return h;
+      }
+
+      $("agents-coding-content").innerHTML = renderTable(coding);
+      $("agents-text-content").innerHTML = renderTable(text);
+
+      // Attach toggle handlers
+      document.querySelectorAll("#tab-agents input[type=checkbox]").forEach(cb => {
+        cb.addEventListener("change", async () => {
+          const name = cb.dataset.provider;
+          const enabled = cb.checked;
+          try {
+            await fetch(`/providers/${name}/toggle`, {
+              method: "PUT",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({enabled})
+            });
+          } catch (e) {
+            console.error("Toggle failed:", e);
+            cb.checked = !enabled; // revert on failure
+            alert("Failed to toggle " + name + ": " + e.message);
+          }
+        });
+      });
+    } catch (e) {
+      $("agents-coding-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+      $("agents-text-content").innerHTML = "";
     }
   }
 

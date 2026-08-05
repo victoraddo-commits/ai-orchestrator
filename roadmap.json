@@ -139,7 +139,7 @@
       "id": "18B",
       "name": "Module Consolidation: Health, Approval, Telegram, Klaus",
       "description": "Consolidate duplicate modules: health_monitor.py, approval_system.py, telegram_system.py, Klaus approval workflow",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [
         "health.py + proxmox_health.py merged into health_monitor.py",
@@ -191,11 +191,12 @@
       "id": "17E-1",
       "name": "Multi-node Proxmox Registry + Full Inventory Discovery",
       "description": "Multi-node Proxmox management: (1) Node registry (memory/proxmox_nodes.json) - config-driven, not hardcoded - Proxmox A (192.168.99.2) and Proxmox B (10.8.0.102); (2) Full inventory per node via REST API - version, CPU, RAM, storage, VMs, containers, networks, disk/SMART health; (3) Generated topology doc (markdown + mermaid) from live inventory.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "35d88659"
     },
     {
       "id": "12C",
@@ -236,7 +237,7 @@
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
       "description": "Implement zero-trust architecture for Legal Brain: permanent vs temporary knowledge isolation, agent sandboxing, immutable audit logs, continuous integrity verification",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [
         "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
@@ -248,7 +249,8 @@
       ],
       "tests_required": true,
       "priority": 3,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "41b4540e"
     },
     {
       "id": "IT-3",

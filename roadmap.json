@@ -61,7 +61,7 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
@@ -1969,7 +1969,7 @@
     {
       "id": "SUSU-1a",
       "name": "SUSU-1a: Telegram Bot - User Registration + KYC",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -1979,7 +1979,8 @@
         "KYC document upload with encrypted storage",
         "User profiles in DB",
         "Manual KYC status updates"
-      ]
+      ],
+      "build_id": "6ba6a9d1"
     },
     {
       "id": "SUSU-1b",
@@ -2231,14 +2232,15 @@
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "in_progress",
       "description": "JWT-based authentication with capability-based permissions (operator/viewer roles). Rate limiting on all endpoints. Brute-force protection. Session management.",
       "completion_criteria": [
         "JWT auth with capability-based permissions",
         "Rate limiting on all endpoints",
         "Brute-force protection",
         "Session management with expiry"
-      ]
+      ],
+      "build_id": "73a3c359"
     },
     {
       "id": "18A-b",

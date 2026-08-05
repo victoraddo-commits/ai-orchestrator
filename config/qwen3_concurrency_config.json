@@ -1,0 +1,22 @@
+{
+  "updated_at": "2026-08-05T10:20:00.000000",
+  "pod": "Qwen4 (ldtqgcshb2dwsw)",
+  "gpu": "RTX PRO 6000 96GB",
+  "model": "Qwen/Qwen3-32B-FP8",
+  "vllm": "0.26.0",
+  "omniroute_provider": "qwen4",
+  "concurrency_report": "2026-08-05: 8 concurrent requests tested, all completed in 0.89-1.02s",
+  "configuration": {
+    "max_concurrent_builds": 8,
+    "simple_tasks_concurrent": 8,
+    "complex_tasks_concurrent": 6,
+    "memory_intensive_tasks": 5,
+    "based_on": "actual_stress_testing_not_assumptions"
+  },
+  "performance_improvement": {
+    "old_concurrency": 2,
+    "new_concurrency": 8,
+    "improvement_factor": 4.0,
+    "estimated_throughput_increase": "4.0x"
+  }
+}

@@ -61,28 +61,30 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "5785a71d"
     },
     {
       "id": "19A",
       "name": "Cerebrum: Brain Module Mapping - Identify and document all 28 brain modules",
       "description": "Map existing Kai components to Cerebrum brain modules. Document overlaps, gaps, and required refactoring. Create module specifications with clear responsibilities and APIs.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "0d900986"
     },
     {
       "id": "19R",
       "name": "Kai Software Factory: Application Registry - Persistent inventory with full metadata",
       "description": "Create persistent application registry in memory/apps.json with full metadata (name, description, owner, repository, language, framework, database, dependencies, build/deployment history, AI workers assigned, health status, monitoring, backups, environments, licensing, cost, risk level).",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
@@ -127,9 +129,10 @@
       "id": "17S",
       "name": "Wire in dedicated per-model OpenCode Zen keys (Claude Fable 5, Gemini 3.1 Pro)",
       "description": "Operator provided two new OpenCode Zen API keys 2026-08-02, each restricted by the operator's directive to exactly one model: CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY (opencode/claude-fable-5 -- note: this is the same key value previously stored as DEEPSEEK_OPENCODE_ZEN_API_KEY and confirmed live 2026-07-29 for opencode/deepseek-v4-pro; operator has now rescoped it to Fable 5, treat the old deepseek mapping as stale) and GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY (opencode/gemini-3.1-pro, genuinely new, no prior mapping). Both stored in .env, neither wired into core.ai_provider/core.ai.ai_router yet.\n\nThe real problem to solve: ~/.local/share/opencode/auth.json (the opencode CLI's own credential store, see scripts/setup_openrouter_opencode_auth.py) holds exactly ONE 'opencode' credential globally -- that single shared key is what opencode_claude/opencode_claude_sonnet/opencode_claude_opus/opencode_minimax/opencode_deepseek all currently authenticate with. These two new keys are each scoped to a single model on the platform side, which the current one-slot auth.json cannot represent for two different keys at once without breaking the existing shared credential's other models. Confirm with the opencode CLI docs/support whether it supports multiple named auth profiles (e.g. an --auth-path or profile flag per invocation); if not, this may need each key run through its own isolated opencode CLI invocation (separate auth.json per subprocess call, analogous to how core.coding_bridge already scopes work by project_path) rather than trying to force both into the single shared slot. Once resolved: register both as real providers via core.ai_provider.register_provider(), following the exact pattern 17R item (1) established for the native DeepSeek keys, and add them into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- new providers slot in AFTER existing top-priority providers, never ahead of or displacing them. Operator directive: each key must only ever be used to reach its one named model -- do not let either fall back to or get reused for the other, and do not let either touch the existing shared 'opencode' auth.json slot's other models.\n\nPer operator directive 2026-08-02: Kai/Fable implements this, not Claude Code directly.\n\nOPERATOR OVERRIDE 2026-08-02: same directive as 17R's addendum -- once CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY / GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY are wired as real providers, give them HIGHEST priority in ROLE_PROVIDERS for the roles they're eligible for, superseding the default 17M/17R 'slot in after' convention for these two specifically. Applies only to these two entries, not a general reordering.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
-      "priority": 2
+      "priority": 2,
+      "build_id": "fd2e35dc"
     },
     {
       "id": "18B",
@@ -332,7 +335,7 @@
       "id": "19D",
       "name": "Cerebrum: Memory System - 15+ memory types with retention policies and versioning",
       "description": "Design and implement 15+ memory types: working memory, short-term, long-term, conversation, semantic, procedural, episodic, project, infrastructure, architecture, decision, failure, success, legal, research, preference. Each with retention policy, importance score, confidence score, source tracking, version history, recall scoring, automatic consolidation.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 4,
       "assigned_provider": null,
@@ -343,7 +346,7 @@
       "id": "19U",
       "name": "Kai Software Factory: Dependency Graph - Cross-project relationship mapping",
       "description": "Build dependency graph: Customer Portal \u2192 API Gateway \u2192 Authentication \u2192 Database \u2192 Infrastructure. Auto-identify affected applications when one system updates.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 4,
       "assigned_agent": "qwen3",

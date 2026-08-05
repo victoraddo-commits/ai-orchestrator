@@ -144,26 +144,15 @@ ROLE_PROVIDERS = {
     # it replaced -- it does not call approve_architecture/approve_deploy
     # (see tests/test_kai_identity.py's structural guarantee); a human still
     # makes every approve/reject decision.
+    # 2026-08-05: Qwen4 (pod ldtqgcshb2dwsw, RTX PRO 6000 96GB) is now the
+    # primary for every role — qwen3_coding for coding_agent work,
+    # qwen3_coder_text for all text_task roles. All other providers shifted
+    # to fallback positions. 8-way concurrency verified live.
     "coding": [
-        # 2026-08-03 operator directive ("disable open code for now, assign
-        # jobs to qwen3"): qwen3_coding is now the sole member of
-        # CODING_ROTATING_FRONT and this list's primary — self-hosted RunPod
-        # RTX 5090, pay-per-use GPU, the only coding route with real capacity
-        # right now. opencode_claude (Fable 5) moved to the fixed tail as a
-        # fallback — Zen account quota_exceeded 2026-08-03. OmniRoute also
-        # quota_exceeded but stays as the always-on gateway fallback.
         "qwen3_coding",
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
-        # 2026-08-03: OmniRoute (localhost:20128) sits here as the always-on
-        # fallback, ahead of the CloudCLI "claude" provider -- claude is
-        # currently degraded (untrusted self-build workspace + out of credit,
-        # hangs instead of failing fast), while OmniRoute aggregates healthy
-        # upstreams and never hard-fails the same way. delegate() already
-        # skips the quota_exceeded opencode family, so a coding task falls
-        # straight through to omniroute when the Claude/OpenCode credits are
-        # gone.
         "omniroute",
         "claude",
         "opencode",
@@ -233,7 +222,7 @@ ROLE_PROVIDERS = {
     # capacity after every primary provider and before the universal claude
     # tail in every text-task role below -- this is capacity, not a
     # replacement for anything currently working.
-    "planning": ["gemini", "geminix", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "qwen3_coder_text", "claude"],
+    "planning": ["qwen3_coder_text", "gemini", "geminix", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "claude"],
     # 13V: the Chief Architect chain -- a *named priority list* distinct from
     # general "planning": Claude's judgment is the product here, so unlike
     # every other role this one never rotates its starting candidate (see
@@ -255,16 +244,16 @@ ROLE_PROVIDERS = {
     # primary slot rather than replaced -- deepseek_native_flash takes over
     # as primary until claude's credit renews, matching "planning" above.
     # claude stays in the tail (not removed) so it resumes automatically.
-    "architecture": ["deepseek_native_flash", "gemini", "geminix", "deepseek", "openai", "qwen3_coder_text", "claude"],
-    "log_analysis": ["groq", "qwen3_coder_text", "claude"],
-    "documentation": ["deepseek_native_flash", "groq", "deepseek", "qwen3_coder_text", "claude"],
+    "architecture": ["qwen3_coder_text", "deepseek_native_flash", "gemini", "geminix", "deepseek", "openai", "claude"],
+    "log_analysis": ["qwen3_coder_text", "groq", "claude"],
+    "documentation": ["qwen3_coder_text", "deepseek_native_flash", "groq", "deepseek", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
     # gemini re-enabled 2026-08-02 (credit reloaded), restored to its
     # original spot ahead of claude.
-    "review": ["openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen3_coder_text", "claude"],
+    "review": ["qwen3_coder_text", "openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "claude"],
     # 2026-07-31, user directive: route short, structured, high-volume calls
     # (intent detection, request classification, JSON/command extraction,
     # SQL generation, categorization) to groq first -- these are exactly the
@@ -282,7 +271,7 @@ ROLE_PROVIDERS = {
     # gemini re-enabled 2026-08-02 (credit reloaded), restored as a fallback
     # behind groq (this role's real primary, per the 2026-07-31 directive
     # above -- gemini's long-context strength was never the fit here).
-    "classification": ["groq", "deepseek_native_flash", "gemini", "geminix", "deepseek", "qwen3_coder_text", "claude"],
+    "classification": ["qwen3_coder_text", "groq", "deepseek_native_flash", "gemini", "geminix", "deepseek", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product

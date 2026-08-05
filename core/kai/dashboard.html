@@ -1159,7 +1159,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
           try {
             await fetch(`/dashboard/api/proxy/providers/${name}/toggle`, {
               method: "PUT",
-              headers: {"Content-Type": "application/json"},
+              headers: {"Content-Type": "application/json", "Authorization": getAuthHeader()},
               body: JSON.stringify({enabled: newEnabled})
             });
             // Refresh providers overview
@@ -2102,7 +2102,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
           try {
             await fetch(`/dashboard/api/proxy/providers/${name}/toggle`, {
               method: "PUT",
-              headers: {"Content-Type": "application/json"},
+              headers: {"Content-Type": "application/json", "Authorization": getAuthHeader()},
               body: JSON.stringify({enabled: newEnabled})
             });
             // Refresh enterprise overview
@@ -2197,7 +2197,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
           try {
             await fetch(`/dashboard/api/proxy/providers/${name}/toggle`, {
               method: "PUT",
-              headers: {"Content-Type": "application/json"},
+              headers: {"Content-Type": "application/json", "Authorization": getAuthHeader()},
               body: JSON.stringify({enabled})
             });
           } catch (e) {

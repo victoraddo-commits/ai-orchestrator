@@ -39,6 +39,25 @@ OPENCODE_AUTH_PATH = Path.home() / ".local" / "share" / "opencode" / "auth.json"
 
 _PROVIDERS = {}
 
+# Persisted enabled/disabled state so toggles survive process restarts.
+# Stored in the memory/ directory alongside other runtime state.
+_PROVIDER_STATE_PATH = Path(__file__).parent.parent / "memory" / "provider_state.json"
+
+def _load_provider_state():
+    """Load persisted enabled/disabled overrides, if any."""
+    try:
+        if _PROVIDER_STATE_PATH.exists():
+            return json.loads(_PROVIDER_STATE_PATH.read_text())
+    except (json.JSONDecodeError, OSError):
+        pass
+    return {}
+
+def _save_provider_state(state):
+    """Atomically persist enabled/disabled state."""
+    tmp = _PROVIDER_STATE_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state))
+    tmp.replace(_PROVIDER_STATE_PATH)
+
 # 13W: static cost classification per provider -- assigned at registration,
 # never computed. Valid values, per the user's own labeling request:
 #   "free"             -- free-tier API keys (gemini, groq)
@@ -73,6 +92,8 @@ def register_provider(name, run_coding_task=None, run_text_task=None, available_
     if run_text_task is not None:
         capabilities.append("text_task")
 
+    _persisted = _load_provider_state()
+
     _PROVIDERS[name] = {
         "run_coding_task": run_coding_task,
         "run_text_task": run_text_task,
@@ -81,7 +102,7 @@ def register_provider(name, run_coding_task=None, run_text_task=None, available_
         "description": description,
         "capabilities": capabilities,
         "cost_tier": cost_tier,
-        "enabled": True,  # Operator can toggle via PUT /api/providers/{name}
+        "enabled": _persisted.get(name, True),  # default on unless explicitly disabled
     }
 
 
@@ -104,12 +125,16 @@ def list_providers():
 
 
 def set_provider_enabled(name: str, enabled: bool) -> bool:
-    """Toggle a provider on or off.  Returns True if the provider exists,
-    False if not found."""
+    """Toggle a provider on or off.  Persisted to memory/provider_state.json
+    so the setting survives process restarts.  Returns True if the provider
+    exists, False if not found."""
     entry = _PROVIDERS.get(name)
     if entry is None:
         return False
     entry["enabled"] = enabled
+    state = _load_provider_state()
+    state[name] = enabled
+    _save_provider_state(state)
     return True
 
 

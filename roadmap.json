@@ -212,7 +212,7 @@
       "id": "17E-1",
       "name": "Multi-node Proxmox Registry + Full Inventory Discovery",
       "description": "Multi-node Proxmox management: (1) Node registry (memory/proxmox_nodes.json) - config-driven, not hardcoded - Proxmox A (192.168.99.2) and Proxmox B (10.8.0.102); (2) Full inventory per node via REST API - version, CPU, RAM, storage, VMs, containers, networks, disk/SMART health; (3) Generated topology doc (markdown + mermaid) from live inventory.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
@@ -366,7 +366,7 @@
       "priority": 4,
       "assigned_provider": "omniroute",
       "assigned_agent": "qwen3",
-      "build_id": "fa8d705b"
+      "build_id": "5e7b0bd9"
     },
     {
       "id": "IT-4",
@@ -1257,7 +1257,7 @@
       "id": "17E",
       "name": "Multi-node Proxmox registry + full inventory discovery (Proxmox A + B, extensible)",
       "description": "User directive 2026-07-30 (trimmed from a larger charter -- multi-Proxmox management without clustering, matching the users own explicit \"never cluster, treat each node independently\" requirement, consistent with the earlier decision to cancel a full 14-phase enterprise buildout in favor of scoped, real needs). core.health.analyze_proxmox() already exists but is narrow -- single node (Proxmox A only, via memory/last_scan.json proxmox.node.data), CPU/memory thresholds only. This phase: (1) a node registry (e.g. memory/proxmox_nodes.json or similar, schema_version/records convention) so nodes are config-driven, not hardcoded -- Proxmox A (192.168.99.2, API token via existing proxdash credential or a dedicated one) and Proxmox B (10.8.0.102, reachable now via the WireGuard tunnel fixed 2026-07-30, API token already provided by the user -- this needs to move from floating in conversation context into the ai-orchestrator's own credential storage, not remain dependent on a human re-supplying it each session); (2) full inventory per node via the Proxmox REST API (already sufficient for everything requested -- version, CPU, RAM, storage, VMs, containers, networks, and disk/SMART health via /nodes/{node}/disks/list -- SSH is NOT required for any of this and should not be added as a second credential/attack-surface unless a concrete gap is found); (3) a simple generated topology doc (markdown + a mermaid diagram) from the live inventory, saved to /uploads or docs/, regenerable on demand not just once. Explicitly NOT in scope: cluster creation/joining (user has repeatedly and explicitly ruled this out), replication-status monitoring (no replication is configured between any nodes today -- would be permanent noise; add only once real replication exists), SSH-based management.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 20,
       "completion_criteria": [
@@ -1267,7 +1267,8 @@
         "A regenerable topology doc (markdown + mermaid) is produced from live inventory data",
         "Tests cover: registry CRUD, inventory parsing for both real node shapes already observed live, graceful handling of an unreachable node (reported, not a crash)"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "5a979402"
     },
     {
       "id": "17J",

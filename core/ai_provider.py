@@ -12,6 +12,19 @@ import shutil
 import json
 from pathlib import Path
 
+# Load .env file to ensure environment variables are available for provider checks
+# This is critical for Qwen3 and other providers that depend on environment variables
+try:
+    from dotenv import load_dotenv
+    # Load from ai-orchestrator root
+    ai_orch_path = Path(__file__).parent.parent
+    env_path = ai_orch_path / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    # dotenv not available, continue with existing environment
+    pass
+
 from core.coding_bridge import run_coding_task as _claude_run_coding_task
 import core.coding_bridge as coding_bridge
 import core.llm_clients as llm_clients
@@ -301,19 +314,11 @@ def _opencode_deepseek_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
-# 2026-08-02 operator directive: self-hosted Qwen3-Coder-30B-A3B-Instruct-AWQ
-# (RunPod, pay-per-use GPU) as a real coding_agent, not just the text_task
-# route already wired on "openai" (core.llm_clients.call_openai). Driven
-# through the opencode CLI via a custom provider entry (not the Zen/
-# OpenRouter auth.json credential store -- see ~/.config/opencode/
-# opencode.jsonc's "qwen3-runpod" provider, an @ai-sdk/openai-compatible
-# pointed at VLLM_QWEN3_CODER_BASE_URL/API_KEY). Blocked until this date on
-# a server-side gap: the vLLM instance wasn't launched with
-# --enable-auto-tool-choice --tool-call-parser qwen3_coder, so opencode's
-# tool-use loop 400'd on every attempt ("'auto' tool choice requires
-# --enable-auto-tool-choice...") -- confirmed fixed live same day (file-write
-# spike succeeded) once the pod's vllm serve command included those flags.
-QWEN3_CODING_MODEL = "qwen3-runpod/QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ"
+# 2026-08-05: upgraded pod 0cxdh53zq8ydxo (RTX PRO 6000), newer Qwen3-32B-FP8
+# model (previously Qwen2.5-Coder-32B-Instruct-AWQ). Same vLLM openai-compatible
+# endpoint, now with vLLM 0.26.0 and deepseek_r1 reasoning parser. OpenCode CLI
+# provider entry at ~/.config/opencode/opencode.jsonc "qwen3-runpod" block.
+QWEN3_CODING_MODEL = "qwen3-runpod/Qwen/Qwen3-32B-FP8"
 
 
 def _qwen3_coding_available():
@@ -556,14 +561,12 @@ register_provider(
 )
 
 
-# 17Z: proper text-task registration of the self-hosted Qwen3-Coder RunPod
+# 17Z: proper text-task registration of the self-hosted Qwen3 RunPod
 # endpoint. This is a plain OpenAI-compatible chat-completions endpoint
 # (same as call_deepseek_native_flash — no tool-calling, no agentic loop).
-# The "openai" provider slot was hijacked to point here (see llm_clients.
-# call_openai); this gives it its own properly-named provider entry that
-# can be tracked/rotated independently. run_text_task only — the coding-
-# agent route (tool-use loop via opencode CLI) is already registered as
-# "qwen3_coding" above.
+# Pod 0cxdh53zq8ydxo (2026-08-05 migration), RTX PRO 6000, model
+# Qwen/Qwen3-32B-FP8. run_text_task only — the coding-agent route
+# (tool-use loop via opencode CLI) is already registered as "qwen3_coding".
 def _qwen3_coder_text_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_qwen3_coder_text(prompt, timeout=timeout)
 
@@ -573,7 +576,7 @@ register_provider(
     run_text_task=_qwen3_coder_text_run_text_task,
     available_fn=lambda: bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL")),
     kind="cloud",
-    description="Qwen3-Coder-30B-A3B-Instruct-AWQ, self-hosted vLLM on RunPod RTX 5090 (text-task only, OpenAI-compatible endpoint) — Phase 17Z proper registration, paid per-request GPU billing",
+    description="Qwen3-32B-FP8, self-hosted vLLM on RunPod RTX PRO 6000 (text-task only, OpenAI-compatible endpoint) — Phase 17Z, paid per-request GPU billing, pod 0cxdh53zq8ydxo",
     cost_tier="paid",
 )
 
@@ -637,7 +640,7 @@ register_provider(
     run_coding_task=_qwen3_coding_run_coding_task,
     available_fn=_qwen3_coding_available,
     kind="cloud",
-    description="Qwen3-Coder-30B-A3B-Instruct-AWQ, self-hosted vLLM on RunPod (pay-per-use GPU) via a custom opencode provider -- confirmed live tool-calling 2026-08-02 after the pod's vllm serve gained --enable-auto-tool-choice --tool-call-parser qwen3_coder",
+    description="Qwen3-32B-FP8, self-hosted vLLM on RunPod RTX PRO 6000 via a custom opencode provider — pod 0cxdh53zq8ydxo, vLLM 0.26.0 with deepseek_r1 reasoning",
     cost_tier="free_or_low_cost",
 )
 

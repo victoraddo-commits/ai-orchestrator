@@ -46,7 +46,7 @@ CODE_REVIEW_TIMEOUT = 180
 
 PROVIDERS_CONFIG_PATH = Path("config") / "providers.yaml"
 
-DEFAULT_MAX_CONCURRENT_BUILDS = 2
+DEFAULT_MAX_CONCURRENT_BUILDS = 6
 
 
 def _load_max_concurrent_builds():

@@ -139,7 +139,7 @@
       "id": "18B",
       "name": "Module Consolidation: Health, Approval, Telegram, Klaus",
       "description": "Consolidate duplicate modules: health_monitor.py, approval_system.py, telegram_system.py, Klaus approval workflow",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [
         "health.py + proxmox_health.py merged into health_monitor.py",
@@ -151,28 +151,31 @@
       ],
       "tests_required": true,
       "priority": 2,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "784bd2e9"
     },
     {
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades - @anthropic-ai/sdk 61 versions behind",
       "description": "Upgrade @anthropic-ai/sdk from 0.39.0 to 0.100.1 (61 minor versions). May require code changes for model deprecation fixes.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "149b3ef4"
     },
     {
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "4b1bbccb"
     },
     {
       "id": "19S",
@@ -2232,7 +2235,7 @@
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
-      "status": "in_progress",
+      "status": "failed",
       "description": "JWT-based authentication with capability-based permissions (operator/viewer roles). Rate limiting on all endpoints. Brute-force protection. Session management.",
       "completion_criteria": [
         "JWT auth with capability-based permissions",

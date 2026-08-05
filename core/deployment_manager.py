@@ -233,16 +233,60 @@ def _commit_dirty_working_tree(live_repo):
     # first so the merge always runs against a clean tree; nothing is lost
     # either way since these are exactly the bookkeeping writes that were
     # about to be committed by this same deploy's own merge commit anyway.
-    status = subprocess.run(
-        ["git", "-C", str(live_repo), "status", "--porcelain"], capture_output=True, text=True,
-    )
-    if not status.stdout.strip():
-        return
+    #
+    # 2026-08-05: 204 builds failed with "fatal: stash failed" because
+    # subprocess.run return codes were never checked here. If git add or
+    # git commit silently fails (e.g. a race where another thread/process
+    # committed the exact same dirty state between the status check and the
+    # commit, making `git commit` exit 1 with "nothing to commit"), the
+    # merge step downstream runs against a tree it believes is still dirty
+    # and git's internal merge machinery fails. Check every return code and
+    # retry the commit on transient failures rather than leaking a dirty
+    # tree into _merge_branch_into_live_repo.
+    live_repo = str(live_repo)
+    for attempt in range(3):
+        status = subprocess.run(
+            ["git", "-C", live_repo, "status", "--porcelain"],
+            capture_output=True, text=True,
+        )
+        if status.returncode != 0:
+            raise RuntimeError(
+                f"git status failed in {live_repo}: {status.stderr.strip()}"
+            )
+        if not status.stdout.strip():
+            return  # already clean
 
-    subprocess.run(["git", "-C", str(live_repo), "add", "-A"], capture_output=True, text=True)
-    subprocess.run(
-        ["git", "-C", str(live_repo), "commit", "-q", "-m", "Live bookkeeping: concurrent scheduler state updates"],
-        capture_output=True, text=True,
+        add = subprocess.run(
+            ["git", "-C", live_repo, "add", "-A"],
+            capture_output=True, text=True,
+        )
+        if add.returncode != 0:
+            raise RuntimeError(
+                f"git add failed in {live_repo}: {add.stderr.strip()}"
+            )
+
+        commit = subprocess.run(
+            ["git", "-C", live_repo, "commit", "-q", "-m",
+             "Live bookkeeping: concurrent scheduler state updates"],
+            capture_output=True, text=True,
+        )
+        if commit.returncode == 0:
+            return  # committed successfully
+
+        # exit code 1 with "nothing to commit" means another thread committed
+        # it first — re-check the tree and retry the merge if it's now clean.
+        if "nothing to commit" in commit.stderr:
+            continue
+
+        raise RuntimeError(
+            f"git commit failed in {live_repo}: {commit.stderr.strip()}"
+        )
+
+    # Exhausted retries — the tree is still dirty after 3 attempts; fail
+    # loudly rather than letting the merge fail with a cryptic git error.
+    raise RuntimeError(
+        f"Could not clean working tree in {live_repo} after 3 attempts — "
+        f"concurrent writes are preventing commit"
     )
 
 
@@ -257,16 +301,46 @@ def _merge_branch_into_live_repo(live_repo, clone_path, branch, build_name):
         return {"merged": False, "reason": f"Failed to fetch build branch: {fetch.stderr.strip()}"}
 
     merge = subprocess.run(
-        ["git", "-C", str(live_repo), "merge", "--no-ff", "-m", f"Merge {branch}: {build_name}", branch],
+        ["git", "-C", str(live_repo), "merge", "--no-ff", "-m",
+         f"Merge {branch}: {build_name}", branch],
         capture_output=True, text=True,
     )
 
     if merge.returncode != 0:
-        subprocess.run(["git", "-C", str(live_repo), "merge", "--abort"], capture_output=True, text=True)
-        subprocess.run(["git", "-C", str(live_repo), "branch", "-D", branch], capture_output=True, text=True)
-        return {"merged": False, "reason": f"Merge conflict merging {branch}: {merge.stderr.strip()}"}
+        # If the merge failed because the working tree was somehow still
+        # dirty (despite _commit_dirty_working_tree above), try one more
+        # commit+merge before giving up. The "stash" in git's error message
+        # is its internal mechanism for saving/restoring dirty state during
+        # a merge — it only appears when the tree isn't actually clean.
+        if "stash" in merge.stderr.lower():
+            try:
+                _commit_dirty_working_tree(live_repo)
+                merge = subprocess.run(
+                    ["git", "-C", str(live_repo), "merge", "--no-ff", "-m",
+                     f"Merge {branch}: {build_name}", branch],
+                    capture_output=True, text=True,
+                )
+            except RuntimeError:
+                pass  # fall through to the failure path below
 
-    subprocess.run(["git", "-C", str(live_repo), "branch", "-D", branch], capture_output=True, text=True)
+    if merge.returncode != 0:
+        subprocess.run(
+            ["git", "-C", str(live_repo), "merge", "--abort"],
+            capture_output=True, text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(live_repo), "branch", "-D", branch],
+            capture_output=True, text=True,
+        )
+        return {
+            "merged": False,
+            "reason": f"Merge conflict merging {branch}: {merge.stderr.strip()}",
+        }
+
+    subprocess.run(
+        ["git", "-C", str(live_repo), "branch", "-D", branch],
+        capture_output=True, text=True,
+    )
 
     return {"merged": True, "merge_commit": _git_head_of(live_repo)}
 
@@ -376,7 +450,21 @@ def _merge_self_modifying_build_locked(build):
         # roadmap.json writes by the scheduler) BEFORE capturing pre_merge_head
         # so that the rollback floor includes these bookkeeping changes rather
         # than silently discarding them on a git reset --hard later.
-        _commit_dirty_working_tree(live_repo)
+        try:
+            _commit_dirty_working_tree(live_repo)
+        except RuntimeError as e:
+            for merged_repo, previous_head in reversed(merged):
+                subprocess.run(
+                    ["git", "-C", merged_repo, "reset", "--hard", previous_head],
+                    capture_output=True, text=True,
+                )
+            return {
+                "deployed": False,
+                "reason": f"Failed to clean working tree before merge: {e}",
+                "failed_repo": live_repo,
+                "rolled_back_repos": [repo for repo, _ in merged],
+                "pre_merge_retest": pre_merge_retest,
+            }
         pre_merge_head = _git_head_of(live_repo)
         result = _merge_branch_into_live_repo(live_repo, clone_path, branch, build["name"])
 

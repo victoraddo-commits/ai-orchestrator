@@ -233,6 +233,48 @@ def _handle_provider_status(name):
 
     return {"reply": "\n".join(lines)}
 
+# New handlers for worker health and provider statistics
+
+def _handle_worker_health():
+    """Display health status of AI workers (quota, errors)."""
+    from core.ai.provider_health import get_all_quota_snapshots
+
+    snapshots = get_all_quota_snapshots() or {}
+    if not snapshots:
+        return {"reply": "No worker health data available."}
+    lines = []
+    for name, data in snapshots.items():
+        status = data.get("status", "unknown")
+        quota = data.get("quota", "N/A")
+        remaining = data.get("remaining", "N/A")
+        lines.append(f"**{name}** — status: {status}, quota: {quota}, remaining: {remaining}")
+    return {"reply": "\n".join(lines)}
+
+
+def _handle_provider_statistics():
+    """Show provider performance statistics (success rate, queue depth, avg duration)."""
+    from core.ai.ai_router import get_provider_dashboard
+
+    dashboard = get_provider_dashboard() or {}
+    if not dashboard:
+        return {"reply": "No provider statistics available."}
+    lines = []
+    for name, info in dashboard.items():
+        available = "✅" if info.get("available") else "❌"
+        enabled = "enabled" if info.get("enabled") else "disabled"
+        success_rate = info.get("success_rate")
+        if success_rate is not None:
+            success_str = f"{success_rate*100:.1f}%"
+        else:
+            success_str = "N/A"
+        queue = info.get("queue_depth", 0)
+        avg = info.get("avg_duration_ms", 0)
+        lines.append(
+            f"{available} **{name}** ({enabled}) — success {success_str}, queue {queue}, avg dur {avg}ms"
+        )
+    return {"reply": "\n".join(lines)}
+
+
 
 COMMAND_PATTERNS = (
     (
@@ -259,6 +301,16 @@ COMMAND_PATTERNS = (
         re.compile(r"^kai,\s*prepare\s+the\s+next\s+engineering\s+phase\.?$", re.IGNORECASE),
         _handle_next_phase,
         "Prepare the next engineering phase.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:worker\s+health|health\s+of\s+workers?)\.?$", re.IGNORECASE),
+        lambda match: _handle_worker_health(),
+        "Show AI worker health — quota, errors, and status.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:provider\s+statistics|stats\s+for\s+providers?)\.?$", re.IGNORECASE),
+        lambda match: _handle_provider_statistics(),
+        "Show provider performance statistics — success rate, queue depth, avg duration.",
     ),
 )
 
@@ -293,6 +345,17 @@ COMMAND_PATTERNS += (
         re.compile(r"^(?:kai,\s*)?(?:what should we do next|next step|what is next)\.?$", re.IGNORECASE),
         _handle_next_phase,
         "Show next engineering phase.",
+    ),
+        # Auto-task: add tasks to the roadmap so nothing is forgotten
+    (
+        re.compile(r"^(?:kai,\s*)?(?:task|todo|add\s+to\s+roadmap)[:\s]+(.+)$", re.IGNORECASE | re.DOTALL),
+        lambda match: _handle_add_task(str(match.group(1)).strip()),
+        "Add a task to the roadmap — 'Kai, task: description' or 'Kai, todo: description'."
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?(?:show\s+open\s+tasks|pending\s+tasks|what\s+tasks\s+are\s+open)\.?$", re.IGNORECASE),
+        lambda match: _handle_list_tasks(),
+        "Show open tasks — returns all proposed/pending roadmap items."
     ),
     # 17V: long-term memory commands
     (
@@ -335,17 +398,5 @@ COMMAND_PATTERNS += (
         re.compile(r"^(?:kai,\s*)?(?:how\s+(?:is|are)\s+)?([a-z0-9_-]+)\s+(?:doing|status|health)\s*\.?$", re.IGNORECASE),
         lambda match: _handle_provider_status(str(match.group(1)).strip()),
         "Check a specific provider's status — 'Kai, how is qwen3_coding doing?'",
-    ),
-)
-    # Auto-task: add tasks to the roadmap so nothing is forgotten
-    (
-        re.compile(r"^(?:kai,\s*)?(?:task|todo|add\s+to\s+roadmap)[:\s]+(.+)$", re.IGNORECASE | re.DOTALL),
-        lambda match: _handle_add_task(str(match.group(1)).strip()),
-        "Add a task to the roadmap — 'Kai, task: description' or 'Kai, todo: description'.",
-    ),
-    (
-        re.compile(r"^(?:kai,\s*)?(?:show\s+open\s+tasks|pending\s+tasks|what\s+tasks\s+are\s+open)\.?$", re.IGNORECASE),
-        lambda match: _handle_list_tasks(),
-        "Show open tasks — returns all proposed/pending roadmap items.",
     ),
 )

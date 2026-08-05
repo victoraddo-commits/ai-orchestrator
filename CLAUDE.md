@@ -56,7 +56,7 @@ Fixed tail: opencode_claude_sonnet → opencode_claude_opus → qwen3_coding →
 ```
 
 - `opencode_claude` — Fable 5 via OpenCode Zen (separate billing, healthy). Primary.
-- `qwen3_coding` — Qwen3-Coder-30B on RunPod RTX 5090 (tool-calling confirmed live). In fixed tail as fallback.
+- `qwen3_coding` — Qwen2.5-Coder-32B on RunPod A100 SXM 80GB (tool-calling confirmed live). Primary in CODING_ROTATING_FRONT.
 - `claude` — Direct CloudCLI/Anthropic subscription. Out of credit currently, in tail.
 - `omniroute` — Self-hosted aggregator gateway on localhost:20128. Always-on fallback.
 - `openrouter_claude_opus/sonnet` — DROPPED (OpenRouter account out of credit).
@@ -177,9 +177,9 @@ When a new AI provider picks up Kai's work:
 ### Current active task: 17Z — Qwen3-Coder RunPod text provider
 
 **Context:**
-- RunPod pod `cp937mgptqc1kp` running vLLM 0.26.0 on RTX 5090
-- Model: `QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ` (AWQ quantized)
-- Endpoint: `https://znh882bc2koyt1-8000.proxy.runpod.net/v1` (OpenAI-compatible)
+- RunPod pod `c5ib0n2adowifp` running vLLM on A100 SXM 80GB
+- Model: `Qwen/Qwen2.5-Coder-32B-Instruct-AWQ` (AWQ quantized)
+- Endpoint: `https://c5ib0n2adowifp-8000.proxy.runpod.net/v1` (OpenAI-compatible)
 - Auth: API key in `.env` as `VLLM_QWEN3_CODER_API_KEY`
 - Confirmed live: 2026-08-02 with real chat completion
 - $0.99/hr always-on billing, root filesystem is ephemeral

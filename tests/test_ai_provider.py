@@ -516,7 +516,7 @@ def test_qwen3_coding_provider_defaults_to_correct_model(monkeypatch, tmp_path):
     provider = ai_provider.get_provider("qwen3_coding")
     provider["run_coding_task"](str(tmp_path), "build a widget")
 
-    assert captured["model"] == "qwen3-runpod/QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ"
+    assert captured["model"] == "qwen3-runpod/Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 
 
 def test_qwen3_coding_provider_availability_requires_opencode_and_both_env_vars(monkeypatch):

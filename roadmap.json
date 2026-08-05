@@ -94,7 +94,7 @@
       "id": "19A",
       "name": "Cerebrum: Brain Module Mapping - Identify and document all 28 brain modules",
       "description": "Map existing Kai components to Cerebrum brain modules. Document overlaps, gaps, and required refactoring. Create module specifications with clear responsibilities and APIs.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
@@ -105,11 +105,12 @@
       "id": "19R",
       "name": "Kai Software Factory: Application Registry - Persistent inventory with full metadata",
       "description": "Create persistent application registry in memory/apps.json with full metadata (name, description, owner, repository, language, framework, database, dependencies, build/deployment history, AI workers assigned, health status, monitoring, backups, environments, licensing, cost, risk level).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "58fdaaa5"
     },
     {
       "id": "13L-1",
@@ -190,20 +191,22 @@
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "88adf8d8"
     },
     {
       "id": "19S",
       "name": "Kai Software Factory: Repository Registry - GitHub/GitLab/Gitea integration + local discovery",
       "description": "Create repository registry supporting GitHub, GitLab, Gitea, local repositories. Auto-discover repositories where possible. Support archived repositories.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "d4678643"
     },
     {
       "id": "17E-1",
@@ -2030,92 +2033,162 @@
       "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
     },
     {
-      "id": "TK-6e883357",
-      "name": "Project SUSU \u2014 Telegram rotating savings platform. Full fintech: Mobile Money, double-entry ledger, fraud detection, AI ",
-      "description": "Project SUSU \u2014 Telegram rotating savings platform. Full fintech: Mobile Money, double-entry ledger, fraud detection, AI assistant (Kai), admin dashboard, multi-tenant. Phase 1: Telegram bot MVP with MTN MoMo/Telecel Cash integration.",
-      "status": "proposed",
+      "id": "SUSU-1",
+      "name": "SUSU Telegram Bot + User/Group Management",
+      "status": "in_progress",
+      "priority": 1,
       "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "assigned_agent": "qwen3",
+      "description": "Telegram bot core: user registration (phone, name), KYC document upload, group creation for savings cycles, configurable admin compensation (fixed, percentage, joining, monthly, setup fees) with platform-defined max limits, member fee visibility before joining, contribution tracking, user profiles with contact info, KYC status, wallet, contribution/payout history.",
+      "completion_criteria": [
+        "User registration via Telegram with phone/name/KYC upload",
+        "Group creation with configurable admin compensation",
+        "Platform limits enforce max admin fees",
+        "Members see and accept all fees before joining",
+        "Contribution tracking per group per user"
+      ],
+      "build_id": "feb0f5c2"
     },
     {
-      "id": "TK-68650abd",
-      "name": "SUSU-1: Telegram bot core \u2014 user registration, KYC doc upload, group creation, contribution tracking via Telegram Bot AP",
-      "description": "SUSU-1: Telegram bot core \u2014 user registration, KYC doc upload, group creation, contribution tracking via Telegram Bot API",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "id": "SUSU-2",
+      "name": "SUSU Mobile Money Integration",
+      "status": "pending",
+      "priority": 2,
+      "dependencies": [
+        "SUSU-1"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Mobile Money payment collection: MTN MoMo, Telecel Cash, AirtelTigo Money. Payment processor fee data passed to Fee Engine in SUSU-3. Payment status tracking, retry logic, reconciliation hooks.",
+      "completion_criteria": [
+        "MTN Mobile Money integration",
+        "Telecel Cash integration",
+        "AirtelTigo Money integration",
+        "Processor fee data available to Fee Engine",
+        "Payment webhook/callback handling"
+      ]
     },
     {
-      "id": "TK-11b64506",
-      "name": "SUSU-2: Mobile Money integration \u2014 MTN MoMo + Telecel Cash + AirtelTigo Money payment APIs, automated payout processing",
-      "description": "SUSU-2: Mobile Money integration \u2014 MTN MoMo + Telecel Cash + AirtelTigo Money payment APIs, automated payout processing",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "id": "SUSU-3",
+      "name": "SUSU Financial Ledger + Fee Engine + Payout Engine",
+      "status": "pending",
+      "priority": 3,
+      "dependencies": [
+        "SUSU-1",
+        "SUSU-2"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Double-entry accounting ledger with immutable transaction log. Centralized Fee Engine supporting: platform service fees, group administrator fees, payment processor fees (passthrough from SUSU-2), taxes (country-specific), discounts, promotions, penalties. Fee types: fixed, percentage, tiered, min/max caps, country-specific, currency-specific, scheduled. Complete fee history and audit logs. Payout Engine: gross\u2192net pipeline calculating platform fee, processor fee, tax, admin fee, other deductions, producing itemized receipt with permanent audit trail.",
+      "completion_criteria": [
+        "Double-entry accounting with immutable transaction log",
+        "Fee Engine with all fee types (platform, admin, processor, tax, discount, promotion, penalty)",
+        "Fee rules: fixed, percentage, tiered, min/max, country, currency, scheduled",
+        "Payout Engine: gross\u2192net calculation with itemized receipt",
+        "All financial transactions have permanent audit trail",
+        "Admin compensation limits enforced"
+      ]
     },
     {
-      "id": "TK-d0306313",
-      "name": "SUSU-3: Financial ledger engine \u2014 double-entry accounting, immutable transactions, reconciliation, settlement, escrow tr",
-      "description": "SUSU-3: Financial ledger engine \u2014 double-entry accounting, immutable transactions, reconciliation, settlement, escrow tracking",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "id": "SUSU-4",
+      "name": "SUSU Risk, Fraud & Compliance Engine",
+      "status": "pending",
+      "priority": 4,
+      "dependencies": [
+        "SUSU-1",
+        "SUSU-3"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "KYC verification pipeline, AML screening (PEP lists, sanctions), fraud detection (duplicate detection, device fingerprinting, velocity checks, unusual patterns), risk scoring per user and per group, compliance rules engine (country-specific: Ghana, etc.), suspicious activity reporting with auto-flag\u2192operator review workflow, immutable compliance audit trail.",
+      "completion_criteria": [
+        "KYC document upload and verification workflow",
+        "AML screening against sanctions/PEP lists",
+        "Fraud detection with configurable rules",
+        "Risk scoring (user + group level)",
+        "Suspicious activity auto-flagging",
+        "Country-specific compliance rules for Ghana"
+      ]
     },
     {
-      "id": "TK-50d43805",
-      "name": "SUSU-4: Risk & fraud engine \u2014 duplicate detection, device fingerprinting, velocity checks, MoMo verification, AML scorin",
-      "description": "SUSU-4: Risk & fraud engine \u2014 duplicate detection, device fingerprinting, velocity checks, MoMo verification, AML scoring",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "id": "SUSU-5",
+      "name": "SUSU Kai AI Assistant Integration",
+      "status": "pending",
+      "priority": 5,
+      "dependencies": [
+        "SUSU-1",
+        "SUSU-3"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Conversational AI assistant for SUSU members: balance inquiries, contribution history, next payout date, group status. Accessible via Telegram chat using Kai's existing ai_router for natural language understanding. Group insights and recommendations for admins.",
+      "completion_criteria": [
+        "Member balance inquiry via chat",
+        "Contribution history lookup",
+        "Next payout date query",
+        "Group status and health summary",
+        "Admin insights (payment patterns, risk flags)"
+      ]
     },
     {
-      "id": "TK-68db2b0e",
-      "name": "SUSU-5: Kai AI assistant integration \u2014 conversational Q&A for members (balance, payouts, penalties) and admins (risk, re",
-      "description": "SUSU-5: Kai AI assistant integration \u2014 conversational Q&A for members (balance, payouts, penalties) and admins (risk, revenue, fraud)",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "id": "SUSU-6",
+      "name": "SUSU Admin Dashboard + Financial Reporting",
+      "status": "pending",
+      "priority": 6,
+      "dependencies": [
+        "SUSU-1",
+        "SUSU-3",
+        "SUSU-4"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Web admin dashboard integrated with Kai Command Center (19Z): user management (profiles, KYC queue, risk scores, suspend/restore), group management (financial summaries, membership, health indicators, disputes, pause/resume, transfer ownership, archive), Fee Engine management (rule CRUD, limits, scheduling), financial reporting (platform revenue, admin revenue, processor costs, contributions, payouts, escrow, growth metrics, country/currency breakdowns), compliance view (AML flags, audit logs), exports (CSV, PDF).",
+      "completion_criteria": [
+        "User management dashboard with search/filter/actions",
+        "Group management with financial summaries and health indicators",
+        "Fee Engine rule management UI",
+        "Financial reports: revenue, transactions, growth, geography",
+        "Compliance dashboard with AML/audit view",
+        "Export to CSV and PDF"
+      ]
     },
     {
-      "id": "TK-51590cd8",
-      "name": "SUSU-6: Web admin dashboard \u2014 member management, group management, financial dashboard, compliance, audit logs, RBAC",
-      "description": "SUSU-6: Web admin dashboard \u2014 member management, group management, financial dashboard, compliance, audit logs, RBAC",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "id": "SUSU-7",
+      "name": "SUSU Notification System",
+      "status": "pending",
+      "priority": 7,
+      "dependencies": [
+        "SUSU-1",
+        "SUSU-2"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Multi-channel notification system: Telegram (reuses existing telegram_bridge), SMS (Twilio), email. Templates for payment reminders, late payment alerts, payout notifications, group cycle start/end, KYC status updates, admin alerts. User notification preferences.",
+      "completion_criteria": [
+        "Telegram notifications via existing bridge",
+        "SMS notifications via Twilio",
+        "Email notifications",
+        "Configurable notification templates",
+        "User notification preferences"
+      ]
     },
     {
-      "id": "TK-d88e6f21",
-      "name": "SUSU-7: Notification system \u2014 Telegram, SMS, email, payment reminders, late alerts, payout confirmations",
-      "description": "SUSU-7: Notification system \u2014 Telegram, SMS, email, payment reminders, late alerts, payout confirmations",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:54 UTC"
+      "id": "SUSU-8",
+      "name": "SUSU Deployment, Monitoring & Scalability",
+      "status": "pending",
+      "priority": 8,
+      "dependencies": [
+        "SUSU-1",
+        "SUSU-2",
+        "SUSU-3",
+        "SUSU-4",
+        "SUSU-5",
+        "SUSU-6",
+        "SUSU-7"
+      ],
+      "assigned_agent": "qwen3",
+      "description": "Production deployment: Docker compose, persistent volumes, automated backups, health monitoring via Kai health pipeline, multi-tenancy readiness (separate DB per tenant or schema isolation), scalability testing, DR plan.",
+      "completion_criteria": [
+        "Docker compose deployment",
+        "Automated database backups",
+        "Health monitoring integrated with Kai",
+        "Multi-tenancy readiness (tenant isolation design)",
+        "Disaster recovery plan documented"
+      ]
     }
   ],
   "_audit": {

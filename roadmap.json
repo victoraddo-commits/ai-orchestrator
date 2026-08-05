@@ -95,11 +95,12 @@
       "id": "13L-1",
       "name": "Provider Performance-Weighted Routing - Complete implementation",
       "description": "Implement provider performance-weighted routing based on latency, success rate, cost, and quality metrics. Route tasks to best-performing providers dynamically.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "4a23ec1d"
     },
     {
       "id": "12B",

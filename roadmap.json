@@ -94,21 +94,20 @@
       "id": "19A",
       "name": "Cerebrum: Brain Module Mapping - Identify and document all 28 brain modules",
       "description": "Map existing Kai components to Cerebrum brain modules. Document overlaps, gaps, and required refactoring. Create module specifications with clear responsibilities and APIs.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
-      "build_id": "19d8cbb0",
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "aa4f5836"
     },
     {
       "id": "19R",
       "name": "Kai Software Factory: Application Registry - Persistent inventory with full metadata",
       "description": "Create persistent application registry in memory/apps.json with full metadata (name, description, owner, repository, language, framework, database, dependencies, build/deployment history, AI workers assigned, health status, monitoring, backups, environments, licensing, cost, risk level).",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 1,
-      "build_id": "60e67cd2",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -191,10 +190,9 @@
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 2,
-      "build_id": "2aae1140",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -202,10 +200,9 @@
       "id": "19S",
       "name": "Kai Software Factory: Repository Registry - GitHub/GitLab/Gitea integration + local discovery",
       "description": "Create repository registry supporting GitHub, GitLab, Gitea, local repositories. Auto-discover repositories where possible. Support archived repositories.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 2,
-      "build_id": "5a2c3581",
       "assigned_agent": "qwen3"
     },
     {
@@ -300,10 +297,9 @@
       "id": "19T",
       "name": "Kai Software Factory: Application Discovery - Auto-discover apps, APIs, containers, services",
       "description": "Implement automatic application discovery: repositories, running applications, APIs, Docker containers, Kubernetes workloads, services, databases, domains, infrastructure. Ask before registering unknown systems.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 3,
-      "build_id": "d0fc6a97",
       "assigned_agent": "qwen3"
     },
     {
@@ -352,7 +348,7 @@
       "id": "17O",
       "name": "Ghana Legal Brain: Authoritative legal knowledge base for Juris Kai / Law Tutor",
       "description": "Build structured Ghana legal knowledge base with verified official sources, immutable storage, quality control agents, monitoring dashboard. Depends on 18A/18C for security.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "completion_criteria": [
         "Verified Ghanaian legal sources only",
@@ -366,7 +362,7 @@
       "priority": 4,
       "assigned_provider": "omniroute",
       "assigned_agent": "qwen3",
-      "build_id": "5e7b0bd9"
+      "build_id": "59c698d0"
     },
     {
       "id": "IT-4",
@@ -384,10 +380,9 @@
       "id": "19D",
       "name": "Cerebrum: Memory System - 15+ memory types with retention policies and versioning",
       "description": "Design and implement 15+ memory types: working memory, short-term, long-term, conversation, semantic, procedural, episodic, project, infrastructure, architecture, decision, failure, success, legal, research, preference. Each with retention policy, importance score, confidence score, source tracking, version history, recall scoring, automatic consolidation.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 4,
-      "build_id": "b7e0cddd",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -395,10 +390,9 @@
       "id": "19U",
       "name": "Kai Software Factory: Dependency Graph - Cross-project relationship mapping",
       "description": "Build dependency graph: Customer Portal \u2192 API Gateway \u2192 Authentication \u2192 Database \u2192 Infrastructure. Auto-identify affected applications when one system updates.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 4,
-      "build_id": "d788c59b",
       "assigned_agent": "qwen3"
     },
     {
@@ -450,7 +444,7 @@
       "id": "19E",
       "name": "Cerebrum: Knowledge Engine - Separate from memory with sources, jurisdiction, versioning",
       "description": "Create Knowledge Engine: stores facts (not experiences). Supports sources, jurisdiction awareness, versioning, trust levels, verification, automatic updates, conflict detection, citation tracking. Knowledge is immutable; memory is Kai experiences.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "19D"
       ],
@@ -461,10 +455,9 @@
       "id": "19V",
       "name": "Kai Software Factory: Software Factory - Full conversation-to-deployment pipeline",
       "description": "Build complete software factory: gather requirements \u2192 design architecture \u2192 create repositories \u2192 create roadmap \u2192 assign AI workers \u2192 generate code \u2192 test \u2192 deploy \u2192 register application \u2192 monitor application.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 5,
-      "build_id": "113ba69a",
       "assigned_agent": "qwen3"
     },
     {
@@ -497,10 +490,9 @@
       "id": "19F",
       "name": "Cerebrum: Executive Cortex - CEO function for scheduling, allocation, delegation",
       "description": "Implement Executive Cortex: schedules work, allocates resources, prioritizes goals, interrupts work, delegates work, monitors everything, coordinates every subsystem. Acts as Kai CEO.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 6,
-      "build_id": "7ffda013",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -508,10 +500,9 @@
       "id": "19W",
       "name": "Kai Software Factory: Templates - Reusable templates (CRM, ERP, HR, Inventory, POS, etc.)",
       "description": "Create reusable templates: CRM, ERP, HR, Inventory, POS, Helpdesk, Knowledge Base, Customer Portal, Website, API, Mobile App, AI Agent, Dashboard, Microservice, Legal Platform. Include best practices.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 6,
-      "build_id": "1dec306f",
       "assigned_agent": "qwen3"
     },
     {
@@ -544,10 +535,9 @@
       "id": "19G",
       "name": "Cerebrum: Reasoning Cortex - Kai performs reasoning BEFORE provider selection",
       "description": "Build Reasoning Cortex: deduction, induction, abduction, causal reasoning, counterfactual reasoning, tradeoff analysis, constraint solving, risk analysis, decision analysis, evidence validation, confidence estimation. Kai reasons first; providers assist.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 7,
-      "build_id": "afbe4841",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -555,10 +545,9 @@
       "id": "19X",
       "name": "Kai Software Factory: Lifecycle Management - Complete history for every application",
       "description": "Implement lifecycle management: creation history, design decisions, deployment history, rollback history, AI conversations, lessons learned, incidents, monitoring, roadmap, ownership, documentation. Kai never loses context.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 7,
-      "build_id": "4e6251b4",
       "assigned_agent": "qwen3"
     },
     {
@@ -591,10 +580,9 @@
       "id": "19H",
       "name": "Cerebrum: Reflection Cortex - Automatic reflection after every completed task",
       "description": "Create Reflection Cortex: every completed task triggers reflection. Questions: What happened? Why? Could this be improved? Was confidence accurate? Should memory/planning/reasoning/routing/documentation change? Store reflections permanently.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 8,
-      "build_id": "83f58035",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -602,10 +590,9 @@
       "id": "19Y",
       "name": "Kai Software Factory: AI Workforce Integration - Auto-assign AI workers to applications",
       "description": "Build AI workforce integration: Chief Architect \u2192 Planner \u2192 Backend Engineer \u2192 Frontend Engineer \u2192 Infrastructure Engineer \u2192 Security Engineer \u2192 QA \u2192 Deployment \u2192 Documentation \u2192 Monitoring. Auto-assign based on task type.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 8,
-      "build_id": "b1d7240f",
       "assigned_agent": "qwen3"
     },
     {
@@ -642,10 +629,9 @@
       "id": "19I",
       "name": "Cerebrum: Learning Cortex - Continuously learn from failures, successes, feedback",
       "description": "Implement Learning Cortex: continuously learn from failures, successes, human approvals/rejections/edits, provider performance, costs, roadmap progress, infrastructure incidents. Never overwrite history; improve future behavior.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 9,
-      "build_id": "a96eedc7",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -653,10 +639,9 @@
       "id": "19Z",
       "name": "Kai Software Factory: Command Center Extensions - Application dashboards and explorer",
       "description": "Extend Kai Command Center with: Application Registry, Repository Registry, Dependency Graph, Software Factory, Deployment Center, Application Health, AI Worker Assignments, Infrastructure Relationships, Documentation Explorer, Knowledge Graph.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 9,
-      "build_id": "cab3453f",
       "assigned_agent": "qwen3"
     },
     {
@@ -695,10 +680,9 @@
       "id": "19J",
       "name": "Cerebrum: Prediction Cortex - Predict failures, costs, durations, risks, best plan",
       "description": "Build Prediction Cortex: predict failures, costs, durations, security risks, infrastructure risks, best provider, best plan, expected confidence. Predictions require evidence. If evidence insufficient, say so.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 10,
-      "build_id": "47b338e9",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -706,10 +690,9 @@
       "id": "19AA",
       "name": "Kai Software Factory: Security Model - Project isolation, RBAC, tenant isolation",
       "description": "Implement security model for applications: RBAC, project isolation, tenant isolation, secrets isolation, repository isolation. Users with access to one app do not automatically gain access to another.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 10,
-      "build_id": "b9cbc08c",
       "assigned_agent": "qwen3"
     },
     {
@@ -778,7 +761,7 @@
       "id": "19K",
       "name": "Cerebrum: Simulation Engine - Run simulations before significant actions",
       "description": "Create Simulation Engine: before significant actions, simulate risk, rollback complexity, cost, time, failure probability, security impact. Recommend safest path.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "19G"
       ],
@@ -789,10 +772,9 @@
       "id": "19BB",
       "name": "Kai Software Factory: Integration - Reuse and extend existing modules (roadmap, build, deployment, workspace managers)",
       "description": "Integrate Software Factory with existing modules: reuse roadmap manager, build manager, deployment manager, workspace manager, repository management, monitoring, dashboards, memory, knowledge base. Merge functionality where appropriate.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 11,
-      "build_id": "0ed949ed",
       "assigned_agent": "qwen3"
     },
     {
@@ -832,10 +814,9 @@
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
       "description": "Implement Trust Engine: continuously calculate trust. Trust: providers, knowledge, memory, tools, predictions, plans, external APIs, users. Trust influences decisions.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 12,
-      "build_id": "e575e9ce",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -884,7 +865,7 @@
       "id": "19M",
       "name": "Cerebrum: Self Improvement - Kai evaluates itself, generates improvement proposals",
       "description": "Build Self Improvement engine: Kai continuously evaluates itself, generates improvement proposals. Never self-approve. Never bypass architecture/review/deployment/security review. Brain improvements follow governed engineering process.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "19A",
         "19B"
@@ -924,10 +905,9 @@
       "id": "19N",
       "name": "Cerebrum: AI Workforce - Transform providers into specialized departments",
       "description": "Redesign provider system as AI Workforce: specialized departments (Planner, Architect, Engineer, Researcher, Security, QA, Reviewer, Legal, Finance, Operations, Documentation, Knowledge, Reflection, Prediction, Learning). Kai manages workforce; providers perform work.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 14,
-      "build_id": "9b2da69f",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -980,10 +960,9 @@
       "id": "19O",
       "name": "Cerebrum: Command Center - Mission control for brain, memory, knowledge, reasoning",
       "description": "Transform Command Center into mission control: brain, memory, knowledge, reasoning, planning, projects, infrastructure, costs, providers, approvals, roadmap, learning, reflection, predictions, health, logs, skills. Everything observable, configurable, explainable.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 15,
-      "build_id": "704ae657",
       "assigned_provider": null,
       "assigned_agent": "qwen3"
     },
@@ -1042,7 +1021,7 @@
       "id": "19P",
       "name": "Cerebrum: Self Explanation - Kai answers why questions with evidence",
       "description": "Implement Self Explanation: Kai answers Why? Why now? Why not? Why this provider? Why this plan? Why this architecture? Why this confidence? What evidence? What alternatives? What risks? Every important decision explainable with evidence.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "19G"
       ],
@@ -1097,7 +1076,7 @@
       "id": "19Q",
       "name": "Cerebrum: Brain Health - Monitor reasoning quality, memory integrity, hallucination rates",
       "description": "Create Brain Health Monitor: continuously monitor reasoning quality, memory integrity, knowledge integrity, hallucination rates, provider reliability, learning effectiveness, prediction accuracy, decision quality, planning quality, infrastructure awareness. Detect degradation early.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "19A",
         "19B"
@@ -1257,7 +1236,7 @@
       "id": "17E",
       "name": "Multi-node Proxmox registry + full inventory discovery (Proxmox A + B, extensible)",
       "description": "User directive 2026-07-30 (trimmed from a larger charter -- multi-Proxmox management without clustering, matching the users own explicit \"never cluster, treat each node independently\" requirement, consistent with the earlier decision to cancel a full 14-phase enterprise buildout in favor of scoped, real needs). core.health.analyze_proxmox() already exists but is narrow -- single node (Proxmox A only, via memory/last_scan.json proxmox.node.data), CPU/memory thresholds only. This phase: (1) a node registry (e.g. memory/proxmox_nodes.json or similar, schema_version/records convention) so nodes are config-driven, not hardcoded -- Proxmox A (192.168.99.2, API token via existing proxdash credential or a dedicated one) and Proxmox B (10.8.0.102, reachable now via the WireGuard tunnel fixed 2026-07-30, API token already provided by the user -- this needs to move from floating in conversation context into the ai-orchestrator's own credential storage, not remain dependent on a human re-supplying it each session); (2) full inventory per node via the Proxmox REST API (already sufficient for everything requested -- version, CPU, RAM, storage, VMs, containers, networks, and disk/SMART health via /nodes/{node}/disks/list -- SSH is NOT required for any of this and should not be added as a second credential/attack-surface unless a concrete gap is found); (3) a simple generated topology doc (markdown + a mermaid diagram) from the live inventory, saved to /uploads or docs/, regenerable on demand not just once. Explicitly NOT in scope: cluster creation/joining (user has repeatedly and explicitly ruled this out), replication-status monitoring (no replication is configured between any nodes today -- would be permanent noise; add only once real replication exists), SSH-based management.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 20,
       "completion_criteria": [

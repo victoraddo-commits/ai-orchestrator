@@ -1157,7 +1157,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
           const currentlyEnabled = btn.dataset.enabled === "true";
           const newEnabled = !currentlyEnabled;
           try {
-            await fetch(`/providers/${name}/toggle`, {
+            await fetch(`/dashboard/api/proxy/providers/${name}/toggle`, {
               method: "PUT",
               headers: {"Content-Type": "application/json"},
               body: JSON.stringify({enabled: newEnabled})
@@ -2100,7 +2100,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
           const currentlyEnabled = btn.dataset.enabled === "true";
           const newEnabled = !currentlyEnabled;
           try {
-            await fetch(`/providers/${name}/toggle`, {
+            await fetch(`/dashboard/api/proxy/providers/${name}/toggle`, {
               method: "PUT",
               headers: {"Content-Type": "application/json"},
               body: JSON.stringify({enabled: newEnabled})
@@ -2195,7 +2195,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
           const name = cb.dataset.provider;
           const enabled = cb.checked;
           try {
-            await fetch(`/providers/${name}/toggle`, {
+            await fetch(`/dashboard/api/proxy/providers/${name}/toggle`, {
               method: "PUT",
               headers: {"Content-Type": "application/json"},
               body: JSON.stringify({enabled})

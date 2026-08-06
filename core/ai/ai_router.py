@@ -389,23 +389,15 @@ def classify_task(description):
 # put direct "claude" first on a fraction of calls, defeating the
 # credit-preservation goal -- so only these rotate; every other coding
 # candidate is a fixed tail, always tried last and in ROLE_PROVIDERS order.
-# 2026-08-02: openrouter_claude_opus/sonnet dropped (OpenRouter account out
-# of credit, see ROLE_PROVIDERS["coding"]) -- opencode_claude (Fable 5) was
-# briefly the sole remaining member, then rotated 50/50 with qwen3_coding
-# once its tool-calling gap was fixed server-side. 2026-08-03: operator
-# directive -- qwen3 runs on a pay-per-use RunPod GPU that is OFF when idle
-# (only powered on when a build needs it), so it must not lead the coding
-# rotation. opencode_claude (Fable 5, billed through the unaffected OpenCode
-# Zen account) is the sole front-group member again; qwen3_coding moved to
-# the fixed tail as a fallback, and OmniRoute sits in the tail as the
-# always-on gateway fallback (see ROLE_PROVIDERS["coding"]'s comment).
-# 2026-08-03 operator directive ("disable open code for now, assign jobs to
-# qwen3"): qwen3_coding is now the sole front-group member and primary
-# coding provider. opencode_claude (Fable 5) moved to the fixed tail as a
-# fallback (Zen account quota_exceeded 2026-08-03); OmniRoute also
-# quota_exceeded. qwen3_coding is the only route with real capacity
-# (self-hosted RunPod RTX 5090, pay-per-use, always-on billing).
-CODING_ROTATING_FRONT = ["qwen3_coding"]
+# 2026-08-05 dual-path coding: qwen3_coding (direct vLLM API, fast +
+# concurrent-safe, single-shot prompt→generated.py) and omniroute
+# (opencode CLI, agentic tool-use loop, better code quality) rotate
+# as equals in the front group. Each build alternates between the
+# two paths — direct API for speed, opencode CLI for quality. If
+# one fails, the other providers in the fixed tail catch it.
+# Workers=4, sandbox=4 supports up to 2 opencode CLI processes
+# concurrently alongside 2 direct API calls.
+CODING_ROTATING_FRONT = ["qwen3_coding", "omniroute"]
 
 
 def _candidates_for(task_type):

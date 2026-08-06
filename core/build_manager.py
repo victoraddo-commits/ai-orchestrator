@@ -924,7 +924,7 @@ def _run_deployment(build):
 # path cascades GENERATING -> CODE_REVIEW -> ... within one _run_generation
 # call, so a build only sits in CODE_REVIEW if it was persisted mid-cascade
 # (e.g. a crash between transitions).
-_ACTIONABLE_STATUSES = {"REQUESTED", "PLANNING", "GENERATING", "CODE_REVIEW", "DEPLOYING"}
+_ACTIONABLE_STATUSES = {"REQUESTED", "PLANNING", "ARCHITECTURE_APPROVED", "GENERATING", "CODE_REVIEW", "DEPLOYING"}
 
 _RUNNING_STATUSES = {"PLANNING", "GENERATING", "CODE_REVIEW", "DEPLOYING"}
 _WAITING_STATUSES = {"REQUESTED", "ARCHITECTURE_APPROVED"}
@@ -996,6 +996,9 @@ def _advance_one_build(build):
             _run_planning(build)
         elif status == "PLANNING":
             _run_planning(build)
+        elif status == "ARCHITECTURE_APPROVED":
+            transition(build, "GENERATING", BUILD_TRANSITIONS)
+            _run_generation(build)
         elif status == "GENERATING":
             _run_generation(build)
         elif status == "CODE_REVIEW":

@@ -2142,7 +2142,8 @@
       "dependencies": [
         "17O-B"
       ],
-      "status": "pending",
+      "status": "completed",
+      "completed_at": "2026-08-06",
       "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
       "completion_criteria": [
         "Metadata schema with all required fields",

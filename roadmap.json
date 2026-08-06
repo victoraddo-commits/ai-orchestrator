@@ -73,7 +73,7 @@
       "id": "19A",
       "name": "Cerebrum: Brain Module Mapping - Identify and document all 28 brain modules",
       "description": "Map existing Kai components to Cerebrum brain modules. Document overlaps, gaps, and required refactoring. Create module specifications with clear responsibilities and APIs.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
@@ -170,7 +170,7 @@
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
@@ -378,7 +378,7 @@
       "id": "17P",
       "name": "Juris Kai: Multi-tenant paid legal-assistant Telegram bot",
       "description": "Turn Juris Kai bot into paid multi-tenant product with subscriptions + per-document billing. Depends on 17O (Klaus) and 18C (Zero-Trust) for security.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [
         "Multi-tenant isolation",
@@ -390,18 +390,20 @@
       ],
       "tests_required": true,
       "priority": 5,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "629ea634"
     },
     {
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 5,
       "severity": "medium",
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "7247299d"
     },
     {
       "id": "19E",
@@ -418,10 +420,11 @@
       "id": "19V",
       "name": "Kai Software Factory: Software Factory - Full conversation-to-deployment pipeline",
       "description": "Build complete software factory: gather requirements \u2192 design architecture \u2192 create repositories \u2192 create roadmap \u2192 assign AI workers \u2192 generate code \u2192 test \u2192 deploy \u2192 register application \u2192 monitor application.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 5,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "16bf7849"
     },
     {
       "id": "12F",
@@ -441,12 +444,13 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "0c7f69f9"
     },
     {
       "id": "19F",
@@ -2046,7 +2050,7 @@
       "priority": 4,
       "dependencies": [],
       "assigned_agent": "qwen3",
-      "status": "in_progress",
+      "status": "failed",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
         "parliament.gh source seeding",
@@ -2304,7 +2308,7 @@
     {
       "id": "AI-1",
       "name": "AI-1: Provider Consolidation + Rename",
-      "status": "pending",
+      "status": "failed",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2314,7 +2318,8 @@
         "qwen3_coding renamed to qwen4_coding",
         "qwen4_text properly registered (no openai hijack)",
         "15 active providers with clean routing"
-      ]
+      ],
+      "build_id": "172fd403"
     },
     {
       "id": "AI-2",

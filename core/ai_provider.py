@@ -773,7 +773,7 @@ register_provider(
 
 # 2026-08-05: Claude Sonnet 5 via OmniRoute (kiro provider). Dedicated coding
 # provider for legal module builds — direct assignment via legal_coding role.
-OMNIROUTE_SONNET_MODEL = "kiro/claude-sonnet-5"
+OMNIROUTE_SONNET_MODEL = "cc/claude-sonnet-5"
 
 
 def _omniroute_sonnet_run_coding_task(project_path, instruction, **kwargs):
@@ -790,6 +790,6 @@ register_provider(
     run_coding_task=_omniroute_sonnet_run_coding_task,
     available_fn=_omniroute_sonnet_available,
     kind="cloud",
-    description="Claude Sonnet 5 (kiro/claude-sonnet-5 via OmniRoute gateway) — dedicated provider for legal module builds, separate billing",
+    description="Claude Sonnet 5 (cc/claude-sonnet-5 via OmniRoute gateway) — dedicated provider for legal module builds, Claude Code managed",
     cost_tier="paid",
 )

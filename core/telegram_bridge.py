@@ -134,8 +134,17 @@ def send_approval_keyboard(chat_id, build_id, approval_type, token=None):
         ]]
     }
 
+    # Use the build name for context instead of just the raw ID
+    build_name = (build_id or "?")
+    try:
+        b = _bm.get_build(build_id)
+        if b:
+            build_name = b.get("name", build_id)
+    except Exception:
+        pass
+
     return send_message(
-        f"*Approval needed* — {approval_type} for build `{build_id}`",
+        f"\U0001f4cb {build_name}\nApproval needed: {approval_type}\nTap a button below:",
         token=token,
         chat_id=chat_id,
         reply_markup=keyboard,
@@ -201,7 +210,7 @@ def poll_updates(token=None, chat_id=None, poll_timeout=0):
             params={
                 "offset": _resolve_offset(),
                 "timeout": poll_timeout,
-                "allowed_updates": json.dumps(["message"]),
+                "allowed_updates": json.dumps(["message", "callback_query"]),
             },
             # The HTTP client timeout must comfortably exceed Telegram's own
             # server-side long-poll window, or requests aborts the
@@ -224,9 +233,34 @@ def poll_updates(token=None, chat_id=None, poll_timeout=0):
 
     for update in body.get("result", []):
         update_id = update.get("update_id")
-        msg = update.get("message") or {}
-
         _last_update_id = update_id
+
+        # 2026-08-06: handle inline keyboard callback queries (approve/reject buttons)
+        callback = update.get("callback_query")
+        if callback is not None:
+            cb_msg = callback.get("message") or {}
+            cb_chat_id = str((cb_msg.get("chat") or {}).get("id", ""))
+            if cb_chat_id != chat_id:
+                continue
+            messages.append(
+                {
+                    "update_id": update_id,
+                    "chat_id": cb_chat_id,
+                    "callback_query": callback,
+                    "callback_id": callback.get("id"),
+                    "callback_data": callback.get("data", ""),
+                    "message_id": cb_msg.get("message_id"),
+                    "text": "",  # callback queries have no text
+                    "from": {
+                        "id": str((callback.get("from") or {}).get("id", "")),
+                        "username": (callback.get("from") or {}).get("username", ""),
+                        "first_name": (callback.get("from") or {}).get("first_name", ""),
+                    },
+                }
+            )
+            continue
+
+        msg = update.get("message") or {}
 
         msg_chat_id = str((msg.get("chat") or {}).get("id", ""))
 
@@ -541,6 +575,117 @@ def _operator_name(from_info):
         parts.append(f"tg:{tg_id}")
 
     return " ".join(parts)
+
+
+def route_callback_query(message):
+    """2026-08-06: Handle inline keyboard button presses (approve/reject).
+
+    Parses callback_data in the format "approve:build_id:approval_type" or
+    "reject:build_id:approval_type", calls the appropriate backend function,
+    and returns a reply to show as an alert/notification on the user's device.
+    """
+    callback_data = message.get("callback_data", "")
+    if not callback_data:
+        return {"routed": False, "reply": "No action data in callback."}
+
+    parts = callback_data.split(":", 2)
+    if len(parts) < 3:
+        return {"routed": False, "reply": f"Invalid callback data: {callback_data}"}
+
+    action, build_id, approval_type = parts[0], parts[1], parts[2]
+    build = _bm.get_build(build_id)
+    from_info = message.get("from", {})
+    operator = _operator_name(from_info)
+
+    if build is None:
+        return {"routed": False, "reply": f"Build {build_id[:8]} not found."}
+
+    build_name = build.get("name", build_id[:8])
+
+    if action == "approve":
+        if approval_type == "architecture":
+            updated = _bm.approve_architecture(build_id, operator=operator)
+            return {
+                "routed": True,
+                "action": "approve_architecture",
+                "build_id": build_id,
+                "operator": operator,
+                "reply": f"✅ Architecture approved for {build_name}.",
+                "build": updated,
+            }
+        elif approval_type == "deploy":
+            updated = _bm.approve_deploy(build_id, operator=operator)
+            return {
+                "routed": True,
+                "action": "approve_deploy",
+                "build_id": build_id,
+                "operator": operator,
+                "reply": f"✅ Deploy approved for {build_name}.",
+                "build": updated,
+            }
+    elif action == "reject":
+        if approval_type == "architecture":
+            updated = _bm.reject_architecture(build_id, operator=operator)
+            return {
+                "routed": True,
+                "action": "reject_architecture",
+                "build_id": build_id,
+                "operator": operator,
+                "reply": f"❌ Architecture rejected for {build_name}.",
+                "build": updated,
+            }
+        elif approval_type == "deploy":
+            updated = _bm.reject_deploy(build_id, operator=operator)
+            return {
+                "routed": True,
+                "action": "reject_deploy",
+                "build_id": build_id,
+                "operator": operator,
+                "reply": f"❌ Deploy rejected for {build_name}.",
+                "build": updated,
+            }
+
+    return {"routed": False, "reply": f"Unknown action: {action}/{approval_type}"}
+
+
+def answer_callback_query(callback_query_id, text=None, token=None):
+    """Answer a Telegram callback query to dismiss the loading spinner.
+    Required by Telegram's Bot API — until this is called, the inline
+    button shows a clock/wait indicator on the user's device."""
+    if token is None:
+        token = _load_token()
+
+    payload = {"callback_query_id": callback_query_id}
+    if text:
+        payload["text"] = text
+
+    try:
+        requests.post(
+            _api_url("answerCallbackQuery", token),
+            json=payload,
+            timeout=10,
+        )
+    except Exception:
+        pass  # best-effort; never block routing on this
+
+
+def edit_message_reply_markup(chat_id, message_id, token=None):
+    """Remove inline keyboard after approval/rejection (prevent double-action)."""
+    if token is None:
+        token = _load_token()
+
+    try:
+        requests.post(
+            _api_url("editMessageReplyMarkup", token),
+            json={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reply_markup": None,  # removes the keyboard
+            },
+            timeout=10,
+        )
+    except Exception:
+        pass  # best-effort
 
 
 def _build_from_reply_to(message):

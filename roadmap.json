@@ -2074,42 +2074,45 @@
       "name": "17O-A1: Parliament.gh Source Discovery",
       "priority": 1,
       "dependencies": [],
-      "status": "pending",
+      "status": "in_progress",
       "description": "Discover and download all legal documents from parliament.gh. Crawl acts, bills, legislative instruments, committee reports. Store each document with source URL, title, date, and type metadata.",
       "completion_criteria": [
         "Crawl parliament.gh for downloadable legal documents",
         "Extract document metadata (title, date, type, source URL)",
         "Store documents with source metadata in legal knowledge base"
       ],
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "99a540b7"
     },
     {
       "id": "17O-A2",
       "name": "17O-A2: Judiciary.gov.gh Source Discovery",
       "priority": 1,
       "dependencies": [],
-      "status": "pending",
+      "status": "in_progress",
       "description": "Discover and download all legal documents from judiciary.gov.gh. Crawl Supreme Court, Court of Appeal, and High Court judgments/rulings. Store each with citation, judge, parties, date, and source metadata.",
       "completion_criteria": [
         "Crawl judiciary.gov.gh for downloadable judgments/rulings",
         "Extract document metadata (citation, judge, parties, court, date)",
         "Store documents with source metadata in legal knowledge base"
       ],
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "5112c788"
     },
     {
       "id": "17O-A3",
       "name": "17O-A3: Ghana Gazette Source Discovery",
       "priority": 1,
       "dependencies": [],
-      "status": "pending",
+      "status": "in_progress",
       "description": "Discover and download all legal documents from Ghana Gazette sources. Crawl official gazette publications, executive instruments, constitutional instruments. Store with publication date, instrument number, and source metadata.",
       "completion_criteria": [
         "Crawl Ghana Gazette sources for downloadable publications",
         "Extract document metadata (publication date, instrument number, type)",
         "Store documents with source metadata in legal knowledge base"
       ],
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "ca0b205e"
     },
     {
       "id": "17O-B",

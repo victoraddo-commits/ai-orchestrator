@@ -2089,7 +2089,7 @@
       "name": "17O-A2: Judiciary.gov.gh Source Discovery",
       "priority": 1,
       "dependencies": [],
-      "status": "in_progress",
+      "status": "failed",
       "description": "Discover and download all legal documents from judiciary.gov.gh. Crawl Supreme Court, Court of Appeal, and High Court judgments/rulings. Store each with citation, judge, parties, date, and source metadata.",
       "completion_criteria": [
         "Crawl judiciary.gov.gh for downloadable judgments/rulings",

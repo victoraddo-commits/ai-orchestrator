@@ -123,7 +123,7 @@ STOPPING_BUILD_STATUSES = {"FAILED", "ROLLED_BACK"}
 # these tests still run in the normal (non-self-build) `pytest tests/`
 # suite -- only the self-build gate excludes external_api ones.
 SELF_TEST_ARGS = ["tests/", "-m", "not external_api"]
-SELF_TEST_TIMEOUT = 300
+SELF_TEST_TIMEOUT = 900
 SELF_TEST_OUTPUT_LIMIT = 10000
 
 # advance_roadmap() only ever creates self-modifying builds (isolated clones

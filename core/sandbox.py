@@ -18,7 +18,7 @@ DEFAULT_PIDS_LIMIT = "256"
 #
 # The semaphore caps total concurrent sandbox containers system-wide. Callers
 # that would exceed the cap queue with a timeout rather than failing outright.
-_DEFAULT_MAX_CONCURRENT_SANDBOXES = 2
+_DEFAULT_MAX_CONCURRENT_SANDBOXES = 4
 _sandbox_semaphore = threading.BoundedSemaphore(_DEFAULT_MAX_CONCURRENT_SANDBOXES)
 _SANDBOX_QUEUE_TIMEOUT = 600  # seconds to wait for a sandbox slot
 

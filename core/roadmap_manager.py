@@ -148,6 +148,13 @@ def _sync_clone_with_live_repo(repo_path):
     # whatever is current on live main right before the test run that
     # gates deploy approval -- the same "don't trust a stale base" principle
     # 17A applies at merge time, applied one step earlier at test time too.
+    #
+    # 2026-08-06: changed merge -> rebase. Concurrent builds create tangled
+    # clone histories (Live bookkeeping commits from other builds get synced
+    # in, then conflict when origin/main advances). Rebase replays only THIS
+    # build's unique commits on top of latest main — duplicate bookkeeping
+    # commits from other builds are skipped automatically. Real conflicts
+    # (two builds touching the same lines) still fail, as they should.
     try:
         fetch = subprocess.run(
             ["git", "fetch", "-q", "origin"],
@@ -156,13 +163,13 @@ def _sync_clone_with_live_repo(repo_path):
         if fetch.returncode != 0:
             return False, (fetch.stdout or "") + (fetch.stderr or "")
 
-        merge = subprocess.run(
-            ["git", "merge", "--no-edit", "-q", "origin/main"],
-            cwd=repo_path, capture_output=True, text=True, timeout=60,
+        rebase = subprocess.run(
+            ["git", "rebase", "origin/main"],
+            cwd=repo_path, capture_output=True, text=True, timeout=120,
         )
-        if merge.returncode != 0:
-            subprocess.run(["git", "merge", "--abort"], cwd=repo_path, capture_output=True, text=True, timeout=30)
-            return False, (merge.stdout or "") + (merge.stderr or "")
+        if rebase.returncode != 0:
+            subprocess.run(["git", "rebase", "--abort"], cwd=repo_path, capture_output=True, text=True, timeout=30)
+            return False, (rebase.stdout or "") + (rebase.stderr or "")
         return True, None
     except (OSError, subprocess.TimeoutExpired) as error:
         return False, str(error)

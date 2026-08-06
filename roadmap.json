@@ -458,7 +458,7 @@
       "id": "19F",
       "name": "Cerebrum: Executive Cortex - CEO function for scheduling, allocation, delegation",
       "description": "Implement Executive Cortex: schedules work, allocates resources, prioritizes goals, interrupts work, delegates work, monitors everything, coordinates every subsystem. Acts as Kai CEO.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "assigned_provider": null,
@@ -505,7 +505,7 @@
       "id": "19G",
       "name": "Cerebrum: Reasoning Cortex - Kai performs reasoning BEFORE provider selection",
       "description": "Build Reasoning Cortex: deduction, induction, abduction, causal reasoning, counterfactual reasoning, tradeoff analysis, constraint solving, risk analysis, decision analysis, evidence validation, confidence estimation. Kai reasons first; providers assist.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 7,
       "assigned_provider": null,
@@ -1989,7 +1989,7 @@
     {
       "id": "SUSU-1a",
       "name": "SUSU-1a: Telegram Bot - User Registration + KYC",
-      "status": "in_progress",
+      "status": "completed",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2005,7 +2005,7 @@
     {
       "id": "SUSU-1b",
       "name": "SUSU-1b: Telegram Bot - Group Creation + Admin Fees",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 2,
       "dependencies": [
         "SUSU-1a"
@@ -2016,7 +2016,8 @@
         "Group creation with configurable fees",
         "Platform max limits enforced",
         "Fee visibility before member join"
-      ]
+      ],
+      "build_id": "58764c1a"
     },
     {
       "id": "SUSU-1c",
@@ -2059,7 +2060,7 @@
       "priority": 4,
       "dependencies": [],
       "assigned_agent": "claude-sonnet-5",
-      "status": "in_progress",
+      "status": "failed",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
         "parliament.gh source seeding",

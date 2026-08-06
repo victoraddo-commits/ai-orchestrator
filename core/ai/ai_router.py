@@ -329,7 +329,7 @@ ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
 # 2026-08-06: Legal module coding — qwen3_coding (Qwen4 RunPod, Qwen3-32B-FP8).
 # Was omniroute_sonnet (Claude Sonnet 5) but that account is out of credit.
-# All legal module builds (17O-A-D, 17P, 18C) use this provider exclusively.
+# All legal module builds (17O-A1-A3, 17O-B-D, 17P, 18C) use this provider.
 ROLE_PROVIDERS["legal_coding"] = ["qwen3_coding"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
@@ -396,7 +396,10 @@ def classify_task(description):
 # via Qwen4 RunPod, same GPU as qwen3_coding but full agent loop).
 # Each build alternates between the three paths. If one fails, the other
 # providers in the fixed tail catch it.
-CODING_ROTATING_FRONT = ["qwen3_coding", "omniroute", "qwen3Z"]
+# 2026-08-06 operator directive: omniroute (Fable 5 out of credit) and
+# qwen3Z (shares unstable Qwen4 pod, adds latency without benefit over
+# direct qwen3_coding) removed from rotation. Both stay in the fixed tail.
+CODING_ROTATING_FRONT = ["qwen3_coding"]
 
 
 def _candidates_for(task_type):

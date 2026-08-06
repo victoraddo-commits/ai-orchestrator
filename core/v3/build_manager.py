@@ -1,4 +1,4 @@
-""""""Kai V3 Build Manager — Build lifecycle with contracts, sandboxes, and multi-review.
+"""Kai V3 Build Manager — Build lifecycle with contracts, sandboxes, and multi-review.
 
 Replaces core/build_manager.py with:
   - Two-pass processing (completion-near builds first)

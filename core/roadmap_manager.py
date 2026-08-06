@@ -39,6 +39,14 @@ from core.build_manager import (
     BUILD_TRANSITIONS,
     MAX_CONCURRENT_BUILDS,
 )
+
+# 2026-08-06: reserve 2 of the 16 worker slots exclusively for cron /
+# maintenance phases (IT sweeper jobs, audit log, monthly review, legal
+# QC agents, workforce commands).  These are long-running background
+# tasks that should never be starved by the main build pipeline.  If no
+# cron-tagged phases are ready, the slots are released to the general pool.
+DEDICATED_CRON_WORKERS = 2
+
 from core.lifecycle import transition
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 # 13C's Improvement Proposal store -- the source of the risk/expected-benefit
@@ -347,11 +355,21 @@ def _phase_value_score(phase):
     return benefit - risk
 
 
-def _select_next_phase():
+def _select_next_phase(worker_pool="default"):
     candidates = get_candidate_phases()
 
     if not candidates:
         return None
+
+    # Filter by worker_pool tag if specified
+    if worker_pool:
+        tagged = [p for p in candidates if p.get("worker_pool") == worker_pool]
+        if tagged:
+            candidates = tagged
+        elif worker_pool == "cron":
+            # No cron phases ready — return None so cron slots are
+            # released to the general pool in the caller.
+            return None
 
     # Highest value score wins; priority is the tie-breaker (matching
     # roadmap_engine.get_next_phase()'s plain-priority behavior) for phases
@@ -689,15 +707,49 @@ def advance_roadmap():
     # Each call to _select_next_phase consumes its candidate (via
     # update_phase), so we loop until we hit the cap or run out of
     # eligible candidates.
-    spawned = 0
-    while len(still_active_phases) + spawned < MAX_CONCURRENT_BUILDS:
-        next_phase = _select_next_phase()
+    #
+    # 2026-08-06: two-phase spawn with dedicated cron workers.
+    # Phase 1 — fill up to DEDICATED_CRON_WORKERS slots with cron-tagged
+    #           phases (maintenance, audit, sweeper jobs, QC agents).
+    # Phase 2 — fill remaining slots with the general build pipeline.
+    # If no cron phases are ready, all 16 slots open to the general pool.
+    cron_spawned = 0
+    normal_spawned = 0
+    total_slots = MAX_CONCURRENT_BUILDS - len(still_active_phases)
+    cron_slots = min(DEDICATED_CRON_WORKERS, total_slots)
+
+    # --- Phase 1: cron workers ---
+    while cron_spawned < cron_slots:
+        cron_candidate = _select_next_phase(worker_pool="cron")
+        if cron_candidate is None:
+            break  # no more cron phases ready
+
+        if cron_candidate.get("exclusive") is True and (any_in_flight or cron_spawned + normal_spawned > 0):
+            break
+
+        build = create_build(
+            name=cron_candidate["id"],
+            description=_build_description(cron_candidate),
+            project_path=_create_isolated_self_clone(include_plugin=phase_requires_plugin(cron_candidate)),
+        )
+        update_phase(cron_candidate["id"], status="in_progress", build_id=build["id"])
+        events.append({"action": "started_phase", "phase_id": cron_candidate["id"], "build_id": build["id"], "pool": "cron"})
+        cron_spawned += 1
+        any_in_flight = True
+
+    # Release unused cron slots to the general pool
+    remaining_slots = total_slots - cron_spawned
+    normal_spawned = 0
+
+    # --- Phase 2: general workers ---
+    while normal_spawned < remaining_slots:
+        next_phase = _select_next_phase(worker_pool="default")
         if next_phase is None:
             break
 
         # A candidate marked exclusive cannot start while anything else
         # is in flight -- it must run alone.
-        if next_phase.get("exclusive") is True and (any_in_flight or spawned > 0):
+        if next_phase.get("exclusive") is True and (any_in_flight or normal_spawned > 0):
             # Put it back so it can be picked next cycle — we haven't
             # consumed it yet since we aren't spawning it now.
             break
@@ -709,8 +761,8 @@ def advance_roadmap():
         )
 
         update_phase(next_phase["id"], status="in_progress", build_id=build["id"])
-        events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"]})
-        spawned += 1
+        events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"], "pool": "default"})
+        normal_spawned += 1
         any_in_flight = True
 
     return _finalize(events)

@@ -61,46 +61,50 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "5785a71d"
+      "build_id": "531f3ef1",
+      "worker_pool": "default"
     },
     {
       "id": "19A",
       "name": "Cerebrum: Brain Module Mapping - Identify and document all 28 brain modules",
       "description": "Map existing Kai components to Cerebrum brain modules. Document overlaps, gaps, and required refactoring. Create module specifications with clear responsibilities and APIs.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "0d900986"
+      "build_id": "a324f335",
+      "worker_pool": "default"
     },
     {
       "id": "19R",
       "name": "Kai Software Factory: Application Registry - Persistent inventory with full metadata",
       "description": "Create persistent application registry in memory/apps.json with full metadata (name, description, owner, repository, language, framework, database, dependencies, build/deployment history, AI workers assigned, health status, monitoring, backups, environments, licensing, cost, risk level).",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "58fdaaa5"
+      "build_id": "c1b26922",
+      "worker_pool": "default"
     },
     {
       "id": "13L-1",
       "name": "Provider Performance-Weighted Routing - Complete implementation",
       "description": "Implement provider performance-weighted routing based on latency, success rate, cost, and quality metrics. Route tasks to best-performing providers dynamically.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "4a23ec1d"
+      "build_id": "e1410a78",
+      "worker_pool": "default"
     },
     {
       "id": "12B",
@@ -130,10 +134,12 @@
       "id": "17S",
       "name": "Wire in dedicated per-model OpenCode Zen keys (Claude Fable 5, Gemini 3.1 Pro)",
       "description": "Operator provided two new OpenCode Zen API keys 2026-08-02, each restricted by the operator's directive to exactly one model: CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY (opencode/claude-fable-5 -- note: this is the same key value previously stored as DEEPSEEK_OPENCODE_ZEN_API_KEY and confirmed live 2026-07-29 for opencode/deepseek-v4-pro; operator has now rescoped it to Fable 5, treat the old deepseek mapping as stale) and GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY (opencode/gemini-3.1-pro, genuinely new, no prior mapping). Both stored in .env, neither wired into core.ai_provider/core.ai.ai_router yet.\n\nThe real problem to solve: ~/.local/share/opencode/auth.json (the opencode CLI's own credential store, see scripts/setup_openrouter_opencode_auth.py) holds exactly ONE 'opencode' credential globally -- that single shared key is what opencode_claude/opencode_claude_sonnet/opencode_claude_opus/opencode_minimax/opencode_deepseek all currently authenticate with. These two new keys are each scoped to a single model on the platform side, which the current one-slot auth.json cannot represent for two different keys at once without breaking the existing shared credential's other models. Confirm with the opencode CLI docs/support whether it supports multiple named auth profiles (e.g. an --auth-path or profile flag per invocation); if not, this may need each key run through its own isolated opencode CLI invocation (separate auth.json per subprocess call, analogous to how core.coding_bridge already scopes work by project_path) rather than trying to force both into the single shared slot. Once resolved: register both as real providers via core.ai_provider.register_provider(), following the exact pattern 17R item (1) established for the native DeepSeek keys, and add them into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- new providers slot in AFTER existing top-priority providers, never ahead of or displacing them. Operator directive: each key must only ever be used to reach its one named model -- do not let either fall back to or get reused for the other, and do not let either touch the existing shared 'opencode' auth.json slot's other models.\n\nPer operator directive 2026-08-02: Kai/Fable implements this, not Claude Code directly.\n\nOPERATOR OVERRIDE 2026-08-02: same directive as 17R's addendum -- once CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY / GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY are wired as real providers, give them HIGHEST priority in ROLE_PROVIDERS for the roles they're eligible for, superseding the default 17M/17R 'slot in after' convention for these two specifically. Applies only to these two entries, not a general reordering.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
-      "build_id": "fd2e35dc"
+      "build_id": "3dd1a74d",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "18B",
@@ -158,34 +164,38 @@
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades - @anthropic-ai/sdk 61 versions behind",
       "description": "Upgrade @anthropic-ai/sdk from 0.39.0 to 0.100.1 (61 minor versions). May require code changes for model deprecation fixes.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "149b3ef4"
+      "build_id": "795aa127",
+      "worker_pool": "default"
     },
     {
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "4b1bbccb"
+      "build_id": "fe2502c5",
+      "worker_pool": "default"
     },
     {
       "id": "19S",
       "name": "Kai Software Factory: Repository Registry - GitHub/GitLab/Gitea integration + local discovery",
       "description": "Create repository registry supporting GitHub, GitLab, Gitea, local repositories. Auto-discover repositories where possible. Support archived repositories.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "assigned_agent": "qwen3",
-      "build_id": "d4678643"
+      "build_id": "5b9f0703",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "17E-1",
@@ -237,7 +247,7 @@
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
       "description": "Implement zero-trust architecture for Legal Brain: permanent vs temporary knowledge isolation, agent sandboxing, immutable audit logs, continuous integrity verification",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [
         "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
@@ -249,8 +259,9 @@
       ],
       "tests_required": true,
       "priority": 1,
-      "build_id": "79054926",
-      "assigned_provider": "qwen3_coding"
+      "build_id": "b9da05f9",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "IT-3",
@@ -262,7 +273,9 @@
       ],
       "priority": 3,
       "severity": "medium",
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "19C",
@@ -289,12 +302,13 @@
       "id": "17S-1",
       "name": "Dedicated per-model OpenCode Zen keys",
       "description": "Wire in dedicated per-model OpenCode Zen keys for Claude Fable 5 and Gemini 3.1 Pro. Move from floating conversation context to ai-orchestrator credential storage.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 3,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "bfeee97c"
+      "build_id": "2c336239",
+      "worker_pool": "default"
     },
     {
       "id": "12D",
@@ -331,34 +345,38 @@
       "id": "IT-4",
       "name": "IT-Manager: Unbounded time_logs admin fetch optimization",
       "description": "Add pagination and limits to time_logs admin fetch endpoint to prevent unbounded database queries as database grows.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 4,
       "severity": "medium",
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "02a5c8df"
+      "build_id": "821288b2",
+      "worker_pool": "cron"
     },
     {
       "id": "19D",
       "name": "Cerebrum: Memory System - 15+ memory types with retention policies and versioning",
       "description": "Design and implement 15+ memory types: working memory, short-term, long-term, conversation, semantic, procedural, episodic, project, infrastructure, architecture, decision, failure, success, legal, research, preference. Each with retention policy, importance score, confidence score, source tracking, version history, recall scoring, automatic consolidation.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 4,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "304a608a"
+      "build_id": "304a608a",
+      "worker_pool": "default"
     },
     {
       "id": "19U",
       "name": "Kai Software Factory: Dependency Graph - Cross-project relationship mapping",
       "description": "Build dependency graph: Customer Portal \u2192 API Gateway \u2192 Authentication \u2192 Database \u2192 Infrastructure. Auto-identify affected applications when one system updates.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 4,
       "assigned_agent": "qwen3",
-      "build_id": "87a60e3f"
+      "build_id": "87a60e3f",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12E",
@@ -397,13 +415,14 @@
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 5,
       "severity": "medium",
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "7247299d"
+      "build_id": "7247299d",
+      "worker_pool": "cron"
     },
     {
       "id": "19E",
@@ -414,17 +433,21 @@
         "19D"
       ],
       "priority": 5,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "19V",
       "name": "Kai Software Factory: Software Factory - Full conversation-to-deployment pipeline",
       "description": "Build complete software factory: gather requirements \u2192 design architecture \u2192 create repositories \u2192 create roadmap \u2192 assign AI workers \u2192 generate code \u2192 test \u2192 deploy \u2192 register application \u2192 monitor application.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 5,
       "assigned_agent": "qwen3",
-      "build_id": "16bf7849"
+      "build_id": "16bf7849",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12F",
@@ -444,34 +467,38 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "0c7f69f9"
+      "build_id": "0c7f69f9",
+      "worker_pool": "default"
     },
     {
       "id": "19F",
       "name": "Cerebrum: Executive Cortex - CEO function for scheduling, allocation, delegation",
       "description": "Implement Executive Cortex: schedules work, allocates resources, prioritizes goals, interrupts work, delegates work, monitors everything, coordinates every subsystem. Acts as Kai CEO.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 6,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "1238bb47"
+      "build_id": "1238bb47",
+      "worker_pool": "default"
     },
     {
       "id": "19W",
       "name": "Kai Software Factory: Templates - Reusable templates (CRM, ERP, HR, Inventory, POS, etc.)",
       "description": "Create reusable templates: CRM, ERP, HR, Inventory, POS, Helpdesk, Knowledge Base, Customer Portal, Website, API, Mobile App, AI Agent, Dashboard, Microservice, Legal Platform. Include best practices.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 6,
       "assigned_agent": "qwen3",
-      "build_id": "b474af0f"
+      "build_id": "b474af0f",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12G",
@@ -497,28 +524,33 @@
       ],
       "priority": 7,
       "severity": "high",
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "19G",
       "name": "Cerebrum: Reasoning Cortex - Kai performs reasoning BEFORE provider selection",
       "description": "Build Reasoning Cortex: deduction, induction, abduction, causal reasoning, counterfactual reasoning, tradeoff analysis, constraint solving, risk analysis, decision analysis, evidence validation, confidence estimation. Kai reasons first; providers assist.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 7,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "f1f0f876"
+      "build_id": "f1f0f876",
+      "worker_pool": "default"
     },
     {
       "id": "19X",
       "name": "Kai Software Factory: Lifecycle Management - Complete history for every application",
       "description": "Implement lifecycle management: creation history, design decisions, deployment history, rollback history, AI conversations, lessons learned, incidents, monitoring, roadmap, ownership, documentation. Kai never loses context.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 7,
       "assigned_agent": "qwen3",
-      "build_id": "c55fc0f0"
+      "build_id": "c55fc0f0",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12H",
@@ -538,34 +570,38 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "c6911d6e"
+      "build_id": "c6911d6e",
+      "worker_pool": "cron"
     },
     {
       "id": "19H",
       "name": "Cerebrum: Reflection Cortex - Automatic reflection after every completed task",
       "description": "Create Reflection Cortex: every completed task triggers reflection. Questions: What happened? Why? Could this be improved? Was confidence accurate? Should memory/planning/reasoning/routing/documentation change? Store reflections permanently.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 8,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "d3d1e0a2"
+      "build_id": "d3d1e0a2",
+      "worker_pool": "default"
     },
     {
       "id": "19Y",
       "name": "Kai Software Factory: AI Workforce Integration - Auto-assign AI workers to applications",
       "description": "Build AI workforce integration: Chief Architect \u2192 Planner \u2192 Backend Engineer \u2192 Frontend Engineer \u2192 Infrastructure Engineer \u2192 Security Engineer \u2192 QA \u2192 Deployment \u2192 Documentation \u2192 Monitoring. Auto-assign based on task type.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 8,
       "assigned_agent": "qwen3",
-      "build_id": "1c958f93"
+      "build_id": "1c958f93",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12I",
@@ -601,22 +637,25 @@
       "id": "19I",
       "name": "Cerebrum: Learning Cortex - Continuously learn from failures, successes, feedback",
       "description": "Implement Learning Cortex: continuously learn from failures, successes, human approvals/rejections/edits, provider performance, costs, roadmap progress, infrastructure incidents. Never overwrite history; improve future behavior.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 9,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "4fd78b83"
+      "build_id": "4fd78b83",
+      "worker_pool": "default"
     },
     {
       "id": "19Z",
       "name": "Kai Software Factory: Command Center Extensions - Application dashboards and explorer",
       "description": "Extend Kai Command Center with: Application Registry, Repository Registry, Dependency Graph, Software Factory, Deployment Center, Application Health, AI Worker Assignments, Infrastructure Relationships, Documentation Explorer, Knowledge Graph.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 9,
       "assigned_agent": "qwen3",
-      "build_id": "1d8353cf"
+      "build_id": "1d8353cf",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12J",
@@ -654,22 +693,25 @@
       "id": "19J",
       "name": "Cerebrum: Prediction Cortex - Predict failures, costs, durations, risks, best plan",
       "description": "Build Prediction Cortex: predict failures, costs, durations, security risks, infrastructure risks, best provider, best plan, expected confidence. Predictions require evidence. If evidence insufficient, say so.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 10,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "aec883e8"
+      "build_id": "aec883e8",
+      "worker_pool": "default"
     },
     {
       "id": "19AA",
       "name": "Kai Software Factory: Security Model - Project isolation, RBAC, tenant isolation",
       "description": "Implement security model for applications: RBAC, project isolation, tenant isolation, secrets isolation, repository isolation. Users with access to one app do not automatically gain access to another.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 10,
       "assigned_agent": "qwen3",
-      "build_id": "aaa9abca"
+      "build_id": "aaa9abca",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12K",
@@ -742,17 +784,21 @@
         "19G"
       ],
       "priority": 11,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "19BB",
       "name": "Kai Software Factory: Integration - Reuse and extend existing modules (roadmap, build, deployment, workspace managers)",
       "description": "Integrate Software Factory with existing modules: reuse roadmap manager, build manager, deployment manager, workspace manager, repository management, monitoring, dashboards, memory, knowledge base. Merge functionality where appropriate.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 11,
       "assigned_agent": "qwen3",
-      "build_id": "a9757676"
+      "build_id": "a9757676",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "12L",
@@ -791,12 +837,13 @@
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
       "description": "Implement Trust Engine: continuously calculate trust. Trust: providers, knowledge, memory, tools, predictions, plans, external APIs, users. Trust influences decisions.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 12,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "c956a43b"
+      "build_id": "c956a43b",
+      "worker_pool": "default"
     },
     {
       "id": "13A",
@@ -849,7 +896,9 @@
         "19B"
       ],
       "priority": 13,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "13B",
@@ -939,12 +988,13 @@
       "id": "19O",
       "name": "Cerebrum: Command Center - Mission control for brain, memory, knowledge, reasoning",
       "description": "Transform Command Center into mission control: brain, memory, knowledge, reasoning, planning, projects, infrastructure, costs, providers, approvals, roadmap, learning, reflection, predictions, health, logs, skills. Everything observable, configurable, explainable.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 15,
-      "assigned_provider": null,
+      "assigned_provider": "qwen3_coding",
       "assigned_agent": "qwen3",
-      "build_id": "2f46d763"
+      "build_id": "2f46d763",
+      "worker_pool": "default"
     },
     {
       "id": "13D",
@@ -1006,7 +1056,9 @@
         "19G"
       ],
       "priority": 16,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "13E",
@@ -1062,7 +1114,9 @@
         "19B"
       ],
       "priority": 17,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "13F",
@@ -1150,13 +1204,15 @@
       "id": "13I",
       "name": "Kai Future Roadmap Generator",
       "description": "Kai can create NEW roadmap phases (e.g. Phase 14+) from its own observations, using roadmap_engine.add_phase() (Phase 13A) -- always defaulting to status='proposed', never 'pending', so a human must explicitly promote it before get_next_phase()/advance_roadmap() will ever act on it. This is the mechanism that makes 'AI can propose roadmap items, AI cannot approve its own changes' actually true rather than just documented.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13C",
         "13H"
       ],
       "priority": 19,
-      "build_id": "ffa92ca2"
+      "build_id": "ffa92ca2",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "17D",
@@ -1287,7 +1343,7 @@
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
       "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "12J"
       ],
@@ -1300,7 +1356,9 @@
         "Ambiguous catch-all task_types (law_chat/general_reasoning) get a zero-network-call complexity heuristic that can adjust candidate ordering; task_types that already carry an explicit classification are left untouched"
       ],
       "tests_required": true,
-      "build_id": "d1f7c17a"
+      "build_id": "d1f7c17a",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "17I",
@@ -1482,7 +1540,7 @@
       "id": "13K",
       "name": "Kai Workforce Voice/Text Commands",
       "description": "New core.kai.commands.py patterns (\"kai, list AI workers\", \"kai, show AI workforce\", \"kai, worker health\", \"kai, provider statistics\", etc.) that reuse core.ai_provider.list_providers() and core.ai.ai_router.get_provider_dashboard() -- no new provider metadata, same rule-based phrase-matching pattern 13B already established.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13B",
         "13X"
@@ -1494,8 +1552,9 @@
       ],
       "tests_required": true,
       "note": "Omniroute - assigned 2026-08-04",
-      "assigned_provider": null,
-      "build_id": "620dc08f"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "620dc08f",
+      "worker_pool": "cron"
     },
     {
       "id": "17M",
@@ -1634,7 +1693,8 @@
       "tests_required": true,
       "note": "Queued 2026-07-31. Depends on 17O (the shared knowledge base and its approval workflow) and on the user's payment-provider decision -- do not start implementation until both are resolved.",
       "build_id": "29f5274e",
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "15A",
@@ -1679,7 +1739,7 @@
       "id": "15C",
       "name": "Kai platform audit log",
       "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "15A"
       ],
@@ -1692,7 +1752,9 @@
         "Tests cover: a build approval, a deploy approval, and an incident all appear correctly attributed in the merged feed; filtering and export produce correct subsets"
       ],
       "tests_required": true,
-      "build_id": "86dd968c"
+      "build_id": "86dd968c",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "cron"
     },
     {
       "id": "15D",
@@ -1737,7 +1799,7 @@
       "id": "15G",
       "name": "AI Workforce Center: dedicated per-worker view",
       "description": "The Kai Control Center tab (13G's build, plugin repo commit a873340) already has a renderKaiDelegatedTasksCard summarizing per-provider delegation counts and success rates. This phase promotes that into a dedicated page/tab with the full per-worker detail the original proposal asked for: name, role (planning/coding/review/documentation/testing), provider, model, health, availability, current task, queue length, success rate, failure rate, average completion time. Sourced from existing provider-rotation/quota data (core/ai_provider.py, memory/provider_rotation.json, memory/ai_usage_history.json) -- no new tracking infrastructure. New providers/models must appear automatically as they're used, without a UI code change, matching how provider rotation itself already works without hardcoded provider lists.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "13J"
       ],
@@ -1749,8 +1811,9 @@
         "Data is sourced entirely from existing provider-rotation/usage records -- no duplicate tracking added"
       ],
       "tests_required": true,
-      "assigned_provider": null,
-      "build_id": "007fe164"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "007fe164",
+      "worker_pool": "default"
     },
     {
       "id": "15H",
@@ -1775,7 +1838,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1784,8 +1847,9 @@
       ],
       "tests_required": false,
       "note": "Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
-      "assigned_provider": null,
-      "build_id": "055f2bc2"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "055f2bc2",
+      "worker_pool": "default"
     },
     {
       "id": "17Q",
@@ -1809,7 +1873,8 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-31 directly from the user's Telegram request, explicitly deferred by the user's own instruction to run last, after every other currently-queued phase completes. Do not reprioritize ahead of anything else.",
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "TK-176d6efe",
@@ -1937,7 +2002,9 @@
         "AirtelTigo Money integration",
         "Processor fee data available to Fee Engine",
         "Payment webhook/callback handling"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-5",
@@ -1956,7 +2023,9 @@
         "Next payout date query",
         "Group status and health summary",
         "Admin insights (payment patterns, risk flags)"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-7",
@@ -1975,7 +2044,9 @@
         "Email notifications",
         "Configurable notification templates",
         "User notification preferences"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-8",
@@ -1999,7 +2070,9 @@
         "Health monitoring integrated with Kai",
         "Multi-tenancy readiness (tenant isolation design)",
         "Disaster recovery plan documented"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-1a",
@@ -2020,7 +2093,7 @@
     {
       "id": "SUSU-1b",
       "name": "SUSU-1b: Telegram Bot - Group Creation + Admin Fees",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 2,
       "dependencies": [
         "SUSU-1a"
@@ -2032,7 +2105,9 @@
         "Platform max limits enforced",
         "Fee visibility before member join"
       ],
-      "build_id": "58764c1a"
+      "build_id": "fec47787",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-1c",
@@ -2050,7 +2125,9 @@
         "Membership tracking",
         "Contribution tracking per user per group",
         "Wallet balance stored"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-1d",
@@ -2067,14 +2144,16 @@
         "User profile command with KYC/wallet/history",
         "Contribution and payout history viewable",
         "Group status view for admins"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "17O-A1",
       "name": "17O-A1: Parliament.gh Source Seeding",
       "priority": 1,
       "dependencies": [],
-      "status": "failed",
+      "status": "in_progress",
       "description": "Seed legal knowledge base from parliament.gh. Auto-discover downloadable documents (Acts, Bills, Hansards, Committee Reports). Store with source metadata.",
       "completion_criteria": [
         "parliament.gh Acts downloaded and indexed",
@@ -2083,7 +2162,8 @@
         "Source metadata (URL, date, type) preserved per document"
       ],
       "assigned_provider": "qwen3_coding",
-      "build_id": "9abe7d07"
+      "build_id": "8e1a80f2",
+      "worker_pool": "default"
     },
     {
       "id": "17O-A2",
@@ -2133,7 +2213,8 @@
         "1992 Constitution marked as supreme authority",
         "Conflict detection: any analysis conflicting with Constitution must cite conflict"
       ],
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "17O-C",
@@ -2159,7 +2240,7 @@
       "dependencies": [
         "17O-C"
       ],
-      "status": "failed",
+      "status": "in_progress",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",
@@ -2168,7 +2249,8 @@
         "Outdated law detection"
       ],
       "assigned_provider": "qwen3_coding",
-      "build_id": "75eae759"
+      "build_id": "7a1bd03d",
+      "worker_pool": "cron"
     },
     {
       "id": "SUSU-3a",
@@ -2186,7 +2268,9 @@
         "Immutable transaction log",
         "Per-group account segregation",
         "Reconciliation engine"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-3b",
@@ -2204,7 +2288,9 @@
         "Country and currency specific rules",
         "Scheduled fee changes",
         "Fee audit log"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-3c",
@@ -2222,7 +2308,9 @@
         "Itemized receipt per payout",
         "Permanent audit trail",
         "Dispute resolution workflow"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-6a",
@@ -2241,7 +2329,9 @@
         "Group management with financial summaries",
         "Fee Engine rule management UI",
         "Integrated with Kai Command Center"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-6b",
@@ -2260,7 +2350,9 @@
         "Growth metrics",
         "Country/currency breakdowns",
         "CSV and PDF export"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-4a",
@@ -2279,7 +2371,9 @@
         "Velocity checks",
         "Risk scoring (user + group level)",
         "Configurable detection rules"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "SUSU-4b",
@@ -2297,7 +2391,9 @@
         "Country-specific compliance rules",
         "Suspicious activity auto-flagging",
         "Immutable compliance audit trail"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "18A-a",
@@ -2305,7 +2401,7 @@
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
-      "status": "failed",
+      "status": "in_progress",
       "description": "JWT-based authentication with capability-based permissions (operator/viewer roles). Rate limiting on all endpoints. Brute-force protection. Session management.",
       "completion_criteria": [
         "JWT auth with capability-based permissions",
@@ -2313,7 +2409,9 @@
         "Brute-force protection",
         "Session management with expiry"
       ],
-      "build_id": "73a3c359"
+      "build_id": "55a3e70e",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "18A-b",
@@ -2330,7 +2428,9 @@
         "Input validation on all endpoints",
         "Security headers configured",
         "Dependency vulnerability scanning"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "15F-a",
@@ -2346,7 +2446,9 @@
         "Per-user conversation history",
         "Authentication-based chat access",
         "User conversation isolation"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "15F-b",
@@ -2364,12 +2466,14 @@
         "Project switching without losing context",
         "Context persistence across sessions",
         "Build pipeline integration"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "AI-1",
       "name": "AI-1: Provider Consolidation + Rename",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2380,7 +2484,9 @@
         "qwen4_text properly registered (no openai hijack)",
         "15 active providers with clean routing"
       ],
-      "build_id": "172fd403"
+      "build_id": "220479c4",
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "AI-2",
@@ -2397,7 +2503,9 @@
         "Agent management API endpoints",
         "Benchmark test endpoint per agent",
         "Enable/disable with automatic routing update"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "AI-3",
@@ -2414,7 +2522,9 @@
         "Automatic skip of tripped breakers in routing",
         "Half-open probe and auto-recovery",
         "Circuit breaker state visible in API"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "AI-4",
@@ -2431,7 +2541,9 @@
         "Serverless endpoints registered as providers",
         "Integrated into role-based routing",
         "Scale-to-zero confirmed working"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "AI-5",
@@ -2448,7 +2560,9 @@
         "Cost dashboard in Kai Command Center",
         "Budget threshold alerts via Telegram",
         "Cost history export"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "AI-6",
@@ -2465,7 +2579,9 @@
         "Benchmark suite runs on new pods",
         "Auto-rollback on failure",
         "Template library with 3+ templates"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     },
     {
       "id": "AI-7",
@@ -2483,7 +2599,9 @@
         "Automated rotation with 90-day cycle",
         "Audit log for all credential access",
         "Migration of existing .env keys to vault"
-      ]
+      ],
+      "assigned_provider": "qwen3_coding",
+      "worker_pool": "default"
     }
   ],
   "_audit": {

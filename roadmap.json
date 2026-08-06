@@ -516,7 +516,7 @@
       "id": "19X",
       "name": "Kai Software Factory: Lifecycle Management - Complete history for every application",
       "description": "Implement lifecycle management: creation history, design decisions, deployment history, rollback history, AI conversations, lessons learned, incidents, monitoring, roadmap, ownership, documentation. Kai never loses context.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 7,
       "assigned_agent": "qwen3",
@@ -540,31 +540,34 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "c6911d6e"
     },
     {
       "id": "19H",
       "name": "Cerebrum: Reflection Cortex - Automatic reflection after every completed task",
       "description": "Create Reflection Cortex: every completed task triggers reflection. Questions: What happened? Why? Could this be improved? Was confidence accurate? Should memory/planning/reasoning/routing/documentation change? Store reflections permanently.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 8,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "d3d1e0a2"
     },
     {
       "id": "19Y",
       "name": "Kai Software Factory: AI Workforce Integration - Auto-assign AI workers to applications",
       "description": "Build AI workforce integration: Chief Architect \u2192 Planner \u2192 Backend Engineer \u2192 Frontend Engineer \u2192 Infrastructure Engineer \u2192 Security Engineer \u2192 QA \u2192 Deployment \u2192 Documentation \u2192 Monitoring. Auto-assign based on task type.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "1c958f93"
     },
     {
       "id": "12I",
@@ -600,20 +603,22 @@
       "id": "19I",
       "name": "Cerebrum: Learning Cortex - Continuously learn from failures, successes, feedback",
       "description": "Implement Learning Cortex: continuously learn from failures, successes, human approvals/rejections/edits, provider performance, costs, roadmap progress, infrastructure incidents. Never overwrite history; improve future behavior.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 9,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "4fd78b83"
     },
     {
       "id": "19Z",
       "name": "Kai Software Factory: Command Center Extensions - Application dashboards and explorer",
       "description": "Extend Kai Command Center with: Application Registry, Repository Registry, Dependency Graph, Software Factory, Deployment Center, Application Health, AI Worker Assignments, Infrastructure Relationships, Documentation Explorer, Knowledge Graph.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 9,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "1d8353cf"
     },
     {
       "id": "12J",
@@ -661,10 +666,11 @@
       "id": "19AA",
       "name": "Kai Software Factory: Security Model - Project isolation, RBAC, tenant isolation",
       "description": "Implement security model for applications: RBAC, project isolation, tenant isolation, secrets isolation, repository isolation. Users with access to one app do not automatically gain access to another.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 10,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "aaa9abca"
     },
     {
       "id": "12K",
@@ -743,10 +749,11 @@
       "id": "19BB",
       "name": "Kai Software Factory: Integration - Reuse and extend existing modules (roadmap, build, deployment, workspace managers)",
       "description": "Integrate Software Factory with existing modules: reuse roadmap manager, build manager, deployment manager, workspace manager, repository management, monitoring, dashboards, memory, knowledge base. Merge functionality where appropriate.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 11,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "a9757676"
     },
     {
       "id": "12L",
@@ -785,11 +792,12 @@
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
       "description": "Implement Trust Engine: continuously calculate trust. Trust: providers, knowledge, memory, tools, predictions, plans, external APIs, users. Trust influences decisions.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 12,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "c956a43b"
     },
     {
       "id": "13A",
@@ -876,11 +884,12 @@
       "id": "19N",
       "name": "Cerebrum: AI Workforce - Transform providers into specialized departments",
       "description": "Redesign provider system as AI Workforce: specialized departments (Planner, Architect, Engineer, Researcher, Security, QA, Reviewer, Legal, Finance, Operations, Documentation, Knowledge, Reflection, Prediction, Learning). Kai manages workforce; providers perform work.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 14,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "dd8e7fe8"
     },
     {
       "id": "13C",
@@ -931,11 +940,12 @@
       "id": "19O",
       "name": "Cerebrum: Command Center - Mission control for brain, memory, knowledge, reasoning",
       "description": "Transform Command Center into mission control: brain, memory, knowledge, reasoning, planning, projects, infrastructure, costs, providers, approvals, roadmap, learning, reflection, predictions, health, logs, skills. Everything observable, configurable, explainable.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 15,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "2f46d763"
     },
     {
       "id": "13D",
@@ -1141,12 +1151,13 @@
       "id": "13I",
       "name": "Kai Future Roadmap Generator",
       "description": "Kai can create NEW roadmap phases (e.g. Phase 14+) from its own observations, using roadmap_engine.add_phase() (Phase 13A) -- always defaulting to status='proposed', never 'pending', so a human must explicitly promote it before get_next_phase()/advance_roadmap() will ever act on it. This is the mechanism that makes 'AI can propose roadmap items, AI cannot approve its own changes' actually true rather than just documented.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13C",
         "13H"
       ],
-      "priority": 19
+      "priority": 19,
+      "build_id": "ffa92ca2"
     },
     {
       "id": "17D",
@@ -2005,7 +2016,7 @@
     {
       "id": "SUSU-1b",
       "name": "SUSU-1b: Telegram Bot - Group Creation + Admin Fees",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 2,
       "dependencies": [
         "SUSU-1a"

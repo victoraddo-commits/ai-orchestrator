@@ -53,7 +53,7 @@ SELF_PROJECT_PATH = Path(__file__).resolve().parent.parent
 
 # V3: sandbox_manager handles the clone logic now — these paths are kept
 # for backward compatibility with existing self_build_repo_paths() callers.
-SELF_BUILD_WORKSPACE_ROOT = Path.home() / ".ai-orchestrator" / "self-build-workspaces"
+SELF_BUILD_WORKSPACE_ROOT = Path.home() / ".ai-orchestrator" / "sandboxes"
 PLUGIN_PROJECT_PATH = Path("/project/src/ai-orchestrator-plugin")
 
 ORCHESTRATOR_CLONE_DIRNAME = "ai-orchestrator"
@@ -363,8 +363,11 @@ def is_self_modifying(project_path):
     # it its own disposable clone instead (see that function's docstring).
     # Recognize those clones too, or every self-modifying build looks like a
     # normal one to callers that branch on this (e.g. deploy_build()).
+    # V3: sandboxes are at SANDBOX_ROOT / build_id / ai-orchestrator, so the
+    # grandparent (not parent) must match the workspace root.
     try:
-        return resolved.parent == SELF_BUILD_WORKSPACE_ROOT.resolve()
+        ws_root = SELF_BUILD_WORKSPACE_ROOT.resolve()
+        return resolved == ws_root or ws_root in resolved.parents
     except OSError:
         return False
 
@@ -509,8 +512,10 @@ def _phase_build_uses_isolated_clone(build):
     if resolved == SELF_PROJECT_PATH:
         return False
 
+    # V3: sandboxes are at SANDBOX_ROOT / build_id / ai-orchestrator
     try:
-        return resolved.parent == SELF_BUILD_WORKSPACE_ROOT.resolve()
+        ws_root = SELF_BUILD_WORKSPACE_ROOT.resolve()
+        return ws_root in resolved.parents
     except OSError:
         return False
 
@@ -657,6 +662,7 @@ def advance_roadmap():
         return _finalize(events)
 
     spawned = 0
+    spawned_ids = set()  # V3 fix: prevent same-phase re-selection within this cycle
     while len(still_active_phases) + spawned < MAX_CONCURRENT_BUILDS:
         next_phase = _select_next_phase()
         if next_phase is None:
@@ -665,30 +671,50 @@ def advance_roadmap():
         if next_phase.get("exclusive") is True and (any_in_flight or spawned > 0):
             break
 
-        # V3: duplicate prevention handled inside create_build() — if a
-        # non-terminal build with this name already exists, it returns
-        # the existing one instead of creating a duplicate.
+        # V3 fix: if _select_next_phase returns a phase we already spawned
+        # this cycle (possible when update_phase hasn't persisted or source
+        # is out of sync), skip it so we don't create runaway sandboxes.
+        if next_phase["id"] in spawned_ids:
+            # Mark as in_progress so the next iteration skips it even if
+            # _select_next_phase returns it again.
+            update_phase(next_phase["id"], status="in_progress",
+                         _note="skipped: already spawned this cycle")
+            continue
+
+        # V3 fix: check for existing build BEFORE creating sandbox.
+        # create_build() has duplicate prevention, but the sandbox was
+        # being created regardless — now we short-circuit early.
+        all_nonterminal = load_builds(include_terminal=False)
+        existing = next(
+            (b for b in all_nonterminal
+             if b.get("name") == next_phase["id"]
+             and b.get("status") in NON_TERMINAL_BUILD_STATUSES),
+            None,
+        )
+        if existing is not None:
+            # Already has an active build — mark phase but don't spawn
+            update_phase(next_phase["id"], status="in_progress",
+                         build_id=existing["id"])
+            spawned_ids.add(next_phase["id"])
+            spawned += 1
+            any_in_flight = True
+            continue
 
         # V3: use sandbox_manager for isolated workspace
         project_path = _sandbox_create(
-            build_id=str(uuid.uuid4())[:8],  # temporary — replaced by actual build_id
+            build_id=next_phase["id"],
             include_plugin=phase_requires_plugin(next_phase),
         )
-        # Recreate with actual build ID
-        import shutil as _shutil
-        _shutil.rmtree(project_path, ignore_errors=True)
 
         build = create_build(
             name=next_phase["id"],
             description=_build_description(next_phase),
-            project_path=_sandbox_create(
-                build_id=next_phase["id"],
-                include_plugin=phase_requires_plugin(next_phase),
-            ),
+            project_path=project_path,
         )
 
         update_phase(next_phase["id"], status="in_progress", build_id=build["id"])
         events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"]})
+        spawned_ids.add(next_phase["id"])
         spawned += 1
         any_in_flight = True
 

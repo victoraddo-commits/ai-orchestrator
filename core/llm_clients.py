@@ -366,3 +366,44 @@ def call_omniroute(prompt, model=None, timeout=60):
         raise RuntimeError(f"omniroute request failed: {detail}")
 
     return data["choices"][0]["message"]["content"]
+
+
+# 2026-08-06: dedicated DeepSeek V4 Flash route through OmniRoute.
+# Operator-provided API key, already verified live against api.deepseek.com.
+# This gives Kai a named provider for ds/deepseek-v4-flash that routes
+# through the self-hosted omniroute gateway instead of calling DeepSeek
+# directly — omniroute handles failover, logging, and cost aggregation.
+OMNIROUTE_DEEPSEEK_FLASH_MODEL = "ds/deepseek-v4-flash"
+
+
+def call_omniroute_deepseek_flash(prompt, timeout=60):
+    """DeepSeek V4 Flash via OmniRoute gateway.
+
+    Uses the operator-provided DeepSeek native key, routed through
+    omniroute's ds/deepseek-v4-flash model slot so Kai gets gateway-level
+    failover, call logging, and cost aggregation without a separate
+    direct-to-DeepSeek code path.
+    """
+    key = _omniroute_key()
+    if not key:
+        raise ProviderUnavailable(
+            "OmniRoute DeepSeek Flash needs ANTHROPIC_AUTH_TOKEN or OPENAI_API_KEY"
+        )
+
+    data = _post_json(
+        "omniroute_deepseek_flash",
+        f"{OMNIROUTE_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={
+            "model": OMNIROUTE_DEEPSEEK_FLASH_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        },
+        timeout=timeout,
+    )
+
+    if not data.get("choices"):
+        detail = (data.get("error") or {}).get("message", "unknown error")
+        raise RuntimeError(f"omniroute deepseek flash request failed: {detail}")
+
+    return data["choices"][0]["message"]["content"]

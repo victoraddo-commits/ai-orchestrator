@@ -785,6 +785,20 @@ register_provider(
     cost_tier="free_or_low_cost",
 )
 
+
+def _omniroute_deepseek_flash_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_omniroute_deepseek_flash(prompt, timeout=timeout)
+
+
+register_provider(
+    "omniroute_deepseek_flash",
+    run_text_task=_omniroute_deepseek_flash_run_text_task,
+    available_fn=_omniroute_available,
+    kind="cloud",
+    description="DeepSeek V4 Flash via OmniRoute (ds/deepseek-v4-flash) — dedicated operator-keyed route through self-hosted gateway, verified live 2026-08-06",
+    cost_tier="free_or_low_cost",
+)
+
 register_provider(
     "openrouter_claude_opus",
     run_coding_task=_openrouter_claude_opus_run_coding_task,

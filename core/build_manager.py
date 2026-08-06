@@ -201,19 +201,41 @@ def load_builds(include_terminal=False):
 
 
 def _archive_terminal_builds(builds):
-    """Move terminal builds to the archive, keeping the archive capped."""
+    """Move terminal builds to the archive, keeping the archive capped.
+
+    V3 fix: builds whose roadmap phase is still in_progress are NOT
+    archived — they must stay in builds.json so check_stale_roadmap_references
+    can find them until the phase itself transitions.
+    """
     terminal = [b for b in builds if b.get("status") in _EXCLUDED_STATUSES]
 
     if not terminal:
         return
 
+    # Don't archive builds for phases that are still in_progress —
+    # the stale-reference checker needs to find them.
+    try:
+        from core.roadmap_engine import load_roadmap as _load_roadmap
+        roadmap = _load_roadmap()
+        in_progress_build_ids = {
+            p.get("build_id") for p in roadmap.get("phases", [])
+            if p.get("status") == "in_progress" and p.get("build_id")
+        }
+    except Exception:
+        in_progress_build_ids = set()
+
     archive = load(BUILDS_ARCHIVE_FILE)
     if not isinstance(archive, list):
         archive = []
 
-    # Only archive builds not already in the archive
+    # Only archive builds not already in the archive AND not referenced
+    # by an in_progress roadmap phase.
     existing_ids = {a.get("id") for a in archive}
-    new_archives = [b for b in terminal if b.get("id") not in existing_ids]
+    new_archives = [
+        b for b in terminal
+        if b.get("id") not in existing_ids
+        and b.get("id") not in in_progress_build_ids
+    ]
 
     if new_archives:
         archive.extend(new_archives)
@@ -1101,6 +1123,13 @@ def check_stale_roadmap_references():
 
     builds = load_builds(include_terminal=True)
     build_ids = {b.get("id") for b in builds}
+
+    # Also check the archive — builds may have been archived out of
+    # builds.json by _archive_terminal_builds() while their roadmap
+    # phase is still in_progress. An archived build is NOT stale.
+    archive = load(BUILDS_ARCHIVE_FILE)
+    if isinstance(archive, list):
+        build_ids.update(a.get("id") for a in archive)
 
     events = []
     for phase in load_roadmap().get("phases", []):

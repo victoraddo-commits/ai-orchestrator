@@ -326,6 +326,10 @@ JURIS_KAI_ROLE_PROVIDERS = {
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
+# 2026-08-05: Legal module coding — dedicated Claude Sonnet 5 via OmniRoute.
+# All legal module builds (17O-A-D, 17P, 18C) use this provider exclusively.
+ROLE_PROVIDERS["legal_coding"] = ["omniroute_sonnet"]
+
 CHAT_HISTORY_MAX_MESSAGES = 40
 
 DEFAULT_TASK_TYPE = "coding"

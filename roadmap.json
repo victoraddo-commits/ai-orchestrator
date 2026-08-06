@@ -130,7 +130,7 @@
       "id": "17S",
       "name": "Wire in dedicated per-model OpenCode Zen keys (Claude Fable 5, Gemini 3.1 Pro)",
       "description": "Operator provided two new OpenCode Zen API keys 2026-08-02, each restricted by the operator's directive to exactly one model: CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY (opencode/claude-fable-5 -- note: this is the same key value previously stored as DEEPSEEK_OPENCODE_ZEN_API_KEY and confirmed live 2026-07-29 for opencode/deepseek-v4-pro; operator has now rescoped it to Fable 5, treat the old deepseek mapping as stale) and GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY (opencode/gemini-3.1-pro, genuinely new, no prior mapping). Both stored in .env, neither wired into core.ai_provider/core.ai.ai_router yet.\n\nThe real problem to solve: ~/.local/share/opencode/auth.json (the opencode CLI's own credential store, see scripts/setup_openrouter_opencode_auth.py) holds exactly ONE 'opencode' credential globally -- that single shared key is what opencode_claude/opencode_claude_sonnet/opencode_claude_opus/opencode_minimax/opencode_deepseek all currently authenticate with. These two new keys are each scoped to a single model on the platform side, which the current one-slot auth.json cannot represent for two different keys at once without breaking the existing shared credential's other models. Confirm with the opencode CLI docs/support whether it supports multiple named auth profiles (e.g. an --auth-path or profile flag per invocation); if not, this may need each key run through its own isolated opencode CLI invocation (separate auth.json per subprocess call, analogous to how core.coding_bridge already scopes work by project_path) rather than trying to force both into the single shared slot. Once resolved: register both as real providers via core.ai_provider.register_provider(), following the exact pattern 17R item (1) established for the native DeepSeek keys, and add them into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- new providers slot in AFTER existing top-priority providers, never ahead of or displacing them. Operator directive: each key must only ever be used to reach its one named model -- do not let either fall back to or get reused for the other, and do not let either touch the existing shared 'opencode' auth.json slot's other models.\n\nPer operator directive 2026-08-02: Kai/Fable implements this, not Claude Code directly.\n\nOPERATOR OVERRIDE 2026-08-02: same directive as 17R's addendum -- once CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY / GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY are wired as real providers, give them HIGHEST priority in ROLE_PROVIDERS for the roles they're eligible for, superseding the default 17M/17R 'slot in after' convention for these two specifically. Applies only to these two entries, not a general reordering.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "build_id": "fd2e35dc"
@@ -158,7 +158,7 @@
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades - @anthropic-ai/sdk 61 versions behind",
       "description": "Upgrade @anthropic-ai/sdk from 0.39.0 to 0.100.1 (61 minor versions). May require code changes for model deprecation fixes.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
@@ -237,7 +237,7 @@
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
       "description": "Implement zero-trust architecture for Legal Brain: permanent vs temporary knowledge isolation, agent sandboxing, immutable audit logs, continuous integrity verification",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "completion_criteria": [
         "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
@@ -331,7 +331,7 @@
       "id": "IT-4",
       "name": "IT-Manager: Unbounded time_logs admin fetch optimization",
       "description": "Add pagination and limits to time_logs admin fetch endpoint to prevent unbounded database queries as database grows.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 4,
       "severity": "medium",
@@ -378,7 +378,7 @@
       "id": "17P",
       "name": "Juris Kai: Multi-tenant paid legal-assistant Telegram bot",
       "description": "Turn Juris Kai bot into paid multi-tenant product with subscriptions + per-document billing. Depends on 17O (Klaus) and 18C (Zero-Trust) for security.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [
         "Multi-tenant isolation",
@@ -456,11 +456,12 @@
       "id": "19F",
       "name": "Cerebrum: Executive Cortex - CEO function for scheduling, allocation, delegation",
       "description": "Implement Executive Cortex: schedules work, allocates resources, prioritizes goals, interrupts work, delegates work, monitors everything, coordinates every subsystem. Acts as Kai CEO.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 6,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "1238bb47"
     },
     {
       "id": "19W",
@@ -1980,7 +1981,7 @@
     {
       "id": "SUSU-1a",
       "name": "SUSU-1a: Telegram Bot - User Registration + KYC",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",

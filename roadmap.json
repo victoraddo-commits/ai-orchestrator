@@ -237,7 +237,7 @@
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
       "description": "Implement zero-trust architecture for Legal Brain: permanent vs temporary knowledge isolation, agent sandboxing, immutable audit logs, continuous integrity verification",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "completion_criteria": [
         "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
@@ -248,7 +248,7 @@
         "Test suite for zero-trust architecture"
       ],
       "tests_required": true,
-      "priority": 3,
+      "priority": 1,
       "assigned_agent": "claude-sonnet-5",
       "build_id": "41b4540e",
       "assigned_provider": "omniroute_sonnet"
@@ -940,7 +940,7 @@
       "id": "19O",
       "name": "Cerebrum: Command Center - Mission control for brain, memory, knowledge, reasoning",
       "description": "Transform Command Center into mission control: brain, memory, knowledge, reasoning, planning, projects, infrastructure, costs, providers, approvals, roadmap, learning, reflection, predictions, health, logs, skills. Everything observable, configurable, explainable.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 15,
       "assigned_provider": null,
@@ -1151,7 +1151,7 @@
       "id": "13I",
       "name": "Kai Future Roadmap Generator",
       "description": "Kai can create NEW roadmap phases (e.g. Phase 14+) from its own observations, using roadmap_engine.add_phase() (Phase 13A) -- always defaulting to status='proposed', never 'pending', so a human must explicitly promote it before get_next_phase()/advance_roadmap() will ever act on it. This is the mechanism that makes 'AI can propose roadmap items, AI cannot approve its own changes' actually true rather than just documented.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13C",
         "13H"
@@ -1288,7 +1288,7 @@
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
       "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "12J"
       ],
@@ -1483,7 +1483,7 @@
       "id": "13K",
       "name": "Kai Workforce Voice/Text Commands",
       "description": "New core.kai.commands.py patterns (\"kai, list AI workers\", \"kai, show AI workforce\", \"kai, worker health\", \"kai, provider statistics\", etc.) that reuse core.ai_provider.list_providers() and core.ai.ai_router.get_provider_dashboard() -- no new provider metadata, same rule-based phrase-matching pattern 13B already established.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13B",
         "13X"
@@ -1495,13 +1495,14 @@
       ],
       "tests_required": true,
       "note": "Omniroute - assigned 2026-08-04",
-      "assigned_provider": null
+      "assigned_provider": null,
+      "build_id": "620dc08f"
     },
     {
       "id": "17M",
       "name": "Expand AI provider roster with free-tier options, without displacing top-priority providers",
       "description": "User asked 2026-07-30: 'Have kai learn to find top tier free/completely free api workers. Prioritize kai's highest priority workers access.' Today core.ai.ai_router.ROLE_PROVIDERS['coding'] is a fixed, manually-curated list (13M ordering: openrouter_claude_opus first, then opencode_claude, openrouter_claude_sonnet, then a fixed tail of claude/opencode_deepseek/opencode/opencode_minimax). There is no mechanism for Kai to discover NEW free-tier AI API providers on its own and add them as additional rotation capacity. This phase: (1) a repeatable evaluation procedure Kai follows before adding any candidate provider -- confirm the tier is genuinely free (no card-on-file trial that auto-bills), confirm the auth method and rate limits, confirm basic response quality on a small held-out prompt set; (2) a documented, reviewable way to add an evaluated provider into core/ai/ai_router.py's rotation as an additional fallback option; (3) new providers must always slot in AFTER the existing top-priority providers in ROLE_PROVIDERS ordering -- they exist purely as extra redundancy/capacity for when the preferred providers are exhausted or unavailable, never ahead of or competing with them for the same quota. 'Prioritize Kai's highest priority workers access' means exactly this: existing preferred providers keep first call every time; new free-tier additions only ever get used as overflow.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 30,
       "completion_criteria": [
@@ -1512,7 +1513,8 @@
       ],
       "tests_required": true,
       "note": "Omniroute - assigned 2026-08-04",
-      "assigned_provider": null
+      "assigned_provider": null,
+      "build_id": "acd6955c"
     },
     {
       "id": "17V",
@@ -1679,7 +1681,7 @@
       "id": "15C",
       "name": "Kai platform audit log",
       "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "15A"
       ],
@@ -1691,7 +1693,8 @@
         "Read-only for all roles including 'viewer' -- an audit log editable by any user defeats its purpose",
         "Tests cover: a build approval, a deploy approval, and an incident all appear correctly attributed in the merged feed; filtering and export produce correct subsets"
       ],
-      "tests_required": true
+      "tests_required": true,
+      "build_id": "86dd968c"
     },
     {
       "id": "15D",
@@ -2069,10 +2072,10 @@
     {
       "id": "17O-A",
       "name": "17O-A: Legal Source Discovery Agent",
-      "priority": 4,
+      "priority": 1,
       "dependencies": [],
       "assigned_agent": "claude-sonnet-5",
-      "status": "failed",
+      "status": "pending",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
         "parliament.gh source seeding",
@@ -2086,7 +2089,7 @@
     {
       "id": "17O-B",
       "name": "17O-B: Legal Taxonomy + Directory Structure",
-      "priority": 5,
+      "priority": 2,
       "dependencies": [
         "17O-A"
       ],
@@ -2103,7 +2106,7 @@
     {
       "id": "17O-C",
       "name": "17O-C: Legal Metadata + Version Control",
-      "priority": 6,
+      "priority": 3,
       "dependencies": [
         "17O-B"
       ],
@@ -2120,7 +2123,7 @@
     {
       "id": "17O-D",
       "name": "17O-D: Legal Quality Control Agents",
-      "priority": 7,
+      "priority": 4,
       "dependencies": [
         "17O-C"
       ],

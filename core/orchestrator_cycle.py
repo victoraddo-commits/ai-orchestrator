@@ -80,15 +80,17 @@ def run_cycle():
     # here as a result of a message that arrived seconds ago via that path.
     builds_before = load_builds()
 
-
-    advance_builds()
-
-
+    # Spawn new builds FIRST (before the blocking advance_builds call).
+    # advance_roadmap() now spawns up to MAX_CONCURRENT_BUILDS phases
+    # per cycle; by running it before advance_builds, all spawned builds
+    # are fed into the same ThreadPoolExecutor, so they all run their
+    # opencode/vLLM subprocesses concurrently.
     roadmap_progress = advance_roadmap()
 
-
+    # Single advance_builds() call processes all builds — existing GENERATING
+    # builds AND the ones just spawned by advance_roadmap(). ThreadPoolExecutor
+    # with max_workers=MAX_CONCURRENT_BUILDS runs them in parallel.
     builds = advance_builds()
-
 
     # After this cycle's builds have been advanced as far as they can go
     # without a human, flag any that are now stuck waiting -- this is the

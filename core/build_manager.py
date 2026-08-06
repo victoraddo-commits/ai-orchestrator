@@ -46,7 +46,7 @@ CODE_REVIEW_TIMEOUT = 180
 
 PROVIDERS_CONFIG_PATH = Path("config") / "providers.yaml"
 
-DEFAULT_MAX_CONCURRENT_BUILDS = 4
+DEFAULT_MAX_CONCURRENT_BUILDS = 8
 
 
 def _load_max_concurrent_builds():
@@ -88,7 +88,7 @@ def _detect_dedicated_gpu_providers():
         # This assumes that GPU providers can handle more concurrent builds
         if dedicated_gpu_count > 0:
             # Return higher concurrency for GPU accelerated providers
-            return max(dedicated_gpu_count * 4, DEFAULT_MAX_CONCURRENT_BUILDS)
+            return max(dedicated_gpu_count * 4, _load_max_concurrent_builds())
         
     except Exception:
         # Fall back to default if there's an error

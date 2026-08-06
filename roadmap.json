@@ -647,12 +647,12 @@
       "id": "19Z",
       "name": "Kai Software Factory: Command Center Extensions - Application dashboards and explorer",
       "description": "Extend Kai Command Center with: Application Registry, Repository Registry, Dependency Graph, Software Factory, Deployment Center, Application Health, AI Worker Assignments, Infrastructure Relationships, Documentation Explorer, Knowledge Graph.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 9,
       "assigned_agent": "qwen3",
       "build_id": "61776292",
-      "failure_reason": null
+      "failure_reason": "Build 61776292 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12J",

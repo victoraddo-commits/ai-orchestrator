@@ -714,7 +714,7 @@ def _run_planning(build):
 def _is_legal_phase(build):
     """Check if this build belongs to the legal module — routes to dedicated Sonnet 5 provider."""
     name = (build.get("name") or "").upper()
-    legal_ids = {"17O-A", "17O-B", "17O-C", "17O-D", "17P", "17Q", "18C"}
+    legal_ids = {"17O-A1", "17O-A2", "17O-A3", "17O-B", "17O-C", "17O-D", "17P", "17Q", "18C"}
     is_legal = name in legal_ids or "LEGAL" in name or "JURIS" in name
     # Also check the roadmap phase's assigned_provider
     if not is_legal:

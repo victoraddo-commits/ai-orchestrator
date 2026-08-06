@@ -389,19 +389,6 @@ def _qwen3_coding_available():
     return bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL"))
 
 
-# 2026-08-06: qwen3Z — Qwen4 RunPod via opencode CLI (tool-use agent loop).
-# Unlike qwen3_coding (direct vLLM API, no agent loop), this routes through
-# the opencode CLI with the qwen3-runpod provider block from
-# ~/.config/opencode/opencode.jsonc.  The model supports tool_call: true,
-# giving Qwen4 the full agentic coding capability (read/write files, run
-# commands, commit) through opencode's agent loop instead of a single
-# fire-and-forget API call.  Same availability check as qwen3_coding
-# (same pod, same endpoint) — the difference is the execution path.
-def _qwen3z_opencode_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", QWEN3_CODING_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
 def _qwen3_coding_run_coding_task(project_path, instruction, **kwargs):
     """Direct vLLM API coding — bypasses opencode CLI entirely.
 
@@ -783,15 +770,6 @@ register_provider(
     available_fn=_qwen3_coding_available,
     kind="cloud",
     description="Qwen4 (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB via a custom opencode provider — pod ldtqgcshb2dwsw, vLLM 0.26.0 with deepseek_r1 reasoning + hermes tools",
-    cost_tier="free_or_low_cost",
-)
-
-register_provider(
-    "qwen3Z",
-    run_coding_task=_qwen3z_opencode_run_coding_task,
-    available_fn=_qwen3_coding_available,
-    kind="cloud",
-    description="Qwen4 (Qwen3-32B-FP8) via opencode CLI agent loop — full tool-use capability on RunPod RTX PRO 6000 96GB, pod ldtqgcshb2dwsw; same GPU as qwen3_coding but with opencode's read/write/commit agentic workflow",
     cost_tier="free_or_low_cost",
 )
 

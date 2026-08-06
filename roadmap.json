@@ -1737,7 +1737,7 @@
       "id": "15G",
       "name": "AI Workforce Center: dedicated per-worker view",
       "description": "The Kai Control Center tab (13G's build, plugin repo commit a873340) already has a renderKaiDelegatedTasksCard summarizing per-provider delegation counts and success rates. This phase promotes that into a dedicated page/tab with the full per-worker detail the original proposal asked for: name, role (planning/coding/review/documentation/testing), provider, model, health, availability, current task, queue length, success rate, failure rate, average completion time. Sourced from existing provider-rotation/quota data (core/ai_provider.py, memory/provider_rotation.json, memory/ai_usage_history.json) -- no new tracking infrastructure. New providers/models must appear automatically as they're used, without a UI code change, matching how provider rotation itself already works without hardcoded provider lists.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13J"
       ],

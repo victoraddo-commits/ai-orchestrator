@@ -667,9 +667,10 @@ register_provider(
 # 17Z: proper text-task registration of the self-hosted Qwen3 RunPod
 # endpoint. This is a plain OpenAI-compatible chat-completions endpoint
 # (same as call_deepseek_native_flash — no tool-calling, no agentic loop).
-# Pod 0cxdh53zq8ydxo (2026-08-05 migration), RTX PRO 6000, model
-# Qwen/Qwen3-32B-FP8. run_text_task only — the coding-agent route
-# (tool-use loop via opencode CLI) is already registered as "qwen3_coding".
+#
+# 2026-08-06: Pod A (ldtqgcshb2dwsw, RTX PRO 6000, model Qwen/Qwen3-32B-FP8)
+# — GENERATOR pod. run_text_task only — the coding-agent route (tool-use loop
+# via opencode CLI) is already registered as "qwen3_coding".
 def _qwen3_coder_text_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_qwen3_coder_text(prompt, timeout=timeout)
 
@@ -679,7 +680,25 @@ register_provider(
     run_text_task=_qwen3_coder_text_run_text_task,
     available_fn=lambda: bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL")),
     kind="cloud",
-    description="Qwen4 (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB (text-task only, OpenAI-compatible) — Phase 17Z, pod ldtqgcshb2dwsw, also in OmniRoute as qwen4",
+    description="Qwen4 Pod A (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB (text-task only, OpenAI-compatible) — GENERATOR pod, primary for coding/planning workloads",
+    cost_tier="paid",
+)
+
+
+# 2026-08-06: Pod B (60jwzf36623b0o, RTX PRO 6000, model Qwen/Qwen3-32B-FP8)
+# — REVIEW/DEPLOY pod. Dedicated text-task provider for review, architecture,
+# deployment, and classification roles. Never waits behind Pod A's generation
+# workloads.
+def _qwen3_pod_b_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_qwen3_pod_b_text(prompt, timeout=timeout)
+
+
+register_provider(
+    "qwen3_pod_b",
+    run_text_task=_qwen3_pod_b_run_text_task,
+    available_fn=lambda: bool(os.getenv("VLLM_QWEN3_POD_B_API_KEY")) and bool(os.getenv("VLLM_QWEN3_POD_B_BASE_URL")),
+    kind="cloud",
+    description="Qwen4 Pod B (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB (text-task only) — REVIEW/DEPLOY pod, dedicated to review, architecture, and deployment roles; never queued behind Pod A generation",
     cost_tier="paid",
 )
 
@@ -743,7 +762,7 @@ register_provider(
     run_coding_task=_qwen3_coding_run_coding_task,
     available_fn=_qwen3_coding_available,
     kind="cloud",
-    description="Qwen4 (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB via a custom opencode provider — pod ldtqgcshb2dwsw, vLLM 0.26.0 with deepseek_r1 reasoning + hermes tools",
+    description="Qwen4 Pod A (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB via direct vLLM API — pod ldtqgcshb2dwsw, GENERATOR pod for coding/build workloads",
     cost_tier="free_or_low_cost",
 )
 
@@ -752,7 +771,7 @@ register_provider(
     run_coding_task=_qwen3z_opencode_run_coding_task,
     available_fn=_qwen3_coding_available,
     kind="cloud",
-    description="Qwen4 (Qwen3-32B-FP8) via opencode CLI agent loop — full tool-use capability on RunPod RTX PRO 6000 96GB, pod ldtqgcshb2dwsw; same GPU as qwen3_coding but with opencode's read/write/commit agentic workflow",
+    description="Qwen4 Pod A (Qwen3-32B-FP8) via opencode CLI agent loop — full tool-use capability on RunPod RTX PRO 6000 96GB, pod ldtqgcshb2dwsw; GENERATOR pod, same GPU as qwen3_coding but with opencode's read/write/commit agentic workflow",
     cost_tier="free_or_low_cost",
 )
 

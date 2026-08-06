@@ -8,13 +8,25 @@ providers:
   qwen3_coder:
     enabled: true
     type: vllm
-    name: Qwen4
+    name: Qwen4 Pod A
     gpu_acceleration: true
     base_url: https://ldtqgcshb2dwsw-8000.proxy.runpod.net/v1
     model: Qwen/Qwen3-32B-FP8
     role:
       - coding
       - text_task
+
+  qwen3_pod_b:
+    enabled: true
+    type: vllm
+    name: Qwen4 Pod B
+    gpu_acceleration: true
+    base_url: https://60jwzf36623b0o-8000.proxy.runpod.net/v1
+    model: Qwen/Qwen3-32B-FP8
+    role:
+      - review
+      - architecture
+      - deployment
 
   claude:
     enabled: true

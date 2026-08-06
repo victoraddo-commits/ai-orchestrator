@@ -188,6 +188,8 @@ def call_openai(prompt, model=None, timeout=60):
 # — Qwen/Qwen3-32B-FP8. Proper text-task registration under its own
 # provider name. Tracked in provider_health as "qwen3_coder_text",
 # cost_tier='paid' (real per-request GPU billing). Also in OmniRoute as "qwen4".
+#
+# 2026-08-06: Pod A (Generator) — ldtqgcshb2dwsw, primary for coding/generation.
 def call_qwen3_coder_text(prompt, model=None, timeout=60):
     key = _require_key("VLLM_QWEN3_CODER_API_KEY")
     model = model or QWEN3_CODER_MODEL
@@ -195,6 +197,29 @@ def call_qwen3_coder_text(prompt, model=None, timeout=60):
     data = _post_json(
         "qwen3_coder_text",
         f"{QWEN3_CODER_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+    return data["choices"][0]["message"]["content"]
+
+
+# Pod B (60jwzf36623b0o) env vars
+QWEN3_POD_B_BASE_URL = os.getenv("VLLM_QWEN3_POD_B_BASE_URL", "").rstrip("/")
+QWEN3_POD_B_MODEL = os.getenv("VLLM_QWEN3_POD_B_MODEL", "")
+
+
+# 2026-08-06: Pod B (Review/Deploy) — 60jwzf36623b0o, RTX PRO 6000 96GB,
+# Qwen/Qwen3-32B-FP8. Dedicated review/deployment pod — never waits behind
+# Pod A's generation workloads. Tracked in provider_health as
+# "qwen3_pod_b", cost_tier='paid'.
+def call_qwen3_pod_b_text(prompt, model=None, timeout=60):
+    key = _require_key("VLLM_QWEN3_POD_B_API_KEY")
+    model = model or QWEN3_POD_B_MODEL
+
+    data = _post_json(
+        "qwen3_pod_b",
+        f"{QWEN3_POD_B_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},
         timeout=timeout,

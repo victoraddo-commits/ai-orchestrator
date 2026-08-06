@@ -11,6 +11,7 @@ from core.approval_watchdog import check_stale_approvals, check_stale_failures
 from core.logger import info
 import core.telegram_bridge as telegram_bridge
 from core.monitoring.budget_monitor import check_budgets
+import core.gpu_lifecycle as gpu_lifecycle
 
 
 def _safe_send(message_text):
@@ -49,6 +50,12 @@ def _safe_check_budget():
 def run_cycle():
 
     info("=== orchestrator cycle started ===")
+
+    # V3: GPU lifecycle heartbeat — verify pod health and update activity
+    try:
+        gpu_lifecycle.heartbeat()
+    except Exception as error:
+        info(f"gpu heartbeat failed: {type(error).__name__}")
 
 
     state = refresh_state()
@@ -169,6 +176,21 @@ def run_cycle():
                 info(f"telegram message->build record failed: {type(error).__name__}")
 
 
+    # V3: GPU lifecycle events
+    gpu_events = []
+    try:
+        gpu_events = gpu_lifecycle.manage_gpu_lifecycle()
+    except Exception as error:
+        info(f"gpu lifecycle failed: {type(error).__name__}")
+
+    # V3: GPU metrics for dashboard
+    gpu_metrics = {}
+    try:
+        gpu_metrics = gpu_lifecycle.get_gpu_dashboard()
+    except Exception as error:
+        info(f"gpu metrics failed: {type(error).__name__}")
+
+
     result = {
 
         "state": state,
@@ -185,7 +207,11 @@ def run_cycle():
 
         "remediation": remediation,
 
-        "verification": verification
+        "verification": verification,
+
+        # V3 additions
+        "gpu_events": gpu_events,
+        "gpu_metrics": gpu_metrics,
 
     }
 

@@ -223,7 +223,11 @@ ROLE_PROVIDERS = {
     # capacity after every primary provider and before the universal claude
     # tail in every text-task role below -- this is capacity, not a
     # replacement for anything currently working.
-    "planning": ["qwen3_coder_text", "gemini", "geminix", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "claude"],
+    # 2026-08-06: Dual-pod architecture — Pod A (ldtqgcshb2dwsw, qwen3_coder_text)
+    # is the GENERATOR primary for every text-task role. Pod B (60jwzf36623b0o,
+    # qwen3_pod_b) is the REVIEW/DEPLOY primary — it never waits behind Pod A's
+    # generation queue. Each pod is a physically separate RTX PRO 6000 GPU.
+    "planning": ["qwen3_coder_text", "qwen3_pod_b", "gemini", "geminix", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "deepseek", "claude"],
     # 13V: the Chief Architect chain -- a *named priority list* distinct from
     # general "planning": Claude's judgment is the product here, so unlike
     # every other role this one never rotates its starting candidate (see
@@ -245,16 +249,16 @@ ROLE_PROVIDERS = {
     # primary slot rather than replaced -- deepseek_native_flash takes over
     # as primary until claude's credit renews, matching "planning" above.
     # claude stays in the tail (not removed) so it resumes automatically.
-    "architecture": ["qwen3_coder_text", "deepseek_native_flash", "gemini", "geminix", "deepseek", "openai", "claude"],
-    "log_analysis": ["qwen3_coder_text", "groq", "claude"],
-    "documentation": ["qwen3_coder_text", "deepseek_native_flash", "groq", "deepseek", "claude"],
+    "architecture": ["qwen3_pod_b", "qwen3_coder_text", "deepseek_native_flash", "gemini", "geminix", "deepseek", "openai", "claude"],
+    "log_analysis": ["qwen3_pod_b", "qwen3_coder_text", "groq", "claude"],
+    "documentation": ["qwen3_pod_b", "qwen3_coder_text", "deepseek_native_flash", "groq", "deepseek", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
     # gemini re-enabled 2026-08-02 (credit reloaded), restored to its
     # original spot ahead of claude.
-    "review": ["qwen3_coder_text", "openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "claude"],
+    "review": ["qwen3_pod_b", "qwen3_coder_text", "openai", "deepseek_native_flash", "deepseek", "gemini", "geminix", "claude"],
     # 2026-07-31, user directive: route short, structured, high-volume calls
     # (intent detection, request classification, JSON/command extraction,
     # SQL generation, categorization) to groq first -- these are exactly the
@@ -272,7 +276,7 @@ ROLE_PROVIDERS = {
     # gemini re-enabled 2026-08-02 (credit reloaded), restored as a fallback
     # behind groq (this role's real primary, per the 2026-07-31 directive
     # above -- gemini's long-context strength was never the fit here).
-    "classification": ["qwen3_coder_text", "groq", "deepseek_native_flash", "gemini", "geminix", "deepseek", "claude"],
+    "classification": ["qwen3_pod_b", "qwen3_coder_text", "groq", "deepseek_native_flash", "gemini", "geminix", "deepseek", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -391,12 +395,11 @@ def classify_task(description):
 # put direct "claude" first on a fraction of calls, defeating the
 # credit-preservation goal -- so only these rotate; every other coding
 # candidate is a fixed tail, always tried last and in ROLE_PROVIDERS order.
-# 2026-08-06 triple-path coding: qwen3_coding (direct vLLM API, fast),
-# omniroute (opencode CLI via Fable5, agentic), and qwen3Z (opencode CLI
-# via Qwen4 RunPod, same GPU as qwen3_coding but full agent loop).
-# Each build alternates between the three paths. If one fails, the other
-# providers in the fixed tail catch it.
-CODING_ROTATING_FRONT = ["qwen3_coding", "omniroute", "qwen3Z"]
+# 2026-08-06 V3: dual-pod architecture. qwen3_coding is Pod A (GENERATOR),
+# qwen3Z is Pod A via opencode agent loop. omniroute removed from front
+# rotation (opencode_claude dead — out of credit). Each build alternates
+# between the two paths. If one fails, the fixed tail catches it.
+CODING_ROTATING_FRONT = ["qwen3_coding", "qwen3Z"]
 
 
 def _candidates_for(task_type):

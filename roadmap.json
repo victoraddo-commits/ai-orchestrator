@@ -654,7 +654,7 @@
       "id": "19J",
       "name": "Cerebrum: Prediction Cortex - Predict failures, costs, durations, risks, best plan",
       "description": "Build Prediction Cortex: predict failures, costs, durations, security risks, infrastructure risks, best provider, best plan, expected confidence. Predictions require evidence. If evidence insufficient, say so.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 10,
       "assigned_provider": null,

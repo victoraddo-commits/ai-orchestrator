@@ -30,7 +30,7 @@ from core.autonomy import (
     enable_autonomous_mode,
     disable_autonomous_mode,
 )
-from core.roadmap_engine import get_candidate_phases, update_phase
+from core.roadmap_engine import get_candidate_phases, update_phase, load_roadmap as _load_roadmap_raw
 from core.build_manager import (
     create_build,
     get_build,
@@ -38,6 +38,7 @@ from core.build_manager import (
     save_builds,
     BUILD_TRANSITIONS,
     MAX_CONCURRENT_BUILDS,
+    NON_TERMINAL_BUILD_STATUSES,
 )
 from core.lifecycle import transition
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
@@ -45,38 +46,18 @@ from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 # signal _phase_value_score() scores phases by. No cycle: core.kai.planner
 # never imports core.roadmap_manager.
 from core.kai.planner import load_proposals
+from core.sandbox_manager import create_sandbox as _sandbox_create, self_build_repo_paths as _sb_repo_paths
 
 
 SELF_PROJECT_PATH = Path(__file__).resolve().parent.parent
 
-# Self-modifying builds must never operate directly on SELF_PROJECT_PATH --
-# that's this session's own live working directory. Every self-modifying
-# build tonight that checked out a branch there collided with interactive
-# git commands and service restarts running concurrently (confirmed live:
-# repeated "Read timed out" / "process exited with code 1" failures on
-# builds whose branch happened to be checked out while an unrelated git or
-# systemctl command ran). _create_isolated_self_clone() gives each build its
-# own disposable clone instead; the live repo is only ever read from.
+# V3: sandbox_manager handles the clone logic now — these paths are kept
+# for backward compatibility with existing self_build_repo_paths() callers.
 SELF_BUILD_WORKSPACE_ROOT = Path.home() / ".ai-orchestrator" / "self-build-workspaces"
-
-# The CloudCLI plugin frontend is its own separate git repository, entirely
-# outside SELF_PROJECT_PATH's tree (confirmed live 2026-07-28 via 13G's
-# failed attempt: 0 files tracked under this path in the ai-orchestrator
-# repo). Phases whose work touches the plugin get a dual-repo workspace --
-# both repos cloned as siblings under one parent directory -- so a single
-# --dir/project_path covers both trees. See _create_isolated_self_clone().
 PLUGIN_PROJECT_PATH = Path("/project/src/ai-orchestrator-plugin")
 
-# Fixed directory names of the two sibling clones inside a dual-repo
-# workspace. deployment_manager and build_manager rely on this layout (via
-# is_dual_repo_workspace/self_build_repo_paths) to find each repo again.
 ORCHESTRATOR_CLONE_DIRNAME = "ai-orchestrator"
 PLUGIN_CLONE_DIRNAME = "ai-orchestrator-plugin"
-
-# Fallback detection keyword: a phase with no explicit requires_plugin flag
-# still gets a dual-repo workspace if its text mentions the plugin repo by
-# name -- historical/implicit phases (13G, 13J, 13K, ...) all reference
-# "ai-orchestrator-plugin" in their descriptions without carrying the flag.
 PLUGIN_KEYWORD = "ai-orchestrator-plugin"
 
 # 13H: replaced by core.autonomy's autonomy_level.json (6 numbered
@@ -422,18 +403,8 @@ def is_dual_repo_workspace(project_path):
 
 
 def self_build_repo_paths(project_path):
-    """The actual git repositories inside a build workspace. A single-repo
-    workspace is itself the (only) repo; a dual-repo workspace contributes
-    both sibling clones. Callers that operate per-repo (branch checkout,
-    merge-back) iterate this instead of assuming project_path is a repo."""
-
-    if is_dual_repo_workspace(project_path):
-        return [
-            str(Path(project_path) / ORCHESTRATOR_CLONE_DIRNAME),
-            str(Path(project_path) / PLUGIN_CLONE_DIRNAME),
-        ]
-
-    return [str(project_path)]
+    """V3: delegated to sandbox_manager."""
+    return _sb_repo_paths(project_path)
 
 
 def orchestrator_repo_path(project_path):
@@ -632,38 +603,41 @@ def _process_in_progress_phase(phase):
 
 def advance_roadmap():
     # 13H gate: creating branches / builds is a Level-3-or-higher
-    # activity. Level 4 keeps the exact pre-13H ``enabled: true``
-    # semantics (drive builds all the way through, still respecting
-    # the two human-approval gates in build_manager). Level 5 adds
-    # the ability to promote proposals into new phases -- that is a
-    # separate hook in core/kai/planner.py, not here. Below Level 3
-    # this loop is a no-op, and the plain "disabled" action string
-    # is preserved for the old callers/tests that grep for it.
+    # activity. V3: same gate preserved.
     if not _autonomy.can_create_branches_and_builds():
         return {"action": "disabled"}
 
-    from core.roadmap_engine import load_roadmap
+    roadmap = _load_roadmap_raw()
+
+    # V3: stale roadmap protection — if a phase references a build_id
+    # that doesn't exist in builds.json, auto-fail the phase.
+    all_builds = load_builds(include_terminal=True)
+    all_build_ids = {b.get("id") for b in all_builds}
+    events = []
+
+    for phase in roadmap.get("phases", []):
+        bid = phase.get("build_id")
+        if bid and phase.get("status") == "in_progress" and bid not in all_build_ids:
+            update_phase(
+                phase["id"],
+                status="failed",
+                failure_reason=(
+                    f"Build {bid} missing from builds.json "
+                    f"(deleted or stale reference)"
+                ),
+            )
+            events.append({
+                "action": "stale_reference_failed",
+                "phase_id": phase["id"],
+                "missing_build_id": bid,
+            })
 
     in_progress_phases = [
-        p for p in load_roadmap()["phases"]
+        p for p in roadmap["phases"]
         if p["status"] == "in_progress" and p.get("build_id")
+        and p.get("build_id") in all_build_ids  # V3: skip stale refs already handled
     ]
 
-    # 17A: pre-K3, self-modifying builds all operated on SELF_PROJECT_PATH's
-    # single live working tree, so two builds in flight meant two concurrent
-    # `git checkout` commands fighting for the same working directory --
-    # the old code enforced a hard one-phase-at-a-time cap for exactly that
-    # reason. K3 now gives every self-modifying build its own isolated
-    # clone (_create_isolated_self_clone(), under SELF_BUILD_WORKSPACE_ROOT),
-    # so PLANNING / GENERATING / CODE_REVIEW / SECURITY_REVIEW for multiple
-    # phases run entirely inside their own clones with no shared mutable
-    # state. The only truly shared resource is live-repo HEAD during the
-    # DEPLOYING merge, and that is serialized at a much narrower scope by
-    # deployment_manager._live_merge_lock(). The single-in-flight guard is
-    # kept only for phases that opt into exclusivity (roadmap entry's
-    # ``"exclusive": true``) or for a build whose project_path resolves to
-    # SELF_PROJECT_PATH itself rather than an isolated clone -- see
-    # _requires_exclusive().
     events = []
     still_active_phases = []
     for phase in in_progress_phases:
@@ -674,9 +648,6 @@ def advance_roadmap():
         if event["action"] not in ("phase_completed", "phase_failed"):
             still_active_phases.append((phase, get_build(phase["build_id"])))
 
-    # Exclusivity: an exclusive phase in flight blocks all new starts;
-    # if any non-exclusive phase is in flight, an exclusive candidate
-    # cannot be started either. Otherwise cap by MAX_CONCURRENT_BUILDS.
     any_exclusive_in_flight = any(
         _requires_exclusive(phase, build) for phase, build in still_active_phases
     )
@@ -685,27 +656,35 @@ def advance_roadmap():
     if any_exclusive_in_flight:
         return _finalize(events)
 
-    # Spawn multiple phases per cycle to fill available capacity.
-    # Each call to _select_next_phase consumes its candidate (via
-    # update_phase), so we loop until we hit the cap or run out of
-    # eligible candidates.
     spawned = 0
     while len(still_active_phases) + spawned < MAX_CONCURRENT_BUILDS:
         next_phase = _select_next_phase()
         if next_phase is None:
             break
 
-        # A candidate marked exclusive cannot start while anything else
-        # is in flight -- it must run alone.
         if next_phase.get("exclusive") is True and (any_in_flight or spawned > 0):
-            # Put it back so it can be picked next cycle — we haven't
-            # consumed it yet since we aren't spawning it now.
             break
+
+        # V3: duplicate prevention handled inside create_build() — if a
+        # non-terminal build with this name already exists, it returns
+        # the existing one instead of creating a duplicate.
+
+        # V3: use sandbox_manager for isolated workspace
+        project_path = _sandbox_create(
+            build_id=str(uuid.uuid4())[:8],  # temporary — replaced by actual build_id
+            include_plugin=phase_requires_plugin(next_phase),
+        )
+        # Recreate with actual build ID
+        import shutil as _shutil
+        _shutil.rmtree(project_path, ignore_errors=True)
 
         build = create_build(
             name=next_phase["id"],
             description=_build_description(next_phase),
-            project_path=_create_isolated_self_clone(include_plugin=phase_requires_plugin(next_phase)),
+            project_path=_sandbox_create(
+                build_id=next_phase["id"],
+                include_plugin=phase_requires_plugin(next_phase),
+            ),
         )
 
         update_phase(next_phase["id"], status="in_progress", build_id=build["id"])

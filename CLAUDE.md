@@ -89,7 +89,7 @@ The Provider rotation varies by task_type. Key roles:
 | groq | text | ✅ healthy | free tier |
 | deepseek_native_flash | text | ✅ healthy | native api.deepseek.com |
 | deepseek_native_pro | text | ✅ healthy | native api.deepseek.com |
-| deepseek (OpenRouter) | text | ✅ healthy | OpenRouter |
+| deepseek (OpenRouter) | text | ❌ OpenRouter out of credit (removed from routing 2026-08-06) | OpenRouter |
 | claude (direct) | both | ⚠️ out of credit | Anthropic subscription |
 | openrouter_claude_* | coding | ❌ OpenRouter out of credit | OpenRouter |
 | minimax | text | ⚠️ excluded (0/4 verified) | |

@@ -469,14 +469,14 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "83fb4157",
-      "failure_reason": null
+      "failure_reason": "Build 83fb4157 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19F",
@@ -673,7 +673,7 @@
       "id": "13S",
       "name": "Validate plan text before presenting it for architecture approval",
       "description": "DONE (2026-07-29, direct live fix, not deployed by Kai -- commit 4c69637) -- build db7d5562 generated the correct fix (_looks_like_tool_call_leak: rejects empty/near-empty plan text and tool-call markup leaking into prose, 3-strike retry cap, existing ? check preserved) but its own self-build test run failed on one unrelated pre-existing test (test_orchestrator_cycle_integration.py used a 5-char \"Plan.\" mock, under this change's new 10-char minimum) -- applied the build's commit directly plus the one-line test fix instead of re-running the pipeline for an already-correct change. 595 tests pass. Build db7d5562 left FAILED as the record of the self-test rejection; its workspace clone reproduces the same fix and was not reused further.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 10,
       "completion_criteria": [
@@ -684,7 +684,7 @@
         "New tests cover: tool-call-markup text rejected, empty text rejected, a normal prose plan still passes through unchanged"
       ],
       "tests_required": true,
-      "build_id": null,
+      "build_id": "47f2d93a",
       "failure_reason": null
     },
     {

@@ -62,14 +62,14 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "8ac5ba84",
-      "failure_reason": null
+      "failure_reason": "Build 8ac5ba84 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19A",
@@ -2013,7 +2013,7 @@
     {
       "id": "SUSU-2",
       "name": "SUSU Mobile Money Integration",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 2,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2025,7 +2025,8 @@
         "Processor fee data available to Fee Engine",
         "Payment webhook/callback handling"
       ],
-      "build_id": "4779b27e"
+      "build_id": "4779b27e",
+      "failure_reason": "Build 4779b27e missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "SUSU-5",
@@ -2156,7 +2157,7 @@
       "name": "17O-A: Legal Source Discovery Agent",
       "priority": 1,
       "dependencies": [],
-      "status": "in_progress",
+      "status": "failed",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
         "parliament.gh source seeding",
@@ -2166,7 +2167,7 @@
       ],
       "build_id": "4805928d",
       "assigned_provider": "qwen3_coding",
-      "failure_reason": null
+      "failure_reason": "Build 4805928d missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17O-B",

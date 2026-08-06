@@ -40,11 +40,13 @@ import json
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 from core.subprocess_watchdog import SubprocessWatchdog, GenerationTimeoutError
 
 
 OPENCODE_DEFAULT_MODEL = "opencode/deepseek-v4-pro"
+OPENCODE_AUTH_PATH = Path.home() / ".local" / "share" / "opencode" / "auth.json"
 DEFAULT_TIMEOUT = 600
 DEFAULT_IDLE_CPU_TIMEOUT = int(os.environ.get(
     "GENERATION_SUBPROCESS_IDLE_CPU_TIMEOUT_SECONDS", "300"
@@ -52,6 +54,20 @@ DEFAULT_IDLE_CPU_TIMEOUT = int(os.environ.get(
 DEFAULT_GRACE_KILL_SECONDS = int(os.environ.get(
     "GENERATION_SUBPROCESS_GRACE_KILL_SECONDS", "5"
 ))
+
+
+def credential_exists(key):
+    """True when the opencode CLI is on PATH and its credential store holds an
+    entry under `key` — e.g. "omniroute" for the omniroute gateway config."""
+    if shutil.which("opencode") is None:
+        return False
+
+    try:
+        auth = json.loads(OPENCODE_AUTH_PATH.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return False
+
+    return key in auth
 
 
 def _run_opencode_process(project_path, instruction, model, timeout):

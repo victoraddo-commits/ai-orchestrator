@@ -2074,7 +2074,7 @@
       "name": "17O-A1: Parliament.gh Source Seeding",
       "priority": 1,
       "dependencies": [],
-      "status": "in_progress",
+      "status": "failed",
       "description": "Seed legal knowledge base from parliament.gh. Auto-discover downloadable documents (Acts, Bills, Hansards, Committee Reports). Store with source metadata.",
       "completion_criteria": [
         "parliament.gh Acts downloaded and indexed",
@@ -2083,7 +2083,7 @@
         "Source metadata (URL, date, type) preserved per document"
       ],
       "assigned_provider": "qwen3_coding",
-      "build_id": "c7b42ecd"
+      "build_id": "9abe7d07"
     },
     {
       "id": "17O-A2",
@@ -2100,7 +2100,7 @@
         "Source metadata (URL, date, court level) preserved per document"
       ],
       "assigned_provider": "qwen3_coding",
-      "build_id": "c503a5ae"
+      "build_id": "5e5b6654"
     },
     {
       "id": "17O-A3",

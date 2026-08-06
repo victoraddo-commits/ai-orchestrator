@@ -469,7 +469,7 @@
       "id": "19W",
       "name": "Kai Software Factory: Templates - Reusable templates (CRM, ERP, HR, Inventory, POS, etc.)",
       "description": "Create reusable templates: CRM, ERP, HR, Inventory, POS, Helpdesk, Knowledge Base, Customer Portal, Website, API, Mobile App, AI Agent, Dashboard, Microservice, Legal Platform. Include best practices.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "assigned_agent": "qwen3",
@@ -516,10 +516,11 @@
       "id": "19X",
       "name": "Kai Software Factory: Lifecycle Management - Complete history for every application",
       "description": "Implement lifecycle management: creation history, design decisions, deployment history, rollback history, AI conversations, lessons learned, incidents, monitoring, roadmap, ownership, documentation. Kai never loses context.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 7,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "c55fc0f0"
     },
     {
       "id": "12H",

@@ -685,28 +685,34 @@ def advance_roadmap():
     if any_exclusive_in_flight:
         return _finalize(events)
 
-    if len(still_active_phases) >= MAX_CONCURRENT_BUILDS:
-        return _finalize(events)
+    # Spawn multiple phases per cycle to fill available capacity.
+    # Each call to _select_next_phase consumes its candidate (via
+    # update_phase), so we loop until we hit the cap or run out of
+    # eligible candidates.
+    spawned = 0
+    while len(still_active_phases) + spawned < MAX_CONCURRENT_BUILDS:
+        next_phase = _select_next_phase()
+        if next_phase is None:
+            break
 
-    next_phase = _select_next_phase()
+        # A candidate marked exclusive cannot start while anything else
+        # is in flight -- it must run alone.
+        if next_phase.get("exclusive") is True and (any_in_flight or spawned > 0):
+            # Put it back so it can be picked next cycle — we haven't
+            # consumed it yet since we aren't spawning it now.
+            break
 
-    if next_phase is None:
-        return _finalize(events)
+        build = create_build(
+            name=next_phase["id"],
+            description=_build_description(next_phase),
+            project_path=_create_isolated_self_clone(include_plugin=phase_requires_plugin(next_phase)),
+        )
 
-    # A candidate marked exclusive cannot start while anything else is in
-    # flight -- it must run alone.
-    if next_phase.get("exclusive") is True and any_in_flight:
-        return _finalize(events)
+        update_phase(next_phase["id"], status="in_progress", build_id=build["id"])
+        events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"]})
+        spawned += 1
+        any_in_flight = True
 
-    build = create_build(
-        name=next_phase["id"],
-        description=_build_description(next_phase),
-        project_path=_create_isolated_self_clone(include_plugin=phase_requires_plugin(next_phase)),
-    )
-
-    update_phase(next_phase["id"], status="in_progress", build_id=build["id"])
-
-    events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"]})
     return _finalize(events)
 
 

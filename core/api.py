@@ -688,6 +688,66 @@ def providers_dashboard_endpoint():
     return get_provider_dashboard()
 
 
+# ---- V3: GPU & Pipeline endpoints ----
+
+@app.get("/api/gpu/status")
+def api_gpu_status():
+    """Per-pod GPU metrics: state, runtime, cost, tasks, health."""
+    try:
+        import core.gpu_lifecycle as _gl
+        return _gl.get_gpu_dashboard()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/pipeline")
+def api_pipeline_overview():
+    """Pipeline overview: counts by build status."""
+    from core.build_manager import load_builds
+    builds = load_builds(include_terminal=True)
+    statuses = {}
+    for b in builds:
+        s = b.get("status", "?")
+        statuses[s] = statuses.get(s, 0) + 1
+
+    return {
+        "pipeline": {
+            "planning": statuses.get("PLANNING", 0),
+            "generating": statuses.get("GENERATING", 0),
+            "review": statuses.get("CODE_REVIEW", 0) + statuses.get("SECURITY_REVIEW", 0),
+            "deploying": statuses.get("DEPLOYING", 0),
+            "completed": statuses.get("COMPLETED", 0),
+            "failed": statuses.get("FAILED", 0),
+            "blocked": statuses.get("ARCHITECTURE_APPROVED", 0),
+            "waiting_approval": (
+                statuses.get("WAITING_FOR_ARCHITECTURE_APPROVAL", 0) +
+                statuses.get("WAITING_FOR_DEPLOY_APPROVAL", 0)
+            ),
+            "total_active": len([b for b in builds if b.get("status") not in ("COMPLETED", "FAILED", "ROLLED_BACK")]),
+        },
+        "by_status": statuses,
+    }
+
+
+@app.get("/api/budget")
+def api_budget_dashboard():
+    """Cost tracking: GPU spend, per-pod breakdown."""
+    try:
+        import core.gpu_lifecycle as _gl
+        metrics = _gl.get_gpu_dashboard()
+        return {
+            "gpu": metrics,
+            "summary": {
+                "total_gpu_cost": metrics.get("summary", {}).get("total_cost", 0),
+                "combined_hourly": metrics.get("summary", {}).get("combined_hourly_cost", 0),
+            },
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+# ---- end V3 ----
+
+
 @app.get("/self-healing/log")
 def self_healing_log_endpoint():
     """16B: Return the last self-healing actions taken."""

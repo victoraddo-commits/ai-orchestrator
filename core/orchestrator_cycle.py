@@ -124,6 +124,39 @@ def run_cycle():
     for build_id, message_text in telegram_bridge.detect_state_changes_with_build_ids(
         builds_before, builds
     ):
+        # 2026-08-06: for builds that just entered a WAITING_FOR_* state,
+        # send an inline approval keyboard alongside the descriptive text.
+        # The keyboard gives the operator one-tap approve/reject on their
+        # phone — no typing required.
+        build = next((b for b in builds if b.get("id") == build_id), None)
+        pending_status = build.get("status", "") if build else ""
+
+        keyboard_sent = False
+        if pending_status == "WAITING_FOR_ARCHITECTURE_APPROVAL" and build:
+            try:
+                telegram_bridge.send_approval_keyboard(
+                    telegram_bridge.ALLOWED_CHAT_ID,
+                    build_id,
+                    "architecture",
+                )
+                keyboard_sent = True
+            except Exception as error:
+                info(f"approval keyboard send failed: {type(error).__name__}")
+
+        elif pending_status == "WAITING_FOR_DEPLOY_APPROVAL" and build:
+            try:
+                telegram_bridge.send_approval_keyboard(
+                    telegram_bridge.ALLOWED_CHAT_ID,
+                    build_id,
+                    "deploy",
+                )
+                keyboard_sent = True
+            except Exception as error:
+                info(f"approval keyboard send failed: {type(error).__name__}")
+
+        # The keyboard has the build name + action buttons; the descriptive
+        # text has plan excerpts / security findings / question text — both
+        # are needed for an informed decision from a phone.
         message_id = _safe_send(message_text)
 
         if message_id is not None and build_id:

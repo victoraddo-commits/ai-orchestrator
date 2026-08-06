@@ -20,7 +20,14 @@ if it goes down, not a reason the rest of Kai should stop.
 import time
 
 from core.logger import info
-from core.telegram_bridge import poll_updates, route_inbound_reply, send_message
+from core.telegram_bridge import (
+    poll_updates,
+    route_inbound_reply,
+    route_callback_query,
+    answer_callback_query,
+    edit_message_reply_markup,
+    send_message,
+)
 
 # Telegram recommends staying comfortably under its own server-side cap;
 # this is long enough to feel instant without holding the connection so
@@ -52,7 +59,20 @@ def poll_once():
 
     for message in messages:
         try:
-            result = route_inbound_reply(message)
+            # 2026-08-06: route callback queries (inline keyboard buttons) separately
+            if message.get("callback_query"):
+                result = route_callback_query(message)
+                # Answer the callback query to dismiss the loading spinner
+                callback_id = message.get("callback_id")
+                if callback_id:
+                    answer_callback_query(callback_id, text=result.get("reply"))
+                # Remove the inline keyboard to prevent double-action
+                chat_id = message.get("chat_id")
+                msg_id = message.get("message_id")
+                if chat_id and msg_id:
+                    edit_message_reply_markup(chat_id, msg_id)
+            else:
+                result = route_inbound_reply(message)
         except Exception as error:
             info(f"telegram_poller: routing error: {type(error).__name__}")
             continue

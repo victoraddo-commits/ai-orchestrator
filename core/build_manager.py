@@ -162,7 +162,7 @@ def save_builds(builds):
     save(BUILDS_FILE, builds)
 
 
-def create_build(name, description, project_path, template=None):
+def create_build(name, description, project_path, template=None, priority=False):
     if template is not None and get_template(template) is None:
         raise ValueError(f"Unknown project template: {template!r}")
 
@@ -174,6 +174,7 @@ def create_build(name, description, project_path, template=None):
         description=description,
         project_path=project_path,
         template=template,
+        priority=priority,
         qa_history=[],
         plan=None,
         planned_by=None,
@@ -1044,6 +1045,11 @@ def advance_builds():
 
     if not ready:
         return builds
+
+    # 2026-08-06: prioritize Telegram/user-requested builds (priority=True)
+    # before roadmap-spawned builds. Sort ensures priority builds occupy the
+    # first pool worker slots.
+    ready.sort(key=lambda b: (0 if b.get("priority") else 1, b.get("updated", "")))
 
     # Each ready build advances in its own worker, capped at
     # MAX_CONCURRENT_BUILDS. Builds are already isolated by design (own git

@@ -790,7 +790,7 @@
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
       "description": "Implement Trust Engine: continuously calculate trust. Trust: providers, knowledge, memory, tools, predictions, plans, external APIs, users. Trust influences decisions.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 12,
       "assigned_provider": null,
@@ -1481,7 +1481,7 @@
       "id": "13K",
       "name": "Kai Workforce Voice/Text Commands",
       "description": "New core.kai.commands.py patterns (\"kai, list AI workers\", \"kai, show AI workforce\", \"kai, worker health\", \"kai, provider statistics\", etc.) that reuse core.ai_provider.list_providers() and core.ai.ai_router.get_provider_dashboard() -- no new provider metadata, same rule-based phrase-matching pattern 13B already established.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13B",
         "13X"
@@ -1697,7 +1697,7 @@
       "id": "15D",
       "name": "Real-time update infrastructure for the Kai dashboard",
       "description": "Everything the dashboard reads today is pull/poll-based (plain GET endpoints, no push). The original proposal's 'dashboard must update in near real-time' is its own sub-project, not a checkbox on 15E -- this phase decides and implements the actual mechanism (Server-Sent Events is the natural fit: one-way server-to-browser push, no new bidirectional protocol needed, works through the existing CloudCLI plugin proxy) and defines exactly which state changes trigger a push (build status transitions, new approval requests, roadmap phase completions) versus what stays poll-on-tab-open (static/rarely-changing data). Reuses existing state -- this phase adds a push transport on top of data that's already computed elsewhere, it does not recompute anything new.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13G"
       ],
@@ -1709,7 +1709,8 @@
         "Tests cover: a build status transition produces a push event with correct payload; a dropped connection does not crash the dashboard or lose state on reconnect"
       ],
       "tests_required": true,
-      "assigned_provider": null
+      "assigned_provider": null,
+      "build_id": "e6443ec6"
     },
     {
       "id": "15E",
@@ -2070,7 +2071,7 @@
       "name": "17O-A: Legal Source Discovery Agent",
       "priority": 1,
       "dependencies": [],
-      "status": "pending",
+      "status": "in_progress",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
         "parliament.gh source seeding",
@@ -2078,7 +2079,7 @@
         "Gazette source seeding",
         "Source metadata preserved per document"
       ],
-      "build_id": "aac35ac6",
+      "build_id": "4466e0e9",
       "assigned_provider": "qwen3_coding"
     },
     {

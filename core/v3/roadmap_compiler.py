@@ -220,13 +220,24 @@ def is_phase_ready(compiled: dict, phase_id: str) -> bool:
 
 
 def _load_roadmap(roadmap_path: str | None = None) -> list[dict]:
-    """Load roadmap phases from file or memory API."""
+    """Load roadmap phases from file or memory API.
+
+    Defaults to the project root roadmap.json (the authoritative source),
+    NOT memory/roadmap.json (which may not exist or be stale).
+    """
     if roadmap_path:
         from pathlib import Path
         data = json.loads(Path(roadmap_path).read_text())
     else:
-        from core.memory import load
-        data = load("roadmap.json")
+        # Try project root first (systemd runs from /project/ai-orchestrator)
+        from pathlib import Path as _Path
+        root_roadmap = _Path("roadmap.json")
+        if root_roadmap.exists():
+            data = json.loads(root_roadmap.read_text())
+        else:
+            # Fall back to memory/roadmap.json
+            from core.memory import load
+            data = load("roadmap.json")
 
     if isinstance(data, dict):
         return data.get("phases", data.get("records", []))

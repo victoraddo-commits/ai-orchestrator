@@ -257,9 +257,9 @@ def _find_recoverable_build(phase_id: str) -> dict | None:
 
 
 def _get_phase(phase_id: str) -> dict | None:
-    """Get a roadmap phase by ID."""
-    data = load(ROADMAP_FILE)
-    phases = data.get("phases", data.get("records", [])) if isinstance(data, dict) else (data or [])
+    """Get a roadmap phase by ID from the project root roadmap.json."""
+    from core.v3.roadmap_compiler import _load_roadmap
+    phases = _load_roadmap()
     for p in phases:
         if p.get("id") == phase_id:
             return p
@@ -267,20 +267,25 @@ def _get_phase(phase_id: str) -> dict | None:
 
 
 def _update_phase_status(phase_id: str, new_status: str, reason: str = ""):
-    """Update a phase's status in the roadmap."""
-    def _update(data):
-        phases = data.get("phases", data.get("records", []))
-        for p in phases:
-            if p.get("id") == phase_id:
-                p["status"] = new_status
-                p["updated"] = datetime.now(timezone.utc).isoformat()
-                if reason:
-                    p["status_reason"] = reason
-                break
-        return data
+    """Update a phase's status in the project root roadmap.json."""
+    from pathlib import Path as _Path
+    import json as _json
 
+    roadmap_path = _Path("roadmap.json")
     try:
-        update(ROADMAP_FILE, _update)
-        info(f"Phase {phase_id} → {new_status}" + (f": {reason}" if reason else ""))
-    except Exception as e:
-        log_error(f"Failed to update phase {phase_id} status: {e}")
+        data = _json.loads(roadmap_path.read_text())
+    except Exception:
+        log_error(f"Cannot read roadmap.json for phase {phase_id} update")
+        return
+
+    phases = data.get("phases", data.get("records", []))
+    for p in phases:
+        if p.get("id") == phase_id:
+            p["status"] = new_status
+            p["updated"] = datetime.now(timezone.utc).isoformat()
+            if reason:
+                p["status_reason"] = reason
+            break
+
+    roadmap_path.write_text(_json.dumps(data, indent=2))
+    info(f"Phase {phase_id} → {new_status}" + (f": {reason}" if reason else ""))

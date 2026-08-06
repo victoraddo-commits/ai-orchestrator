@@ -1,4 +1,4 @@
-"""Kai V3 Build Manager — Build lifecycle with contracts, sandboxes, and multi-review.
+""""""Kai V3 Build Manager — Build lifecycle with contracts, sandboxes, and multi-review.
 
 Replaces core/build_manager.py with:
   - Two-pass processing (completion-near builds first)
@@ -12,6 +12,7 @@ Replaces core/build_manager.py with:
 """
 
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -76,8 +77,8 @@ BUILD_TRANSITIONS = {
     "REQUESTED": ["PLANNING", "FAILED"],
     "PLANNING": ["WAITING_FOR_ARCHITECTURE_APPROVAL", "FAILED"],
     "WAITING_FOR_ARCHITECTURE_APPROVAL": ["ARCHITECTURE_APPROVED", "FAILED"],
-    "ARCHITECTURE_APPROVED": ["GENERATING", "FAILED"],
-    "GENERATING": ["CODE_REVIEW", "FAILED"],
+    "ARCHITECTURE_APPROVED": ["GENERATING", "PLANNING", "FAILED"],
+    "GENERATING": ["CODE_REVIEW", "PLANNING", "FAILED"],
     "CODE_REVIEW": ["SECURITY_REVIEW", "GENERATING", "FAILED"],
     "SECURITY_REVIEW": ["TESTING", "GENERATING", "FAILED"],
     "TESTING": ["WAITING_FOR_DEPLOY_APPROVAL", "GENERATING", "FAILED"],
@@ -181,12 +182,15 @@ def create_build(phase: dict, force: bool = False) -> dict:
         timeout_count=0,
     )
 
-    # Atomic add
-    def _add_build(data):
-        data.setdefault("records", []).append(build)
-        return data
-
-    update(BUILDS_FILE, _add_build)
+    # Persist: load all builds, append the new one, save back
+    existing = load(BUILDS_FILE)
+    if isinstance(existing, list):
+        existing.append(build)
+    elif isinstance(existing, dict):
+        existing.setdefault("records", []).append(build)
+    else:
+        existing = {"schema_version": 1, "records": [build]}
+    save(BUILDS_FILE, existing)
     info(f"Build created: {build['id'][:12]} '{phase_name}'")
 
     return build
@@ -203,14 +207,20 @@ def transition_build(build: dict, new_status: str, note: str = "") -> dict:
         raise
 
     # Persist
-    def _update(data):
-        for i, b in enumerate(data.get("records", [])):
+    existing = load(BUILDS_FILE)
+    if isinstance(existing, dict):
+        records = existing.get("records", [])
+        for i, b in enumerate(records):
             if b.get("id") == build["id"]:
-                data["records"][i] = build
+                records[i] = build
                 break
-        return data
-
-    update(BUILDS_FILE, _update)
+        existing["records"] = records
+    elif isinstance(existing, list):
+        for i, b in enumerate(existing):
+            if b.get("id") == build["id"]:
+                existing[i] = build
+                break
+    save(BUILDS_FILE, existing)
     return build
 
 
@@ -235,6 +245,11 @@ def advance_builds(max_workers: int | None = None) -> dict:
     """
     workers = max_workers or MAX_CONCURRENT_BUILDS
     builds = load_builds()
+
+    # Only process v3-created builds (have a contract) or REQUESTED v3 builds.
+    # Skip all legacy v2 builds that predate v3 — they don't have contracts
+    # and would fail validation.
+    builds = [b for b in builds if _is_v3_build(b)]
 
     if not builds:
         return {"completed": 0, "failed": 0, "auto_failed": [], "advanced": 0}
@@ -390,12 +405,14 @@ def _handle_planning(build: dict) -> dict:
                          note="plan ready for approval")
         # Auto-approve at autonomy level 5
         from core.autonomy import get_autonomy_level
-        if get_autonomy_level() >= 5:
+        autonomy = get_autonomy_level()
+        autonomy_level = autonomy.get("level", 0) if isinstance(autonomy, dict) else autonomy
+        if autonomy_level >= 5:
             transition_build(build, "ARCHITECTURE_APPROVED",
                              note="auto-approved (autonomy 5)")
         info(f"Plan generated for {build['id'][:12]}")
     except Exception as e:
-        log_error(f"Planning failed for {build['id'][:12]}: {type(e).__name__}")
+        log_error(f"Planning failed for {build['id'][:12]}: {type(e).__name__} — {str(e)[:200]}")
         fail_build(build, f"Planning failed: {type(e).__name__}")
 
     return {"advanced": True}
@@ -455,7 +472,7 @@ def _handle_generating(build: dict) -> dict:
         info(f"Generation complete for {build['id'][:12]}")
 
     except Exception as e:
-        log_error(f"Generation failed for {build['id'][:12]}: {type(e).__name__}")
+        log_error(f"Generation failed for {build['id'][:12]}: {type(e).__name__} — {str(e)[:200]}")
         recovery = handle_generation_failure(build["id"], str(e))
         if recovery["action"] == "return_to_builder":
             build["generation_attempts"] = build.get("generation_attempts", 0) + 1
@@ -621,3 +638,12 @@ def _extract_summary(result) -> str:
                     break
         return "\n".join(summary_lines)[:1000]
     return str(result)[:1000]
+
+
+def _is_v3_build(build: dict) -> bool:
+    """A v3 build has a 'contract' field (created by v3's create_build).
+
+    Legacy v2 builds predating v3 lack contracts and can't be processed
+    by the new pipeline — they're skipped silently.
+    """
+    return "contract" in build

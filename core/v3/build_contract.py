@@ -10,7 +10,6 @@ from datetime import datetime
 from core.lifecycle import new_object
 
 REQUIRED_CONTRACT_FIELDS = [
-    "task_id",
     "objective",
     "acceptance_criteria",
     "files_allowed",

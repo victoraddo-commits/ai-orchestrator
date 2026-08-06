@@ -237,7 +237,7 @@
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
       "description": "Implement zero-trust architecture for Legal Brain: permanent vs temporary knowledge isolation, agent sandboxing, immutable audit logs, continuous integrity verification",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "completion_criteria": [
         "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
@@ -654,7 +654,7 @@
       "id": "19J",
       "name": "Cerebrum: Prediction Cortex - Predict failures, costs, durations, risks, best plan",
       "description": "Build Prediction Cortex: predict failures, costs, durations, security risks, infrastructure risks, best provider, best plan, expected confidence. Predictions require evidence. If evidence insufficient, say so.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 10,
       "assigned_provider": null,
@@ -2070,27 +2070,61 @@
       ]
     },
     {
-      "id": "17O-A",
-      "name": "17O-A: Legal Source Discovery Agent",
+      "id": "17O-A1",
+      "name": "17O-A1: Parliament.gh Source Seeding",
       "priority": 1,
       "dependencies": [],
-      "status": "failed",
-      "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
+      "status": "in_progress",
+      "description": "Seed legal knowledge base from parliament.gh. Auto-discover downloadable documents (Acts, Bills, Hansards, Committee Reports). Store with source metadata.",
       "completion_criteria": [
-        "parliament.gh source seeding",
-        "judiciary.gov.gh source seeding",
-        "Gazette source seeding",
-        "Source metadata preserved per document"
+        "parliament.gh Acts downloaded and indexed",
+        "Bills and Hansards discovered",
+        "Committee Reports captured where available",
+        "Source metadata (URL, date, type) preserved per document"
       ],
-      "build_id": "4466e0e9",
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "c7b42ecd"
+    },
+    {
+      "id": "17O-A2",
+      "name": "17O-A2: Judiciary.gov.gh Source Seeding",
+      "priority": 1,
+      "dependencies": [],
+      "status": "in_progress",
+      "description": "Seed legal knowledge base from judiciary.gov.gh. Auto-discover downloadable documents (Judgments, Rulings, Practice Directions). Store with source metadata.",
+      "completion_criteria": [
+        "Supreme Court judgments downloaded and indexed",
+        "Court of Appeal rulings captured",
+        "High Court decisions captured where available",
+        "Practice Directions and court forms discovered",
+        "Source metadata (URL, date, court level) preserved per document"
+      ],
+      "assigned_provider": "qwen3_coding",
+      "build_id": "c503a5ae"
+    },
+    {
+      "id": "17O-A3",
+      "name": "17O-A3: Ghana Gazette Source Seeding",
+      "priority": 1,
+      "dependencies": [],
+      "status": "in_progress",
+      "description": "Seed legal knowledge base from Ghana Gazette and other published sources. Auto-discover downloadable documents. Store with source metadata.",
+      "completion_criteria": [
+        "Gazette publications downloaded and indexed",
+        "Other published legal sources captured",
+        "Source metadata (URL, date, publication type) preserved per document"
+      ],
+      "assigned_provider": "qwen3_coding",
+      "build_id": "38ef4e20"
     },
     {
       "id": "17O-B",
       "name": "17O-B: Legal Taxonomy + Directory Structure",
       "priority": 2,
       "dependencies": [
-        "17O-A"
+        "17O-A1",
+        "17O-A2",
+        "17O-A3"
       ],
       "status": "pending",
       "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",

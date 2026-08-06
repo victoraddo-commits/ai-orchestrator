@@ -46,7 +46,7 @@ CODE_REVIEW_TIMEOUT = 180
 
 PROVIDERS_CONFIG_PATH = Path("config") / "providers.yaml"
 
-DEFAULT_MAX_CONCURRENT_BUILDS = 4
+DEFAULT_MAX_CONCURRENT_BUILDS = 8  # floor; config overrides higher
 
 
 def _load_max_concurrent_builds():
@@ -84,11 +84,10 @@ def _detect_dedicated_gpu_providers():
                 if provider.get("gpu_acceleration", False) or "gpu" in provider.get("name", "").lower():
                     dedicated_gpu_count += 1
         
-        # If we have dedicated GPU providers, increase concurrency
-        # This assumes that GPU providers can handle more concurrent builds
+        # Each dedicated GPU provider can handle ~16 concurrent inference
+        # requests (vLLM continuous batching); floor at the config value.
         if dedicated_gpu_count > 0:
-            # Return higher concurrency for GPU accelerated providers
-            return max(dedicated_gpu_count * 4, _load_max_concurrent_builds())
+            return max(dedicated_gpu_count * 16, _load_max_concurrent_builds())
         
     except Exception:
         # Fall back to default if there's an error

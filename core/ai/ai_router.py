@@ -150,7 +150,6 @@ ROLE_PROVIDERS = {
     # to fallback positions. 8-way concurrency verified live.
     "coding": [
         "qwen3_coding",
-        "qwen3Z",
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
@@ -391,12 +390,12 @@ def classify_task(description):
 # put direct "claude" first on a fraction of calls, defeating the
 # credit-preservation goal -- so only these rotate; every other coding
 # candidate is a fixed tail, always tried last and in ROLE_PROVIDERS order.
-# 2026-08-06 triple-path coding: qwen3_coding (direct vLLM API, fast),
-# omniroute (opencode CLI via Fable5, agentic), and qwen3Z (opencode CLI
-# via Qwen4 RunPod, same GPU as qwen3_coding but full agent loop).
+# 2026-08-07 dual-path coding: qwen3_coding (direct vLLM API, fast),
+# omniroute (opencode CLI via Fable5, agentic).  qwen3Z was consolidated
+# into qwen3_coding — same pod, same GPU, one provider is sufficient.
 # Each build alternates between the three paths. If one fails, the other
 # providers in the fixed tail catch it.
-CODING_ROTATING_FRONT = ["qwen3_coding", "omniroute", "qwen3Z"]
+CODING_ROTATING_FRONT = ["qwen3_coding", "omniroute"]
 
 
 def _candidates_for(task_type):

@@ -62,14 +62,14 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "8ac5ba84",
-      "failure_reason": "Build 8ac5ba84 missing from builds.json (deleted or stale reference)"
+      "build_id": "0817e7a7",
+      "failure_reason": null
     },
     {
       "id": "19A",
@@ -171,20 +171,20 @@
       "severity": "high",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "e8dcb438",
+      "build_id": "223ace0d",
       "failure_reason": null
     },
     {
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "e8e73b68",
-      "failure_reason": null
+      "failure_reason": "Build e8e73b68 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19S",
@@ -2013,7 +2013,7 @@
     {
       "id": "SUSU-2",
       "name": "SUSU Mobile Money Integration",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 2,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2025,13 +2025,13 @@
         "Processor fee data available to Fee Engine",
         "Payment webhook/callback handling"
       ],
-      "build_id": "4779b27e",
-      "failure_reason": "Build 4779b27e missing from builds.json (deleted or stale reference)"
+      "build_id": "702e733b",
+      "failure_reason": null
     },
     {
       "id": "SUSU-5",
       "name": "SUSU Kai AI Assistant Integration",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 5,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2042,7 +2042,8 @@
         "Next payout date query",
         "Group status and health summary",
         "Admin insights (payment patterns, risk flags)"
-      ]
+      ],
+      "build_id": "1c8b4ff6"
     },
     {
       "id": "SUSU-7",
@@ -2157,7 +2158,7 @@
       "name": "17O-A: Legal Source Discovery Agent",
       "priority": 1,
       "dependencies": [],
-      "status": "failed",
+      "status": "in_progress",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
         "parliament.gh source seeding",
@@ -2165,9 +2166,9 @@
         "Gazette source seeding",
         "Source metadata preserved per document"
       ],
-      "build_id": "4805928d",
+      "build_id": "39276e8d",
       "assigned_provider": "qwen3_coding",
-      "failure_reason": "Build 4805928d missing from builds.json (deleted or stale reference)"
+      "failure_reason": null
     },
     {
       "id": "17O-B",

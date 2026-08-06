@@ -635,23 +635,23 @@
       "id": "19I",
       "name": "Cerebrum: Learning Cortex - Continuously learn from failures, successes, feedback",
       "description": "Implement Learning Cortex: continuously learn from failures, successes, human approvals/rejections/edits, provider performance, costs, roadmap progress, infrastructure incidents. Never overwrite history; improve future behavior.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 9,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": null,
+      "build_id": "aada8644",
       "failure_reason": null
     },
     {
       "id": "19Z",
       "name": "Kai Software Factory: Command Center Extensions - Application dashboards and explorer",
       "description": "Extend Kai Command Center with: Application Registry, Repository Registry, Dependency Graph, Software Factory, Deployment Center, Application Health, AI Worker Assignments, Infrastructure Relationships, Documentation Explorer, Knowledge Graph.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 9,
       "assigned_agent": "qwen3",
-      "build_id": null,
+      "build_id": "61776292",
       "failure_reason": null
     },
     {
@@ -2033,7 +2033,7 @@
     {
       "id": "SUSU-5",
       "name": "SUSU Kai AI Assistant Integration",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 5,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2046,7 +2046,7 @@
         "Admin insights (payment patterns, risk flags)"
       ],
       "build_id": "c8a9c967",
-      "failure_reason": null
+      "failure_reason": "Build c8a9c967 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "SUSU-7",

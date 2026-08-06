@@ -2090,7 +2090,7 @@
       "name": "17O-A2: Judiciary.gov.gh Source Seeding",
       "priority": 1,
       "dependencies": [],
-      "status": "in_progress",
+      "status": "completed",
       "description": "Seed legal knowledge base from judiciary.gov.gh. Auto-discover downloadable documents (Judgments, Rulings, Practice Directions). Store with source metadata.",
       "completion_criteria": [
         "Supreme Court judgments downloaded and indexed",
@@ -2159,7 +2159,7 @@
       "dependencies": [
         "17O-C"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",
@@ -2167,7 +2167,8 @@
         "Duplicate detection with 0.85 threshold",
         "Outdated law detection"
       ],
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "75eae759"
     },
     {
       "id": "SUSU-3a",

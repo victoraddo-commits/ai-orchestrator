@@ -1590,6 +1590,7 @@ def handle_kai_chat(text: str, operator: str) -> dict:
             build = create_build(
                 build_intent["name"], build_intent["description"], project_path,
                 template=build_intent["template"],
+                priority=True,  # 2026-08-06: Telegram-chat builds get top priority
             )
             reply_text = (
                 f"Started a new build: \"{build_intent['name']}\" (id: {build['id']}) "

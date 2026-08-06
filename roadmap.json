@@ -249,9 +249,8 @@
       ],
       "tests_required": true,
       "priority": 1,
-      "assigned_agent": "claude-sonnet-5",
       "build_id": "79054926",
-      "assigned_provider": "omniroute_sonnet"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "IT-3",
@@ -391,9 +390,8 @@
       ],
       "tests_required": true,
       "priority": 5,
-      "assigned_agent": "claude-sonnet-5",
       "build_id": "629ea634",
-      "assigned_provider": "omniroute_sonnet"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "IT-5",
@@ -1635,8 +1633,7 @@
       "tests_required": true,
       "note": "Queued 2026-07-31. Depends on 17O (the shared knowledge base and its approval workflow) and on the user's payment-provider decision -- do not start implementation until both are resolved.",
       "build_id": "29f5274e",
-      "assigned_provider": "omniroute_sonnet",
-      "assigned_agent": "claude-sonnet-5"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "15A",
@@ -1808,8 +1805,7 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-31 directly from the user's Telegram request, explicitly deferred by the user's own instruction to run last, after every other currently-queued phase completes. Do not reprioritize ahead of anything else.",
-      "assigned_agent": "claude-sonnet-5",
-      "assigned_provider": "omniroute_sonnet"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "TK-176d6efe",
@@ -2074,7 +2070,6 @@
       "name": "17O-A: Legal Source Discovery Agent",
       "priority": 1,
       "dependencies": [],
-      "assigned_agent": "claude-sonnet-5",
       "status": "pending",
       "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
@@ -2084,7 +2079,7 @@
         "Source metadata preserved per document"
       ],
       "build_id": "aac35ac6",
-      "assigned_provider": "omniroute_sonnet"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "17O-B",
@@ -2093,7 +2088,6 @@
       "dependencies": [
         "17O-A"
       ],
-      "assigned_agent": "claude-sonnet-5",
       "status": "pending",
       "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",
       "completion_criteria": [
@@ -2101,7 +2095,7 @@
         "1992 Constitution marked as supreme authority",
         "Conflict detection: any analysis conflicting with Constitution must cite conflict"
       ],
-      "assigned_provider": "omniroute_sonnet"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "17O-C",
@@ -2110,7 +2104,6 @@
       "dependencies": [
         "17O-B"
       ],
-      "assigned_agent": "claude-sonnet-5",
       "status": "pending",
       "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
       "completion_criteria": [
@@ -2118,7 +2111,7 @@
         "Version control for legal documents",
         "Immutable storage with audit trail"
       ],
-      "assigned_provider": "omniroute_sonnet"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "17O-D",
@@ -2127,7 +2120,6 @@
       "dependencies": [
         "17O-C"
       ],
-      "assigned_agent": "claude-sonnet-5",
       "status": "pending",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
@@ -2136,7 +2128,7 @@
         "Duplicate detection with 0.85 threshold",
         "Outdated law detection"
       ],
-      "assigned_provider": "omniroute_sonnet"
+      "assigned_provider": "qwen3_coding"
     },
     {
       "id": "SUSU-3a",

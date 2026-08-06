@@ -326,9 +326,10 @@ JURIS_KAI_ROLE_PROVIDERS = {
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
-# 2026-08-05: Legal module coding — dedicated Claude Sonnet 5 via OmniRoute.
+# 2026-08-06: Legal module coding — qwen3_coding (Qwen4 RunPod, Qwen3-32B-FP8).
+# Was omniroute_sonnet (Claude Sonnet 5) but that account is out of credit.
 # All legal module builds (17O-A-D, 17P, 18C) use this provider exclusively.
-ROLE_PROVIDERS["legal_coding"] = ["omniroute_sonnet"]
+ROLE_PROVIDERS["legal_coding"] = ["qwen3_coding"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 

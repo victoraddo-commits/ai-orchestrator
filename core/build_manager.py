@@ -710,12 +710,33 @@ def _run_planning(build):
         _create_architecture_approval(build)
 
 
+def _is_legal_phase(build):
+    """Check if this build belongs to the legal module — routes to dedicated Sonnet 5 provider."""
+    name = (build.get("name") or "").upper()
+    legal_ids = {"17O-A", "17O-B", "17O-C", "17O-D", "17P", "17Q", "18C"}
+    is_legal = name in legal_ids or "LEGAL" in name or "JURIS" in name
+    # Also check the roadmap phase's assigned_provider
+    if not is_legal:
+        try:
+            from core.roadmap_engine import load_roadmap
+            roadmap = load_roadmap()
+            for p in roadmap.get("phases", []):
+                if p.get("id") == name:
+                    if p.get("assigned_provider") == "omniroute_sonnet":
+                        is_legal = True
+                    break
+        except Exception:
+            pass
+    return is_legal
+
+
 def _run_generation(build):
     try:
         _ensure_repo(build)
+        task_type = "legal_coding" if _is_legal_phase(build) else "coding"
         delegated = delegate(
             _generation_prompt(build),
-            task_type="coding",
+            task_type=task_type,
             project_path=build["project_path"],
             timeout=GENERATION_TIMEOUT,
             capability="coding_agent",

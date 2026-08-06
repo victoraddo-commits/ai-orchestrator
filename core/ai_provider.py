@@ -770,3 +770,26 @@ register_provider(
     description="Extension point for a future local model (e.g. Ollama) -- not installed",
     cost_tier="free",
 )
+
+# 2026-08-05: Claude Sonnet 5 via OmniRoute (kiro provider). Dedicated coding
+# provider for legal module builds — direct assignment via legal_coding role.
+OMNIROUTE_SONNET_MODEL = "kiro/claude-sonnet-5"
+
+
+def _omniroute_sonnet_run_coding_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", f"omniroute/{OMNIROUTE_SONNET_MODEL}")
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
+def _omniroute_sonnet_available():
+    return opencode_bridge.credential_exists("omniroute")
+
+
+register_provider(
+    "omniroute_sonnet",
+    run_coding_task=_omniroute_sonnet_run_coding_task,
+    available_fn=_omniroute_sonnet_available,
+    kind="cloud",
+    description="Claude Sonnet 5 (kiro/claude-sonnet-5 via OmniRoute gateway) — dedicated provider for legal module builds, separate billing",
+    cost_tier="paid",
+)

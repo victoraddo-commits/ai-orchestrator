@@ -613,7 +613,7 @@ def test_run_self_build_tests_syncs_the_clone_with_live_main_before_testing(monk
     roadmap_manager._run_self_build_tests(str(tmp_path))
 
     assert calls[0] == ["git", "fetch", "-q", "origin"]
-    assert calls[1] == ["git", "merge", "--no-edit", "-q", "origin/main"]
+    assert calls[1] == ["git", "rebase", "origin/main"]
     assert calls[2][0].endswith("pytest")
 
 
@@ -623,7 +623,7 @@ def test_run_self_build_tests_reports_stale_base_without_running_pytest_on_merge
         stdout = ""
         stderr = ""
 
-    class FakeMergeConflict:
+    class FakeRebaseConflict:
         returncode = 1
         stdout = ""
         stderr = "CONFLICT (content): Merge conflict in core/api.py"
@@ -634,8 +634,8 @@ def test_run_self_build_tests_reports_stale_base_without_running_pytest_on_merge
         calls.append(cmd)
         if cmd[:2] == ["git", "fetch"]:
             return FakeFetchOk()
-        if cmd[:2] == ["git", "merge"] and "--abort" not in cmd:
-            return FakeMergeConflict()
+        if cmd[:2] == ["git", "rebase"] and "--abort" not in cmd:
+            return FakeRebaseConflict()
         return FakeFetchOk()
 
     monkeypatch.setattr(roadmap_manager.subprocess, "run", fake_run)
@@ -646,7 +646,7 @@ def test_run_self_build_tests_reports_stale_base_without_running_pytest_on_merge
     assert "Stale base" in result["output"]
     assert "CONFLICT" in result["output"]
     assert not any(str(c[0]).endswith("pytest") for c in calls)
-    assert ["git", "merge", "--abort"] in calls
+    assert ["git", "rebase", "--abort"] in calls
 
 
 def test_run_self_build_tests_handles_a_missing_pytest_executable(monkeypatch, tmp_path):

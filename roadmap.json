@@ -2104,7 +2104,7 @@
       "name": "17O-A3: Ghana Gazette Source Discovery",
       "priority": 1,
       "dependencies": [],
-      "status": "in_progress",
+      "status": "failed",
       "description": "Discover and download all legal documents from Ghana Gazette sources. Crawl official gazette publications, executive instruments, constitutional instruments. Store with publication date, instrument number, and source metadata.",
       "completion_criteria": [
         "Crawl Ghana Gazette sources for downloadable publications",

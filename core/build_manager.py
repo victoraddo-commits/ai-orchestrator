@@ -666,6 +666,34 @@ def _create_deploy_approval(build):
 
 
 def _run_planning(build):
+    # 2026-08-06: prevent the expensive PLANNING → WAITING_FOR_USER_INPUT →
+    # submit_answer → PLANNING loop. If the build was already planned and the
+    # operator answered its question (qa_history is non-empty), re-evaluate
+    # the EXISTING plan for any remaining questions rather than re-calling
+    # delegate() — a fresh planning call almost always reintroduces the same
+    # clarification question, creating an infinite cycle that burns GPU credits
+    # ($0.99/hr RunPod) every 5-minute scheduler tick.
+    if build.get("plan") and build.get("qa_history"):
+        if _looks_like_tool_call_leak(build["plan"]):
+            build["failure_reason"] = "plan failed tool-call leak check on re-evaluation"
+            transition(build, "FAILED", BUILD_TRANSITIONS)
+            _record_if_terminal(build)
+            return
+
+        pending_question = _extract_pending_question(build["plan"])
+        if pending_question is not None:
+            build["pending_question"] = pending_question
+            # The operator already answered once; a second question on the
+            # same plan means the plan itself is indecisive. Break the loop
+            # by treating the plan as accepted — the pending question is
+            # informational rather than blocking.
+            transition(build, "WAITING_FOR_ARCHITECTURE_APPROVAL", BUILD_TRANSITIONS)
+            _create_architecture_approval(build)
+        else:
+            transition(build, "WAITING_FOR_ARCHITECTURE_APPROVAL", BUILD_TRANSITIONS)
+            _create_architecture_approval(build)
+        return
+
     try:
         _ensure_repo(build)
         result = delegate(

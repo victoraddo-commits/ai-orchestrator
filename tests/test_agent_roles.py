@@ -1,11 +1,12 @@
 import core.ai.agent_roles as agent_roles
 
 
-def _stub_provider(monkeypatch, name, response):
+def _stub_provider(monkeypatch, name, response, available=True):
     import core.ai_provider as ai_provider
 
     provider = ai_provider.get_provider(name)
-    monkeypatch.setitem(provider, "available_fn", lambda: True)
+    monkeypatch.setitem(provider, "enabled", True)
+    monkeypatch.setitem(provider, "available_fn", lambda: available)
     monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None: response)
 
 
@@ -61,6 +62,9 @@ def test_fast_analysis_agent_routes_to_groq(monkeypatch):
 
 
 def test_general_reasoning_agent_routes_to_openai(monkeypatch):
+    # qwen3_coder_text is now available (17Z) and is the primary review
+    # provider. Disable it to test the openai fallback path.
+    _stub_provider(monkeypatch, "qwen3_coder_text", "derp", available=False)
     _stub_provider(monkeypatch, "openai", "openai answered")
 
     result = agent_roles.general_reasoning_agent("Critique this proposal")
@@ -87,6 +91,8 @@ def test_general_reasoning_agent_falls_back_to_claude_when_openai_unavailable(mo
 
 
 def test_agent_role_kwargs_forward_to_delegate(monkeypatch):
+    # qwen3_coder_text is now available (17Z); disable so groq is primary
+    _stub_provider(monkeypatch, "qwen3_coder_text", "derp", available=False)
     _stub_provider(monkeypatch, "groq", "groq answered")
 
     result = agent_roles.fast_analysis_agent("Triage this log", timeout=5)

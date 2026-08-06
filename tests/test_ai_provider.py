@@ -503,35 +503,43 @@ def test_qwen3_coding_provider_is_registered_with_coding_agent_capability_only()
 
 
 def test_qwen3_coding_provider_defaults_to_correct_model(monkeypatch, tmp_path):
-    import core.opencode_bridge as opencode_bridge
+    # 2026-08-06: qwen3_coding now uses direct vLLM API (call_qwen3_coder_text),
+    # not opencode_bridge. The model defaults to QWEN3_CODER_MODEL inside
+    # call_qwen3_coder_text — the run_coding_task wrapper doesn't pass it
+    # explicitly.
+    import core.llm_clients as llm_clients
 
-    captured = {}
+    captured = {"prompt": None}
 
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
+    def fake_call(prompt, model=None, timeout=60):
+        captured["prompt"] = prompt
+        captured["timeout"] = timeout
+        return "code output"
 
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
+    monkeypatch.setattr(llm_clients, "call_qwen3_coder_text", fake_call)
 
     provider = ai_provider.get_provider("qwen3_coding")
-    provider["run_coding_task"](str(tmp_path), "build a widget")
+    result = provider["run_coding_task"](str(tmp_path), "build a widget")
 
-    assert captured["model"] == "qwen3-runpod/Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
+    assert result["success"] is True
+    assert "build a widget" in captured["prompt"]
+    assert captured["timeout"] == 600  # default from run_coding_task
 
 
 def test_qwen3_coding_provider_availability_requires_opencode_and_both_env_vars(monkeypatch):
-    import core.ai_provider as provider_module
+    # 2026-08-06: qwen3_coding now uses direct vLLM API — opencode is NOT
+    # required. The availability check only requires VLLM_QWEN3_CODER_API_KEY
+    # and VLLM_QWEN3_CODER_BASE_URL. Renamed test to match reality.
 
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
     monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
     monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://example.proxy.runpod.net/v1")
     assert ai_provider.list_providers()["qwen3_coding"]["available"] is True
 
-    monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
+    monkeypatch.delenv("VLLM_QWEN3_CODER_API_KEY", raising=False)
     assert ai_provider.list_providers()["qwen3_coding"]["available"] is False
 
-    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://example.proxy.runpod.net/v1")
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
+    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
+    monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
     assert ai_provider.list_providers()["qwen3_coding"]["available"] is False
 
 

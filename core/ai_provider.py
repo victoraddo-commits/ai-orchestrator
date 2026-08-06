@@ -111,6 +111,7 @@ def get_provider(name):
 
 
 def list_providers():
+    _persisted = _load_provider_state()
     return {
         name: {
             "kind": entry["kind"],
@@ -119,6 +120,7 @@ def list_providers():
             "enabled": entry.get("enabled", True),
             "capabilities": entry["capabilities"],
             "cost_tier": entry["cost_tier"],
+            "nickname": _persisted.get(f"_nick_{name}", ""),
         }
         for name, entry in _PROVIDERS.items()
     }
@@ -142,6 +144,43 @@ def get_provider_enabled(name: str) -> bool:
     """Check if a provider is enabled (default True for all providers)."""
     entry = _PROVIDERS.get(name)
     return entry.get("enabled", True) if entry else False
+
+
+def delete_provider(name: str) -> bool:
+    """Completely remove a provider from the registry and its persisted state.
+
+    Returns True if the provider existed and was removed, False if not found.
+    Cannot delete the universal 'claude' fallback -- it is required for the
+    router to operate correctly.
+    """
+    if name not in _PROVIDERS:
+        return False
+    if name == "claude":
+        raise ValueError("Cannot delete the universal 'claude' fallback provider.")
+    del _PROVIDERS[name]
+    state = _load_provider_state()
+    state.pop(name, None)
+    state.pop(f"_nick_{name}", None)
+    _save_provider_state(state)
+    return True
+
+
+def set_provider_nickname(name: str, nickname: str) -> bool:
+    """Set a human-friendly nickname for a provider.
+
+    Returns True if the provider exists, False if not found.
+    Empty string clears the nickname.
+    """
+    if name not in _PROVIDERS:
+        return False
+    state = _load_provider_state()
+    key = f"_nick_{name}"
+    if nickname:
+        state[key] = nickname
+    else:
+        state.pop(key, None)
+    _save_provider_state(state)
+    return True
 
 
 def _claude_available():

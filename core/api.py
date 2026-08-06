@@ -50,7 +50,7 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.module_registry import get_registered_modules
-from core.ai_provider import list_providers, set_provider_enabled
+from core.ai_provider import list_providers, set_provider_enabled, delete_provider, set_provider_nickname
 from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
@@ -807,6 +807,38 @@ def toggle_provider_endpoint(
     if not set_provider_enabled(name, body.enabled):
         raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
     return {"name": name, "enabled": body.enabled}
+
+
+class ProviderNickname(BaseModel):
+    nickname: str
+
+
+@app.delete("/providers/{name}")
+def delete_provider_endpoint(
+    name: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Completely remove a provider from the registry. Use to clean up
+    stale or nonexistent providers. The universal 'claude' fallback cannot
+    be deleted."""
+    try:
+        if not delete_provider(name):
+            raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"deleted": name}
+
+
+@app.put("/providers/{name}/nickname")
+def nickname_provider_endpoint(
+    name: str,
+    body: ProviderNickname,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Set or clear a human-friendly nickname for a provider."""
+    if not set_provider_nickname(name, body.nickname):
+        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+    return {"name": name, "nickname": body.nickname}
 
 
 @app.get("/api/modules")

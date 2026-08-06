@@ -105,6 +105,20 @@ def _post_json(provider_key, url, **kwargs):
 
         response.raise_for_status()
 
+        # Detect RunPod proxy HTML challenges -- the proxy layer returns
+        # Cloudflare/HTML pages instead of JSON when overloaded, which
+        # would otherwise surface as a confusing JSONDecodeError.
+        text = response.text
+        if text.lstrip().startswith("<!") or text.lstrip().lower().startswith("<html"):
+            provider_health.capture_provider_error(
+                provider_key,
+                detail=f"RunPod proxy returned HTML ({len(text)} bytes)",
+            )
+            raise RuntimeError(
+                f"{provider_key} request failed: "
+                f"RunPod proxy returned HTML instead of JSON"
+            )
+
         provider_health.capture_from_response_headers(provider_key, response.headers)
 
         return response.json()
@@ -171,6 +185,14 @@ QWEN3_CODER_MODEL = os.getenv("VLLM_QWEN3_CODER_MODEL", "")
 # OPENAI_DEFAULT_MODEL/api.openai.com -- those stay defined above for
 # whenever this gets pointed back at the real API.
 def call_openai(prompt, model=None, timeout=60):
+    """Qwen4 RunPod text completion (hijacked 'openai' provider slot).
+
+    The Qwen/Qwen3-32B-FP8 model on this pod is a reasoning model that
+    always emits reasoning tokens into the ``reasoning`` field, leaving
+    ``content`` as null.  ``enable_thinking: false`` reduces verbosity
+    but does NOT switch it out of reasoning mode -- fall back to
+    ``reasoning`` so callers get text, not None.
+    """
     key = _require_key("VLLM_QWEN3_CODER_API_KEY")
     model = model or QWEN3_CODER_MODEL
 
@@ -178,10 +200,12 @@ def call_openai(prompt, model=None, timeout=60):
         "openai",
         f"{QWEN3_CODER_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}],
+              "chat_template_kwargs": {"enable_thinking": False}},
         timeout=timeout,
     )
-    return data["choices"][0]["message"]["content"]
+    msg = data["choices"][0]["message"]
+    return msg.get("content") or msg.get("reasoning", "")
 
 
 # 2026-08-05 (Phase 17Z): Qwen4 pod (ldtqgcshb2dwsw, RTX PRO 6000 96GB)
@@ -196,10 +220,12 @@ def call_qwen3_coder_text(prompt, model=None, timeout=60):
         "qwen3_coder_text",
         f"{QWEN3_CODER_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}],
+              "chat_template_kwargs": {"enable_thinking": False}},
         timeout=timeout,
     )
-    return data["choices"][0]["message"]["content"]
+    msg = data["choices"][0]["message"]
+    return msg.get("content") or msg.get("reasoning", "")
 
 
 def call_openrouter(prompt, model=OPENROUTER_DEFAULT_MODEL, timeout=60):

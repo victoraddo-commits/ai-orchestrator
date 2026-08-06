@@ -338,7 +338,13 @@ def test_delegate_endpoint_requires_auth():
 def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
     import core.ai_provider as ai_provider
 
+    # qwen3_coder_text now leads "classification" (reasoning-model fallback
+    # fix deployed) — disable it so groq is the next candidate this test expects.
+    qwen = ai_provider.get_provider("qwen3_coder_text")
+    monkeypatch.setitem(qwen, "available_fn", lambda: False)
+
     groq = ai_provider.get_provider("groq")
+    monkeypatch.setitem(groq, "enabled", True)  # re-enable from persisted state
     monkeypatch.setitem(groq, "available_fn", lambda: True)
     monkeypatch.setitem(groq, "run_text_task", lambda p, timeout=60, project_path=None: "log looks fine")
 

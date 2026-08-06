@@ -159,6 +159,19 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
 .toggle-switch input:disabled + .toggle-slider { opacity: 0.4; cursor: not-allowed; }
 
+.nickname-input {
+  background: var(--input-bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 8px; font-size: 0.82rem; font-family: inherit;
+}
+.nickname-input:focus { border-color: var(--accent); outline: none; }
+
+.btn-delete-agent {
+  background: none; border: 1px solid var(--border); color: var(--red);
+  border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 0.9rem;
+  opacity: 0.6; transition: opacity 0.15s;
+}
+.btn-delete-agent:hover { opacity: 1; background: rgba(248,81,73,0.1); }
+
 /* ── Chat tab ──────────────────────────────────────────────────────── */
 
 .chat-wrap {
@@ -2157,7 +2170,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
 
       function renderTable(rows) {
         if (!rows.length) return '<span class="empty">none</span>';
-        let h = '<table><thead><tr><th>Agent</th><th>Capabilities</th><th>Cost</th><th>Usage</th><th>On/Off</th></tr></thead><tbody>';
+        let h = '<table><thead><tr><th>Agent</th><th>Nickname</th><th>Capabilities</th><th>Cost</th><th>Usage</th><th>On/Off</th><th></th></tr></thead><tbody>';
         for (const {name, info} of rows) {
           const caps = (info.capabilities||[]).join(", ");
           const cost = info.cost_tier || "-";
@@ -2169,8 +2182,10 @@ tr:hover { background: rgba(255,255,255,0.03); }
           const statusLabel = !enabled ? "off" : avail ? "on" : "unavailable";
           const disabledAttr = !avail ? "disabled" : "";
           const checked = enabled && avail ? "checked" : "";
+          const nickname = info.nickname || "";
           h += `<tr>
             <td><strong>${esc(name)}</strong><br><small>${esc(info.description||"")}</small></td>
+            <td><input type="text" class="nickname-input" data-provider="${esc(name)}" value="${esc(nickname)}" placeholder="—" maxlength="32" style="width:100px;"></td>
             <td>${esc(caps)}</td>
             <td><span class="badge info">${esc(cost)}</span></td>
             <td>${statusIcon} ${statusLabel} &middot; <small>${successRate}</small></td>
@@ -2180,6 +2195,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
                 <span class="toggle-slider"></span>
               </label>
             </td>
+            <td><button class="btn-delete-agent" data-provider="${esc(name)}" title="Delete agent">&#x1F5D1;</button></td>
           </tr>`;
         }
         h += "</tbody></table>";
@@ -2204,6 +2220,49 @@ tr:hover { background: rgba(255,255,255,0.03); }
             console.error("Toggle failed:", e);
             cb.checked = !enabled; // revert on failure
             alert("Failed to toggle " + name + ": " + e.message);
+          }
+        });
+      });
+
+      // Attach nickname save-on-blur
+      document.querySelectorAll("#tab-agents .nickname-input").forEach(inp => {
+        inp.addEventListener("change", async () => {
+          const name = inp.dataset.provider;
+          const nickname = inp.value.trim();
+          try {
+            await fetch(`/dashboard/api/proxy/providers/${name}/nickname`, {
+              method: "PUT",
+              headers: {"Content-Type": "application/json", "Authorization": getAuthHeader()},
+              body: JSON.stringify({nickname})
+            });
+          } catch (e) {
+            console.error("Nickname save failed:", e);
+            alert("Failed to save nickname: " + e.message);
+            inp.value = inp.defaultValue; // revert
+          }
+        });
+      });
+
+      // Attach delete handlers
+      document.querySelectorAll("#tab-agents .btn-delete-agent").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const name = btn.dataset.provider;
+          if (!confirm(`Permanently delete agent "${name}"?\n\nThis cannot be undone.`)) return;
+          const del = prompt(`Type "${name}" to confirm deletion:`);
+          if (del !== name) return;
+          try {
+            const resp = await fetch(`/dashboard/api/proxy/providers/${name}`, {
+              method: "DELETE",
+              headers: {"Authorization": getAuthHeader()}
+            });
+            if (!resp.ok) {
+              const err = await resp.json();
+              throw new Error(err.detail || resp.statusText);
+            }
+            loadAgents(); // reload the tab
+          } catch (e) {
+            console.error("Delete failed:", e);
+            alert("Failed to delete " + name + ": " + e.message);
           }
         });
       });

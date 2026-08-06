@@ -2159,7 +2159,7 @@
       "dependencies": [
         "17O-C"
       ],
-      "status": "in_progress",
+      "status": "failed",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",

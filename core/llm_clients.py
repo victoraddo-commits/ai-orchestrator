@@ -368,3 +368,52 @@ def call_omniroute_deepseek_flash(prompt, timeout=60):
         raise RuntimeError(f"omniroute deepseek flash request failed: {detail}")
 
     return data["choices"][0]["message"]["content"]
+
+
+# GPU.ai — Gemma 4 31B IT (vision-capable, OpenAI-compatible).
+# https://gpu.ai hosts Google's Gemma 4 31B IT with full multimodal support:
+# image understanding, OCR, document analysis, table extraction, UI screenshots,
+# and all the visual capabilities listed in Gemma 4's capability registry.
+# GPU.ai exposes a standard OpenAI-compatible /v1 endpoint, so this is a thin
+# wrapper around the same chat/completions call shape as call_groq/call_openrouter.
+#
+# Unlike the other text-only clients in this module, this function accepts
+# OpenAI-compatible message arrays (text + image_url blocks) so the legal
+# module can send scanned documents, photos of legislation pages, etc.
+GPUAI_GEMMA_MODEL = "gpuai/gemma-4-31b-it"
+GPUAI_BASE_URL = "https://api.gpu.ai/v1"
+
+
+def call_gpuai_gemma(prompt, model=GPUAI_GEMMA_MODEL, timeout=120, max_tokens=4096):
+    """Call GPU.ai's Gemma 4 31B IT (vision-capable, OpenAI-compatible).
+
+    `prompt` can be:
+      - str: sent as {"role": "user", "content": prompt}
+      - list[dict]: sent directly as the messages array (allows image_url blocks,
+        multi-turn, system messages, etc.)
+
+    Returns the response text. Raises ProviderUnavailable if no key is stored.
+    """
+    from core.ai.secrets import get_api_key
+    key = get_api_key("gpuai")
+    if not key:
+        raise ProviderUnavailable("GPU.ai Gemma needs a stored secret (provider: 'gpuai')")
+
+    if isinstance(prompt, list):
+        messages = prompt
+    else:
+        messages = [{"role": "user", "content": prompt}]
+
+    data = _post_json(
+        "gpuai_gemma",
+        f"{GPUAI_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": messages, "max_tokens": max_tokens},
+        timeout=timeout,
+    )
+
+    if not data.get("choices"):
+        detail = (data.get("error") or {}).get("message", "unknown error")
+        raise RuntimeError(f"gpuai_gemma request failed: {detail}")
+
+    return data["choices"][0]["message"]["content"]

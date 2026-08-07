@@ -54,6 +54,11 @@ from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.module_registry import get_registered_modules
 from core.ai_provider import list_providers, set_provider_enabled, deregister_provider
+from core.ai.agent_registry import (
+    list_agents, get_agent, register_agent, enable_agent, disable_agent,
+    test_agent, get_agent_stats, get_cost_history, get_performance_history,
+    record_benchmark, bootstrap_default_agents,
+)
 from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
@@ -939,6 +944,164 @@ def delete_provider_endpoint(
         "name": name,
         "roles_removed": roles_removed,
     }
+
+
+# ── AI Agent Registry endpoints ─────────────────────────────────────────
+# CRUD + enable/disable + test + stats for agents (model + version + GPU +
+# cost + benchmarks).  Write endpoints require bridge token or admin session.
+
+class AgentRegisterRequest(BaseModel):
+    agent_id: str
+    name: str
+    provider_key: str
+    model_name: str
+    model_version: str = ""
+    gpu_type: str = ""
+    gpu_memory_gb: int = 0
+    cost_per_hour: float = 0.0
+    capabilities: list[str] = []
+    fallback_chain: list[str] = []
+    description: str = ""
+
+
+class AgentBenchmarkRequest(BaseModel):
+    latency_ms: int
+    accuracy_score: float = 0.0
+    tool_use_success_rate: float = 0.0
+
+
+class AgentStatusRequest(BaseModel):
+    enabled: bool
+
+
+class AgentTestRequest(BaseModel):
+    timeout: int = 30
+
+
+@app.get("/kai/agents")
+def agents_list_endpoint(status: str | None = None):
+    """List all registered AI agents, optionally filtered by status."""
+    return {"agents": list_agents(status=status)}
+
+
+@app.get("/kai/agents/{agent_id}")
+def agents_get_endpoint(agent_id: str):
+    """Get a single agent by ID."""
+    agent = get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    return agent
+
+
+@app.post("/kai/agents")
+def agents_register_endpoint(
+    body: AgentRegisterRequest,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Register (or update) an AI agent."""
+    return register_agent(
+        agent_id=body.agent_id,
+        name=body.name,
+        provider_key=body.provider_key,
+        model_name=body.model_name,
+        model_version=body.model_version,
+        gpu_type=body.gpu_type,
+        gpu_memory_gb=body.gpu_memory_gb,
+        cost_per_hour=body.cost_per_hour,
+        capabilities=body.capabilities,
+        fallback_chain=body.fallback_chain,
+        description=body.description,
+    )
+
+
+@app.post("/kai/agents/{agent_id}/enable")
+def agents_enable_endpoint(
+    agent_id: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Enable an agent (sets status to 'active', syncs with provider)."""
+    if not enable_agent(agent_id):
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    agent = get_agent(agent_id)
+    return {"ok": True, "agent_id": agent_id, "status": agent["status"] if agent else "active"}
+
+
+@app.post("/kai/agents/{agent_id}/disable")
+def agents_disable_endpoint(
+    agent_id: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Disable an agent (sets status to 'disabled', syncs with provider)."""
+    if not disable_agent(agent_id):
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    agent = get_agent(agent_id)
+    return {"ok": True, "agent_id": agent_id, "status": agent["status"] if agent else "disabled"}
+
+
+@app.post("/kai/agents/{agent_id}/test")
+def agents_test_endpoint(
+    agent_id: str,
+    body: AgentTestRequest | None = None,
+):
+    """Run a quick health test against the agent's provider."""
+    timeout = body.timeout if body else 30
+    result = test_agent(agent_id, timeout=timeout)
+    if not result.get("ok"):
+        status_code = 404 if "not found" in str(result.get("error", "")).lower() else 503
+        raise HTTPException(status_code=status_code, detail=result.get("error", "Test failed"))
+    return result
+
+
+@app.get("/kai/agents/{agent_id}/stats")
+def agents_stats_endpoint(agent_id: str):
+    """Aggregate stats: successful runs, avg latency, total cost."""
+    stats = get_agent_stats(agent_id)
+    if not stats:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    return stats
+
+
+@app.get("/kai/agents/{agent_id}/costs")
+def agents_costs_endpoint(agent_id: str, limit: int = 50):
+    """Recent cost entries, newest first."""
+    if not get_agent(agent_id):
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    return {"agent_id": agent_id, "costs": get_cost_history(agent_id, limit=limit)}
+
+
+@app.get("/kai/agents/{agent_id}/performance")
+def agents_performance_endpoint(agent_id: str, limit: int = 50):
+    """Recent performance data points, newest first."""
+    if not get_agent(agent_id):
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    return {"agent_id": agent_id, "performance": get_performance_history(agent_id, limit=limit)}
+
+
+@app.post("/kai/agents/{agent_id}/benchmarks")
+def agents_benchmark_endpoint(
+    agent_id: str,
+    body: AgentBenchmarkRequest,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Record benchmark results for an agent."""
+    if not get_agent(agent_id):
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
+    record_benchmark(
+        agent_id,
+        latency_ms=body.latency_ms,
+        accuracy_score=body.accuracy_score,
+        tool_use_success_rate=body.tool_use_success_rate,
+    )
+    return {"ok": True, "agent_id": agent_id}
+
+
+@app.post("/kai/agents/bootstrap")
+def agents_bootstrap_endpoint(
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Seed the agent registry with agents from existing providers. Idempotent."""
+    count = bootstrap_default_agents()
+    return {"ok": True, "created": count, "total_agents": len(list_agents())}
 
 
 @app.get("/api/modules")

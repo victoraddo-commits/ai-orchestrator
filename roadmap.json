@@ -2425,12 +2425,13 @@
     {
       "id": "AI-2",
       "name": "AI-2: Agent Registry",
-      "status": "pending",
+      "status": "completed",
       "priority": 2,
       "dependencies": [
         "AI-1"
       ],
-      "assigned_agent": "qwen3",
+      "assigned_agent": "qwen4",
+      "completed_at": "2026-08-07",
       "description": "Agent registry in memory/agents.json: model, version, GPU, cost, benchmarks, status, fallback chain per agent. Management API: list, test, enable/disable, update model, cost history, performance history.",
       "completion_criteria": [
         "Agent registry persisted in memory/agents.json",

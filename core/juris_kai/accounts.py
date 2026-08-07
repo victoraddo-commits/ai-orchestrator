@@ -168,6 +168,20 @@ def _init_schema(conn: sqlite3.Connection):
             last_updated TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
+        -- Phase 5: Referral / invite system
+        CREATE TABLE IF NOT EXISTS juris_referrals (
+            referral_id TEXT PRIMARY KEY,
+            inviter_account_id TEXT NOT NULL,
+            invitee_telegram_id TEXT,
+            invite_code TEXT UNIQUE NOT NULL,
+            status TEXT DEFAULT 'pending',
+            reward_days INTEGER DEFAULT 0,
+            invitee_trial_days INTEGER DEFAULT 3,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            accepted_at TEXT,
+            FOREIGN KEY (inviter_account_id) REFERENCES juris_accounts(account_id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_juris_telegram
             ON juris_accounts(telegram_id);
         CREATE INDEX IF NOT EXISTS idx_juris_payments_account
@@ -180,6 +194,10 @@ def _init_schema(conn: sqlite3.Connection):
             ON juris_security_log(telegram_id);
         CREATE INDEX IF NOT EXISTS idx_juris_security_event
             ON juris_security_log(event_type);
+        CREATE INDEX IF NOT EXISTS idx_juris_referrals_inviter
+            ON juris_referrals(inviter_account_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_referrals_code
+            ON juris_referrals(invite_code);
     """)
 
 
@@ -532,6 +550,257 @@ class AccountManager:
         """Log when a user hits the rate limit."""
         return self.log_security_event(telegram_id, "rate_limited",
                                        "Message rate limit exceeded")
+
+    # ---- Referral / invite system ----
+
+    def generate_invite_code(self, account_id: str) -> Dict[str, Any]:
+        """Generate a unique invite code for an account to share."""
+        account = self.get_account(account_id)
+        if not account:
+            return {"success": False, "error": "Account not found"}
+
+        code = "JURIS-" + secrets.token_hex(4).upper()
+        referral_id = str(uuid.uuid4())[:12]
+
+        self.db.execute(
+            """INSERT INTO juris_referrals
+               (referral_id, inviter_account_id, invite_code, status, reward_days, invitee_trial_days)
+               VALUES (?, ?, ?, 'pending', 1, 3)""",
+            (referral_id, account_id, code),
+        )
+        self.db.commit()
+
+        logger.info(f"Referral code {code} generated for account {account_id}")
+        return {
+            "success": True,
+            "referral_id": referral_id,
+            "invite_code": code,
+            "inviter_account_id": account_id,
+            "reward_days": 1,
+            "invitee_trial_days": 3,
+        }
+
+    def accept_invite(self, code: str, invitee_telegram_id: str,
+                      invitee_name: str = "") -> Dict[str, Any]:
+        """Accept an invite code. Creates trial account for invitee and
+        grants reward days to the inviter."""
+        # Find the pending referral
+        ref = self.db.execute(
+            "SELECT * FROM juris_referrals WHERE invite_code = ? AND status = 'pending'",
+            (code.upper(),),
+        ).fetchone()
+
+        if not ref:
+            return {"success": False, "error": "Invalid or already used invite code"}
+
+        # Check invitee doesn't already have an account (prevent self-referral farming)
+        existing = self.get_by_telegram(invitee_telegram_id)
+        if existing:
+            # Already a user — still credit inviter if referral is pending
+            pass
+
+        # Create invitee's account with extended trial
+        invitee_acct = self.get_or_create(invitee_telegram_id, invitee_name)
+        if invitee_acct.get("is_new") or not existing:
+            # Upgrade to referral trial (3 days instead of 7-day default trial)
+            trial_end = (datetime.now(timezone.utc) + timedelta(days=ref["invitee_trial_days"])).isoformat()
+            self.db.execute(
+                """UPDATE juris_accounts
+                   SET subscription_tier = 'free_trial',
+                       subscription_start = datetime('now'),
+                       subscription_end = ?,
+                       updated_at = datetime('now')
+                   WHERE account_id = ?""",
+                (trial_end, invitee_acct["account_id"]),
+            )
+
+        # Grant reward days to inviter
+        self._extend_subscription(ref["inviter_account_id"], ref["reward_days"])
+
+        # Mark referral as accepted
+        self.db.execute(
+            """UPDATE juris_referrals
+               SET status = 'accepted', invitee_telegram_id = ?,
+                   accepted_at = datetime('now')
+               WHERE referral_id = ?""",
+            (str(invitee_telegram_id), ref["referral_id"]),
+        )
+        self.db.commit()
+
+        # Log usage
+        self.db.execute(
+            "INSERT INTO juris_usage_log (account_id, action_type, details) VALUES (?, 'referral_accepted', ?)",
+            (ref["inviter_account_id"], f"Invited telegram_id={invitee_telegram_id}"),
+        )
+
+        logger.info(f"Referral {ref['referral_id']} accepted: inviter={ref['inviter_account_id']}, "
+                     f"invitee_telegram={invitee_telegram_id}, reward={ref['reward_days']}d")
+        return {
+            "success": True,
+            "referral_id": ref["referral_id"],
+            "inviter_reward_days": ref["reward_days"],
+            "invitee_account_id": invitee_acct["account_id"],
+            "invitee_trial_days": ref["invitee_trial_days"],
+        }
+
+    def get_referral_history(self, account_id: str) -> List[Dict[str, Any]]:
+        """Get all referrals for an account."""
+        rows = self.db.execute(
+            "SELECT * FROM juris_referrals WHERE inviter_account_id = ? ORDER BY created_at DESC",
+            (account_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_all_referrals(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get all referrals (admin view)."""
+        rows = self.db.execute(
+            "SELECT r.*, a.full_name as inviter_name, a.telegram_id as inviter_telegram "
+            "FROM juris_referrals r LEFT JOIN juris_accounts a "
+            "ON r.inviter_account_id = a.account_id "
+            "ORDER BY r.created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---- Admin: account management ----
+
+    def grant_free_days(self, account_id: str, days: int,
+                         reason: str = "admin_grant") -> Dict[str, Any]:
+        """Extend an account's subscription by N days."""
+        if days < 0:
+            return {"success": False, "error": "Days must be non-negative"}
+
+        account = self.get_account(account_id)
+        if not account:
+            return {"success": False, "error": "Account not found"}
+
+        self._extend_subscription(account_id, days)
+
+        # Log
+        self.db.execute(
+            "INSERT INTO juris_usage_log (account_id, action_type, details) VALUES (?, ?, ?)",
+            (account_id, "admin_grant_days", f"Granted {days} days: {reason}"),
+        )
+        self.db.commit()
+
+        logger.info(f"Granted {days} free days to account {account_id}: {reason}")
+        return {
+            "success": True,
+            "account_id": account_id,
+            "days_granted": days,
+            "new_end": self.get_account(account_id).get("subscription_end") if self.get_account(account_id) else None,
+        }
+
+    def _extend_subscription(self, account_id: str, days: int):
+        """Internal: extend a subscription by N days from current end or now."""
+        account = self.get_account(account_id)
+        if not account:
+            return
+
+        end_str = account.get("subscription_end")
+        if end_str:
+            try:
+                current_end = datetime.fromisoformat(end_str)
+            except (ValueError, TypeError):
+                current_end = datetime.now(timezone.utc)
+        else:
+            current_end = datetime.now(timezone.utc)
+
+        # If already expired, start from now
+        if current_end < datetime.now(timezone.utc):
+            current_end = datetime.now(timezone.utc)
+
+        new_end = current_end + timedelta(days=days)
+        self.db.execute(
+            """UPDATE juris_accounts
+               SET subscription_end = ?, updated_at = datetime('now')
+               WHERE account_id = ?""",
+            (new_end.isoformat(), account_id),
+        )
+
+    def ban_account(self, account_id: str, reason: str = "") -> Dict[str, Any]:
+        """Deactivate/ban an account."""
+        account = self.get_account(account_id)
+        if not account:
+            return {"success": False, "error": "Account not found"}
+
+        self.db.execute(
+            "UPDATE juris_accounts SET is_active = 0, updated_at = datetime('now') WHERE account_id = ?",
+            (account_id,),
+        )
+        self.db.commit()
+        self.log_security_event(
+            account.get("telegram_id", ""), "account_banned",
+            f"Account {account_id} banned: {reason}",
+        )
+        logger.info(f"Account {account_id} banned: {reason}")
+        return {"success": True, "account_id": account_id, "action": "banned"}
+
+    def unban_account(self, account_id: str) -> Dict[str, Any]:
+        """Reactivate an account."""
+        account = self.get_account(account_id)
+        if not account:
+            return {"success": False, "error": "Account not found"}
+
+        self.db.execute(
+            "UPDATE juris_accounts SET is_active = 1, updated_at = datetime('now') WHERE account_id = ?",
+            (account_id,),
+        )
+        self.db.commit()
+        self.log_security_event(
+            account.get("telegram_id", ""), "account_unbanned",
+            f"Account {account_id} reactivated",
+        )
+        logger.info(f"Account {account_id} unbanned")
+        return {"success": True, "account_id": account_id, "action": "unbanned"}
+
+    def find_accounts(self, query: str = "", tier: str = "",
+                       active_only: bool = False, page: int = 1,
+                       per_page: int = 50) -> Dict[str, Any]:
+        """Search accounts by telegram_id, name, email, or phone."""
+        conditions = []
+        params = []
+
+        if query:
+            conditions.append(
+                "(telegram_id LIKE ? OR full_name LIKE ? OR email LIKE ? OR phone LIKE ?)"
+            )
+            q = f"%{query}%"
+            params.extend([q, q, q, q])
+
+        if tier:
+            conditions.append("subscription_tier = ?")
+            params.append(tier)
+
+        if active_only:
+            conditions.append("is_active = 1")
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        total = self.db.execute(
+            f"SELECT COUNT(*) as c FROM juris_accounts {where}", params,
+        ).fetchone()
+
+        offset = (page - 1) * per_page
+        rows = self.db.execute(
+            f"SELECT * FROM juris_accounts {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            params + [per_page, offset],
+        ).fetchall()
+
+        # Enrich with subscription status
+        enriched = []
+        for r in rows:
+            d = dict(r)
+            d["subscription"] = self.get_active_subscription(d["account_id"])
+            enriched.append(d)
+
+        return {
+            "accounts": enriched,
+            "total": total["c"] if total else 0,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": max(1, ((total["c"] if total else 0) + per_page - 1) // per_page),
+        }
 
 
 # Module-level convenience

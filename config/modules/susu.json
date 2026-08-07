@@ -1,0 +1,14 @@
+{
+  "name": "susu",
+  "version": "1.0.0",
+  "description": "Group savings bot (SUSU/ROSCA) — interactive group creation, contribution tracking, mobile money deposits/withdrawals, admin fee management",
+  "endpoints": ["/api/susu/stats", "/api/susu/users", "/api/susu/groups", "/api/susu/transactions"],
+  "capabilities": ["group-savings", "mobile-money", "payment-processing", "contribution-tracking"],
+  "dependencies": [],
+  "settings_schema": {
+    "admin_fee_percentage": {"type": "number", "default": 0, "label": "Admin fee percentage", "min": 0, "max": 20},
+    "max_group_participants": {"type": "number", "default": 50, "label": "Max participants per group", "min": 2, "max": 200},
+    "min_contribution_ghs": {"type": "number", "default": 5, "label": "Min contribution (GHS)", "min": 1, "max": 1000}
+  },
+  "ops_actions": ["refresh_stats", "list_delinquent_groups", "reconcile_payments"]
+}

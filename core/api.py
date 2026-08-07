@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form, Body
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, JSONResponse
 import httpx
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -639,6 +639,283 @@ def module_config_put(name: str, body: dict = Body(...)):
         return {"name": name, "config": cfg[name], "saved": True}
     except Exception as e:
         return {"name": name, "error": str(e), "saved": False}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Juris Kai Admin API — Account management, referrals, payments
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/juris-kai/stats")
+def juris_kai_stats():
+    """Aggregate Juris Kai stats for admin dashboard."""
+    try:
+        from core.juris_kai.dashboard import get_dashboard_stats
+        return get_dashboard_stats()
+    except Exception as e:
+        return {"error": str(e), "juris_kai": {}}
+
+
+@app.get("/api/juris-kai/accounts")
+def juris_kai_accounts(
+    q: str = "", tier: str = "", active_only: bool = False,
+    page: int = 1, per_page: int = 50,
+):
+    """List/search Juris Kai accounts."""
+    try:
+        from core.juris_kai.accounts import get_account_manager
+        mgr = get_account_manager()
+        if q or tier or active_only:
+            return mgr.find_accounts(query=q, tier=tier, active_only=active_only,
+                                     page=page, per_page=per_page)
+        from core.juris_kai.dashboard import list_accounts
+        return list_accounts(page=page, per_page=per_page, active_only=active_only)
+    except Exception as e:
+        return {"error": str(e), "accounts": []}
+
+
+@app.get("/api/juris-kai/accounts/{account_id}")
+def juris_kai_account_detail(account_id: str):
+    """Get detailed account info for admin view."""
+    try:
+        from core.juris_kai.dashboard import get_account_detail
+        detail = get_account_detail(account_id)
+        if not detail:
+            return JSONResponse(status_code=404, content={"error": "Account not found"})
+        return detail
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/juris-kai/accounts/{account_id}/subscription")
+def juris_kai_set_subscription(account_id: str, body: dict = Body(...)):
+    """Change an account's subscription tier."""
+    try:
+        from core.juris_kai.dashboard import update_subscription
+        return update_subscription(account_id, body.get("tier", ""))
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/juris-kai/accounts/{account_id}/deactivate")
+def juris_kai_deactivate(account_id: str, body: dict = Body(...)):
+    """Ban/deactivate an account."""
+    try:
+        from core.juris_kai.accounts import get_account_manager
+        mgr = get_account_manager()
+        return mgr.ban_account(account_id, body.get("reason", "admin_action"))
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/juris-kai/accounts/{account_id}/activate")
+def juris_kai_activate(account_id: str):
+    """Reactivate/unban an account."""
+    try:
+        from core.juris_kai.accounts import get_account_manager
+        mgr = get_account_manager()
+        return mgr.unban_account(account_id)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/juris-kai/accounts/{account_id}/grant-days")
+def juris_kai_grant_days(account_id: str, body: dict = Body(...)):
+    """Grant N free days to an account."""
+    try:
+        from core.juris_kai.accounts import get_account_manager
+        mgr = get_account_manager()
+        return mgr.grant_free_days(account_id, body.get("days", 1),
+                                   body.get("reason", "admin_grant"))
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/juris-kai/referrals")
+def juris_kai_referrals():
+    """List all referrals (admin view)."""
+    try:
+        from core.juris_kai.accounts import get_account_manager
+        mgr = get_account_manager()
+        return {"referrals": mgr.get_all_referrals()}
+    except Exception as e:
+        return {"error": str(e), "referrals": []}
+
+
+@app.post("/api/juris-kai/referrals/generate")
+def juris_kai_referral_generate(body: dict = Body(...)):
+    """Generate a new invite code for an account."""
+    try:
+        from core.juris_kai.accounts import get_account_manager
+        mgr = get_account_manager()
+        return mgr.generate_invite_code(body.get("account_id", ""))
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/juris-kai/payments")
+def juris_kai_payments(account_id: str = "", limit: int = 50):
+    """Get payment history."""
+    try:
+        from core.juris_kai.dashboard import get_payment_history
+        return {"payments": get_payment_history(account_id=account_id or None, limit=limit)}
+    except Exception as e:
+        return {"error": str(e), "payments": []}
+
+
+@app.get("/api/juris-kai/security-log")
+def juris_kai_security_log(event_type: str = "", limit: int = 100):
+    """Get security event log."""
+    try:
+        from core.juris_kai.accounts import get_account_manager
+        mgr = get_account_manager()
+        return {"events": mgr.get_security_logs(event_type=event_type, limit=limit)}
+    except Exception as e:
+        return {"error": str(e), "events": []}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SUSU Admin API — User & group management
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/susu/stats")
+def susu_stats():
+    """Aggregate SUSU stats."""
+    try:
+        from core.susu import models as susu_models
+        users = susu_models._load("users", default={"index": {}, "list": []})
+        groups = susu_models._load("groups", default={"index": {}, "list": []})
+        transactions = susu_models._load("transactions", default={"index": {}, "list": []})
+        fees = susu_models._load("fees", default={"index": {}, "list": []})
+
+        tx_list = transactions.get("list", [])
+        total_deposits = sum(float(t.get("amount", 0)) for t in tx_list
+                            if t.get("tx_type") == "DEPOSIT" and t.get("status") == "COMPLETED")
+        total_withdrawals = sum(float(t.get("amount", 0)) for t in tx_list
+                               if t.get("tx_type") == "WITHDRAWAL" and t.get("status") == "COMPLETED")
+        total_fees = sum(float(f.get("amount", 0)) for f in fees.get("list", [])
+                        if f.get("status") == "PAID")
+
+        return {
+            "total_users": len(users.get("list", [])),
+            "total_groups": len(groups.get("list", [])),
+            "active_groups": len([g for g in groups.get("list", []) if g.get("status") == "ACTIVE"]),
+            "total_deposits_ghs": round(total_deposits, 2),
+            "total_withdrawals_ghs": round(total_withdrawals, 2),
+            "total_fees_collected_ghs": round(total_fees, 2),
+            "pending_transactions": len([t for t in tx_list if t.get("status") == "PENDING"]),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/susu/users")
+def susu_users():
+    """List all SUSU users."""
+    try:
+        from core.susu import models as susu_models
+        users = susu_models._load("users", default={"index": {}, "list": []})
+        # Enrich with balance
+        enriched = []
+        for u in users.get("list", []):
+            uid = u.get("id") or u.get("telegram_id")
+            balance = susu_models.get_user_balance(uid) if uid else 0
+            enriched.append({**u, "balance_ghs": balance})
+        return {"users": sorted(enriched, key=lambda u: u.get("created_at", ""), reverse=True)}
+    except Exception as e:
+        return {"error": str(e), "users": []}
+
+
+@app.get("/api/susu/groups")
+def susu_groups():
+    """List all SUSU groups with member counts."""
+    try:
+        from core.susu import models as susu_models
+        groups = susu_models._load("groups", default={"index": {}, "list": []})
+        enriched = []
+        for g in groups.get("list", []):
+            members = susu_models.get_members(g["id"])
+            fees = susu_models.get_fees_for_group(g["id"])
+            enriched.append({
+                **g,
+                "member_count": len(members),
+                "fees_collected": sum(float(f.get("amount", 0)) for f in fees if f.get("status") == "PAID"),
+                "fees_pending": len([f for f in fees if f.get("status") == "PENDING"]),
+            })
+        return {"groups": sorted(enriched, key=lambda g: g.get("created_at", ""), reverse=True)}
+    except Exception as e:
+        return {"error": str(e), "groups": []}
+
+
+@app.get("/api/susu/transactions")
+def susu_transactions(group_id: str = "", user_id: str = "", limit: int = 100):
+    """List SUSU transactions with optional filters."""
+    try:
+        from core.susu import models as susu_models
+        tx = susu_models._load("transactions", default={"index": {}, "list": []})
+        result = tx.get("list", [])
+        if group_id:
+            result = [t for t in result if t.get("group_id") == group_id]
+        if user_id:
+            result = [t for t in result if t.get("user_id") == user_id]
+        result.sort(key=lambda t: t.get("created_at", ""), reverse=True)
+        return {"transactions": result[:limit]}
+    except Exception as e:
+        return {"error": str(e), "transactions": []}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Legal Brain Admin API
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/legal-brain/stats")
+def legal_brain_stats():
+    """Get Legal Brain knowledge engine stats."""
+    try:
+        from core.legal_brain.permanent import get_connection
+        stats = {}
+        with get_connection() as conn:
+            # Document count
+            try:
+                r = conn.execute("SELECT COUNT(*) as c FROM klaus_documents").fetchone()
+                stats["documents"] = r["c"] if r else 0
+            except Exception:
+                stats["documents"] = "n/a"
+
+            # Tier counts
+            try:
+                r = conn.execute(
+                    "SELECT tier_id, COUNT(*) as c FROM klaus_documents GROUP BY tier_id ORDER BY tier_id"
+                ).fetchall()
+                stats["by_tier"] = {str(row["tier_id"]): row["c"] for row in r}
+            except Exception:
+                stats["by_tier"] = {}
+
+            # Source count
+            try:
+                r = conn.execute("SELECT COUNT(*) as c FROM klaus_sources").fetchone()
+                stats["sources"] = r["c"] if r else 0
+            except Exception:
+                stats["sources"] = "n/a"
+
+            # Research sessions
+            try:
+                r = conn.execute("SELECT COUNT(*) as c FROM research_sessions").fetchone()
+                stats["sessions"] = r["c"] if r else 0
+            except Exception:
+                stats["sessions"] = "n/a"
+
+            # Jurisdictions covered
+            try:
+                r = conn.execute(
+                    "SELECT jurisdiction, COUNT(*) as c FROM research_sessions GROUP BY jurisdiction"
+                ).fetchall()
+                stats["by_jurisdiction"] = {row["jurisdiction"]: row["c"] for row in r}
+            except Exception:
+                stats["by_jurisdiction"] = {}
+
+        return stats
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/health")

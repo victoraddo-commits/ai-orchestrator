@@ -431,6 +431,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
     <div class="sidebar-nav" id="sidebar-nav">
       <a class="nav-item active" href="#home" data-hash="home"><span class="icon">&#9632;</span><span class="label">Home</span></a>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon">&#9636;</span><span class="label">Modules</span></a>
+      <a class="nav-item" href="#legal" data-hash="legal"><span class="icon">&#9872;</span><span class="label">Legal</span></a>
       <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon">&#9881;</span><span class="label">Workforce</span></a>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon">&#9925;</span><span class="label">Docker</span></a>
       <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon">&#9884;</span><span class="label">Airdrop</span></a>
@@ -474,6 +475,9 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 
       <!-- MODULES -->
       <section class="panel" id="panel-modules"><div id="modules-content"><span class="loading">loading...</span></div></section>
+
+      <!-- LEGAL (dedicated panel for juris-kai/susu/legal-brain/klaus) -->
+      <section class="panel" id="panel-legal"><div id="legal-content"><span class="loading">loading...</span></div></section>
 
       <!-- AI WORKFORCE -->
       <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading...</span></div></section>
@@ -551,7 +555,7 @@ const S = {
 };
 const SK = 'kai_command_session_v2';
 const PANEL_TITLES = {
-  home:'home', modules:'modules', 'ai-workforce':'workforce',
+  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs'
 };
@@ -640,7 +644,7 @@ function navigateTo(hash) {
   if(!S.loadedPanels.has(name)){S.loadedPanels.add(name);loadPanel(name);}
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,'ai-workforce':loadWorkforce,docker:loadDocker,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,docker:loadDocker,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -695,12 +699,23 @@ async function loadHome() {
 // ═══════════════════════════════════════════════════════════════
 // PANEL: MODULES
 // ═══════════════════════════════════════════════════════════════
+const LEGAL_MODULES = ['juris-kai','susu','legal-brain','klaus'];
+
 async function loadModules() {
   try{const data=await api('/api/modules');S.modules=data.modules;
     if(!data.modules.length){$('modules-content').innerHTML='<span class="empty">No modules registered</span>';return;}
+    const legal=data.modules.filter(m=>LEGAL_MODULES.includes(m.name));
+    const other=data.modules.filter(m=>!LEGAL_MODULES.includes(m.name));
     let html='';
-    for(const m of data.modules){html+=`
-<div class="module-card" id="mod-${esc(m.name)}">
+    if(legal.length){html+=`<div style="margin-bottom:16px"><h2 style="font-family:var(--font-mono);font-size:0.72rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Modules</h2>`+legal.map(m=>renderModuleCard(m)).join('')+'</div>';}
+    if(other.length){html+=`<div><h2 style="font-family:var(--font-mono);font-size:0.72rem;color:var(--fg-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Infrastructure Modules</h2>`+other.map(m=>renderModuleCard(m)).join('')+'</div>';}
+    $('modules-content').innerHTML=html;}
+  catch(e){$('modules-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+function renderModuleCard(m){
+  const extraTabs = (m.name==='juris-kai')?'<button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab(\''+esc(m.name)+'\',\'users\')">Users</button><button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab(\''+esc(m.name)+'\',\'referrals\')">Referrals</button>':'';
+  return `<div class="module-card" id="mod-${esc(m.name)}">
   <div class="module-card-header" onclick="toggleModule('${esc(m.name)}')">
     <div><span class="mod-name">${esc(m.name)}</span><span style="font-size:0.65rem;color:var(--fg-muted);margin-left:6px">v${esc(m.version||'0.1.0')}</span></div>
     <div style="display:flex;align-items:center;gap:8px;font-size:0.65rem;color:var(--fg-muted)">
@@ -712,13 +727,11 @@ async function loadModules() {
       <button class="module-tab-btn active" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','overview')">Overview</button>
       <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','settings')">Settings</button>
       <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','ops')">Ops</button>
+      ${extraTabs}
       <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','logs')">Logs</button>
     </div>
     <div class="module-tab-content" id="mod-tab-${esc(m.name)}">${esc(m.description||'No description')}</div>
   </div></div>`;}
-    $('modules-content').innerHTML=html;}
-  catch(e){$('modules-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
-}
 
 function toggleModule(name){const c=document.getElementById(`mod-${name}`);if(c)c.classList.toggle('open');}
 function loadModuleTab(mname, tab){
@@ -729,12 +742,23 @@ function loadModuleTab(mname, tab){
   const m=S.modules.find(x=>x.name===mname);
   switch(tab){
     case'overview':
+      if(mname==='juris-kai'){loadJurisKaiOverview(content);return;}
+      if(mname==='susu'){loadSusuOverview(content);return;}
+      if(mname==='legal-brain'){loadLegalBrainOverview(content);return;}
       content.innerHTML=m?`<p style="font-size:0.75rem;color:var(--fg-secondary);margin-bottom:6px">${esc(m.description)}</p>
         <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">
           <div>Version: ${esc(m.version||'0.1.0')}</div>
           <div>Endpoints: ${(m.endpoints||[]).map(e=>`<code style="background:var(--bg-deep);padding:1px 4px">${esc(e)}</code>`).join(' ')}</div>
           <div>Deps: ${(m.dependencies||[]).join(', ')||'none'}</div>
         </div>`:'<span class="loading">...</span>';
+      break;
+    case'users':
+      if(mname==='juris-kai'){loadJurisKaiUsers(content);return;}
+      content.innerHTML='<span class="empty">User management not available</span>';
+      break;
+    case'referrals':
+      if(mname==='juris-kai'){loadJurisKaiReferrals(content);return;}
+      content.innerHTML='<span class="empty">Referrals not available</span>';
       break;
     case'settings':
       if(m&&m.settings_schema){let fhtml='';
@@ -771,6 +795,230 @@ async function loadModuleLogs(mname){
     if(!events.length)return '<span class="empty">No log entries</span>';
     return '<div class="log-viewer">'+events.map(e=>`<div>[${esc(e.time||e.timestamp||'')}] ${esc(e.event||e.action||'')} ${esc(e.detail||e.message||'')}</div>`).join('')+'</div>';}
   catch{return '<span class="empty">Log unavailable</span>';}
+}
+
+// ── Juris Kai Overview ────────────────────────────────────────
+async function loadJurisKaiOverview(container){
+  try{const s=await api('/api/juris-kai/stats');const jk=s.juris_kai||s;
+    container.innerHTML=`<div class="metric-row" style="margin-bottom:8px">
+      <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${jk.total_accounts||0}</span><span class="lbl">Accounts</span></div>
+      <div class="metric" style="padding:8px"><span class="val info" style="font-size:1.2rem">${jk.active_accounts||0}</span><span class="lbl">Active</span></div>
+      <div class="metric" style="padding:8px"><span class="val warn" style="font-size:1.2rem">${jk.total_revenue_ghs||0} GHS</span><span class="lbl">Revenue</span></div>
+      <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${jk.total_queries||0}</span><span class="lbl">Queries</span></div>
+    </div>
+    ${Object.keys(jk.by_tier||{}).length?`<div style="font-size:0.65rem;color:var(--fg-muted);margin-top:6px;font-family:var(--font-mono)">Tiers: ${Object.entries(jk.by_tier||{}).map(([k,v])=>`<span class="badge info" style="margin:1px 2px">${esc(k)}: ${v}</span>`).join(' ')}</div>`:''}
+    <div style="margin-top:12px"><button class="btn btn-sm btn-accent" onclick="loadModuleTab('juris-kai','users')">Manage Users</button> <button class="btn btn-sm" onclick="loadModuleTab('juris-kai','referrals')">Referrals</button></div>`;}
+  catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+// ── Juris Kai User Management ─────────────────────────────────
+async function loadJurisKaiUsers(container){
+  container.innerHTML='<div style="margin-bottom:8px;display:flex;gap:6px">'
+    +'<input type="text" id="jk-search" placeholder="Search users..." style="flex:1;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:6px 10px;font-size:0.72rem;font-family:var(--font-mono)" onkeyup="if(event.key===\'Enter\')doJurisKaiSearch()">'
+    +'<select id="jk-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap"><input type="checkbox" id="jk-active-only">Active</label>'
+    +'<button class="btn btn-sm btn-accent" onclick="doJurisKaiSearch()">Search</button>'
+    +'</div><div id="jk-users-result"><span style="font-size:0.7rem;color:var(--fg-muted)">Type a query or leave empty for all</span></div>';
+}
+async function doJurisKaiSearch(){
+  const q=($('jk-search')||{}).value||'',tier=($('jk-tier')||{}).value||'',
+        active=($('jk-active-only')||{}).checked?'&active_only=true':'',
+        el=$('jk-users-result');if(!el)return;
+  el.innerHTML='<span class="loading">searching...</span>';
+  try{const d=await api('/api/juris-kai/accounts?q='+encodeURIComponent(q)+'&tier='+tier+active);
+    if(!d.accounts||!d.accounts.length){el.innerHTML='<span class="empty">No accounts found</span>';return;}
+    let h=`<div style="font-size:0.65rem;color:var(--fg-muted);margin-bottom:6px;font-family:var(--font-mono)">${d.total} account(s) &middot; page ${d.page}/${d.total_pages}</div>`;
+    h+='<div style="max-height:500px;overflow-y:auto">';
+    for(const a of d.accounts){
+      const sub=a.subscription||{},tier=sub.tier||a.subscription_tier||'unknown';
+      const bdg=a.is_active?'ok':'bad',tierBdg=tier.includes('pro')?'ok':tier==='monthly_basic'?'info':'warn';
+      h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:8px 10px;margin-bottom:3px;font-size:0.68rem;font-family:var(--font-mono)">
+        <div class="spread" style="margin-bottom:4px">
+          <span><strong>${esc(a.full_name||'Unnamed')}</strong> <span style="color:var(--fg-muted)">@${esc(a.telegram_id||a.account_id)}</span></span>
+          <span><span class="badge ${bdg}">${a.is_active?'active':'banned'}</span> <span class="badge ${tierBdg}">${esc(tier.replace(/_/g,' '))}</span></span>
+        </div>
+        <div style="color:var(--fg-muted);margin-bottom:4px">
+          ${a.email?'<span>'+esc(a.email)+'</span> ':''}${a.phone?'<span>'+esc(a.phone)+'</span> ':''}
+          End: ${esc((sub.end||a.subscription_end||'').slice(0,10))||'n/a'}
+          &middot; Queries: ${sub.limits?sub.limits.max_queries_per_day+'/d':'?'}
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn btn-xs btn-accent" onclick="doJurisKaiGrantDays('${esc(a.account_id)}')">Grant Days</button>
+          <button class="btn btn-xs" onclick="doJurisKaiChangeTier('${esc(a.account_id)}')">Change Tier</button>
+          ${a.is_active?`<button class="btn btn-xs btn-warn" onclick="doJurisKaiBan('${esc(a.account_id)}','${esc(a.full_name||'')}')">Ban</button>`:`<button class="btn btn-xs btn-accent" onclick="doJurisKaiUnban('${esc(a.account_id)}')">Unban</button>`}
+          <button class="btn btn-xs" onclick="doJurisKaiGenCode('${esc(a.account_id)}')">Invite Code</button>
+        </div>
+      </div>`;}
+    h+='</div>';el.innerHTML=h;}
+  catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+async function doJurisKaiGrantDays(accountId){
+  const days=prompt('Days to grant:','1');if(!days||isNaN(parseInt(days)))return;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:parseInt(days),reason:'command_center_admin'})});toast('Granted '+days+' days');doJurisKaiSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doJurisKaiChangeTier(accountId){
+  const tier=prompt('New tier (free_trial, monthly_basic, monthly_pro, annual_pro):','monthly_basic');
+  if(!tier)return;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier:tier})});toast('Tier changed to '+tier);doJurisKaiSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doJurisKaiBan(accountId,name){
+  if(!confirm('Ban '+name+'?'))return;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doJurisKaiSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doJurisKaiUnban(accountId){
+  try{await api('/api/juris-kai/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doJurisKaiSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doJurisKaiGenCode(accountId){
+  try{const d=await api('/api/juris-kai/referrals/generate',{method:'POST',body:JSON.stringify({account_id:accountId})});
+    if(d.success){navigator.clipboard.writeText(d.invite_code).catch(()=>{});toast('Code: '+d.invite_code+' (copied)');}
+    else toast('Error: '+(d.error||'unknown'),'err');}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── Juris Kai Referrals ───────────────────────────────────────
+async function loadJurisKaiReferrals(container){
+  try{const d=await api('/api/juris-kai/referrals');
+    if(!d.referrals||!d.referrals.length){container.innerHTML='<span class="empty">No referrals yet</span>';return;}
+    let h='<table><thead><tr><th>Code</th><th>Inviter</th><th>Invitee</th><th>Status</th><th>Reward</th><th>Created</th></tr></thead><tbody>';
+    for(const r of d.referrals.slice(0,50)){
+      h+=`<tr><td><code style="color:var(--accent)">${esc(r.invite_code)}</code></td><td>${esc(r.inviter_name||r.inviter_account_id)}</td><td>${esc(r.invitee_telegram_id||'—')}</td><td><span class="badge ${r.status==='accepted'?'ok':'info'}">${esc(r.status)}</span></td><td>${r.reward_days||0}d</td><td>${esc((r.created_at||'').slice(0,10))}</td></tr>`;}
+    h+='</tbody></table>';
+    container.innerHTML=h;}
+  catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+// ── SUSU Overview ─────────────────────────────────────────────
+async function loadSusuOverview(container){
+  try{const s=await api('/api/susu/stats');
+    container.innerHTML=`<div class="metric-row" style="margin-bottom:8px">
+      <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${s.total_users||0}</span><span class="lbl">Users</span></div>
+      <div class="metric" style="padding:8px"><span class="val info" style="font-size:1.2rem">${s.active_groups||0}</span><span class="lbl">Groups</span></div>
+      <div class="metric" style="padding:8px"><span class="val warn" style="font-size:1.2rem">${s.total_deposits_ghs||0} GHS</span><span class="lbl">Deposits</span></div>
+      <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${s.total_fees_collected_ghs||0} GHS</span><span class="lbl">Fees</span></div>
+    </div>
+    <div style="font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono)">Pending: ${s.pending_transactions||0} tx &middot; Outflow: ${s.total_withdrawals_ghs||0} GHS</div>
+    <div style="margin-top:12px"><button class="btn btn-sm btn-accent" onclick="loadSusuGroups(\$('mod-tab-susu'))">View Groups</button></div>`;}
+  catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+async function loadSusuGroups(container){
+  try{const d=await api('/api/susu/groups');
+    if(!d.groups||!d.groups.length){container.innerHTML='<span class="empty">No groups</span>';return;}
+    let h='<div style="max-height:400px;overflow-y:auto">';
+    for(const g of d.groups){h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:8px 10px;margin-bottom:3px;font-size:0.68rem;font-family:var(--font-mono)">
+      <div class="spread"><strong>${esc(g.name)}</strong> <span class="badge ${g.status==='ACTIVE'?'ok':'warn'}">${esc(g.status)}</span></div>
+      <div style="color:var(--fg-muted)">${esc(g.contribution_amount)} ${esc(g.currency)}/${esc(g.frequency)} &middot; ${g.member_count||0}/${g.max_participants||'?'} members &middot; Fees: ${g.fees_collected||0} GHS</div>
+    </div>`;}
+    h+='</div>';container.innerHTML=h;}
+  catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: LEGAL (Dedicated module management)
+// ═══════════════════════════════════════════════════════════════
+async function loadLegal(){
+  const el=$('legal-content');el.innerHTML='<span class="loading">loading...</span>';
+  try{const data=await api('/api/modules');S.modules=data.modules;
+    const legal=data.modules.filter(m=>LEGAL_MODULES.includes(m.name));
+    if(!legal.length){el.innerHTML='<span class="empty">No legal modules registered</span>';return;}
+    let html='<div style="margin-bottom:20px"><h2 style="font-family:var(--font-mono);font-size:0.8rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Legal Applications</h2>';
+    // Juris Kai Management
+    try{const jk=await api('/api/juris-kai/stats');const d=jk.juris_kai||jk;
+      html+=`<div class="card" style="margin-bottom:12px"><h3>juris-kai &mdash; Account Management  <span class="badge ok">${d.active_accounts||0} active</span> <span class="badge info">${d.total_accounts||0} total</span></h3>
+        <div style="margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <input type="text" id="legal-search" placeholder="Search by name, phone, telegram ID..." style="flex:1;min-width:200px;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:6px 10px;font-size:0.72rem;font-family:var(--font-mono)" onkeyup="if(event.key==='Enter')doLegalSearch()">
+          <select id="legal-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>
+          <button class="btn btn-sm btn-accent" onclick="doLegalSearch()">Find</button>
+          <button class="btn btn-sm" onclick="generateReferralCode()">Generate Referral</button>
+        </div>
+        <div id="legal-user-results"><span style="font-size:0.7rem;color:var(--fg-muted)">Search for users or browse below</span></div>
+      </div>`;}
+    catch(e){html+=`<div class="card"><h3>juris-kai</h3><span class="error-text">${esc(e.message)}</span></div>`;}
+    // SUSU summary
+    try{const s=await api('/api/susu/stats');
+      html+=`<div class="card" style="margin-bottom:12px"><h3>susu &mdash; Savings Groups  <span class="badge info">${s.total_users||0} users</span> <span class="badge ok">${s.active_groups||0}/${s.total_groups||0} groups</span></h3>
+        <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Deposits: ${s.total_deposits_ghs||0} GHS &middot; Fees: ${s.total_fees_collected_ghs||0} GHS &middot; Pending tx: ${s.pending_transactions||0}</div>
+      </div>`;}
+    catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>susu</h3><span class="error-text">${esc(e.message)}</span></div>`;}
+    // Legal Brain summary
+    try{const lb=await api('/api/legal-brain/stats');
+      html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain &mdash; Knowledge Engine  <span class="badge info">${lb.documents||0} docs</span> <span class="badge ok">${lb.sources||0} sources</span></h3>
+        <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Sessions: ${lb.sessions||0} &middot; Jurisdictions: ${Object.keys(lb.by_jurisdiction||{}).join(', ')||'Ghana'}</div>
+      </div>`;}
+    catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain</h3><span class="error-text">${esc(e.message)}</span></div>`;}
+    html+='</div>';el.innerHTML=html;}
+  catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+async function doLegalSearch(){
+  const q=($('legal-search')||{}).value||'',tier=($('legal-tier')||{}).value||'';
+  const el=$('legal-user-results');if(!el)return;
+  el.innerHTML='<span class="loading">searching...</span>';
+  try{const d=await api('/api/juris-kai/accounts?q='+encodeURIComponent(q)+'&tier='+tier);
+    if(!d.accounts||!d.accounts.length){el.innerHTML='<span class="empty">No accounts found</span>';return;}
+    let h=`<div style="font-size:0.65rem;color:var(--fg-muted);margin-bottom:6px;font-family:var(--font-mono)">${d.total} account(s)</div><div style="max-height:500px;overflow-y:auto">`;
+    for(const a of d.accounts){
+      const sub=a.subscription||{},tier=sub.tier||a.subscription_tier||'unknown';
+      const bdg=a.is_active?'ok':'bad';
+      h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:8px 10px;margin-bottom:3px;font-size:0.68rem;font-family:var(--font-mono)">
+        <div class="spread" style="margin-bottom:4px">
+          <span><strong>${esc(a.full_name||'Unnamed')}</strong> <span style="color:var(--fg-muted)">@${esc(a.telegram_id||a.account_id)}</span></span>
+          <span><span class="badge ${bdg}">${a.is_active?'active':'banned'}</span> <span class="badge info">${esc(tier.replace(/_/g,' '))}</span></span>
+        </div>
+        <div style="color:var(--fg-muted);margin-bottom:4px">
+          ${a.email?esc(a.email)+' ':''}${a.phone?esc(a.phone)+' ':''}End: ${esc((sub.end||a.subscription_end||'').slice(0,10))||'n/a'}
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="btn btn-xs btn-accent" onclick="doLegalGrantDays('${esc(a.account_id)}')">Grant Days</button>
+          <button class="btn btn-xs" onclick="doLegalChangeTier('${esc(a.account_id)}')">Change Tier</button>
+          ${a.is_active?`<button class="btn btn-xs btn-warn" onclick="doLegalBan('${esc(a.account_id)}','${esc(a.full_name||a.account_id)}')">Ban</button>`:`<button class="btn btn-xs btn-accent" onclick="doLegalUnban('${esc(a.account_id)}')">Unban</button>`}
+        </div>
+      </div>`;}
+    h+='</div>';el.innerHTML=h;}
+  catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+async function generateReferralCode(){
+  const acct=prompt('Account ID to generate invite code for:','');if(!acct)return;
+  try{const d=await api('/api/juris-kai/referrals/generate',{method:'POST',body:JSON.stringify({account_id:acct})});
+    if(d.success){const code=d.invite_code;navigator.clipboard.writeText(code).catch(()=>{});toast('Referral code: '+code+' (copied! Reward: '+d.reward_days+'d, Invitee trial: '+d.invitee_trial_days+'d)');}
+    else toast('Failed: '+(d.error||'unknown'),'err');}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doLegalGrantDays(accountId){
+  const days=prompt('Days to grant:','1');if(!days||isNaN(parseInt(days)))return;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:parseInt(days)})});toast('Granted '+days+' days');doLegalSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doLegalChangeTier(accountId){
+  const tier=prompt('New tier (free_trial, monthly_basic, monthly_pro, annual_pro):','monthly_basic');
+  if(!tier)return;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier})});toast('Tier changed to '+tier);doLegalSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doLegalBan(accountId,name){
+  if(!confirm('Ban '+name+'?'))return;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doLegalSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function doLegalUnban(accountId){
+  try{await api('/api/juris-kai/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doLegalSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── Legal Brain Overview ──────────────────────────────────────
+async function loadLegalBrainOverview(container){
+  try{const s=await api('/api/legal-brain/stats');
+    container.innerHTML=`<div class="metric-row" style="margin-bottom:8px">
+      <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${s.documents||'?'}</span><span class="lbl">Documents</span></div>
+      <div class="metric" style="padding:8px"><span class="val info" style="font-size:1.2rem">${s.sources||'?'}</span><span class="lbl">Sources</span></div>
+      <div class="metric" style="padding:8px"><span class="val warn" style="font-size:1.2rem">${s.sessions||'?'}</span><span class="lbl">Sessions</span></div>
+      <div class="metric" style="padding:8px"><span class="val" style="font-size:0.9rem">${Object.keys(s.by_jurisdiction||{}).join(', ')||'none'}</span><span class="lbl">Jurisdictions</span></div>
+    </div>
+    ${s.by_tier&&Object.keys(s.by_tier).length?`<div style="font-size:0.62rem;color:var(--fg-muted);margin-top:4px;font-family:var(--font-mono)">Tiers: ${Object.entries(s.by_tier).map(([k,v])=>`T${k}:${v}`).join(' ')}</div>`:''}`;}
+  catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
 // ═══════════════════════════════════════════════════════════════

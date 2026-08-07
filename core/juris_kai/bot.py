@@ -1,79 +1,128 @@
-"""Juris Kai Bot - Legal Expert System
+"""Juris Kai Bot - Multi-Tenant Legal Expert System.
 
-This module implements the core bot functionality for juris_kai, which provides
-legal expertise and educational assistance. It enforces strict security
-boundaries that prevent any access to operational capabilities like build
-management, approvals, or deployments.
+Handles Telegram messages for the paid, multi-tenant Juris Kai bot
+(@Juriskai_bot). Each user gets their own isolated account.
 
-Security Constraints:
-1. Must never import core.build_manager, core.approval, core.deployment_manager
-2. Must never import operational modules
-3. Authorized only for specific users via environment variable
-4. Text-only responses, no executable code or tool use
-5. Only text_task providers allowed for responses
-
-This is a direct copy of the law_tutor bot security pattern with legal focus.
+Security: NO imports of core.build_manager, core.approval, or
+core.deployment_manager. Only text_task AI providers are used.
 """
 
 import os
-import re
-from pathlib import Path
+import logging
+from typing import Optional, Dict, Any
 
+from core.juris_kai.accounts import (
+    get_account_manager,
+    DISCLAIMER_TEXT,
+    SUBSCRIPTION_TIERS,
+)
 from core.juris_kai.commands import handle_command
 from core.juris_kai.session import get_user_session
-from core.juris_kai.prompt import build_prompt
-from core.memory import save
-from core.ai.ai_router import AllProvidersFailed
 
-# The environment variable that controls authorization (same pattern as law_tutor)
-JURIS_KAI_CHAT_ID = os.getenv("JURIS_KAI_CHAT_ID")
+logger = logging.getLogger("juris_kai.bot")
 
-# Help text for user commands
+# Bot token from environment
+BOT_TOKEN = os.getenv("JURIS_KAI_BOT_TOKEN", "")
+
 HELP_TEXT = (
-    "I am Juris Kai, a legal expert assistant. My purpose is to provide "
-    "educational legal guidance and explanations.\n\n"
-    "Available commands:\n"
-    "/help - Show this help text\n"
-    "/start - Show this help text\n"
-    "/learn <topic> - Learn about a legal topic\n"
-    "/case <name> - Analyze a legal case\n"
-    "/research <query> - Research legal concepts\n"
-    "/argument <topic> - Construct legal arguments\n"
-    "/flashcards <topic> - Generate flashcards for study\n"
-    "/progress - Show learning progress\n"
-    "\nI only respond to authorized users. Please ensure your chat ID is "
-    "configured in the environment."
+    "⚖️ *Juris Kai — Legal Research Assistant*\n\n"
+    "I provide educational legal guidance and document analysis.\n\n"
+    "*Commands:*\n"
+    "/help — Show this help\n"
+    "/start — Welcome message + disclaimer\n"
+    "/account — View your account status\n"
+    "/subscribe — View subscription plans\n"
+    "/learn \\<topic\\> — Learn about a legal topic\n"
+    "/case \\<name\\> — Analyze a legal case\n"
+    "/research \\<query\\> — Research legal concepts\n"
+    "/argument \\<topic\\> — Construct legal arguments\n"
+    "/flashcards \\<topic\\> — Generate study flashcards\n"
+    "/profile — View/update your profile\n"
+    "/document — Upload a document for analysis (paid feature)\n"
+    "\n_Not a substitute for professional legal advice._"
 )
 
-def handle_message(update):
-    """Process incoming Telegram messages with security checks."""
-    
-    # Security: Check if the sender is authorized (same as law_tutor)
-    if JURIS_KAI_CHAT_ID is None:
-        return "Legal assistant setup incomplete - no authorized chat ID configured."
-    
-    if str(update.get("chat_id", "")) != JURIS_KAI_CHAT_ID:
-        return "This is a private legal assistant for authorized users only. You cannot interact with it."
-    
-    # Extract message text
-    message_text = update.get("text", "").strip()
-    if not message_text:
-        return HELP_TEXT
-    
-    # Handle commands (starts with /)
-    if message_text.startswith("/"):
-        return handle_command(message_text, update)
-    
-    # Default: treat as a learning query
-    return handle_command(f"/learn {message_text}", update)
+WELCOME_TEXT = (
+    "Welcome to Juris Kai! ⚖️\n\n"
+    "I'm your AI-powered Ghanaian legal research assistant and tutor.\n\n"
+    "⚠️ *Disclaimer*: I am not a lawyer. My responses are for educational "
+    "and informational purposes only.\n\n"
+    "Type /help to see what I can do, or ask me a legal question!"
+)
 
-def _handle_error(error):
+
+def handle_message(update: Dict[str, Any]) -> str:
+    """Process incoming Telegram messages with multi-tenant account handling.
+
+    Flow:
+    1. Get or create account for this Telegram user
+    2. If new user, show disclaimer
+    3. Check subscription/usage limits
+    4. Route to command handler
+    """
+    telegram_id = str(update.get("chat_id", ""))
+    if not telegram_id:
+        return "Error: Cannot identify user."
+
+    message_text = update.get("text", "").strip()
+
+    # Get or create account
+    mgr = get_account_manager()
+    account = mgr.get_or_create(telegram_id, update.get("from_first_name", ""))
+
+    # New users: show disclaimer first
+    if account["is_new"]:
+        return DISCLAIMER_TEXT + "\n\n" + WELCOME_TEXT
+
+    # Check disclaimer acceptance
+    if not account.get("disclaimer_accepted") and not message_text.startswith("/start"):
+        return (
+            "Before using Juris Kai, please acknowledge the disclaimer:\n\n"
+            + DISCLAIMER_TEXT
+            + "\n\nReply with *I understand* or type /start to continue."
+        )
+
+    # Check if account is active
+    if not account.get("is_active"):
+        return "Your account has been deactivated. Contact support for assistance."
+
+    # Handle /start specially
+    if message_text.startswith("/start"):
+        if not account.get("disclaimer_accepted"):
+            mgr.accept_disclaimer(account["account_id"])
+            return "Thank you for acknowledging. " + WELCOME_TEXT
+        return WELCOME_TEXT
+
+    # Route to command handler with account context
+    if message_text.startswith("/"):
+        return handle_command(message_text, update, account)
+
+    # Default: treat as a legal query
+    # Check query limits
+    limit_check = mgr.check_query_limit(account["account_id"])
+    if not limit_check["allowed"]:
+        return (
+            f"⚠️ You've reached your daily query limit "
+            f"({limit_check['limit']} queries/day).\n"
+            "Upgrade your plan with /subscribe for more queries."
+        )
+
+    # Process the query
+    from core.juris_kai.commands import handle_learn
+    response = handle_learn(message_text, update, account)
+    mgr.record_query(account["account_id"])
+    return response
+
+
+def _handle_error(error: Exception) -> str:
     """Handle errors gracefully without exposing system details."""
+    from core.ai.ai_router import AllProvidersFailed
     if isinstance(error, AllProvidersFailed):
         return "Legal research is currently unavailable. Please try again later."
-    return "An error occurred while processing your request. Please try again."
+    logger.error(f"Juris Kai error: {error}")
+    return "An error occurred. Please try again later."
 
-# Ensure no operational imports (same security principle as law_tutor)
-# This module and everything it imports (telegram_client, prompt, session, commands) 
-# must never import core.build_manager, core.approval, core.deployment_manager, 
-# or anything else that grants an operational capability.
+
+# This module and all it imports must NEVER import:
+#   core.build_manager, core.approval, core.deployment_manager,
+#   or anything that grants operational capabilities.

@@ -67,10 +67,39 @@ class ProviderUnavailable(Exception):
     """Raised when a provider's API key isn't configured."""
 
 
-def _require_key(env_var):
+# Provider-key → secrets-store lookup mapping.  When _require_key() is called
+# with an env_var, we check whether a corresponding provider has a secret stored
+# (provider_secrets.json).  If so, the stored key is used instead of the env var.
+_ENV_TO_SECRETS_PROVIDER = {
+    "DEEPSEEK_NATIVE_PRO_API_KEY": "deepseek",
+    "DEEPSEEK_NATIVE_FLASH_API_KEY": "deepseek",
+    "VLLM_QWEN3_CODER_API_KEY": "qwen4_text",
+    "VLLM_QWEN3_POD_B_API_KEY": "qwen4_pod_b",
+    "OPENROUTER_API_KEY": "openrouter",
+    "DEEPSEEK_OPENROUTER_API_KEY": "deepseek",
+    "GEMINI_API_KEY": "gemini",
+    "GEMINIX_API_KEY": "geminix",
+    "GROQ_API_KEY": "groq",
+    "MINIMAX_API_KEY": "minimax",
+}
+
+
+def _require_key(env_var, provider_key=None):
+    # 1. Secrets store (production path — keys never in env/process memory)
+    pk = provider_key or _ENV_TO_SECRETS_PROVIDER.get(env_var)
+    if pk:
+        try:
+            from core.ai.secrets import get_api_key
+            stored = get_api_key(pk)
+            if stored:
+                return stored
+        except ImportError:
+            pass
+
+    # 2. Environment variable (legacy fallback)
     key = os.getenv(env_var)
     if not key:
-        raise ProviderUnavailable(f"{env_var} is not set")
+        raise ProviderUnavailable(f"{env_var} is not set and no secret stored for {pk or 'unknown'}")
     return key
 
 
@@ -104,20 +133,6 @@ def _post_json(provider_key, url, **kwargs):
                 provider_health.capture_provider_error(provider_key, detail=detail)
 
         response.raise_for_status()
-
-        # Detect RunPod proxy HTML challenges -- the proxy layer returns
-        # Cloudflare/HTML pages instead of JSON when overloaded, which
-        # would otherwise surface as a confusing JSONDecodeError.
-        text = response.text
-        if text.lstrip().startswith("<!") or text.lstrip().lower().startswith("<html"):
-            provider_health.capture_provider_error(
-                provider_key,
-                detail=f"RunPod proxy returned HTML ({len(text)} bytes)",
-            )
-            raise RuntimeError(
-                f"{provider_key} request failed: "
-                f"RunPod proxy returned HTML instead of JSON"
-            )
 
         provider_health.capture_from_response_headers(provider_key, response.headers)
 
@@ -185,14 +200,6 @@ QWEN3_CODER_MODEL = os.getenv("VLLM_QWEN3_CODER_MODEL", "")
 # OPENAI_DEFAULT_MODEL/api.openai.com -- those stay defined above for
 # whenever this gets pointed back at the real API.
 def call_openai(prompt, model=None, timeout=60):
-    """Qwen4 RunPod text completion (hijacked 'openai' provider slot).
-
-    The Qwen/Qwen3-32B-FP8 model on this pod is a reasoning model that
-    always emits reasoning tokens into the ``reasoning`` field, leaving
-    ``content`` as null.  ``enable_thinking: false`` reduces verbosity
-    but does NOT switch it out of reasoning mode -- fall back to
-    ``reasoning`` so callers get text, not None.
-    """
     key = _require_key("VLLM_QWEN3_CODER_API_KEY")
     model = model or QWEN3_CODER_MODEL
 
@@ -200,32 +207,53 @@ def call_openai(prompt, model=None, timeout=60):
         "openai",
         f"{QWEN3_CODER_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}],
-              "chat_template_kwargs": {"enable_thinking": False}},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
         timeout=timeout,
     )
-    msg = data["choices"][0]["message"]
-    return msg.get("content") or msg.get("reasoning", "")
+    return data["choices"][0]["message"]["content"]
 
 
 # 2026-08-05 (Phase 17Z): Qwen4 pod (ldtqgcshb2dwsw, RTX PRO 6000 96GB)
 # — Qwen/Qwen3-32B-FP8. Proper text-task registration under its own
-# provider name. Tracked in provider_health as "qwen3_coder_text",
+# provider name. Tracked in provider_health as "qwen4_text",
 # cost_tier='paid' (real per-request GPU billing). Also in OmniRoute as "qwen4".
-def call_qwen3_coder_text(prompt, model=None, timeout=60):
+#
+# 2026-08-06: Pod A (Generator) — ldtqgcshb2dwsw, primary for coding/generation.
+def call_qwen4_text(prompt, model=None, timeout=60):
     key = _require_key("VLLM_QWEN3_CODER_API_KEY")
     model = model or QWEN3_CODER_MODEL
 
     data = _post_json(
-        "qwen3_coder_text",
+        "qwen4_text",
         f"{QWEN3_CODER_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}],
-              "chat_template_kwargs": {"enable_thinking": False}},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
         timeout=timeout,
     )
-    msg = data["choices"][0]["message"]
-    return msg.get("content") or msg.get("reasoning", "")
+    return data["choices"][0]["message"]["content"]
+
+
+# Pod B (60jwzf36623b0o) env vars
+QWEN3_POD_B_BASE_URL = os.getenv("VLLM_QWEN3_POD_B_BASE_URL", "").rstrip("/")
+QWEN3_POD_B_MODEL = os.getenv("VLLM_QWEN3_POD_B_MODEL", "")
+
+
+# 2026-08-06: Pod B (Review/Deploy) — 60jwzf36623b0o, RTX PRO 6000 96GB,
+# Qwen/Qwen3-32B-FP8. Dedicated review/deployment pod — never waits behind
+# Pod A's generation workloads. Tracked in provider_health as
+# "qwen4_pod_b", cost_tier='paid'.
+def call_qwen4_pod_b_text(prompt, model=None, timeout=60):
+    key = _require_key("VLLM_QWEN3_POD_B_API_KEY")
+    model = model or QWEN3_POD_B_MODEL
+
+    data = _post_json(
+        "qwen4_pod_b",
+        f"{QWEN3_POD_B_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        timeout=timeout,
+    )
+    return data["choices"][0]["message"]["content"]
 
 
 def call_openrouter(prompt, model=OPENROUTER_DEFAULT_MODEL, timeout=60):
@@ -365,5 +393,46 @@ def call_omniroute(prompt, model=None, timeout=60):
     if not data.get("choices"):
         detail = (data.get("error") or {}).get("message", "unknown error")
         raise RuntimeError(f"omniroute request failed: {detail}")
+
+    return data["choices"][0]["message"]["content"]
+
+
+# 2026-08-06: dedicated DeepSeek V4 Flash route through OmniRoute.
+# Operator-provided API key, already verified live against api.deepseek.com.
+# This gives Kai a named provider for ds/deepseek-v4-flash that routes
+# through the self-hosted omniroute gateway instead of calling DeepSeek
+# directly — omniroute handles failover, logging, and cost aggregation.
+OMNIROUTE_DEEPSEEK_FLASH_MODEL = "ds/deepseek-v4-flash"
+
+
+def call_omniroute_deepseek_flash(prompt, timeout=60):
+    """DeepSeek V4 Flash via OmniRoute gateway.
+
+    Uses the operator-provided DeepSeek native key, routed through
+    omniroute's ds/deepseek-v4-flash model slot so Kai gets gateway-level
+    failover, call logging, and cost aggregation without a separate
+    direct-to-DeepSeek code path.
+    """
+    key = _omniroute_key()
+    if not key:
+        raise ProviderUnavailable(
+            "OmniRoute DeepSeek Flash needs ANTHROPIC_AUTH_TOKEN or OPENAI_API_KEY"
+        )
+
+    data = _post_json(
+        "omniroute_deepseek_flash",
+        f"{OMNIROUTE_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={
+            "model": OMNIROUTE_DEEPSEEK_FLASH_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        },
+        timeout=timeout,
+    )
+
+    if not data.get("choices"):
+        detail = (data.get("error") or {}).get("message", "unknown error")
+        raise RuntimeError(f"omniroute deepseek flash request failed: {detail}")
 
     return data["choices"][0]["message"]["content"]

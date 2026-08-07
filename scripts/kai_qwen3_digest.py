@@ -10,7 +10,7 @@ Two separate provider registrations both run on the same RunPod GPU, so
 both are covered -- missing either one would hide half of Qwen3's real
 activity from this "keep me updated" digest:
   - "openai": text_task Q&A/review route (core.llm_clients.call_openai)
-  - "qwen3_coding": coding_agent route driving opencode's tool-use loop,
+  - "qwen4_coding": coding_agent route driving opencode's tool-use loop,
     the roadmap's primary builder as of 2026-08-02 (core.ai_provider's
     QWEN3_CODING_MODEL)
 
@@ -33,8 +33,8 @@ import core.telegram_bridge as telegram_bridge  # noqa: E402
 DEFAULT_WINDOW = timedelta(hours=1)
 DEFAULT_LABEL = "hourly"
 
-PROVIDERS = ("openai", "qwen3_coding")
-PROVIDER_LABEL = {"openai": "Q&A/review", "qwen3_coding": "roadmap builds"}
+PROVIDERS = ("openai", "qwen4_coding")
+PROVIDER_LABEL = {"openai": "Q&A/review", "qwen4_coding": "roadmap builds"}
 
 
 def _window_phrase(window):
@@ -49,7 +49,7 @@ def _window_phrase(window):
     return f"{hours:g} hours"
 
 
-def _recent_qwen3_records(now=None, window=DEFAULT_WINDOW):
+def _recent_qwen4_records(now=None, window=DEFAULT_WINDOW):
     now = now or datetime.now()
     cutoff = now - window
 
@@ -110,7 +110,7 @@ def build_digest_message(records, now=None, window=DEFAULT_WINDOW, label=DEFAULT
 
 
 def main(window=DEFAULT_WINDOW, label=DEFAULT_LABEL):
-    records = _recent_qwen3_records(window=window)
+    records = _recent_qwen4_records(window=window)
     message = build_digest_message(records, window=window, label=label)
     telegram_bridge.send_message(message)
     print(message)

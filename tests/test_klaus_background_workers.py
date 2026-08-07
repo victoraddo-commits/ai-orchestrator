@@ -84,7 +84,7 @@ class TestDiscoverSourceContent:
         mock_response.raise_for_status = MagicMock()
 
         with patch("requests.get", return_value=mock_response):
-            docs = bw.discover_source_content("https://parliament.gh", "parliament.gh")
+            docs = bw.discover_source_content("https://example.com", "example.com")
             assert len(docs) == 2
             assert docs[0]["title"] == "Act 123"
             assert docs[0]["type"] == "pdf"
@@ -102,9 +102,9 @@ class TestDiscoverSourceContent:
         mock_response.raise_for_status = MagicMock()
 
         with patch("requests.get", return_value=mock_response):
-            docs = bw.discover_source_content("https://parliament.gh", "parliament.gh")
+            docs = bw.discover_source_content("https://example.com", "example.com")
             assert len(docs) == 1
-            assert docs[0]["url"] == "https://parliament.gh/docs/act.pdf"
+            assert docs[0]["url"] == "https://example.com/docs/act.pdf"
 
     def test_discovers_txt_links(self):
         import core.klaus.background_workers as bw
@@ -118,7 +118,7 @@ class TestDiscoverSourceContent:
         mock_response.raise_for_status = MagicMock()
 
         with patch("requests.get", return_value=mock_response):
-            docs = bw.discover_source_content("https://parliament.gh", "parliament.gh")
+            docs = bw.discover_source_content("https://example.com", "example.com")
             assert len(docs) == 1
             assert docs[0]["type"] == "txt"
 
@@ -135,7 +135,7 @@ class TestDiscoverSourceContent:
         mock_response.raise_for_status = MagicMock()
 
         with patch("requests.get", return_value=mock_response):
-            docs = bw.discover_source_content("https://parliament.gh", "parliament.gh")
+            docs = bw.discover_source_content("https://example.com", "example.com")
             assert len(docs) == 1
             assert docs[0]["url"].endswith("real.pdf")
 

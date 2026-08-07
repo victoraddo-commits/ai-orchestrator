@@ -1,3 +1,5 @@
+import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -24,6 +26,13 @@ from core.logger import info
 # biggest source of "why is nothing happening" during live testing. Cheap
 # reads (Proxmox/Docker checks) at 5x the frequency cost effectively nothing.
 INTERVAL = 60
+
+# TK-b7614289: Pause file checked at top of every cycle.  API endpoint
+# /api/admin/pause-scheduler creates it, /api/admin/resume-scheduler removes it.
+SCHEDULER_PAUSE_FILE = Path(os.environ.get(
+    "SCHEDULER_PAUSE_FILE",
+    "/project/ai-orchestrator/memory/scheduler_paused.json",
+))
 
 # 13P: run_cycle() blocks synchronously on coding-agent subprocess calls that
 # can legitimately run many minutes. The systemd unit's WatchdogSec is 600s,
@@ -101,6 +110,24 @@ def start():
 
 
     while True:
+
+        # TK-b7614289: Check pause flag before every cycle.
+        # Pausing doesn't kill the running cycle — it just skips
+        # future cycles until the flag is removed.
+        if SCHEDULER_PAUSE_FILE.exists():
+            try:
+                pause_data = json.loads(SCHEDULER_PAUSE_FILE.read_text())
+                if pause_data.get("paused", True):
+                    # Log once per pause state, not every interval
+                    paused_at = pause_data.get("paused_at", "unknown")
+                    reason = pause_data.get("reason", "no reason given")
+                    info(f"scheduler paused since {paused_at}: {reason}")
+                    time.sleep(INTERVAL)
+                    continue
+            except Exception:
+                # Corrupt pause file — log and remove
+                info("scheduler pause file corrupt — removing and resuming")
+                SCHEDULER_PAUSE_FILE.unlink(missing_ok=True)
 
         heartbeat = WatchdogHeartbeat()
 

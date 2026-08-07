@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 TIER_1_SEEDS = [
     {"url": "https://parliament.gh", "domain": "parliament.gh", "tier": 1, "jurisdiction": "Ghana"},
-    {"url": "https://judiciary.gov.gh", "domain": "judiciary.gov.gh", "tier": 1, "jurisdiction": "Ghana"},
+    {"url": "https://judicial.gov.gh", "domain": "judicial.gov.gh", "tier": 1, "jurisdiction": "Ghana"},
     {"url": "https://ghalii.org", "domain": "ghalii.org", "tier": 2, "jurisdiction": "Ghana"},
 ]
 

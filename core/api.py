@@ -14,6 +14,9 @@ from fastapi.responses import StreamingResponse
 import httpx
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse, RedirectResponse
+import logging
+
+from core.memory import save, load
 
 # Load .env explicitly here rather than relying on tools/proxmox.py's own
 # load_dotenv() call as a side effect of some other import -- this is the
@@ -50,8 +53,8 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.module_registry import get_registered_modules
-from core.ai_provider import list_providers, set_provider_enabled, delete_provider, set_provider_nickname
-from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat
+from core.ai_provider import list_providers, set_provider_enabled, deregister_provider
+from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
 import core.kai.identity as kai_identity
@@ -112,6 +115,23 @@ from core.klaus.scheduler import start_scheduler as start_klaus_scheduler
 app = FastAPI(title="AI Orchestrator Observability API")
 
 app.include_router(klaus_api_router)
+
+# AI Gateway — OpenAI-compatible /v1 endpoints for external consumers
+from core.ai_gateway.gateway import router as gateway_router
+app.include_router(gateway_router)
+
+# Create default API key on first startup if none exists
+try:
+    from core.ai_gateway.keys import ensure_default_key
+    default_key = ensure_default_key()
+    if default_key:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Gateway default API key created: {default_key}\n"
+            "Store this key — it will not be shown again."
+        )
+except Exception:
+    pass
 
 try:
     start_klaus_scheduler()
@@ -688,6 +708,79 @@ def providers_dashboard_endpoint():
     return get_provider_dashboard()
 
 
+# ---- V3: GPU & Pipeline endpoints ----
+
+@app.get("/api/gpu/status")
+def api_gpu_status():
+    """Per-pod GPU metrics: state, runtime, cost, tasks, health."""
+    try:
+        import core.gpu_lifecycle as _gl
+        return _gl.get_gpu_dashboard()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/vpn/status")
+def api_vpn_status():
+    """TK-176d6efe: WireGuard VPN tunnel health for Proxmox B."""
+    try:
+        import core.vpn_failover as _vf
+        import core.proxmox_monitor as _pm
+        vpn = _vf.check_tunnel_health()
+        vpn["nodes"] = _pm.get_vpn_status()
+        return vpn
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/pipeline")
+def api_pipeline_overview():
+    """Pipeline overview: counts by build status."""
+    from core.build_manager import load_builds
+    builds = load_builds(include_terminal=True)
+    statuses = {}
+    for b in builds:
+        s = b.get("status", "?")
+        statuses[s] = statuses.get(s, 0) + 1
+
+    return {
+        "pipeline": {
+            "planning": statuses.get("PLANNING", 0),
+            "generating": statuses.get("GENERATING", 0),
+            "review": statuses.get("CODE_REVIEW", 0) + statuses.get("SECURITY_REVIEW", 0),
+            "deploying": statuses.get("DEPLOYING", 0),
+            "completed": statuses.get("COMPLETED", 0),
+            "failed": statuses.get("FAILED", 0),
+            "blocked": statuses.get("ARCHITECTURE_APPROVED", 0),
+            "waiting_approval": (
+                statuses.get("WAITING_FOR_ARCHITECTURE_APPROVAL", 0) +
+                statuses.get("WAITING_FOR_DEPLOY_APPROVAL", 0)
+            ),
+            "total_active": len([b for b in builds if b.get("status") not in ("COMPLETED", "FAILED", "ROLLED_BACK")]),
+        },
+        "by_status": statuses,
+    }
+
+
+@app.get("/api/budget")
+def api_budget_dashboard():
+    """Cost tracking: GPU spend, per-pod breakdown."""
+    try:
+        import core.gpu_lifecycle as _gl
+        metrics = _gl.get_gpu_dashboard()
+        return {
+            "gpu": metrics,
+            "summary": {
+                "total_gpu_cost": metrics.get("summary", {}).get("total_cost", 0),
+                "combined_hourly": metrics.get("summary", {}).get("combined_hourly_cost", 0),
+            },
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+# ---- end V3 ----
+
+
 @app.get("/self-healing/log")
 def self_healing_log_endpoint():
     """16B: Return the last self-healing actions taken."""
@@ -809,36 +902,43 @@ def toggle_provider_endpoint(
     return {"name": name, "enabled": body.enabled}
 
 
-class ProviderNickname(BaseModel):
-    nickname: str
-
-
 @app.delete("/providers/{name}")
 def delete_provider_endpoint(
     name: str,
     operator: str = Depends(_require_write_capability("delegate.use")),
 ):
-    """Completely remove a provider from the registry. Use to clean up
-    stale or nonexistent providers. The universal 'claude' fallback cannot
-    be deleted."""
-    try:
-        if not delete_provider(name):
-            raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"deleted": name}
+    """Permanently remove a provider from Kai.
 
-
-@app.put("/providers/{name}/nickname")
-def nickname_provider_endpoint(
-    name: str,
-    body: ProviderNickname,
-    operator: str = Depends(_require_write_capability("delegate.use")),
-):
-    """Set or clear a human-friendly nickname for a provider."""
-    if not set_provider_nickname(name, body.nickname):
+    Deletes the provider from the registry, persisted state, and all
+    routing chains.  Returns 409 if this is the last provider of its
+    capability type (e.g. last coding_agent provider)."""
+    from core.ai_provider import get_provider
+    info = get_provider(name)
+    if info is None:
         raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
-    return {"name": name, "nickname": body.nickname}
+
+    # Guard: don't let the user delete the last coding-capable provider
+    caps = info.get("capabilities") or []
+    if "coding_agent" in caps:
+        from core.ai_provider import _PROVIDERS as _all
+        other_coding = any(
+            n != name and "coding_agent" in (e.get("capabilities") or [])
+            for n, e in _all.items()
+        )
+        if not other_coding:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot delete '{name}': it is the last coding_agent provider. "
+                       "Add another coding provider first.",
+            )
+
+    roles_removed = remove_provider_from_roles(name)
+    deregister_provider(name)
+    return {
+        "deleted": True,
+        "name": name,
+        "roles_removed": roles_removed,
+    }
 
 
 @app.get("/api/modules")
@@ -2096,6 +2196,189 @@ def delete_law_document_endpoint(doc_id: str, operator: str = Depends(_require_w
 
 # Global variables for SSE connections
 
+
+
+# ---- TK-b7614289: Emergency Controls API ----
+
+# Scheduler pause file (same file checked by core/scheduler.py)
+SCHEDULER_PAUSE_FILE = Path(os.environ.get(
+    "SCHEDULER_PAUSE_FILE",
+    "/project/ai-orchestrator/memory/scheduler_paused.json",
+))
+
+
+def _get_pause_state() -> dict:
+    """Return current scheduler pause state."""
+    if SCHEDULER_PAUSE_FILE.exists():
+        try:
+            data = json.loads(SCHEDULER_PAUSE_FILE.read_text())
+            return {
+                "paused": data.get("paused", True),
+                "paused_at": data.get("paused_at", "unknown"),
+                "reason": data.get("reason", ""),
+                "paused_by": data.get("paused_by", "unknown"),
+            }
+        except Exception:
+            pass
+    return {"paused": False, "paused_at": None, "reason": "", "paused_by": None}
+
+
+def _set_pause_state(paused: bool, reason: str = "", operator: str = "dashboard"):
+    """Set scheduler pause state. Creates or removes the pause file."""
+    if paused:
+        data = {
+            "paused": True,
+            "paused_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
+            "paused_by": operator,
+        }
+        SCHEDULER_PAUSE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SCHEDULER_PAUSE_FILE.write_text(json.dumps(data, indent=2))
+    else:
+        if SCHEDULER_PAUSE_FILE.exists():
+            SCHEDULER_PAUSE_FILE.unlink()
+
+
+class AdminAction(BaseModel):
+    """Request body for admin actions that need extra params."""
+    reason: str = ""
+    build_id: str = ""
+    provider_name: str = ""
+    target_status: str = ""
+
+
+@app.get("/api/admin/status")
+def api_admin_status():
+    """TK-b7614289: Return scheduler pause state and provider health."""
+    scheduler = _get_pause_state()
+
+    providers = []
+    try:
+        from core.ai.provider_health import load_provider_health
+        health = load_provider_health()
+        for name, h in health.items():
+            providers.append({
+                "name": name,
+                "healthy": h.get("healthy", True),
+                "quota_remaining": h.get("quota_remaining"),
+                "last_error": h.get("last_error", ""),
+            })
+    except Exception:
+        pass
+
+    return {
+        "scheduler": scheduler,
+        "providers": providers,
+    }
+
+
+@app.post("/api/admin/pause-scheduler")
+def api_pause_scheduler(body: AdminAction):
+    """TK-b7614289: Pause the scheduler loop. Safe — current cycle completes."""
+    _set_pause_state(True, reason=body.reason, operator="dashboard")
+    return {"ok": True, "scheduler": _get_pause_state()}
+
+
+@app.post("/api/admin/resume-scheduler")
+def api_resume_scheduler():
+    """TK-b7614289: Resume the scheduler loop."""
+    _set_pause_state(False)
+    return {"ok": True, "scheduler": _get_pause_state()}
+
+
+@app.post("/api/admin/retry-build")
+def api_retry_build(body: AdminAction):
+    """TK-b7614289: Reset a failed build to PENDING for retry."""
+    if not body.build_id:
+        raise HTTPException(400, "build_id is required")
+
+    from core.build_manager import load_builds, save_builds
+
+    builds = load_builds()
+    for b in builds:
+        if b.get("id") == body.build_id:
+            old_status = b.get("status", "?")
+            b["status"] = "PENDING"
+            b["failure_reason"] = None
+            b["_retried_at"] = datetime.now(timezone.utc).isoformat()
+            b["_retry_reason"] = body.reason or "manual retry via dashboard"
+            save_builds(builds)
+            logging.getLogger(__name__).info(
+                f"build {body.build_id} retried: {old_status} → PENDING"
+            )
+            return {"ok": True, "build_id": body.build_id, "old_status": old_status, "new_status": "PENDING"}
+
+    raise HTTPException(404, f"Build {body.build_id} not found")
+
+
+@app.post("/api/admin/cancel-build")
+def api_cancel_build(body: AdminAction):
+    """TK-b7614289: Cancel an active build (mark as FAILED)."""
+    if not body.build_id:
+        raise HTTPException(400, "build_id is required")
+
+    from core.build_manager import load_builds, save_builds
+
+    builds = load_builds()
+    for b in builds:
+        if b.get("id") == body.build_id:
+            old_status = b.get("status", "?")
+            if old_status in ("COMPLETED", "FAILED", "ROLLED_BACK"):
+                raise HTTPException(400, f"Build {body.build_id} is already terminal ({old_status})")
+            b["status"] = "FAILED"
+            b["failure_reason"] = body.reason or "cancelled via dashboard"
+            b["_cancelled_at"] = datetime.now(timezone.utc).isoformat()
+            save_builds(builds)
+            logging.getLogger(__name__).info(
+                f"build {body.build_id} cancelled: {old_status} → FAILED"
+            )
+            return {"ok": True, "build_id": body.build_id, "old_status": old_status, "new_status": "FAILED"}
+
+    raise HTTPException(404, f"Build {body.build_id} not found")
+
+
+@app.post("/api/admin/disable-provider")
+def api_disable_provider(body: AdminAction):
+    """TK-b7614289: Temporarily disable an AI provider."""
+    if not body.provider_name:
+        raise HTTPException(400, "provider_name is required")
+
+    from core.ai.provider_health import load_provider_health, save_provider_health
+
+    health = load_provider_health()
+    if body.provider_name not in health:
+        raise HTTPException(404, f"Provider '{body.provider_name}' not found in health tracking")
+
+    health[body.provider_name]["healthy"] = False
+    health[body.provider_name]["disabled_reason"] = body.reason or "disabled via dashboard"
+    health[body.provider_name]["disabled_at"] = datetime.now(timezone.utc).isoformat()
+    save_provider_health(health)
+
+    logging.getLogger(__name__).warning(
+        f"provider {body.provider_name} disabled via dashboard: {body.reason or 'no reason given'}"
+    )
+    return {"ok": True, "provider": body.provider_name, "healthy": False}
+
+
+@app.post("/api/admin/enable-provider")
+def api_enable_provider(body: AdminAction):
+    """TK-b7614289: Re-enable a disabled AI provider."""
+    if not body.provider_name:
+        raise HTTPException(400, "provider_name is required")
+
+    from core.ai.provider_health import load_provider_health, save_provider_health
+
+    health = load_provider_health()
+    if body.provider_name not in health:
+        raise HTTPException(404, f"Provider '{body.provider_name}' not found in health tracking")
+
+    health[body.provider_name]["healthy"] = True
+    health[body.provider_name].pop("disabled_reason", None)
+    health[body.provider_name].pop("disabled_at", None)
+    save_provider_health(health)
+
+    logging.getLogger(__name__).info(f"provider {body.provider_name} re-enabled via dashboard")
+    return {"ok": True, "provider": body.provider_name, "healthy": True}
 
 
 # Simple SSE endpoint for dashboard updates

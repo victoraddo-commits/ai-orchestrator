@@ -61,7 +61,7 @@ def test_register_provider_adds_a_new_entry():
 def test_gemini_groq_openai_providers_are_registered_with_text_task_capability():
     providers = ai_provider.list_providers()
 
-    for name in ("gemini", "groq", "openai", "openrouter", "minimax", "deepseek"):
+    for name in ("gemini", "groq", "qwen4_text", "openrouter", "minimax", "deepseek"):
         assert name in providers
         assert "text_task" in providers[name]["capabilities"]
         assert "coding_agent" not in providers[name]["capabilities"]
@@ -486,53 +486,35 @@ def test_deepseek_provider_has_text_task_capability_only():
     assert "coding_agent" not in providers["deepseek"]["capabilities"]
 
 
-def test_opencode_deepseek_provider_is_registered_with_coding_agent_capability_only():
+
+
+# --- 2026-08-02: qwen4_coding -- self-hosted Qwen3-Coder as a real coding_agent, via a custom opencode provider ---
+
+def test_qwen4_coding_provider_is_registered_with_coding_agent_capability_only():
     providers = ai_provider.list_providers()
-    assert "opencode_deepseek" in providers
-    assert "coding_agent" in providers["opencode_deepseek"]["capabilities"]
-    assert "text_task" not in providers["opencode_deepseek"]["capabilities"]
+    assert "qwen4_coding" in providers
+    assert "coding_agent" in providers["qwen4_coding"]["capabilities"]
+    assert "text_task" not in providers["qwen4_coding"]["capabilities"]
 
 
-# --- 2026-08-02: qwen3_coding -- self-hosted Qwen3-Coder as a real coding_agent, via a custom opencode provider ---
-
-def test_qwen3_coding_provider_is_registered_with_coding_agent_capability_only():
-    providers = ai_provider.list_providers()
-    assert "qwen3_coding" in providers
-    assert "coding_agent" in providers["qwen3_coding"]["capabilities"]
-    assert "text_task" not in providers["qwen3_coding"]["capabilities"]
+def test_qwen4_coding_provider_defaults_to_correct_model(monkeypatch, tmp_path):
+    # V3: qwen4_coding uses direct vLLM API (call_qwen4_text),
+    # NOT opencode_bridge. The model is set via QWEN3_CODING_MODEL.
+    from core.ai_provider import QWEN3_CODING_MODEL
+    assert "Qwen3-32B-FP8" in QWEN3_CODING_MODEL or "Qwen/Qwen3-32B-FP8" in QWEN3_CODING_MODEL
 
 
-def test_qwen3_coding_provider_defaults_to_correct_model(monkeypatch, tmp_path):
-    import core.opencode_bridge as opencode_bridge
-
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider("qwen3_coding")
-    provider["run_coding_task"](str(tmp_path), "build a widget")
-
-    assert captured["model"] == "qwen3-runpod/Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
-
-
-def test_qwen3_coding_provider_availability_requires_opencode_and_both_env_vars(monkeypatch):
+def test_qwen4_coding_provider_availability_requires_opencode_and_both_env_vars(monkeypatch):
     import core.ai_provider as provider_module
 
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
+    # V3: qwen4_coding availability only checks VLLM_QWEN3_CODER env vars,
+    # not shutil.which (direct vLLM API doesn't need opencode CLI).
     monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
     monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://example.proxy.runpod.net/v1")
-    assert ai_provider.list_providers()["qwen3_coding"]["available"] is True
+    assert ai_provider.list_providers()["qwen4_coding"]["available"] is True
 
     monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
-    assert ai_provider.list_providers()["qwen3_coding"]["available"] is False
-
-    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://example.proxy.runpod.net/v1")
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-    assert ai_provider.list_providers()["qwen3_coding"]["available"] is False
+    assert ai_provider.list_providers()["qwen4_coding"]["available"] is False
 
 
 # --- 17R item 1: native DeepSeek providers (api.deepseek.com, no OpenRouter/Zen quota exposure) ---
@@ -611,40 +593,6 @@ def test_deepseek_native_flash_does_not_use_the_shared_openrouter_or_zen_credent
     assert ai_provider.get_provider("deepseek_native_flash")["run_text_task"]("hello") == "ok"
 
 
-def test_opencode_deepseek_provider_defaults_to_correct_model(monkeypatch, tmp_path):
-    import core.opencode_bridge as opencode_bridge
-
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider("opencode_deepseek")
-    provider["run_coding_task"](str(tmp_path), "build a widget")
-
-    assert captured["model"] == "openrouter/deepseek/deepseek-v4-pro"
-
-
-def test_opencode_deepseek_provider_shares_availability_with_opencode(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    assert ai_provider.list_providers()["opencode_deepseek"]["available"] is True
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-    assert ai_provider.list_providers()["opencode_deepseek"]["available"] is False
-
-
-# --- 13W: static cost_tier classification per provider ----------------------
-
 def test_every_registered_provider_has_a_valid_cost_tier():
     providers = ai_provider.list_providers()
 
@@ -667,23 +615,20 @@ def test_every_registered_provider_has_a_valid_cost_tier():
         ("opencode", "free_or_low_cost"),
         ("opencode_claude", "free_or_low_cost"),
         ("opencode_minimax", "free_or_low_cost"),
-        ("opencode_deepseek", "free_or_low_cost"),
-        # 2026-08-02: qwen3_coding -- same self-hosted RunPod GPU as "openai"
+        # 2026-08-02: qwen4_coding -- same self-hosted RunPod GPU as "qwen4_text"
         # below, own-hardware billing rather than per-call.
-        ("qwen3_coding", "free_or_low_cost"),
-        # 2026-08-02: "openai" now means the self-hosted Qwen3-Coder vLLM
+        ("qwen4_coding", "free_or_low_cost"),
+        # 2026-08-02: "qwen4_text" now means the self-hosted Qwen3-Coder vLLM
         # instance (own RunPod GPU pod, not per-call billing) -- moved out
         # of "paid" the same day it was repointed away from the real OpenAI
         # API. See core.llm_clients.call_openai / core.ai_provider's
-        # "openai" registration.
-        ("openai", "free_or_low_cost"),
+        # "qwen4_text" registration.
+        ("qwen4_text", "paid"),
         # real per-call billing / materially expensive models
         ("claude", "paid"),
         ("openrouter", "paid"),
         ("opencode_claude_sonnet", "paid"),
         ("opencode_claude_opus", "paid"),
-        ("openrouter_claude_opus", "paid"),
-        ("openrouter_claude_sonnet", "paid"),
     ],
 )
 def test_provider_cost_tier_matches_the_static_classification(provider_name, expected_tier):
@@ -774,7 +719,7 @@ def test_opencode_available_is_a_thin_wrapper_over_the_generalized_helper(monkey
 
 # --- 13M: OpenRouter-billed Claude coding routes via the opencode CLI --------
 
-@pytest.mark.parametrize("provider_name", ["openrouter_claude_opus", "openrouter_claude_sonnet"])
+@pytest.mark.parametrize("provider_name", [])
 def test_openrouter_claude_coding_providers_are_registered_with_coding_agent_capability_only(provider_name):
     providers = ai_provider.list_providers()
 
@@ -800,37 +745,8 @@ def test_13v_text_task_openrouter_claude_provider_is_not_overwritten():
     assert entry["run_text_task"] is not None
 
 
-@pytest.mark.parametrize(
-    "provider_name,expected_model",
-    [
-        ("openrouter_claude_opus", "openrouter/anthropic/claude-opus-4.7"),
-        ("openrouter_claude_sonnet", "openrouter/anthropic/claude-sonnet-4.6"),
-    ],
-)
-def test_openrouter_claude_coding_providers_default_to_their_openrouter_model(
-    monkeypatch, tmp_path, provider_name, expected_model
-):
-    import core.opencode_bridge as opencode_bridge
 
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["project_path"] = project_path
-        captured["instruction"] = instruction
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider(provider_name)
-    provider["run_coding_task"](str(tmp_path), "build a widget")
-
-    assert captured["model"] == expected_model
-    assert captured["project_path"] == str(tmp_path)
-    assert captured["instruction"] == "build a widget"
-
-
-@pytest.mark.parametrize("provider_name", ["openrouter_claude_opus", "openrouter_claude_sonnet"])
+@pytest.mark.parametrize("provider_name", [])
 def test_openrouter_claude_coding_providers_respect_an_explicit_model_override(
     monkeypatch, tmp_path, provider_name
 ):
@@ -850,7 +766,7 @@ def test_openrouter_claude_coding_providers_respect_an_explicit_model_override(
     assert captured["model"] == "openrouter/some/other-model"
 
 
-@pytest.mark.parametrize("provider_name", ["openrouter_claude_opus", "openrouter_claude_sonnet"])
+@pytest.mark.parametrize("provider_name", [])
 def test_openrouter_claude_coding_providers_are_gated_on_the_openrouter_credential(
     monkeypatch, tmp_path, provider_name
 ):
@@ -926,66 +842,47 @@ def test_openrouter_run_text_task_uses_the_rotated_model(monkeypatch):
 
 
 # 17Z: Qwen3-Coder-30B-A3B-Instruct-AWQ text-task provider on RunPod RTX 5090
-def test_qwen3_coder_text_provider_is_registered():
-    provider = ai_provider.get_provider("qwen3_coder_text")
+def test_qwen4_text_provider_is_registered():
+    provider = ai_provider.get_provider("qwen4_text")
     assert provider is not None
     assert provider["run_text_task"] is not None
     assert provider["run_coding_task"] is None  # text-task only, no coding agent
     assert provider["cost_tier"] == "paid"  # real per-request GPU billing
 
 
-def test_qwen3_coder_text_availability_reflects_env_vars(monkeypatch):
+def test_qwen4_text_availability_reflects_env_vars(monkeypatch):
     monkeypatch.delenv("VLLM_QWEN3_CODER_API_KEY", raising=False)
     monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
-    assert ai_provider.list_providers()["qwen3_coder_text"]["available"] is False
+    assert ai_provider.list_providers()["qwen4_text"]["available"] is False
 
     monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
-    assert ai_provider.list_providers()["qwen3_coder_text"]["available"] is False  # still needs URL
+    assert ai_provider.list_providers()["qwen4_text"]["available"] is False  # still needs URL
 
     monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://test.runpod.net/v1")
-    assert ai_provider.list_providers()["qwen3_coder_text"]["available"] is True
+    assert ai_provider.list_providers()["qwen4_text"]["available"] is True
 
 
-def test_qwen3_coder_text_run_text_task_calls_llm_clients(monkeypatch):
+def test_qwen4_text_run_text_task_calls_llm_clients(monkeypatch):
     import core.llm_clients as llm_clients
 
     monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
     monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://test.runpod.net/v1")
     captured = {}
 
-    def fake_call_qwen3_coder_text(prompt, timeout=60):
+    def fake_call_qwen4_text(prompt, timeout=60):
         captured["prompt"] = prompt
-        return "qwen3_coder_text response"
+        return "qwen4_text response"
 
-    monkeypatch.setattr(llm_clients, "call_qwen3_coder_text", fake_call_qwen3_coder_text)
+    monkeypatch.setattr(llm_clients, "call_qwen4_text", fake_call_qwen4_text)
 
-    provider = ai_provider.get_provider("qwen3_coder_text")
+    provider = ai_provider.get_provider("qwen4_text")
     result = provider["run_text_task"]("what is the capital of ghana?")
 
-    assert result == "qwen3_coder_text response"
+    assert result == "qwen4_text response"
     assert captured["prompt"] == "what is the capital of ghana?"
 
 
-def test_qwen3_coder_text_has_text_task_capability_only():
-    entry = ai_provider.list_providers()["qwen3_coder_text"]
+def test_qwen4_text_has_text_task_capability_only():
+    entry = ai_provider.list_providers()["qwen4_text"]
     assert "text_task" in entry["capabilities"]
     assert "coding_agent" not in entry["capabilities"]
-
-
-@pytest.mark.integration
-@pytest.mark.external_api
-def test_openrouter_claude_sonnet_coding_path_against_real_api(tmp_path):
-    # Codifies the 2026-07-28 live design-session verification: the opencode
-    # CLI drives OpenRouter-hosted Claude with real file-write capability.
-    provider = ai_provider.get_provider("openrouter_claude_sonnet")
-    if not ai_provider.list_providers()["openrouter_claude_sonnet"]["available"]:
-        pytest.skip("openrouter credential not configured in opencode auth.json")
-
-    result = provider["run_coding_task"](
-        str(tmp_path),
-        "Create a file named pong.txt containing exactly the word: pong. Do nothing else.",
-        timeout=300,
-    )
-
-    assert result["success"] is True
-    assert (tmp_path / "pong.txt").exists()

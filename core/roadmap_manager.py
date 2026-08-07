@@ -30,7 +30,7 @@ from core.autonomy import (
     enable_autonomous_mode,
     disable_autonomous_mode,
 )
-from core.roadmap_engine import get_candidate_phases, update_phase
+from core.roadmap_engine import get_candidate_phases, update_phase, load_roadmap as _load_roadmap_raw
 from core.build_manager import (
     create_build,
     get_build,
@@ -38,53 +38,26 @@ from core.build_manager import (
     save_builds,
     BUILD_TRANSITIONS,
     MAX_CONCURRENT_BUILDS,
+    NON_TERMINAL_BUILD_STATUSES,
 )
-
-# 2026-08-06: reserve 2 of the 16 worker slots exclusively for cron /
-# maintenance phases (IT sweeper jobs, audit log, monthly review, legal
-# QC agents, workforce commands).  These are long-running background
-# tasks that should never be starved by the main build pipeline.  If no
-# cron-tagged phases are ready, the slots are released to the general pool.
-DEDICATED_CRON_WORKERS = 2
-
 from core.lifecycle import transition
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 # 13C's Improvement Proposal store -- the source of the risk/expected-benefit
 # signal _phase_value_score() scores phases by. No cycle: core.kai.planner
 # never imports core.roadmap_manager.
 from core.kai.planner import load_proposals
+from core.sandbox_manager import create_sandbox as _sandbox_create, self_build_repo_paths as _sb_repo_paths
 
 
 SELF_PROJECT_PATH = Path(__file__).resolve().parent.parent
 
-# Self-modifying builds must never operate directly on SELF_PROJECT_PATH --
-# that's this session's own live working directory. Every self-modifying
-# build tonight that checked out a branch there collided with interactive
-# git commands and service restarts running concurrently (confirmed live:
-# repeated "Read timed out" / "process exited with code 1" failures on
-# builds whose branch happened to be checked out while an unrelated git or
-# systemctl command ran). _create_isolated_self_clone() gives each build its
-# own disposable clone instead; the live repo is only ever read from.
-SELF_BUILD_WORKSPACE_ROOT = Path.home() / ".ai-orchestrator" / "self-build-workspaces"
-
-# The CloudCLI plugin frontend is its own separate git repository, entirely
-# outside SELF_PROJECT_PATH's tree (confirmed live 2026-07-28 via 13G's
-# failed attempt: 0 files tracked under this path in the ai-orchestrator
-# repo). Phases whose work touches the plugin get a dual-repo workspace --
-# both repos cloned as siblings under one parent directory -- so a single
-# --dir/project_path covers both trees. See _create_isolated_self_clone().
+# V3: sandbox_manager handles the clone logic now — these paths are kept
+# for backward compatibility with existing self_build_repo_paths() callers.
+SELF_BUILD_WORKSPACE_ROOT = Path.home() / ".ai-orchestrator" / "sandboxes"
 PLUGIN_PROJECT_PATH = Path("/project/src/ai-orchestrator-plugin")
 
-# Fixed directory names of the two sibling clones inside a dual-repo
-# workspace. deployment_manager and build_manager rely on this layout (via
-# is_dual_repo_workspace/self_build_repo_paths) to find each repo again.
 ORCHESTRATOR_CLONE_DIRNAME = "ai-orchestrator"
 PLUGIN_CLONE_DIRNAME = "ai-orchestrator-plugin"
-
-# Fallback detection keyword: a phase with no explicit requires_plugin flag
-# still gets a dual-repo workspace if its text mentions the plugin repo by
-# name -- historical/implicit phases (13G, 13J, 13K, ...) all reference
-# "ai-orchestrator-plugin" in their descriptions without carrying the flag.
 PLUGIN_KEYWORD = "ai-orchestrator-plugin"
 
 # 13H: replaced by core.autonomy's autonomy_level.json (6 numbered
@@ -355,21 +328,11 @@ def _phase_value_score(phase):
     return benefit - risk
 
 
-def _select_next_phase(worker_pool="default"):
+def _select_next_phase():
     candidates = get_candidate_phases()
 
     if not candidates:
         return None
-
-    # Filter by worker_pool tag if specified
-    if worker_pool:
-        tagged = [p for p in candidates if p.get("worker_pool") == worker_pool]
-        if tagged:
-            candidates = tagged
-        elif worker_pool == "cron":
-            # No cron phases ready — return None so cron slots are
-            # released to the general pool in the caller.
-            return None
 
     # Highest value score wins; priority is the tie-breaker (matching
     # roadmap_engine.get_next_phase()'s plain-priority behavior) for phases
@@ -400,8 +363,11 @@ def is_self_modifying(project_path):
     # it its own disposable clone instead (see that function's docstring).
     # Recognize those clones too, or every self-modifying build looks like a
     # normal one to callers that branch on this (e.g. deploy_build()).
+    # V3: sandboxes are at SANDBOX_ROOT / build_id / ai-orchestrator, so the
+    # grandparent (not parent) must match the workspace root.
     try:
-        return resolved.parent == SELF_BUILD_WORKSPACE_ROOT.resolve()
+        ws_root = SELF_BUILD_WORKSPACE_ROOT.resolve()
+        return resolved == ws_root or ws_root in resolved.parents
     except OSError:
         return False
 
@@ -440,18 +406,8 @@ def is_dual_repo_workspace(project_path):
 
 
 def self_build_repo_paths(project_path):
-    """The actual git repositories inside a build workspace. A single-repo
-    workspace is itself the (only) repo; a dual-repo workspace contributes
-    both sibling clones. Callers that operate per-repo (branch checkout,
-    merge-back) iterate this instead of assuming project_path is a repo."""
-
-    if is_dual_repo_workspace(project_path):
-        return [
-            str(Path(project_path) / ORCHESTRATOR_CLONE_DIRNAME),
-            str(Path(project_path) / PLUGIN_CLONE_DIRNAME),
-        ]
-
-    return [str(project_path)]
+    """V3: delegated to sandbox_manager."""
+    return _sb_repo_paths(project_path)
 
 
 def orchestrator_repo_path(project_path):
@@ -556,8 +512,10 @@ def _phase_build_uses_isolated_clone(build):
     if resolved == SELF_PROJECT_PATH:
         return False
 
+    # V3: sandboxes are at SANDBOX_ROOT / build_id / ai-orchestrator
     try:
-        return resolved.parent == SELF_BUILD_WORKSPACE_ROOT.resolve()
+        ws_root = SELF_BUILD_WORKSPACE_ROOT.resolve()
+        return ws_root in resolved.parents
     except OSError:
         return False
 
@@ -650,38 +608,41 @@ def _process_in_progress_phase(phase):
 
 def advance_roadmap():
     # 13H gate: creating branches / builds is a Level-3-or-higher
-    # activity. Level 4 keeps the exact pre-13H ``enabled: true``
-    # semantics (drive builds all the way through, still respecting
-    # the two human-approval gates in build_manager). Level 5 adds
-    # the ability to promote proposals into new phases -- that is a
-    # separate hook in core/kai/planner.py, not here. Below Level 3
-    # this loop is a no-op, and the plain "disabled" action string
-    # is preserved for the old callers/tests that grep for it.
+    # activity. V3: same gate preserved.
     if not _autonomy.can_create_branches_and_builds():
         return {"action": "disabled"}
 
-    from core.roadmap_engine import load_roadmap
+    roadmap = _load_roadmap_raw()
+
+    # V3: stale roadmap protection — if a phase references a build_id
+    # that doesn't exist in builds.json, auto-fail the phase.
+    all_builds = load_builds(include_terminal=True)
+    all_build_ids = {b.get("id") for b in all_builds}
+    events = []
+
+    for phase in roadmap.get("phases", []):
+        bid = phase.get("build_id")
+        if bid and phase.get("status") == "in_progress" and bid not in all_build_ids:
+            update_phase(
+                phase["id"],
+                status="failed",
+                failure_reason=(
+                    f"Build {bid} missing from builds.json "
+                    f"(deleted or stale reference)"
+                ),
+            )
+            events.append({
+                "action": "stale_reference_failed",
+                "phase_id": phase["id"],
+                "missing_build_id": bid,
+            })
 
     in_progress_phases = [
-        p for p in load_roadmap()["phases"]
+        p for p in roadmap["phases"]
         if p["status"] == "in_progress" and p.get("build_id")
+        and p.get("build_id") in all_build_ids  # V3: skip stale refs already handled
     ]
 
-    # 17A: pre-K3, self-modifying builds all operated on SELF_PROJECT_PATH's
-    # single live working tree, so two builds in flight meant two concurrent
-    # `git checkout` commands fighting for the same working directory --
-    # the old code enforced a hard one-phase-at-a-time cap for exactly that
-    # reason. K3 now gives every self-modifying build its own isolated
-    # clone (_create_isolated_self_clone(), under SELF_BUILD_WORKSPACE_ROOT),
-    # so PLANNING / GENERATING / CODE_REVIEW / SECURITY_REVIEW for multiple
-    # phases run entirely inside their own clones with no shared mutable
-    # state. The only truly shared resource is live-repo HEAD during the
-    # DEPLOYING merge, and that is serialized at a much narrower scope by
-    # deployment_manager._live_merge_lock(). The single-in-flight guard is
-    # kept only for phases that opt into exclusivity (roadmap entry's
-    # ``"exclusive": true``) or for a build whose project_path resolves to
-    # SELF_PROJECT_PATH itself rather than an isolated clone -- see
-    # _requires_exclusive().
     events = []
     still_active_phases = []
     for phase in in_progress_phases:
@@ -692,9 +653,6 @@ def advance_roadmap():
         if event["action"] not in ("phase_completed", "phase_failed"):
             still_active_phases.append((phase, get_build(phase["build_id"])))
 
-    # Exclusivity: an exclusive phase in flight blocks all new starts;
-    # if any non-exclusive phase is in flight, an exclusive candidate
-    # cannot be started either. Otherwise cap by MAX_CONCURRENT_BUILDS.
     any_exclusive_in_flight = any(
         _requires_exclusive(phase, build) for phase, build in still_active_phases
     )
@@ -703,66 +661,61 @@ def advance_roadmap():
     if any_exclusive_in_flight:
         return _finalize(events)
 
-    # Spawn multiple phases per cycle to fill available capacity.
-    # Each call to _select_next_phase consumes its candidate (via
-    # update_phase), so we loop until we hit the cap or run out of
-    # eligible candidates.
-    #
-    # 2026-08-06: two-phase spawn with dedicated cron workers.
-    # Phase 1 — fill up to DEDICATED_CRON_WORKERS slots with cron-tagged
-    #           phases (maintenance, audit, sweeper jobs, QC agents).
-    # Phase 2 — fill remaining slots with the general build pipeline.
-    # If no cron phases are ready, all 16 slots open to the general pool.
-    cron_spawned = 0
-    normal_spawned = 0
-    total_slots = MAX_CONCURRENT_BUILDS - len(still_active_phases)
-    cron_slots = min(DEDICATED_CRON_WORKERS, total_slots)
-
-    # --- Phase 1: cron workers ---
-    while cron_spawned < cron_slots:
-        cron_candidate = _select_next_phase(worker_pool="cron")
-        if cron_candidate is None:
-            break  # no more cron phases ready
-
-        if cron_candidate.get("exclusive") is True and (any_in_flight or cron_spawned + normal_spawned > 0):
-            break
-
-        build = create_build(
-            name=cron_candidate["id"],
-            description=_build_description(cron_candidate),
-            project_path=_create_isolated_self_clone(include_plugin=phase_requires_plugin(cron_candidate)),
-        )
-        update_phase(cron_candidate["id"], status="in_progress", build_id=build["id"])
-        events.append({"action": "started_phase", "phase_id": cron_candidate["id"], "build_id": build["id"], "pool": "cron"})
-        cron_spawned += 1
-        any_in_flight = True
-
-    # Release unused cron slots to the general pool
-    remaining_slots = total_slots - cron_spawned
-    normal_spawned = 0
-
-    # --- Phase 2: general workers ---
-    while normal_spawned < remaining_slots:
-        next_phase = _select_next_phase(worker_pool="default")
+    spawned = 0
+    spawned_ids = set()  # V3 fix: prevent same-phase re-selection within this cycle
+    while len(still_active_phases) + spawned < MAX_CONCURRENT_BUILDS:
+        next_phase = _select_next_phase()
         if next_phase is None:
             break
 
-        # A candidate marked exclusive cannot start while anything else
-        # is in flight -- it must run alone.
-        if next_phase.get("exclusive") is True and (any_in_flight or normal_spawned > 0):
-            # Put it back so it can be picked next cycle — we haven't
-            # consumed it yet since we aren't spawning it now.
+        if next_phase.get("exclusive") is True and (any_in_flight or spawned > 0):
             break
+
+        # V3 fix: if _select_next_phase returns a phase we already spawned
+        # this cycle (possible when update_phase hasn't persisted or source
+        # is out of sync), skip it so we don't create runaway sandboxes.
+        if next_phase["id"] in spawned_ids:
+            # Mark as in_progress so the next iteration skips it even if
+            # _select_next_phase returns it again.
+            update_phase(next_phase["id"], status="in_progress",
+                         _note="skipped: already spawned this cycle")
+            continue
+
+        # V3 fix: check for existing build BEFORE creating sandbox.
+        # create_build() has duplicate prevention, but the sandbox was
+        # being created regardless — now we short-circuit early.
+        all_nonterminal = load_builds(include_terminal=False)
+        existing = next(
+            (b for b in all_nonterminal
+             if b.get("name") == next_phase["id"]
+             and b.get("status") in NON_TERMINAL_BUILD_STATUSES),
+            None,
+        )
+        if existing is not None:
+            # Already has an active build — mark phase but don't spawn
+            update_phase(next_phase["id"], status="in_progress",
+                         build_id=existing["id"])
+            spawned_ids.add(next_phase["id"])
+            spawned += 1
+            any_in_flight = True
+            continue
+
+        # V3: use sandbox_manager for isolated workspace
+        project_path = _sandbox_create(
+            build_id=next_phase["id"],
+            include_plugin=phase_requires_plugin(next_phase),
+        )
 
         build = create_build(
             name=next_phase["id"],
             description=_build_description(next_phase),
-            project_path=_create_isolated_self_clone(include_plugin=phase_requires_plugin(next_phase)),
+            project_path=project_path,
         )
 
         update_phase(next_phase["id"], status="in_progress", build_id=build["id"])
-        events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"], "pool": "default"})
-        normal_spawned += 1
+        events.append({"action": "started_phase", "phase_id": next_phase["id"], "build_id": build["id"]})
+        spawned_ids.add(next_phase["id"])
+        spawned += 1
         any_in_flight = True
 
     return _finalize(events)

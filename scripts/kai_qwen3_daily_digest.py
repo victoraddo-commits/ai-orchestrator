@@ -2,7 +2,7 @@
 
 2026-08-02: daily companion to scripts/kai_qwen3_digest.py -- same
 summarization over the same two provider registrations ("openai",
-"qwen3_coding"), just a 24-hour window. All logic lives in
+"qwen4_coding"), just a 24-hour window. All logic lives in
 kai_qwen3_digest; this is only a thin cron entry point so the two
 digests can never drift apart.
 

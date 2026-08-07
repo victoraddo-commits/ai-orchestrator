@@ -2,6 +2,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import time
+import json
 
 from core.memory import load, save, update
 from core.lifecycle import new_object, transition, InvalidTransition
@@ -17,6 +18,7 @@ from core.service_restarter import restart_services_if_needed
 from core.remediation import attempt_rollback
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
 from core.approval import create_build_approval
+from core.sandbox_manager import init_git_if_needed, cleanup_sandbox, get_build_branch
 
 # Planning tasks are text-in/text-out and don't need Claude's file/tool
 # access -- only actual code generation does. Routing them through the
@@ -38,6 +40,35 @@ PLANNING_TIMEOUT = 180
 # override.conf, outside this repo) with headroom to spare.
 GENERATION_TIMEOUT = 1200
 
+# ---- Kai Software Factory V3 ----
+
+# Two-pass processing: completion-near builds (DEPLOYING, CODE_REVIEW) are
+# dispatched BEFORE generation/planning builds, so deployment and review
+# never wait behind long-running generation workloads.
+_COMPLETION_NEAR_STATUSES = frozenset({"DEPLOYING", "CODE_REVIEW"})
+
+# Timeout protection: builds stuck in a long-running status beyond these
+# limits are auto-failed rather than blocking the pipeline forever.
+GENERATING_TIMEOUT_SECONDS = 2400   # 40 minutes
+DEPLOYING_TIMEOUT_SECONDS = 1800    # 30 minutes
+
+# Statuses that are NOT terminal — used for duplicate-build detection.
+NON_TERMINAL_BUILD_STATUSES = frozenset({
+    "REQUESTED", "PLANNING", "WAITING_FOR_USER_INPUT",
+    "WAITING_FOR_ARCHITECTURE_APPROVAL", "ARCHITECTURE_APPROVED",
+    "GENERATING", "CODE_REVIEW", "SECURITY_REVIEW",
+    "WAITING_FOR_DEPLOY_APPROVAL", "DEPLOYING", "VERIFIED",
+})
+
+# Terminal statuses excluded from load_builds() by default.
+_EXCLUDED_STATUSES = frozenset({"COMPLETED", "FAILED", "ROLLED_BACK"})
+
+# Archive path for terminal builds.
+BUILDS_ARCHIVE_FILE = "builds_archive.json"
+MAX_ARCHIVE_RECORDS = 500
+
+# ---- end V3 ----
+
 
 # The code-review step is a plain text-in/text-out Claude call over the
 # build's generation summary -- no file writes or tool use -- so planning's
@@ -46,7 +77,7 @@ CODE_REVIEW_TIMEOUT = 180
 
 PROVIDERS_CONFIG_PATH = Path("config") / "providers.yaml"
 
-DEFAULT_MAX_CONCURRENT_BUILDS = 8  # floor; config overrides higher
+DEFAULT_MAX_CONCURRENT_BUILDS = 4
 
 
 def _load_max_concurrent_builds():
@@ -79,15 +110,16 @@ def _detect_dedicated_gpu_providers():
         dedicated_gpu_count = 0
         for provider in providers:
             # Look for providers that are configured for GPU acceleration
-            if provider.get("type") in ["vllm", "gpu", "qwen3_coder"]:
+            if provider.get("type") in ["vllm", "gpu", "qwen4_text"]:
                 # Check if this is a dedicated GPU provider
                 if provider.get("gpu_acceleration", False) or "gpu" in provider.get("name", "").lower():
                     dedicated_gpu_count += 1
         
-        # Each dedicated GPU provider can handle ~16 concurrent inference
-        # requests (vLLM continuous batching); floor at the config value.
+        # If we have dedicated GPU providers, increase concurrency
+        # This assumes that GPU providers can handle more concurrent builds
         if dedicated_gpu_count > 0:
-            return max(dedicated_gpu_count * 16, _load_max_concurrent_builds())
+            # Return higher concurrency for GPU accelerated providers
+            return max(dedicated_gpu_count * 4, _load_max_concurrent_builds())
         
     except Exception:
         # Fall back to default if there's an error
@@ -148,13 +180,74 @@ BUILD_TRANSITIONS = {
 }
 
 
-def load_builds():
+def load_builds(include_terminal=False):
+    """Load active builds, excluding terminal ones by default.
+
+    V3: COMPLETED, FAILED, and ROLLED_BACK builds are excluded from the
+    default view. Terminal builds are periodically archived to
+    memory/builds_archive.json.
+    """
     builds = load(BUILDS_FILE)
 
     if not isinstance(builds, list):
         builds = []
 
+    if not include_terminal:
+        # Archive terminal builds we haven't archived yet
+        _archive_terminal_builds(builds)
+        builds = [b for b in builds if b.get("status") not in _EXCLUDED_STATUSES]
+
     return builds
+
+
+def _archive_terminal_builds(builds):
+    """Move terminal builds to the archive, keeping the archive capped.
+
+    V3 fix: builds whose roadmap phase is still in_progress are NOT
+    archived — they must stay in builds.json so check_stale_roadmap_references
+    can find them until the phase itself transitions.
+    """
+    terminal = [b for b in builds if b.get("status") in _EXCLUDED_STATUSES]
+
+    if not terminal:
+        return
+
+    # Don't archive builds for phases that are still in_progress —
+    # the stale-reference checker needs to find them.
+    try:
+        from core.roadmap_engine import load_roadmap as _load_roadmap
+        roadmap = _load_roadmap()
+        in_progress_build_ids = {
+            p.get("build_id") for p in roadmap.get("phases", [])
+            if p.get("status") == "in_progress" and p.get("build_id")
+        }
+    except Exception:
+        in_progress_build_ids = set()
+
+    archive = load(BUILDS_ARCHIVE_FILE)
+    if not isinstance(archive, list):
+        archive = []
+
+    # Only archive builds not already in the archive AND not referenced
+    # by an in_progress roadmap phase.
+    existing_ids = {a.get("id") for a in archive}
+    new_archives = [
+        b for b in terminal
+        if b.get("id") not in existing_ids
+        and b.get("id") not in in_progress_build_ids
+    ]
+
+    if new_archives:
+        archive.extend(new_archives)
+        # Cap archive size
+        if len(archive) > MAX_ARCHIVE_RECORDS:
+            archive = archive[-MAX_ARCHIVE_RECORDS:]
+        save(BUILDS_ARCHIVE_FILE, archive)
+
+    # Remove archived builds from active store
+    archived_ids = {b.get("id") for b in new_archives}
+    active = [b for b in builds if b.get("id") not in archived_ids]
+    save(BUILDS_FILE, active)
 
 
 def save_builds(builds):
@@ -165,7 +258,16 @@ def create_build(name, description, project_path, template=None, priority=False)
     if template is not None and get_template(template) is None:
         raise ValueError(f"Unknown project template: {template!r}")
 
-    builds = load_builds()
+    # V3: duplicate build protection — if a non-terminal build with the
+    # same name already exists, return it instead of creating a duplicate.
+    builds = load_builds(include_terminal=False)
+    existing = next(
+        (b for b in builds
+         if b.get("name") == name and b.get("status") in NON_TERMINAL_BUILD_STATUSES),
+        None,
+    )
+    if existing is not None:
+        return existing
 
     build = new_object(
         "REQUESTED",
@@ -183,6 +285,17 @@ def create_build(name, description, project_path, template=None, priority=False)
         security_report=None,
         deployment=None,
     )
+
+    # V3: track when the build started (for timeout detection)
+    build["_v3_started_at"] = time.time()
+
+    # V3: initialize sandbox for isolated builds
+    if not (build.get("project_path") or "").startswith("/tmp"):
+        try:
+            branch = get_build_branch(build["id"])
+            init_git_if_needed(build["project_path"], branch)
+        except Exception:
+            pass
 
     builds.append(build)
     save_builds(builds)
@@ -409,17 +522,13 @@ def _generation_prompt(build):
 
 
 def _ensure_repo(build):
-    # A dual-repo self-build workspace (roadmap_manager._create_isolated_
-    # self_clone(include_plugin=True)) is a plain parent directory holding
-    # two sibling clones -- the build branch must exist in each actual repo,
-    # and the parent itself must never be git-inited (create_local_repo
-    # would happily do so, burying both clones as untracked nested repos).
-    # For every other build, self_build_repo_paths() is just [project_path],
-    # i.e. exactly the old single-repo behavior. Imported lazily:
-    # core.roadmap_manager imports this module at import time.
-    from core.roadmap_manager import self_build_repo_paths
+    # V3: use sandbox_manager for self_build_repo_paths (was directly in
+    # roadmap_manager). A dual-repo self-build workspace is a plain parent
+    # directory holding two sibling clones -- the build branch must exist in
+    # each actual repo, and the parent itself must never be git-inited.
+    from core.sandbox_manager import self_build_repo_paths as _sb_repo_paths
 
-    for repo_path in self_build_repo_paths(build["project_path"]):
+    for repo_path in _sb_repo_paths(build["project_path"]):
         create_local_repo(repo_path, branch=f"build-{build['id']}")
 
 
@@ -713,7 +822,7 @@ def _run_planning(build):
 def _is_legal_phase(build):
     """Check if this build belongs to the legal module — routes to dedicated Sonnet 5 provider."""
     name = (build.get("name") or "").upper()
-    legal_ids = {"17O-A1", "17O-A2", "17O-A3", "17O-B", "17O-C", "17O-D", "17P", "17Q", "18C"}
+    legal_ids = {"17O-A", "17O-B", "17O-C", "17O-D", "17P", "17Q", "18C"}
     is_legal = name in legal_ids or "LEGAL" in name or "JURIS" in name
     # Also check the roadmap phase's assigned_provider
     if not is_legal:
@@ -941,6 +1050,110 @@ def _run_deployment(build):
         restart_services_if_needed(build, result)
 
 
+# ---- V3: Timeout & stale-reference detection ----
+
+def _check_timeouts(builds):
+    """Auto-fail builds stuck beyond their timeout. Returns list of events."""
+    now = time.time()
+    events = []
+
+    for build in builds:
+        status = build.get("status", "")
+
+        if status == "GENERATING":
+            started = build.get("_v3_started_at") or build.get("updated")
+            if started:
+                try:
+                    if isinstance(started, str):
+                        from datetime import datetime as _dt
+                        started = _dt.fromisoformat(started).timestamp()
+                    elapsed = now - float(started)
+                    if elapsed > GENERATING_TIMEOUT_SECONDS:
+                        build["status"] = "FAILED"
+                        build["failure_reason"] = (
+                            f"V3 timeout: stuck in GENERATING for {int(elapsed)}s "
+                            f"(limit: {GENERATING_TIMEOUT_SECONDS}s)"
+                        )
+                        _record_if_terminal(build)
+                        _persist_build(build)
+                        events.append({
+                            "action": "timeout_failed",
+                            "build_id": build.get("id"),
+                            "name": build.get("name"),
+                            "elapsed_seconds": int(elapsed),
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+        elif status == "DEPLOYING":
+            started = build.get("_v3_started_at") or build.get("updated")
+            if started:
+                try:
+                    if isinstance(started, str):
+                        from datetime import datetime as _dt
+                        started = _dt.fromisoformat(started).timestamp()
+                    elapsed = now - float(started)
+                    if elapsed > DEPLOYING_TIMEOUT_SECONDS:
+                        build["status"] = "FAILED"
+                        build["failure_reason"] = (
+                            f"V3 timeout: stuck in DEPLOYING for {int(elapsed)}s "
+                            f"(limit: {DEPLOYING_TIMEOUT_SECONDS}s)"
+                        )
+                        _record_if_terminal(build)
+                        _persist_build(build)
+                        events.append({
+                            "action": "timeout_failed",
+                            "build_id": build.get("id"),
+                            "name": build.get("name"),
+                            "elapsed_seconds": int(elapsed),
+                        })
+                except (ValueError, TypeError):
+                    pass
+
+    return events
+
+
+def check_stale_roadmap_references():
+    """V3: validate all roadmap phases reference existing builds.
+
+    If a phase's build_id points to a build not in builds.json, fail the
+    phase so the next phase can continue.
+    """
+    from core.roadmap_engine import load_roadmap, update_phase
+
+    builds = load_builds(include_terminal=True)
+    build_ids = {b.get("id") for b in builds}
+
+    # Also check the archive — builds may have been archived out of
+    # builds.json by _archive_terminal_builds() while their roadmap
+    # phase is still in_progress. An archived build is NOT stale.
+    archive = load(BUILDS_ARCHIVE_FILE)
+    if isinstance(archive, list):
+        build_ids.update(a.get("id") for a in archive)
+
+    events = []
+    for phase in load_roadmap().get("phases", []):
+        bid = phase.get("build_id")
+        if bid and bid not in build_ids:
+            update_phase(
+                phase["id"],
+                status="failed",
+                failure_reason=(
+                    f"Build {bid} missing from builds.json "
+                    f"(deleted or stale reference)"
+                ),
+            )
+            events.append({
+                "action": "stale_reference_failed",
+                "phase_id": phase["id"],
+                "missing_build_id": bid,
+            })
+
+    return events
+
+
+# ---- end V3 ----
+
 # CODE_REVIEW is dispatchable as a defensive fallback only -- the normal
 # path cascades GENERATING -> CODE_REVIEW -> ... within one _run_generation
 # call, so a build only sits in CODE_REVIEW if it was persisted mid-cascade
@@ -956,7 +1169,7 @@ def get_scheduler_snapshot():
 
     Returns a dict safe to expose over the API -- no private fields,
     no mutable references to live build objects."""
-    builds = load_builds() or []
+    builds = load_builds(include_terminal=True) or []
 
     running = []
     waiting = []
@@ -1039,24 +1252,57 @@ def _advance_one_build(build):
 
 
 def advance_builds():
+    """Advance all actionable builds through the pipeline.
+
+    V3 two-pass processing:
+      Pass 1: DEPLOYING + CODE_REVIEW (completion-near) — never blocked
+              behind generation workloads.
+      Pass 2: GENERATING, PLANNING, REQUESTED, ARCHITECTURE_APPROVED.
+    """
     builds = load_builds()
+
+    # V3: check timeouts before advancing anything
+    timeout_events = _check_timeouts(builds)
+
+    # V3: check stale roadmap references
+    stale_events = check_stale_roadmap_references()
+
     ready = [b for b in builds if b.get("status") in _ACTIONABLE_STATUSES]
 
     if not ready:
         return builds
 
+    # ---- Pass 1: completion-near builds (DEPLOYING, CODE_REVIEW) ----
+    pass1 = [b for b in ready if b.get("status") in _COMPLETION_NEAR_STATUSES]
+
+    # ---- Pass 2: generation/planning builds ----
+    pass2 = [b for b in ready if b.get("status") not in _COMPLETION_NEAR_STATUSES]
+
     # 2026-08-06: prioritize Telegram/user-requested builds (priority=True)
     # before roadmap-spawned builds. Sort ensures priority builds occupy the
     # first pool worker slots.
-    ready.sort(key=lambda b: (0 if b.get("priority") else 1, b.get("updated", "")))
+    pass2.sort(key=lambda b: (0 if b.get("priority") else 1, b.get("updated", "")))
 
-    # Each ready build advances in its own worker, capped at
-    # MAX_CONCURRENT_BUILDS. Builds are already isolated by design (own git
-    # branch, own sandbox), and the work is I/O-bound (subprocess/HTTP), so
-    # threads give real concurrency. With a single ready build this is
-    # exactly the old sequential behavior. Builds not in `ready` are never
-    # touched or resaved.
-    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_BUILDS) as pool:
-        list(pool.map(_advance_one_build, ready))
+    # Pass 1 runs FIRST and uses all available workers — deployment and
+    # code review complete fast, so pool them fully.
+    for batch in (pass1, pass2):
+        if not batch:
+            continue
+
+        # Use remaining capacity for each pass
+        active_count = len([b for b in builds if b.get("status") in _RUNNING_STATUSES])
+        available = max(1, MAX_CONCURRENT_BUILDS - active_count)
+        batch = batch[:available]
+
+        with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_BUILDS) as pool:
+            list(pool.map(_advance_one_build, batch))
+
+    # V3: cleanup sandboxes for terminal builds
+    for build in builds:
+        if build.get("status") in _EXCLUDED_STATUSES:
+            try:
+                cleanup_sandbox(build.get("id"))
+            except Exception:
+                pass
 
     return load_builds()

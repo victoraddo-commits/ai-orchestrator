@@ -330,12 +330,18 @@ class TestDisclaimerFlow:
         if db_path.exists():
             db_path.unlink()
 
+    def _get_text(self, response: dict) -> str:
+        """Extract text from new dict-format or legacy str-format response."""
+        if isinstance(response, str):
+            return response
+        return str(response.get("text", ""))
+
     def test_new_user_gets_disclaimer_message(self):
         """Bot returns disclaimer for new users."""
         from core.juris_kai.bot import handle_message
 
         response = handle_message({"chat_id": "999", "text": "/help"})
-        assert "not a lawyer" in response.lower()
+        assert "not a lawyer" in self._get_text(response).lower()
 
     def test_existing_user_without_disclaimer_gets_prompt(self):
         """User who hasn't accepted disclaimer gets prompted."""
@@ -345,8 +351,10 @@ class TestDisclaimerFlow:
 
         from core.juris_kai.bot import handle_message
         response = handle_message({"chat_id": "888", "text": "What is contract law?"})
-        assert "acknowledge the disclaimer" in response.lower()
-        assert "i understand" in response.lower()
+        text = self._get_text(response)
+        assert "acknowledge the disclaimer" in text.lower()
+        # New bot uses inline keyboard button instead of text prompt
+        assert "button" in text.lower() or "i understand" in text.lower()
 
     def test_start_command_accepts_disclaimer(self):
         """The /start command accepts the disclaimer."""
@@ -356,7 +364,7 @@ class TestDisclaimerFlow:
 
         from core.juris_kai.bot import handle_message
         response = handle_message({"chat_id": "777", "text": "/start"})
-        assert "welcome" in response.lower()
+        assert "welcome" in self._get_text(response).lower()
 
 
 class TestSecurityBoundary:
@@ -376,6 +384,7 @@ class TestSecurityBoundary:
             "core.juris_kai.dashboard",
             "core.juris_kai.session",
             "core.juris_kai.prompt",
+            "core.juris_kai.menus",
         ]
 
         for mod_name in modules_to_check:

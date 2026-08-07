@@ -27,7 +27,7 @@ def _imported_modules(path):
 
 def test_no_forbidden_operational_imports_anywhere_in_the_source():
     """Validate no forbidden operational imports (same as law_tutor)."""
-    for path in JURIS_KAI_DIR.glob("*.py"):
+    for path in sorted(JURIS_KAI_DIR.glob("*.py")):
         imported = _imported_modules(path)
         overlap = imported & FORBIDDEN_MODULES
         assert not overlap, f"{path.name} imports forbidden operational module(s): {overlap}"

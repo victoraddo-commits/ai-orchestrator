@@ -151,6 +151,23 @@ def _init_schema(conn: sqlite3.Connection):
             FOREIGN KEY (account_id) REFERENCES juris_accounts(account_id)
         );
 
+        -- Phase 4: Security & audit tables
+        CREATE TABLE IF NOT EXISTS juris_security_log (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,   -- auth_failed, rate_limited, suspicious_activity, admin_denied
+            details TEXT DEFAULT '',
+            ip_address TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS juris_rate_limits (
+            telegram_id TEXT PRIMARY KEY,
+            window_start REAL NOT NULL,
+            message_count INTEGER DEFAULT 1,
+            last_updated TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_juris_telegram
             ON juris_accounts(telegram_id);
         CREATE INDEX IF NOT EXISTS idx_juris_payments_account
@@ -159,6 +176,10 @@ def _init_schema(conn: sqlite3.Connection):
             ON juris_document_analyses(account_id);
         CREATE INDEX IF NOT EXISTS idx_juris_usage_account
             ON juris_usage_log(account_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_security_telegram
+            ON juris_security_log(telegram_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_security_event
+            ON juris_security_log(event_type);
     """)
 
 
@@ -457,6 +478,60 @@ class AccountManager:
             "total_revenue_ghs": total_revenue["c"] if total_revenue else 0,
             "total_queries": total_queries["c"] if total_queries else 0,
         }
+
+    # ---- Security / audit logging ----
+
+    def log_security_event(self, telegram_id: str, event_type: str, details: str = "",
+                           ip_address: str = "") -> bool:
+        """Log a security-related event for audit and abuse detection."""
+        self.db.execute(
+            """INSERT INTO juris_security_log
+               (telegram_id, event_type, details, ip_address)
+               VALUES (?, ?, ?, ?)""",
+            (str(telegram_id), event_type, details, ip_address),
+        )
+        self.db.commit()
+        return True
+
+    def get_security_logs(self, event_type: str = "", limit: int = 100) -> list[dict]:
+        """Get recent security events, optionally filtered by type."""
+        if event_type:
+            rows = self.db.execute(
+                "SELECT * FROM juris_security_log WHERE event_type = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (event_type, limit),
+            ).fetchall()
+        else:
+            rows = self.db.execute(
+                "SELECT * FROM juris_security_log ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def check_abuse(self, telegram_id: str, max_events_per_hour: int = 30) -> bool:
+        """Check if a user is exhibiting abusive behavior (excessive queries in 1h).
+        Returns True if abuse is detected."""
+        rows = self.db.execute(
+            """SELECT COUNT(*) as c FROM juris_usage_log
+               WHERE account_id IN (SELECT account_id FROM juris_accounts WHERE telegram_id = ?)
+               AND created_at > datetime('now', '-1 hour')""",
+            (str(telegram_id),),
+        ).fetchone()
+        if rows and rows["c"] > max_events_per_hour:
+            self.log_security_event(telegram_id, "suspicious_activity",
+                                    f"Exceeded hourly limit: {rows['c']} queries in 1h")
+            return True
+        return False
+
+    def log_admin_denied(self, telegram_id: str, attempted_action: str = "") -> bool:
+        """Log an unauthorized admin access attempt."""
+        return self.log_security_event(telegram_id, "admin_denied",
+                                       f"Attempted: {attempted_action}")
+
+    def log_rate_limit_hit(self, telegram_id: str) -> bool:
+        """Log when a user hits the rate limit."""
+        return self.log_security_event(telegram_id, "rate_limited",
+                                       "Message rate limit exceeded")
 
 
 # Module-level convenience

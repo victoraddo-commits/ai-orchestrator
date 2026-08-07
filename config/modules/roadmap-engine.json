@@ -1,8 +1,13 @@
 {
   "name": "roadmap-engine",
   "version": "1.0.0",
-  "description": "Phase tracking and auto-roadmap execution -- the source of truth for what's done, in-progress, and next in Kai's development",
+  "description": "Phase tracking and auto-roadmap execution — the source of truth for what's done, in-progress, and next in Kai's development",
   "endpoints": ["/roadmap", "/roadmap/next", "/roadmap/remaining", "/roadmap/progress", "/roadmap/phases", "/roadmap/autonomous/status"],
   "capabilities": ["roadmap-tracking", "autonomous-planning", "phase-management"],
-  "dependencies": []
+  "dependencies": [],
+  "settings_schema": {
+    "autonomous_mode": {"type": "boolean", "default": true, "label": "Autonomous roadmap execution"},
+    "max_parallel_phases": {"type": "number", "default": 3, "label": "Max parallel phases", "min": 1, "max": 8}
+  },
+  "ops_actions": ["reevaluate_priorities", "force_next_phase"]
 }

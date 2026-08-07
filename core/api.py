@@ -9,8 +9,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form, Body
+from fastapi.responses import StreamingResponse, Response
 import httpx
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -112,7 +112,6 @@ def _sse_notify(event_type: str, data: dict):
             pass
 
 
-_MODULE_REGISTRY: dict[str, dict] = {}
 
 from core.klaus.api_endpoints import klaus_router as klaus_api_router
 from core.klaus.scheduler import start_scheduler as start_klaus_scheduler
@@ -149,15 +148,23 @@ except Exception:
 _DASHBOARD_PATH = Path(__file__).resolve().parent / "kai" / "dashboard.html"
 _DASHBOARD_HTML = _DASHBOARD_PATH.read_text()
 
+_COMMAND_CENTER_PATH = Path(__file__).resolve().parent / "kai" / "command_center.html"
+_COMMAND_CENTER_HTML = _COMMAND_CENTER_PATH.read_text()
+
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
     return _DASHBOARD_HTML
 
 
+@app.get("/command-center", response_class=HTMLResponse)
+def command_center():
+    return _COMMAND_CENTER_HTML
+
+
 @app.get("/")
 def root_redirect():
-    return RedirectResponse(url="/dashboard")
+    return RedirectResponse(url="/command-center")
 
 
 API_TOKEN_PATH = Path(
@@ -500,13 +507,52 @@ def _require_write_capability(capability: str):
 
 
 @app.post("/auth/login")
-def auth_login(body: LoginRequest):
+def auth_login(body: LoginRequest, response: Response):
     """Authenticate with username/password, return a session token.
-    The caller receives a Bearer-style token scoped to their role."""
+    The caller receives a Bearer-style token scoped to their role.
+    A http-only cookie is also set so the SPA doesn't need to manage tokens."""
     token = authz.authenticate(body.username, body.password)
     if token is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    return {"token": token, "token_type": "session"}
+    response.set_cookie(
+        key="kai_session",
+        value=token,
+        httponly=True,
+        secure=False,  # LAN-only, no TLS
+        samesite="lax",
+        max_age=86400,  # 24h
+        path="/",
+    )
+    return {"token": token, "token_type": "session", "role": authz.resolve_role(token)}
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@app.post("/auth/change-password")
+def auth_change_password(
+    body: ChangePasswordRequest,
+    x_kai_session: str | None = Header(default=None),
+):
+    """Change the current user's password. Requires valid session + old password."""
+    session = authz._resolve_session(x_kai_session or "")
+    if session is None:
+        raise HTTPException(status_code=401, detail="Valid session required")
+    username = session["username"]
+    accounts = authz._read_accounts()
+    entry = accounts.get(username)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    if not authz._verify_password(body.old_password, entry["password_hash"]):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    if len(body.new_password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+    accounts[username]["password_hash"] = authz._hash_password(body.new_password)
+    authz._write_accounts(accounts)
+    authz.invalidate_session(x_kai_session or "")
+    return {"ok": True}
+
 
 
 @app.post("/auth/logout")
@@ -565,36 +611,34 @@ async def sse_events(request: Request):
 # ── Phase 19A: Module auto-registry ──────────────────────────────────────
 
 
-def _discover_modules():
-    """Scan config/modules/ for *.json descriptors and populate registry."""
-    import glob as _glob
-    modules_dir = Path(__file__).resolve().parent / "config" / "modules"
-    if not modules_dir.is_dir():
-        return
-    for desc_path in _glob.glob(str(modules_dir / "*.json")):
-        try:
-            desc = _sse_json.loads(Path(desc_path).read_text())
-            name = desc.get("name", Path(desc_path).stem)
-            _MODULE_REGISTRY[name] = {
-                "name": name,
-                "description": desc.get("description", ""),
-                "endpoints": desc.get("endpoints", []),
-                "capabilities": desc.get("capabilities", []),
-                "dependencies": desc.get("dependencies", []),
-                "version": desc.get("version", "0.1.0"),
-                "registered_at": _datetime.now(_timezone.utc).isoformat(),
-            }
-        except Exception:
-            pass
-
-
-_discover_modules()
-
-
 @app.get("/api/modules")
 def modules_endpoint():
     """Return auto-discovered modules registered with Kai Command Center."""
-    return {"modules": list(_MODULE_REGISTRY.values())}
+    return {"modules": list(get_registered_modules().values())}
+
+
+@app.get("/api/modules/{name}/config")
+def module_config_get(name: str):
+    """Return runtime config for a specific module (loaded from memory file)."""
+    try:
+        from core.memory import load_memory
+        cfg = load_memory("module_config", default={})
+        return {"name": name, "config": cfg.get(name, {})}
+    except Exception as e:
+        return {"name": name, "config": {}, "error": str(e)}
+
+
+@app.put("/api/modules/{name}/config")
+def module_config_put(name: str, body: dict = Body(...)):
+    """Persist runtime config for a specific module."""
+    try:
+        from core.memory import load_memory, save_memory
+        cfg = load_memory("module_config", default={})
+        cfg[name] = body
+        save_memory("module_config", cfg)
+        return {"name": name, "config": cfg[name], "saved": True}
+    except Exception as e:
+        return {"name": name, "error": str(e), "saved": False}
 
 
 @app.get("/health")
@@ -733,6 +777,119 @@ def api_vpn_status():
         return vpn
     except Exception as e:
         return {"error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Docker Container Management (Phase 19B)
+# ═══════════════════════════════════════════════════════════════════════════
+
+DOCKER_SOCK = "/var/run/docker.sock"
+_docker_client: httpx.AsyncClient | None = None
+
+
+def _get_docker_client() -> httpx.AsyncClient:
+    global _docker_client
+    if _docker_client is None:
+        _docker_client = httpx.AsyncClient(
+            transport=httpx.HTTPTransport(uds=DOCKER_SOCK),
+            base_url="http://localhost",
+            timeout=10.0,
+        )
+    return _docker_client
+
+
+@app.get("/api/docker/containers")
+async def docker_containers():
+    """List all Docker containers with status, image, ports, and health."""
+    try:
+        client = _get_docker_client()
+        resp = await client.get("/containers/json?all=true")
+        resp.raise_for_status()
+        containers = resp.json()
+        result = []
+        for c in containers:
+            name = (c.get("Names") or ["unknown"])[0].lstrip("/")
+            state = c.get("State", "unknown")
+            status = c.get("Status", "")
+            result.append({
+                "name": name,
+                "id": c.get("Id", "")[:12],
+                "image": c.get("Image", ""),
+                "state": state,
+                "status": status,
+                "ports": [p.get("PublicPort") for p in c.get("Ports", []) if p.get("PublicPort")],
+                "created": datetime.fromtimestamp(c.get("Created", 0), tz=timezone.utc).isoformat(),
+            })
+        return {"containers": result}
+    except Exception as e:
+        return {"error": str(e), "containers": []}
+
+
+@app.post("/api/docker/containers/{name}/start")
+async def docker_container_start(name: str):
+    """Start a stopped container by name."""
+    try:
+        client = _get_docker_client()
+        resp = await client.post(f"/containers/{name}/start")
+        if resp.status_code == 204:
+            return {"ok": True, "action": "start", "container": name}
+        return {"ok": False, "error": f"HTTP {resp.status_code}", "detail": resp.text[:200]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/docker/containers/{name}/stop")
+async def docker_container_stop(name: str):
+    """Stop a running container by name."""
+    try:
+        client = _get_docker_client()
+        resp = await client.post(f"/containers/{name}/stop")
+        if resp.status_code == 204:
+            return {"ok": True, "action": "stop", "container": name}
+        return {"ok": False, "error": f"HTTP {resp.status_code}", "detail": resp.text[:200]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/docker/containers/{name}/restart")
+async def docker_container_restart(name: str):
+    """Restart a container by name."""
+    try:
+        client = _get_docker_client()
+        resp = await client.post(f"/containers/{name}/restart")
+        if resp.status_code == 204:
+            return {"ok": True, "action": "restart", "container": name}
+        return {"ok": False, "error": f"HTTP {resp.status_code}", "detail": resp.text[:200]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/docker/containers/{name}/logs")
+async def docker_container_logs(name: str, tail: int = 100):
+    """Get container logs (stdout + stderr), last N lines."""
+    try:
+        client = _get_docker_client()
+        resp = await client.get(f"/containers/{name}/logs?stdout=true&stderr=true&tail={tail}")
+        resp.raise_for_status()
+        # Docker log stream includes 8-byte header per frame; strip it
+        raw = resp.content
+        # Simple approach: skip the Docker stream header bytes
+        text = ""
+        i = 0
+        while i < len(raw):
+            if i + 8 > len(raw):
+                break
+            stream_type = raw[i]
+            frame_size = int.from_bytes(raw[i+4:i+8], 'big')
+            i += 8
+            if i + frame_size > len(raw):
+                break
+            text += raw[i:i+frame_size].decode('utf-8', errors='replace')
+            i += frame_size
+        lines = text.strip().split('\n')[-tail:]
+        return {"ok": True, "container": name, "logs": lines}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "logs": []}
 
 
 @app.get("/api/pipeline")
@@ -1308,11 +1465,6 @@ def circuit_breaker_config_endpoint(
         "threshold": body.threshold,
         "cooldown_seconds": body.cooldown_seconds,
     }
-
-
-@app.get("/api/modules")
-def modules_endpoint():
-    return {"modules": get_registered_modules()}
 
 
 @app.get("/scheduler/snapshot")

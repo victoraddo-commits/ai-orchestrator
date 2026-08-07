@@ -1,8 +1,13 @@
 {
   "name": "kai-chat",
   "version": "1.0.0",
-  "description": "Kai conversational interface -- operator chat, command dispatch, approval intent resolution, and build-request extraction",
+  "description": "Kai conversational interface — operator chat, command dispatch, approval intent resolution, and build-request extraction",
   "endpoints": ["/kai/chat", "/kai/chat/stream", "/kai/command", "/kai/identity", "/kai/conversations"],
   "capabilities": ["chat", "command-dispatch", "conversation-memory"],
-  "dependencies": ["ai-workforce"]
+  "dependencies": ["ai-workforce"],
+  "settings_schema": {
+    "max_history": {"type": "number", "default": 40, "label": "Max chat history messages", "min": 10, "max": 200},
+    "stream_enabled": {"type": "boolean", "default": true, "label": "Stream responses"}
+  },
+  "ops_actions": ["clear_history", "reload_providers"]
 }

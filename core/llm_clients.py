@@ -309,27 +309,27 @@ DEEPSEEK_NATIVE_PRO_MODEL = "deepseek-v4-pro"
 DEEPSEEK_NATIVE_FLASH_MODEL = "deepseek-v4-flash"
 
 
-def call_deepseek_native_pro(prompt, model=DEEPSEEK_NATIVE_PRO_MODEL, timeout=60):
+def call_deepseek_native_pro(prompt, model=DEEPSEEK_NATIVE_PRO_MODEL, timeout=60, max_tokens=4096):
     key = _require_key("DEEPSEEK_NATIVE_PRO_API_KEY")
 
     data = _post_json(
         "deepseek_native_pro",
         "https://api.deepseek.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
         timeout=timeout,
     )
     return data["choices"][0]["message"]["content"]
 
 
-def call_deepseek_native_flash(prompt, model=DEEPSEEK_NATIVE_FLASH_MODEL, timeout=60):
+def call_deepseek_native_flash(prompt, model=DEEPSEEK_NATIVE_FLASH_MODEL, timeout=60, max_tokens=2048):
     key = _require_key("DEEPSEEK_NATIVE_FLASH_API_KEY")
 
     data = _post_json(
         "deepseek_native_flash",
         "https://api.deepseek.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
         timeout=timeout,
     )
     return data["choices"][0]["message"]["content"]

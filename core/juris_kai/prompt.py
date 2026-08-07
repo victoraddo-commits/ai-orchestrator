@@ -9,36 +9,36 @@ def build_prompt(task_type, content):
     
     if task_type == "legal_teaching":
         return (
-            f"Explain the legal concept of '{content}' in detail. "
-            "Provide examples and relevant legal principles. "
-            "Structure your response to aid understanding for a legal student."
+            f"Explain the legal concept of '{content}'. "
+            "Provide key examples and relevant legal principles. "
+            "Keep your response concise (300-500 words) and structured for a legal student."
         )
     elif task_type == "legal_case_analysis":
         return (
             f"Analyze the legal case '{content}'. "
-            "Discuss the key legal principles involved, the court's reasoning, "
-            "and the impact on legal doctrine. Provide a balanced summary."
+            "Discuss the key legal principles, the court's reasoning, "
+            "and the impact on legal doctrine. Keep your response concise (300-500 words)."
         )
     elif task_type == "legal_research":
         return (
             f"Research the legal topic: '{content}'. "
-            "Provide an overview of the current legal position, relevant cases, "
-            "statutory provisions, and any ongoing debates in legal scholarship."
+            "Provide an overview of the current legal position, key cases, "
+            "and statutory provisions. Keep your response concise (300-500 words)."
         )
     elif task_type == "legal_argument":
         return (
             f"Construct a legal argument for: '{content}'. "
-            "Consider the relevant legal principles, precedents, and possible counterarguments. "
-            "Structure your response as a persuasive legal argument."
+            "Consider relevant legal principles, precedents, and counterarguments. "
+            "Keep your response concise (300-500 words)."
         )
     elif task_type == "legal_flashcards":
         return (
             f"Generate flashcards for the legal topic: '{content}'. "
-            "Each flashcard should contain a key legal principle or concept on the front, "
-            "and a detailed explanation on the back. Format as bullet points for easy reading."
+            "Each flashcard should have a key legal concept and a brief explanation. "
+            "Generate 5 flashcards. Format as bullet points."
         )
     else:
-        return f"Provide a legal explanation for: '{content}'"
+        return f"Provide a concise legal explanation for: '{content}'. Keep under 500 words."
 
 # Same security pattern as law_tutor - no imports of operational modules
 # Only pure text processing and prompt construction

@@ -17,11 +17,11 @@ def test_get_quota_snapshot_returns_none_when_never_recorded():
 
 def test_get_all_quota_snapshots_covers_every_recorded_provider():
     provider_health.record_quota_snapshot("groq", status="ok", percent_remaining=90)
-    provider_health.record_quota_snapshot("openai", status="quota_exceeded", percent_remaining=0)
+    provider_health.record_quota_snapshot("qwen4_text", status="quota_exceeded", percent_remaining=0)
 
     snapshots = provider_health.get_all_quota_snapshots()
 
-    assert set(snapshots) == {"groq", "openai"}
+    assert set(snapshots) == {"groq", "qwen4_text"}
 
 
 def test_capture_from_groq_headers_computes_percent_from_tokens():
@@ -49,7 +49,7 @@ def test_capture_from_headers_with_no_ratelimit_data_reports_no_data():
 
 
 def test_capture_quota_exceeded_from_error_records_zero_percent():
-    snapshot = provider_health.capture_quota_exceeded("openai", detail="insufficient_quota: billing required")
+    snapshot = provider_health.capture_quota_exceeded("qwen4_text", detail="insufficient_quota: billing required")
 
     assert snapshot["status"] == "quota_exceeded"
     assert snapshot["percent_remaining"] == 0

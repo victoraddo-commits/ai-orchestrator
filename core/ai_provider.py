@@ -340,21 +340,6 @@ def _omniroute_available():
     return llm_clients._omniroute_key() is not None
 
 
-# 13U: DeepSeek V4 Pro routed through OpenRouter via the opencode CLI --
-# reuses the shared openrouter credential in the CLI's own auth.json (no
-# Zen key involved, no collision risk with the existing opencode/
-# opencode_claude routes that use the Zen credential's "opencode" slot).
-# This is a separate coding route from the "deepseek" text_task provider
-# (which uses DEEPSEEK_OPENROUTER_API_KEY directly, see
-# llm_clients.call_deepseek).
-OPENCODE_DEEPSEEK_MODEL = "openrouter/deepseek/deepseek-v4-pro"
-
-
-def _opencode_deepseek_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", OPENCODE_DEEPSEEK_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
 # 2026-08-05: Qwen4 pod ldtqgcshb2dwsw (RTX PRO 6000 96GB), model
 # Qwen/Qwen3-32B-FP8. Same vLLM openai-compatible endpoint, vLLM 0.26.0
 # with deepseek_r1 reasoning and hermes tool-call parser. OpenCode CLI
@@ -362,24 +347,24 @@ def _opencode_deepseek_run_coding_task(project_path, instruction, **kwargs):
 QWEN3_CODING_MODEL = "qwen3-runpod/Qwen/Qwen3-32B-FP8"
 
 
-def _qwen3_coding_available():
+def _qwen4_coding_available():
     return bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL"))
 
 
-# 2026-08-06: qwen3Z — Qwen4 RunPod via opencode CLI (tool-use agent loop).
-# Unlike qwen3_coding (direct vLLM API, no agent loop), this routes through
+# 2026-08-06: qwen4Z — Qwen4 RunPod via opencode CLI (tool-use agent loop).
+# Unlike qwen4_coding (direct vLLM API, no agent loop), this routes through
 # the opencode CLI with the qwen3-runpod provider block from
 # ~/.config/opencode/opencode.jsonc.  The model supports tool_call: true,
 # giving Qwen4 the full agentic coding capability (read/write files, run
 # commands, commit) through opencode's agent loop instead of a single
-# fire-and-forget API call.  Same availability check as qwen3_coding
+# fire-and-forget API call.  Same availability check as qwen4_coding
 # (same pod, same endpoint) — the difference is the execution path.
-def _qwen3z_opencode_run_coding_task(project_path, instruction, **kwargs):
+def _qwen4z_opencode_run_coding_task(project_path, instruction, **kwargs):
     kwargs.setdefault("model", QWEN3_CODING_MODEL)
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
-def _qwen3_coding_run_coding_task(project_path, instruction, **kwargs):
+def _qwen4_coding_run_coding_task(project_path, instruction, **kwargs):
     """Direct vLLM API coding — bypasses opencode CLI entirely.
 
     The opencode CLI panics under concurrent load (thread crashes,
@@ -402,7 +387,7 @@ def _qwen3_coding_run_coding_task(project_path, instruction, **kwargs):
         "Output the complete implementation:"
     )
     try:
-        response_text = llm_clients.call_qwen3_coder_text(prompt, timeout=timeout)
+        response_text = llm_clients.call_qwen4_text(prompt, timeout=timeout)
     except Exception as e:
         return {"success": False, "response_text": "", "tool_errors": [
             {"tool": "qwen4_direct", "content": str(e)}
@@ -451,34 +436,6 @@ def _qwen3_coding_run_coding_task(project_path, instruction, **kwargs):
     }
 
 
-# 13M: coding-capable Claude routes billed through the OpenRouter account --
-# the opencode CLI drives OpenRouter-hosted models with its full agentic
-# tool-use loop once an "openrouter" credential exists in its auth.json
-# (confirmed live 2026-07-28; see scripts/setup_openrouter_opencode_auth.py,
-# since `opencode auth login openrouter` is broken headlessly). These
-# preserve the direct CloudCLI/Anthropic subscription's credit: see
-# ai.ai_router.ROLE_PROVIDERS["coding"], where they rotate ahead of the
-# direct "claude" provider. Opus 4.7 is tried first in that rotation per
-# explicit user directive (2026-07-30).
-#
-# Named openrouter_claude_opus/openrouter_claude_sonnet (not the design
-# doc's original "openrouter_claude") because 13V already shipped a
-# text_task-only provider under the "openrouter_claude" key (see below) --
-# these coding routes must not collide with or overwrite it.
-OPENROUTER_CLAUDE_OPUS_MODEL = "openrouter/anthropic/claude-opus-4.7"
-OPENROUTER_CLAUDE_SONNET_MODEL = "openrouter/anthropic/claude-sonnet-4.6"
-
-
-def _openrouter_claude_opus_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", OPENROUTER_CLAUDE_OPUS_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-def _openrouter_claude_sonnet_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", OPENROUTER_CLAUDE_SONNET_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
 def _local_not_implemented(*args, **kwargs):
     raise NotImplementedError(
         "The local provider is a Phase 12I architecture placeholder -- no "
@@ -504,10 +461,6 @@ def _geminix_run_text_task(prompt, timeout=60, project_path=None):
 
 def _groq_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_groq(prompt, timeout=timeout)
-
-
-def _openai_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_openai(prompt, timeout=timeout)
 
 
 # 13M: the plain-text openrouter provider rotates across
@@ -592,19 +545,6 @@ register_provider(
 )
 
 register_provider(
-    "openai",
-    run_text_task=_openai_run_text_task,
-    # 2026-08-02 operator directive: backed by the self-hosted Qwen3-Coder
-    # vLLM instance now, not the real OpenAI API -- see
-    # core.llm_clients.call_openai. Availability follows the credential it
-    # actually uses.
-    available_fn=lambda: bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL")),
-    kind="cloud",
-    description="Qwen3-Coder-30B-A3B-Instruct-AWQ, self-hosted vLLM on RunPod (was real OpenAI API until 2026-08-02) -- heavy-lifting text_task capacity, roadmap expediting per operator directive",
-    cost_tier="free_or_low_cost",
-)
-
-register_provider(
     "openrouter",
     run_text_task=_openrouter_run_text_task,
     available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
@@ -686,14 +626,14 @@ register_provider(
 #
 # 2026-08-06: Pod A (ldtqgcshb2dwsw, RTX PRO 6000, model Qwen/Qwen3-32B-FP8)
 # — GENERATOR pod. run_text_task only — the coding-agent route (tool-use loop
-# via opencode CLI) is already registered as "qwen3_coding".
-def _qwen3_coder_text_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_qwen3_coder_text(prompt, timeout=timeout)
+# via opencode CLI) is already registered as "qwen4_coding".
+def _qwen4_text_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_qwen4_text(prompt, timeout=timeout)
 
 
 register_provider(
-    "qwen3_coder_text",
-    run_text_task=_qwen3_coder_text_run_text_task,
+    "qwen4_text",
+    run_text_task=_qwen4_text_run_text_task,
     available_fn=lambda: bool(os.getenv("VLLM_QWEN3_CODER_API_KEY")) and bool(os.getenv("VLLM_QWEN3_CODER_BASE_URL")),
     kind="cloud",
     description="Qwen4 Pod A (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB (text-task only, OpenAI-compatible) — GENERATOR pod, primary for coding/planning workloads",
@@ -705,13 +645,13 @@ register_provider(
 # — REVIEW/DEPLOY pod. Dedicated text-task provider for review, architecture,
 # deployment, and classification roles. Never waits behind Pod A's generation
 # workloads.
-def _qwen3_pod_b_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_qwen3_pod_b_text(prompt, timeout=timeout)
+def _qwen4_pod_b_run_text_task(prompt, timeout=60, project_path=None):
+    return llm_clients.call_qwen4_pod_b_text(prompt, timeout=timeout)
 
 
 register_provider(
-    "qwen3_pod_b",
-    run_text_task=_qwen3_pod_b_run_text_task,
+    "qwen4_pod_b",
+    run_text_task=_qwen4_pod_b_run_text_task,
     available_fn=lambda: bool(os.getenv("VLLM_QWEN3_POD_B_API_KEY")) and bool(os.getenv("VLLM_QWEN3_POD_B_BASE_URL")),
     kind="cloud",
     description="Qwen4 Pod B (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB (text-task only) — REVIEW/DEPLOY pod, dedicated to review, architecture, and deployment roles; never queued behind Pod A generation",
@@ -764,30 +704,22 @@ register_provider(
     cost_tier="free_or_low_cost",
 )
 
-register_provider(
-    "opencode_deepseek",
-    run_coding_task=_opencode_deepseek_run_coding_task,
-    available_fn=_opencode_available,
-    kind="cloud",
-    description="DeepSeek V4 Pro (openrouter/deepseek/deepseek-v4-pro via opencode CLI) -- OpenRouter credential, no Zen key collision",
-    cost_tier="free_or_low_cost",
-)
 
 register_provider(
-    "qwen3_coding",
-    run_coding_task=_qwen3_coding_run_coding_task,
-    available_fn=_qwen3_coding_available,
+    "qwen4_coding",
+    run_coding_task=_qwen4_coding_run_coding_task,
+    available_fn=_qwen4_coding_available,
     kind="cloud",
     description="Qwen4 Pod A (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB via direct vLLM API — pod ldtqgcshb2dwsw, GENERATOR pod for coding/build workloads",
     cost_tier="free_or_low_cost",
 )
 
 register_provider(
-    "qwen3Z",
-    run_coding_task=_qwen3z_opencode_run_coding_task,
-    available_fn=_qwen3_coding_available,
+    "qwen4Z",
+    run_coding_task=_qwen4z_opencode_run_coding_task,
+    available_fn=_qwen4_coding_available,
     kind="cloud",
-    description="Qwen4 Pod A (Qwen3-32B-FP8) via opencode CLI agent loop — full tool-use capability on RunPod RTX PRO 6000 96GB, pod ldtqgcshb2dwsw; GENERATOR pod, same GPU as qwen3_coding but with opencode's read/write/commit agentic workflow",
+    description="Qwen4 Pod A (Qwen3-32B-FP8) via opencode CLI agent loop — full tool-use capability on RunPod RTX PRO 6000 96GB, pod ldtqgcshb2dwsw; GENERATOR pod, same GPU as qwen4_coding but with opencode's read/write/commit agentic workflow",
     cost_tier="free_or_low_cost",
 )
 
@@ -815,23 +747,7 @@ register_provider(
     cost_tier="free_or_low_cost",
 )
 
-register_provider(
-    "openrouter_claude_opus",
-    run_coding_task=_openrouter_claude_opus_run_coding_task,
-    available_fn=lambda: _opencode_credential_available("openrouter"),
-    kind="cloud",
-    description="Claude Opus 4.7 (openrouter/anthropic/claude-opus-4.7 via opencode CLI) -- billed through the OpenRouter account, not the CloudCLI/Anthropic subscription; tried first in the coding role's alt-Claude rotation per user directive (2026-07-30)",
-    cost_tier="paid",
-)
 
-register_provider(
-    "openrouter_claude_sonnet",
-    run_coding_task=_openrouter_claude_sonnet_run_coding_task,
-    available_fn=lambda: _opencode_credential_available("openrouter"),
-    kind="cloud",
-    description="Claude Sonnet 4.6 (openrouter/anthropic/claude-sonnet-4.6 via opencode CLI) -- billed through the OpenRouter account, not the CloudCLI/Anthropic subscription; coding-capable counterpart of 13V's text-only 'openrouter_claude'",
-    cost_tier="paid",
-)
 
 register_provider(
     "local",

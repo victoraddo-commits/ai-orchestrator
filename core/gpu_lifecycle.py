@@ -43,7 +43,7 @@ class PodConfig:
 POD_A = PodConfig(
     pod_id="ldtqgcshb2dwsw",
     role="GENERATOR",
-    provider_name="qwen3_coding",
+    provider_name="qwen4_coding",
     endpoint_url=os.getenv("VLLM_QWEN3_CODER_BASE_URL", ""),
     model=os.getenv("VLLM_QWEN3_CODER_MODEL", "Qwen/Qwen3-32B-FP8"),
     cost_per_hour=2.09,
@@ -53,7 +53,7 @@ POD_A = PodConfig(
 POD_B = PodConfig(
     pod_id="60jwzf36623b0o",
     role="REVIEWER",
-    provider_name="qwen3_pod_b",
+    provider_name="qwen4_pod_b",
     endpoint_url=os.getenv("VLLM_QWEN3_POD_B_BASE_URL", ""),
     model=os.getenv("VLLM_QWEN3_POD_B_MODEL", "Qwen/Qwen3-32B-FP8"),
     cost_per_hour=2.09,

@@ -205,7 +205,7 @@ def _handle_provider_status(name):
 
     provider = get_provider(name)
     if not provider:
-        return {"reply": f"Provider '{name}' not found. Try: qwen3_coding, opencode_claude, gemini, groq, deepseek_native_flash"}
+        return {"reply": f"Provider '{name}' not found. Try: qwen4_coding, opencode_claude, gemini, groq, deepseek_native_flash"}
 
     info = {
         "name": name,
@@ -397,6 +397,6 @@ COMMAND_PATTERNS += (
     (
         re.compile(r"^(?:kai,\s*)?(?:how\s+(?:is|are)\s+)?([a-z0-9_-]+)\s+(?:doing|status|health)\s*\.?$", re.IGNORECASE),
         lambda match: _handle_provider_status(str(match.group(1)).strip()),
-        "Check a specific provider's status — 'Kai, how is qwen3_coding doing?'",
+        "Check a specific provider's status — 'Kai, how is qwen4_coding doing?'",
     ),
 )

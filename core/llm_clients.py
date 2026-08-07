@@ -67,10 +67,39 @@ class ProviderUnavailable(Exception):
     """Raised when a provider's API key isn't configured."""
 
 
-def _require_key(env_var):
+# Provider-key → secrets-store lookup mapping.  When _require_key() is called
+# with an env_var, we check whether a corresponding provider has a secret stored
+# (provider_secrets.json).  If so, the stored key is used instead of the env var.
+_ENV_TO_SECRETS_PROVIDER = {
+    "DEEPSEEK_NATIVE_PRO_API_KEY": "deepseek",
+    "DEEPSEEK_NATIVE_FLASH_API_KEY": "deepseek",
+    "VLLM_QWEN3_CODER_API_KEY": "qwen4_text",
+    "VLLM_QWEN3_POD_B_API_KEY": "qwen4_pod_b",
+    "OPENROUTER_API_KEY": "openrouter",
+    "DEEPSEEK_OPENROUTER_API_KEY": "deepseek",
+    "GEMINI_API_KEY": "gemini",
+    "GEMINIX_API_KEY": "geminix",
+    "GROQ_API_KEY": "groq",
+    "MINIMAX_API_KEY": "minimax",
+}
+
+
+def _require_key(env_var, provider_key=None):
+    # 1. Secrets store (production path — keys never in env/process memory)
+    pk = provider_key or _ENV_TO_SECRETS_PROVIDER.get(env_var)
+    if pk:
+        try:
+            from core.ai.secrets import get_api_key
+            stored = get_api_key(pk)
+            if stored:
+                return stored
+        except ImportError:
+            pass
+
+    # 2. Environment variable (legacy fallback)
     key = os.getenv(env_var)
     if not key:
-        raise ProviderUnavailable(f"{env_var} is not set")
+        raise ProviderUnavailable(f"{env_var} is not set and no secret stored for {pk or 'unknown'}")
     return key
 
 
@@ -186,16 +215,16 @@ def call_openai(prompt, model=None, timeout=60):
 
 # 2026-08-05 (Phase 17Z): Qwen4 pod (ldtqgcshb2dwsw, RTX PRO 6000 96GB)
 # — Qwen/Qwen3-32B-FP8. Proper text-task registration under its own
-# provider name. Tracked in provider_health as "qwen3_coder_text",
+# provider name. Tracked in provider_health as "qwen4_text",
 # cost_tier='paid' (real per-request GPU billing). Also in OmniRoute as "qwen4".
 #
 # 2026-08-06: Pod A (Generator) — ldtqgcshb2dwsw, primary for coding/generation.
-def call_qwen3_coder_text(prompt, model=None, timeout=60):
+def call_qwen4_text(prompt, model=None, timeout=60):
     key = _require_key("VLLM_QWEN3_CODER_API_KEY")
     model = model or QWEN3_CODER_MODEL
 
     data = _post_json(
-        "qwen3_coder_text",
+        "qwen4_text",
         f"{QWEN3_CODER_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},
@@ -212,13 +241,13 @@ QWEN3_POD_B_MODEL = os.getenv("VLLM_QWEN3_POD_B_MODEL", "")
 # 2026-08-06: Pod B (Review/Deploy) — 60jwzf36623b0o, RTX PRO 6000 96GB,
 # Qwen/Qwen3-32B-FP8. Dedicated review/deployment pod — never waits behind
 # Pod A's generation workloads. Tracked in provider_health as
-# "qwen3_pod_b", cost_tier='paid'.
-def call_qwen3_pod_b_text(prompt, model=None, timeout=60):
+# "qwen4_pod_b", cost_tier='paid'.
+def call_qwen4_pod_b_text(prompt, model=None, timeout=60):
     key = _require_key("VLLM_QWEN3_POD_B_API_KEY")
     model = model or QWEN3_POD_B_MODEL
 
     data = _post_json(
-        "qwen3_pod_b",
+        "qwen4_pod_b",
         f"{QWEN3_POD_B_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model, "messages": [{"role": "user", "content": prompt}]},

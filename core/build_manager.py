@@ -110,7 +110,7 @@ def _detect_dedicated_gpu_providers():
         dedicated_gpu_count = 0
         for provider in providers:
             # Look for providers that are configured for GPU acceleration
-            if provider.get("type") in ["vllm", "gpu", "qwen3_coder"]:
+            if provider.get("type") in ["vllm", "gpu", "qwen4_text"]:
                 # Check if this is a dedicated GPU provider
                 if provider.get("gpu_acceleration", False) or "gpu" in provider.get("name", "").lower():
                     dedicated_gpu_count += 1

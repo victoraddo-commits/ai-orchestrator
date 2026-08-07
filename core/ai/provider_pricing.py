@@ -8,14 +8,14 @@ efficiency never penalizes a provider just because its pricing is unknown.
 """
 
 PRICING = {
-    "qwen3_coder_text": {
+    "qwen4_text": {
         "Qwen/Qwen3-32B-FP8": {
             "description": "Self-hosted RunPod RTX PRO 6000, $0.99/hr GPU",
             "input_per_million": 0.05,
             "output_per_million": 0.05,
         },
     },
-    "qwen3_pod_b": {
+    "qwen4_pod_b": {
         "Qwen/Qwen3-32B-FP8": {
             "description": "Self-hosted RunPod RTX PRO 6000, $0.99/hr GPU",
             "input_per_million": 0.05,

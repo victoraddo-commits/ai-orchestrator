@@ -49,7 +49,7 @@ class TestResearchSessions:
             query_text="What are the fundamental human rights under Ghana law?",
             retrieved_authorities=auths,
             citations_used=cited,
-            model_used="qwen3_coder",
+            model_used="qwen4_text",
             confidence=0.85,
             brain_version="0.1.0",
             search_strategy="semantic",
@@ -64,7 +64,7 @@ class TestResearchSessions:
         assert len(session["retrieved_authorities"]) == 2
         assert session["retrieved_authorities"][0]["title"] == "Constitution 1992"
         assert len(session["citations_used"]) == 1
-        assert session["model_used"] == "qwen3_coder"
+        assert session["model_used"] == "qwen4_text"
         assert session["confidence"] == 0.85
 
     def test_list_sessions_by_user(self):

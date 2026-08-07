@@ -32,6 +32,8 @@ DEFAULT_RATE_LIMITS = {
     "auth": (5, 60),                # 5 req/min — login attempts
     "build": (10, 60),              # 10 req/min — build-related
     "strict": (2, 60),              # 2 req/min — very restricted (e.g., password change)
+    "gateway_default": (60, 60),    # 60 req/min per consumer key — AI Gateway
+    "gateway_stream":  (10, 60),    # 10 req/min per consumer — streaming is heavier
 }
 
 # Brute-force protection

@@ -128,16 +128,16 @@ ROLE_PROVIDERS = {
     # pulled outright, so it resumes taking real traffic automatically once
     # its credit renews.
     #
-    # qwen3_coding joined CODING_ROTATING_FRONT once tool-calling was
+    # qwen4_coding joined CODING_ROTATING_FRONT once tool-calling was
     # confirmed live on the RunPod pod (see core.ai_provider's
     # QWEN3_CODING_MODEL comment), rotating 50/50 with Fable 5 at first --
     # later the same day, explicit operator directive assigned it the
     # roadmap outright ("priority is the roadmap... qwen3 builds and fable
-    # checks and approves"): qwen3_coding is now CODING_ROTATING_FRONT's
+    # checks and approves"): qwen4_coding is now CODING_ROTATING_FRONT's
     # sole member and this list's primary, maximizing real usage of the
     # pay-per-use GPU rather than splitting its attempts with Fable 5.
     # opencode_claude drops to the fixed tail's first entry -- still the
-    # immediate fallback if qwen3_coding fails, but its new primary job is
+    # immediate fallback if qwen4_coding fails, but its new primary job is
     # advisory code review (core.build_manager._opencode_claude_code_review,
     # née _claude_code_review) rather than co-primary generation. "fable...
     # approves" is advisory only, same as the pre-existing code review step
@@ -145,12 +145,12 @@ ROLE_PROVIDERS = {
     # (see tests/test_kai_identity.py's structural guarantee); a human still
     # makes every approve/reject decision.
     # 2026-08-05: Qwen4 (pod ldtqgcshb2dwsw, RTX PRO 6000 96GB) is now the
-    # primary for every role — qwen3_coding for coding_agent work,
-    # qwen3_coder_text for all text_task roles. All other providers shifted
+    # primary for every role — qwen4_coding for coding_agent work,
+    # qwen4_text for all text_task roles. All other providers shifted
     # to fallback positions. 8-way concurrency verified live.
     "coding": [
-        "qwen3_coding",
-        "qwen3Z",
+        "qwen4_coding",
+        "qwen4Z",
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
@@ -219,15 +219,15 @@ ROLE_PROVIDERS = {
     # independently-billed (native api.deepseek.com, no OpenRouter/Zen quota
     # exposure) candidate for Kai's Q&A redundancy/quality, alongside its
     # already-routed sibling deepseek_native_flash.
-    # 17Z: qwen3_coder_text (self-hosted RunPod RTX 5090) added as fallback
+    # 17Z: qwen4_text (self-hosted RunPod RTX 5090) added as fallback
     # capacity after every primary provider and before the universal claude
     # tail in every text-task role below -- this is capacity, not a
     # replacement for anything currently working.
-    # 2026-08-06: Dual-pod architecture — Pod A (ldtqgcshb2dwsw, qwen3_coder_text)
+    # 2026-08-06: Dual-pod architecture — Pod A (ldtqgcshb2dwsw, qwen4_text)
     # is the GENERATOR primary for every text-task role. Pod B (60jwzf36623b0o,
-    # qwen3_pod_b) is the REVIEW/DEPLOY primary — it never waits behind Pod A's
+    # qwen4_pod_b) is the REVIEW/DEPLOY primary — it never waits behind Pod A's
     # generation queue. Each pod is a physically separate RTX PRO 6000 GPU.
-    "planning": ["qwen3_coder_text", "qwen3_pod_b", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "opencode_claude", "deepseek_native_pro", "claude"],
+    "planning": ["qwen4_text", "qwen4_pod_b", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "opencode_claude", "deepseek_native_pro", "claude"],
     # 13V: the Chief Architect chain -- a *named priority list* distinct from
     # general "planning": Claude's judgment is the product here, so unlike
     # every other role this one never rotates its starting candidate (see
@@ -249,16 +249,16 @@ ROLE_PROVIDERS = {
     # primary slot rather than replaced -- deepseek_native_flash takes over
     # as primary until claude's credit renews, matching "planning" above.
     # claude stays in the tail (not removed) so it resumes automatically.
-    "architecture": ["qwen3_pod_b", "qwen3_coder_text", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "openai", "claude"],
-    "log_analysis": ["qwen3_pod_b", "qwen3_coder_text", "groq", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["qwen3_pod_b", "qwen3_coder_text", "deepseek_native_flash", "omniroute_deepseek_flash", "groq", "claude"],
+    "architecture": ["qwen4_pod_b", "qwen4_text", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "log_analysis": ["qwen4_pod_b", "qwen4_text", "groq", "omniroute_deepseek_flash", "claude"],
+    "documentation": ["qwen4_pod_b", "qwen4_text", "deepseek_native_flash", "omniroute_deepseek_flash", "groq", "claude"],
     # Phase 13D: the only task_type that puts OpenAI first -- every other
     # role already has a designated primary (Claude/Gemini/Groq), so OpenAI
     # had no route to ever be tried. Falls back to gemini then claude, same
     # universal-fallback convention as every other role above.
     # gemini re-enabled 2026-08-02 (credit reloaded), restored to its
     # original spot ahead of claude.
-    "review": ["qwen3_pod_b", "qwen3_coder_text", "openai", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "review": ["qwen4_pod_b", "qwen4_text", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
     # 2026-07-31, user directive: route short, structured, high-volume calls
     # (intent detection, request classification, JSON/command extraction,
     # SQL generation, categorization) to groq first -- these are exactly the
@@ -276,7 +276,7 @@ ROLE_PROVIDERS = {
     # gemini re-enabled 2026-08-02 (credit reloaded), restored as a fallback
     # behind groq (this role's real primary, per the 2026-07-31 directive
     # above -- gemini's long-context strength was never the fit here).
-    "classification": ["qwen3_pod_b", "qwen3_coder_text", "groq", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "classification": ["qwen4_pod_b", "qwen4_text", "groq", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -296,20 +296,20 @@ LAW_TUTOR_ROLE_PROVIDERS = {
     # gemini re-enabled 2026-08-02 (credit reloaded) -- restored to the
     # front, since this role exists specifically for gemini's long-context
     # strength (see comment above).
-    "law_document": ["gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude", "openai", "qwen3_coder_text"],
+    "law_document": ["gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude", "qwen4_text"],
     # Case/judgment analysis -- benefits from careful, deep reasoning over a
     # fixed set of facts more than from speed or context length.
-    "law_case_analysis": ["claude", "deepseek_native_flash", "omniroute_deepseek_flash", "openai", "qwen3_coder_text"],
+    "law_case_analysis": ["claude", "deepseek_native_flash", "omniroute_deepseek_flash", "qwen4_text"],
     # Teaching/explaining concepts, Socratic questioning -- this system has
     # no evidence either way for "which model teaches better", so this is a
     # genuine judgment call, not a measured pick.
-    "law_teaching": ["openai", "claude", "deepseek_native_flash", "qwen3_coder_text"],
+    "law_teaching": ["qwen4_text", "claude", "deepseek_native_flash"],
     # Exam questions, IRAC structuring, mock exams -- moderate depth, moderate cost.
-    "law_exam": ["claude", "openai", "qwen3_coder_text"],
+    "law_exam": ["claude", "qwen4_text"],
     # Flashcards -- short, structured, low-stakes, high-volume; cheap and fast matter more than depth here.
-    "law_flashcards": ["groq", "claude", "openai", "qwen3_coder_text"],
+    "law_flashcards": ["groq", "claude", "qwen4_text"],
     # Fast general chat / quick answers -- groq's exact strength.
-    "law_chat": ["groq", "claude", "openai", "qwen3_coder_text"],
+    "law_chat": ["groq", "claude", "qwen4_text"],
 }
 
 # 2026-08-03: Juris Kai Legal Expert - Phase 17Z
@@ -320,21 +320,21 @@ LAW_TUTOR_ROLE_PROVIDERS = {
 # Flashcard generation - needs structured output and organization
 # General legal chat - needs quick responses and conversational ability
 JURIS_KAI_ROLE_PROVIDERS = {
-    "juris_legal_teaching": ["openai", "claude", "deepseek_native_flash", "qwen3_coder_text"],
-    "juris_case_analysis": ["claude", "deepseek_native_flash", "omniroute_deepseek_flash", "openai", "qwen3_coder_text"],
-    "juris_research": ["gemini", "geminix", "deepseek_native_flash", "claude", "qwen3_coder_text"],
-    "juris_argument_construction": ["claude", "openai", "qwen3_coder_text"],
-    "juris_flashcards": ["groq", "claude", "openai", "qwen3_coder_text"],
-    "juris_chat": ["groq", "claude", "openai", "qwen3_coder_text"],
+    "juris_legal_teaching": ["qwen4_text", "claude", "deepseek_native_flash"],
+    "juris_case_analysis": ["claude", "deepseek_native_flash", "omniroute_deepseek_flash", "qwen4_text"],
+    "juris_research": ["gemini", "geminix", "deepseek_native_flash", "claude", "qwen4_text"],
+    "juris_argument_construction": ["claude", "qwen4_text"],
+    "juris_flashcards": ["groq", "claude", "qwen4_text"],
+    "juris_chat": ["groq", "claude", "qwen4_text"],
 }
 
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
-# 2026-08-06: Legal module coding — qwen3_coding (Qwen4 RunPod, Qwen3-32B-FP8).
+# 2026-08-06: Legal module coding — qwen4_coding (Qwen4 RunPod, Qwen3-32B-FP8).
 # Was omniroute_sonnet (Claude Sonnet 5) but that account is out of credit.
 # All legal module builds (17O-A-D, 17P, 18C) use this provider exclusively.
-ROLE_PROVIDERS["legal_coding"] = ["qwen3_coding"]
+ROLE_PROVIDERS["legal_coding"] = ["qwen4_coding"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -395,11 +395,11 @@ def classify_task(description):
 # put direct "claude" first on a fraction of calls, defeating the
 # credit-preservation goal -- so only these rotate; every other coding
 # candidate is a fixed tail, always tried last and in ROLE_PROVIDERS order.
-# 2026-08-06 V3: dual-pod architecture. qwen3_coding is Pod A (GENERATOR),
-# qwen3Z is Pod A via opencode agent loop. omniroute removed from front
+# 2026-08-06 V3: dual-pod architecture. qwen4_coding is Pod A (GENERATOR),
+# qwen4Z is Pod A via opencode agent loop. omniroute removed from front
 # rotation (opencode_claude dead — out of credit). Each build alternates
 # between the two paths. If one fails, the fixed tail catches it.
-CODING_ROTATING_FRONT = ["qwen3_coding"]
+CODING_ROTATING_FRONT = ["qwen4_coding"]
 
 # --- Purge disabled providers from all routing on import ---
 # Reads memory/provider_state.json and removes any provider whose persisted

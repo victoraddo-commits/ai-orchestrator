@@ -66,7 +66,7 @@ def test_full_chain_exhaustion(monkeypatch):
         {"provider": "gemini", "error_type": "timeout", "error": "gemini timed out"},
         {"provider": "deepseek", "error_type": "unavailable", "error": "not available (no credentials configured)"},
         {"provider": "openrouter_claude", "error_type": "error", "error": "request failed: ConnectionError"},
-        {"provider": "openai", "error_type": "degraded_health", "error": "openai error"},
+        {"provider": "qwen4_text", "error_type": "degraded_health", "error": "openai error"},
     ]
 
     def fake_delegate(description, task_type=None, return_attempts=False, **kwargs):

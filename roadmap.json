@@ -264,30 +264,29 @@
     },
     {
       "id": "18C",
-      "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
-      "description": "Complete zero-trust Legal Brain: dedicated PostgreSQL DB, immutable WORM storage, hash-chain document verification, sandboxed PDF processing (subprocess+seccomp), ClamAV malware scanning, temp workspace isolation (per-session SQLite on tmpfs), permanent/temporary service boundary, 6-stage ingestion pipeline, migration of existing approved klaus_documents to new architecture.",
+      "name": "Zero-Trust Legal Brain Architecture + 16-Tier Corpus Foundation",
+      "description": "Complete zero-trust Legal Brain with 16-tier Ghana corpus acquisition priority system: dedicated PostgreSQL DB, immutable WORM storage, hash-chain document verification, sandboxed PDF processing (subprocess+seccomp), ClamAV malware scanning, temp workspace isolation, permanent/temporary service boundary. NEW: 16-tier acquisition priority registry (klaus_acquisition_tiers), 22-field Legal Authority Record schema (klaus_legal_authority_records), source registry expansion with trust-level classification, Ghana jurisdiction enforcement at DB constraint level, tier-prioritized acquisition queue, migration of existing 75 documents to correct tiers.",
       "status": "failed",
       "dependencies": [
-        "17O-D",
-        "18A-a",
-        "18A-b"
+        "17O-D"
       ],
       "completion_criteria": [
-        "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
-        "Agent sandboxing using core/sandbox.py",
-        "Immutable audit logs for all read operations",
-        "Recurring file integrity verification (SHA-256 hashes)",
-        "Security boundary preventing temp data from entering permanent corpus",
-        "Test suite for zero-trust architecture"
+        "klaus_acquisition_tiers table created with 16 tiers seeded (T1 Constitutional \u2192 T16 Official Publications)",
+        "klaus_legal_authority_records table created with 22-field Legal Authority Record schema",
+        "klaus_sources expanded with tier_id, trust_level, last_validated_at columns",
+        "klaus_documents expanded with tier_id FK and tier classification",
+        "Ghana jurisdiction enforced at schema level (CHECK constraint)",
+        "Migration script classifies all 75 existing documents into correct tiers",
+        "Legal Authority Records created for existing documents (auto-populated where possible)",
+        "Tier-prioritized acquisition queue dispatches by priority band",
+        "Tests: schema validation, tier migration, jurisdiction enforcement, authority record CRUD"
       ],
       "tests_required": true,
       "priority": 1,
-      "build_id": "71a1ea2d",
-      "assigned_provider": "qwen3_coding",
-      "failure_reason": "Build 71a1ea2d missing from builds.json (deleted or stale reference)",
-      "title": "18C: Zero-Trust Legal Brain Architecture",
-      "completed_at": "2026-08-07",
-      "updated_at": "2026-08-07T03:29:24.711749+00:00"
+      "title": "18C: Zero-Trust Legal Brain Architecture + 16-Tier Corpus Foundation",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "build_id": "48c69077",
+      "failure_reason": "Build 48c69077 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "IT-3",
@@ -434,18 +433,23 @@
     {
       "id": "19E",
       "name": "Cerebrum: Knowledge Engine - Separate from memory with sources, jurisdiction, versioning",
-      "description": "Legal-specific knowledge graph: extract entities (courts, judges, statutes, principles) from permanent documents, structured citation network (Act\u2192Constitution\u2192Case), Ghana-only Phase 1 with plugin architecture for future jurisdictions, version awareness (amendments, repeals, judicial treatment: overruled/distinguished/followed), source trust scoring, query API.",
-      "status": "failed",
+      "description": "Legal knowledge graph: extract entities (courts, judges, statutes, principles, cases) from permanent documents, structured citation network (Act\u2192Constitution\u2192Case), Ghana-only Phase 1, version awareness (amendments, repeals, judicial treatment: overruled/distinguished/followed), source trust scoring, query API. NEW: entity extraction from Legal Authority Records, AGLC4 citation parsing, transitive closure with tier-awareness, hybrid retrieval (KG + vector search).",
+      "status": "pending",
       "dependencies": [
         "18C"
       ],
       "priority": 5,
       "assigned_agent": "qwen3",
-      "build_id": "1dabf3c9",
-      "failure_reason": "Build 1dabf3c9 missing from builds.json (deleted or stale reference)",
       "title": "19E: Legal Knowledge Engine",
-      "completed_at": "2026-08-07",
-      "updated_at": "2026-08-07T03:29:24.711749+00:00"
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "Entities extracted from all 75+ documents with authority_type tagging",
+        "Citation graph built with 6 relationship types (overrules, amends, applies, defines, distinguishes, follows)",
+        "Floyd-Warshall transitive closure computes across entire corpus",
+        "get_documents_by_tier() and get_tier_coverage_stats() functional",
+        "Tier-to-tier citation cross-referencing works (e.g., 'how many cases cite Constitutional provisions?')",
+        "Knowledge graph API endpoints registered and responding"
+      ]
     },
     {
       "id": "19V",
@@ -847,19 +851,24 @@
     {
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
-      "description": "Legal-specific trust scoring: per-source reliability scores (Tier 1 official > Tier 3 secondary), per-document classification confidence from QC agents, citation verification against knowledge graph, AI response confidence scoring based on source quality + citation coverage, auto-flag responses with confidence < 0.7 for operator review.",
-      "status": "failed",
+      "description": "Legal-specific trust scoring: 4-level per-source trust (verified > trusted > unverified > disputed), per-document classification confidence from QC agents, citation verification against knowledge graph, AI response confidence scoring based on source quality + citation coverage. NEW: tier-baseline trust configuration (T1 Constitutional = 0.95 \u2192 T16 Publications = 0.50), tier-diversity factor in AI response confidence, per-tier trust summaries.",
+      "status": "pending",
       "dependencies": [
         "19E"
       ],
       "priority": 12,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "89370b8c",
-      "failure_reason": "Build 89370b8c missing from builds.json (deleted or stale reference)",
       "title": "19L: Legal Trust Engine",
-      "completed_at": "2026-08-07",
-      "updated_at": "2026-08-07T03:29:24.711749+00:00"
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "4-level source trust classification (verified/trusted/unverified/disputed) operational",
+        "Tier-weighted baseline trust scores configured with documented rationale",
+        "Per-tier trust summaries with aggregate scores",
+        "Tier-diversity factor incorporated into AI response confidence scoring",
+        "Auto-flag responses with confidence < 0.7 for operator review",
+        "flag_low_trust_tiers() identifies tiers below threshold"
+      ]
     },
     {
       "id": "13A",
@@ -1140,19 +1149,24 @@
     {
       "id": "19Q",
       "name": "Cerebrum: Brain Health - Monitor reasoning quality, memory integrity, hallucination rates",
-      "description": "Continuous integrity monitoring for Legal Brain: daily hash verification of all permanent documents (SHA-256), missing publication detection vs official source sitemaps, citation integrity checks, hash-based dedup across entire corpus, conflicting version detection, embedding integrity validation, source availability monitoring, Telegram alerts for any integrity failures.",
-      "status": "failed",
+      "description": "Continuous integrity monitoring for Legal Brain: daily hash verification of all permanent documents (SHA-256), missing publication detection vs official source sitemaps, citation integrity checks, hash-based dedup across entire corpus, conflicting version detection, embedding integrity validation, source availability monitoring, Telegram alerts. NEW: tier coverage audit (flag tiers below target), per-tier health breakdown, gap detection triggers re-acquisition signal, scheduled integrity Telegram digests.",
+      "status": "pending",
       "dependencies": [
         "18C",
         "19E"
       ],
       "priority": 17,
       "assigned_agent": "qwen3",
-      "build_id": "7b6fce2a",
-      "failure_reason": "Build 7b6fce2a missing from builds.json (deleted or stale reference)",
       "title": "19Q: Legal Brain Health & Integrity",
-      "completed_at": "2026-08-07",
-      "updated_at": "2026-08-07T03:29:24.711749+00:00"
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "check_tier_coverage() identifies under-served tiers with accurate counts",
+        "Per-tier health breakdown in run_full_check() output",
+        "Gap detection triggers re-acquisition signal in audit log",
+        "Tier coverage included in Telegram alert formatting",
+        "All 5 existing integrity checks still pass (no regression)",
+        "Scheduled daily integrity report via Telegram"
+      ]
     },
     {
       "id": "13F",
@@ -2138,7 +2152,7 @@
       "dependencies": [
         "17O-A"
       ],
-      "status": "completed",
+      "status": "failed",
       "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",
       "completion_criteria": [
         "7-category directory taxonomy created",
@@ -2158,7 +2172,7 @@
       "dependencies": [
         "17O-B"
       ],
-      "status": "completed",
+      "status": "failed",
       "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
       "completion_criteria": [
         "Metadata schema with all required fields",
@@ -2178,7 +2192,7 @@
       "dependencies": [
         "17O-C"
       ],
-      "status": "completed",
+      "status": "failed",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",
@@ -2527,7 +2541,7 @@
     {
       "id": "18E",
       "title": "18E: Legal Brain Command Center",
-      "description": "Merge all Legal Brain management into Kai Command Center: Source Registry, Download Queue, Verification Pipeline, Malware Scanning, OCR Processing, Metadata Extraction, Citation Index, Version History, Integrity Monitoring, Audit Ledger, Research Sessions, Temporary Workspaces, Storage Analytics, Performance Metrics, Scheduler, Agent Health \u2014 16+ panels.",
+      "description": "Three directive-specified Legal Brain Command Center dashboards integrated into Kai Command Center: (1) Corpus Coverage Dashboard \u2014 16-tier visual progress, counts vs coverage targets, gap analysis, empty-tier alerts; (2) Source Management Dashboard \u2014 source registry grid, trust score breakdown, source health/reachability, add/remove/validate actions; (3) Legal Knowledge Health Dashboard \u2014 integrity check results, citation graph stats, knowledge engine status, Telegram alert configuration. All read-only, using existing dashboard auth patterns from 13O.",
       "status": "pending",
       "dependencies": [
         "18C",
@@ -2537,7 +2551,15 @@
       "priority": 6,
       "module": "legal_brain",
       "created_at": "2026-08-07T03:11:10.744954+00:00",
-      "updated_at": "2026-08-07T03:11:10.744954+00:00"
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "Corpus Coverage dashboard shows 16-tier coverage heatmap with correct colors and real data",
+        "Source Management dashboard lists all registered sources with trust scores and health status",
+        "Legal Knowledge Health dashboard displays real integrity check results from 19Q",
+        "All three dashboards integrated into Kai Command Center as 'Legal Brain' tab group",
+        "API endpoints: GET /legal-brain/v1/dashboard/corpus-coverage, /sources, /health",
+        "Auto-refresh on integrity check completion"
+      ]
     },
     {
       "id": "18F",
@@ -2553,6 +2575,73 @@
       "updated_at": "2026-08-07T03:11:10.744954+00:00",
       "completed_at": "2026-08-07T11:00:00Z",
       "notes": "Design spec written: domain plugin architecture with JSON manifest schema, Python ABC interface, storage isolation per domain, QC agent dispatch, Ghana reference implementation, Kenya/Medical/Family/Finance stubs. Spec at docs/superpowers/specs/2026-08-07-legal-domain-plugin-architecture-design.md. Implementation deferred to 18F-IMPL phases."
+    },
+    {
+      "id": "18G",
+      "title": "18G: Case Law Extraction Pipeline",
+      "name": "Case Law Extraction Pipeline",
+      "description": "Extract structured legal reasoning from Ghanaian case law documents: ratio decidendi (binding legal principle) extraction via LLM-assisted pipeline, obiter dicta (non-binding commentary) extraction, headnotes/syllabus extraction, parties identification (Plaintiff/Appellant v Defendant/Respondent), judge names and court composition, procedural history (lower court \u2192 appeal chain), court_identifier and neutral_citation assignment. Populates Legal Authority Records with extracted fields.",
+      "status": "pending",
+      "dependencies": [
+        "18C"
+      ],
+      "completion_criteria": [
+        "Ratio decidendi extraction pipeline functional with >80% accuracy on 5 test cases",
+        "Obiter dicta, headnotes, parties, judge_names extraction working",
+        "Extracted fields populate klaus_legal_authority_records",
+        "Works with both PDF (scanned judgments) and text (transcripts)",
+        "Tests: 5 ground-truth Ghana cases with verified extracts"
+      ],
+      "tests_required": true,
+      "priority": 3,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T12:24:29.220382+00:00",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00"
+    },
+    {
+      "id": "18H",
+      "title": "18H: Corpus Coverage Tracker & Gap Analysis",
+      "name": "Corpus Coverage Tracker & Gap Analysis",
+      "description": "Continuous monitoring of 16-tier acquisition coverage: generate 'missing authorities' list per tier from official source catalogs, priority scoring for next crawl targets, daily coverage report to Telegram, auto-prioritized crawl queue based on coverage targets, source discovery expansion for empty tiers (T6 Commercial, T7 Employment, T9 Property, T10 Family, T12 Technology, T14 Government, T15 Case Law).",
+      "status": "pending",
+      "dependencies": [
+        "18C",
+        "18E"
+      ],
+      "completion_criteria": [
+        "Coverage report generated on each acquisition cycle",
+        "Gap analysis visible in Corpus Coverage Command Center dashboard",
+        "Auto-prioritized crawl queue dispatched to discovery workers",
+        "Telegram digest with coverage delta since last report",
+        "All 16 tiers tracked with current/target counts"
+      ],
+      "tests_required": true,
+      "priority": 8,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T12:24:29.220382+00:00",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00"
+    },
+    {
+      "id": "18I",
+      "title": "18I: Source Trust Registry & Verification",
+      "name": "Source Trust Registry & Verification",
+      "description": "Systematic source verification for Legal Brain: Attorney General's Department website cataloging, Law Reform Commission publication registry, Judicial Service of Ghana case database index, Law Society/Bar Association verified source list, auto-trust assignment based on source type (official_gazette \u2192 verified, court_registry \u2192 trusted, etc.), verification workflow: pending \u2192 unverified \u2192 trusted \u2192 verified, source validation cron job.",
+      "status": "pending",
+      "dependencies": [
+        "18C"
+      ],
+      "completion_criteria": [
+        "Trust registry populated for all active sources with trust_level assigned",
+        "Verification workflow for new sources operational",
+        "Source validation cron job runs on schedule",
+        "Integration with 19L Trust Engine",
+        "Source trust visible in Source Management Command Center dashboard"
+      ],
+      "tests_required": true,
+      "priority": 4,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T12:24:29.220382+00:00",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00"
     }
   ],
   "_audit": {

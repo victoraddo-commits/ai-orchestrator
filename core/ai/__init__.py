@@ -1,7 +1,8 @@
-# Qwen3 direct routing (delayed import to avoid circular issues)
+# Qwen4 direct routing (delayed import to avoid circular issues)
 try:
-    from .direct_qwen3_override import _qwen3_router
-    print("🔧 Qwen3 direct routing module loaded")
+    from .direct_qwen4_override import _qwen4_router
+    import sys as _sys
+    print("🔧 Qwen4 direct routing module loaded", file=_sys.stderr)
 except ImportError as e:
-    print(f"⚠️ Qwen3 routing module not available: {e}")
-
+    import sys as _sys
+    print(f"⚠️ Qwen4 routing module not available: {e}", file=_sys.stderr)

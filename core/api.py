@@ -116,6 +116,23 @@ app = FastAPI(title="AI Orchestrator Observability API")
 
 app.include_router(klaus_api_router)
 
+# AI Gateway — OpenAI-compatible /v1 endpoints for external consumers
+from core.ai_gateway.gateway import router as gateway_router
+app.include_router(gateway_router)
+
+# Create default API key on first startup if none exists
+try:
+    from core.ai_gateway.keys import ensure_default_key
+    default_key = ensure_default_key()
+    if default_key:
+        import logging
+        logging.getLogger(__name__).warning(
+            f"Gateway default API key created: {default_key}\n"
+            "Store this key — it will not be shown again."
+        )
+except Exception:
+    pass
+
 try:
     start_klaus_scheduler()
 except Exception:

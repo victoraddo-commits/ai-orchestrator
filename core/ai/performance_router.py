@@ -314,8 +314,8 @@ class RoutingDecision:
             "deepseek_native_flash": "DEEPSEEK_NATIVE_FLASH_MODEL",
             "deepseek": "DEEPSEEK_DEFAULT_MODEL",
             "openai": "OPENAI_DEFAULT_MODEL",
-            "qwen3_coder_text": "QWEN3_CODER_MODEL",
-            "qwen3_pod_b": "QWEN3_POD_B_MODEL",
+            "qwen4_text": "QWEN3_CODER_MODEL",
+            "qwen4_pod_b": "QWEN3_POD_B_MODEL",
         }
 
         if provider_name in model_attr_map:

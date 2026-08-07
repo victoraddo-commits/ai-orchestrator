@@ -158,20 +158,20 @@ def record_usage_lesson(
     )
 
 
-def get_qwen3_coder_metrics():
+def get_qwen4_coder_metrics():
     """
-    Retrieve Qwen3-Coder specific performance metrics from usage history
+    Retrieve Qwen4-Coder specific performance metrics from usage history
     """
     try:
-        # Get all Qwen3-Coder related entries
+        # Get all Qwen4-related entries
         entries = [
             entry for entry in _history()
-            if entry.get("provider", "").startswith("qwen3_coder") or entry.get("provider", "") == "qwen3_coder"
+            if entry.get("provider", "").startswith("qwen4_") or entry.get("provider", "") in ("qwen4_text", "qwen4_coding")
         ]
         
         if not entries:
             return {
-                "provider": "qwen3_coder",
+                "provider": "qwen4_coder",
                 "total_requests": 0,
                 "success_rate": 0.0,
                 "avg_response_time": 0.0,
@@ -211,7 +211,7 @@ def get_qwen3_coder_metrics():
         avg_response_time = round(total_response_time / len(entries), 2) if entries else 0
         
         return {
-            "provider": "qwen3_coder",
+            "provider": "qwen4_coder",
             "total_requests": total_requests,
             "success_rate": success_rate,
             "avg_response_time": avg_response_time,
@@ -221,7 +221,7 @@ def get_qwen3_coder_metrics():
         
     except Exception as e:
         return {
-            "provider": "qwen3_coder",
+            "provider": "qwen4_coder",
             "error": str(e),
             "total_requests": 0,
             "success_rate": 0.0,

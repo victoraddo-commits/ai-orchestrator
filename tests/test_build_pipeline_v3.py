@@ -271,16 +271,16 @@ class TestPodRoutingV3:
     def test_coding_front_excludes_opencode_claude(self):
         from core.ai.ai_router import CODING_ROTATING_FRONT
         assert "opencode_claude" not in CODING_ROTATING_FRONT
-        assert "qwen3_coding" in CODING_ROTATING_FRONT
+        assert "qwen4_coding" in CODING_ROTATING_FRONT
 
     def test_pod_b_is_review_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["review"][0] == "qwen3_pod_b"
+        assert ROLE_PROVIDERS["review"][0] == "qwen4_pod_b"
 
     def test_pod_b_is_architecture_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["architecture"][0] == "qwen3_pod_b"
+        assert ROLE_PROVIDERS["architecture"][0] == "qwen4_pod_b"
 
     def test_pod_a_is_planning_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["planning"][0] == "qwen3_coder_text"
+        assert ROLE_PROVIDERS["planning"][0] == "qwen4_text"

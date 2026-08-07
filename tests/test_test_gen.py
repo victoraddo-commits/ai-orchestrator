@@ -719,7 +719,7 @@ def test_run_smoke_keep_output(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_config_defaults():
-    assert config.DEFAULT_CODING_PROVIDER in ("opencode_claude", "qwen3_coding")
+    assert config.DEFAULT_CODING_PROVIDER in ("opencode_claude", "qwen4_coding")
     assert isinstance(config.DEFAULT_TIMEOUT, int)
     assert config.DEFAULT_TIMEOUT > 0
     assert config.DEFAULT_TEST_RUNNER == "pytest"

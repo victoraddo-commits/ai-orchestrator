@@ -257,7 +257,7 @@ def handle_message(update: dict) -> dict | None:
 
     # Rate limit
     if not check_rate_limit(telegram_id):
-        mgr.log_rate_limit_hit(telegram_id)
+        get_account_manager().log_rate_limit_hit(telegram_id)
         return {
             "chat_id": chat_id,
             "text": "⚠️ You're sending messages too quickly. Please wait a moment.",

@@ -1,0 +1,16 @@
+{
+  "name": "juris-kai",
+  "version": "1.0.0",
+  "description": "Multi-tenant legal assistant Telegram bot — subscription tiers, document analysis, Hubtel Mobile Money billing, referral system",
+  "endpoints": ["/api/juris-kai/stats", "/api/juris-kai/accounts", "/api/juris-kai/referrals", "/api/juris-kai/payments", "/api/juris-kai/security-log"],
+  "capabilities": ["legal-ai", "subscription-management", "payment-processing", "document-analysis", "referral-system", "user-management"],
+  "dependencies": [],
+  "settings_schema": {
+    "free_trial_days": {"type": "number", "default": 7, "label": "Free trial duration (days)", "min": 1, "max": 30},
+    "referral_reward_days": {"type": "number", "default": 1, "label": "Referral reward (days)", "min": 1, "max": 30},
+    "invitee_trial_days": {"type": "number", "default": 3, "label": "Invitee trial days", "min": 1, "max": 14},
+    "max_queries_per_day_free": {"type": "number", "default": 20, "label": "Max daily queries (free)", "min": 5, "max": 100},
+    "test_mode": {"type": "boolean", "default": true, "label": "Hubtel test mode"}
+  },
+  "ops_actions": ["refresh_stats", "cleanup_expired_trials", "export_accounts_csv", "list_banned_users"]
+}

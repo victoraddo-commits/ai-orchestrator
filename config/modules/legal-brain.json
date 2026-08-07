@@ -1,0 +1,13 @@
+{
+  "name": "legal-brain",
+  "version": "1.0.0",
+  "description": "Zero-trust legal knowledge engine — 16-tier Ghana corpus, WORM storage, hash-chain verification, sandboxed PDF processing, AGLC4 citation parsing",
+  "endpoints": ["/api/legal-brain/stats", "/klaus/documents", "/klaus/sources"],
+  "capabilities": ["legal-knowledge", "document-storage", "citation-parsing", "vector-search", "sandboxed-processing"],
+  "dependencies": ["klaus"],
+  "settings_schema": {
+    "sandbox_timeout_seconds": {"type": "number", "default": 30, "label": "Sandbox timeout (seconds)", "min": 5, "max": 120},
+    "trust_threshold": {"type": "number", "default": 0.7, "label": "Source trust threshold", "min": 0.1, "max": 1.0}
+  },
+  "ops_actions": ["verify_chain", "reindex_corpus", "purge_temp_workspaces"]
+}

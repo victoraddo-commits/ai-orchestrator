@@ -62,13 +62,13 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "ec80c2f0",
+      "build_id": "7291b68d",
       "failure_reason": "Build ec80c2f0 missing from builds.json (deleted or stale reference)"
     },
     {
@@ -138,8 +138,8 @@
       "status": "failed",
       "dependencies": [],
       "priority": 2,
-      "build_id": "e5700f65",
-      "failure_reason": "Build e5700f65 missing from builds.json (deleted or stale reference)"
+      "build_id": "d47e5ec7",
+      "failure_reason": "Build d47e5ec7 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "18B",
@@ -231,8 +231,8 @@
       "status": "failed",
       "dependencies": [],
       "priority": 3,
-      "build_id": "2f61ea17",
-      "failure_reason": "Build 2f61ea17 missing from builds.json (deleted or stale reference)"
+      "build_id": "f64d1044",
+      "failure_reason": "Build f64d1044 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17T",
@@ -247,11 +247,29 @@
       "failure_reason": null
     },
     {
+      "id": "17P",
+      "title": "17P: Juris Kai Multi-Tenant Legal Bot",
+      "description": "Legal bot with multi-tenant accounts, subscription tiers, disclaimer flow, query limits, Hubtel Mobile Money billing (test mode), document analysis billing, /account /subscribe /profile /document /argument /flashcards commands.",
+      "status": "completed",
+      "dependencies": [
+        "17O-D",
+        "18A-b"
+      ],
+      "priority": 35,
+      "module": "juris_kai",
+      "completed_at": "2026-08-06T00:00:00Z",
+      "updated_at": "2026-08-07T03:11:36.950375+00:00"
+    },
+    {
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
-      "description": "Implement zero-trust architecture for Legal Brain: permanent vs temporary knowledge isolation, agent sandboxing, immutable audit logs, continuous integrity verification",
-      "status": "failed",
-      "dependencies": [],
+      "description": "Complete zero-trust Legal Brain: dedicated PostgreSQL DB, immutable WORM storage, hash-chain document verification, sandboxed PDF processing (subprocess+seccomp), ClamAV malware scanning, temp workspace isolation (per-session SQLite on tmpfs), permanent/temporary service boundary, 6-stage ingestion pipeline, migration of existing approved klaus_documents to new architecture.",
+      "status": "in_progress",
+      "dependencies": [
+        "17O-D",
+        "18A-a",
+        "18A-b"
+      ],
       "completion_criteria": [
         "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
         "Agent sandboxing using core/sandbox.py",
@@ -262,9 +280,10 @@
       ],
       "tests_required": true,
       "priority": 1,
-      "build_id": "e65657ed",
+      "build_id": "71a1ea2d",
       "assigned_provider": "qwen3_coding",
-      "failure_reason": "Build e65657ed missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build e65657ed missing from builds.json (deleted or stale reference)",
+      "title": "18C: Zero-Trust Legal Brain Architecture"
     },
     {
       "id": "IT-3",
@@ -342,8 +361,8 @@
       "status": "failed",
       "dependencies": [],
       "priority": 4,
-      "build_id": "94b0744e",
-      "failure_reason": "Build 94b0744e missing from builds.json (deleted or stale reference)"
+      "build_id": "1491a659",
+      "failure_reason": "Build 1491a659 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "IT-4",
@@ -396,25 +415,6 @@
       "priority": 5
     },
     {
-      "id": "17P",
-      "name": "Juris Kai: Multi-tenant paid legal-assistant Telegram bot",
-      "description": "Turn Juris Kai bot into paid multi-tenant product with subscriptions + per-document billing. Depends on 17O (Klaus) and 18C (Zero-Trust) for security.",
-      "status": "failed",
-      "dependencies": [],
-      "completion_criteria": [
-        "Multi-tenant isolation",
-        "Subscription management",
-        "Per-document billing",
-        "Payment gateway integration",
-        "Security audit passed",
-        "Legal Brain version control"
-      ],
-      "tests_required": true,
-      "priority": 5,
-      "build_id": "01f66810",
-      "failure_reason": "Build 01f66810 missing from builds.json (deleted or stale reference)"
-    },
-    {
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
@@ -430,15 +430,16 @@
     {
       "id": "19E",
       "name": "Cerebrum: Knowledge Engine - Separate from memory with sources, jurisdiction, versioning",
-      "description": "Create Knowledge Engine: stores facts (not experiences). Supports sources, jurisdiction awareness, versioning, trust levels, verification, automatic updates, conflict detection, citation tracking. Knowledge is immutable; memory is Kai experiences.",
+      "description": "Legal-specific knowledge graph: extract entities (courts, judges, statutes, principles) from permanent documents, structured citation network (Act\u2192Constitution\u2192Case), Ghana-only Phase 1 with plugin architecture for future jurisdictions, version awareness (amendments, repeals, judicial treatment: overruled/distinguished/followed), source trust scoring, query API.",
       "status": "failed",
       "dependencies": [
-        "19D"
+        "18C"
       ],
       "priority": 5,
       "assigned_agent": "qwen3",
       "build_id": "1dabf3c9",
-      "failure_reason": "Build 1dabf3c9 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 1dabf3c9 missing from builds.json (deleted or stale reference)",
+      "title": "19E: Legal Knowledge Engine"
     },
     {
       "id": "19V",
@@ -519,13 +520,14 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "IT-1"
       ],
       "priority": 7,
       "severity": "high",
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "51fdd1ec"
     },
     {
       "id": "19G",
@@ -568,13 +570,13 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "5c5df284",
+      "build_id": "c6911d6e",
       "failure_reason": null
     },
     {
@@ -598,7 +600,7 @@
       "priority": 8,
       "assigned_agent": "qwen3",
       "build_id": "d2f768ea",
-      "failure_reason": null
+      "failure_reason": "Build d2f768ea missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12I",
@@ -641,7 +643,7 @@
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "aada8644",
-      "failure_reason": null
+      "failure_reason": "Build aada8644 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19Z",
@@ -750,9 +752,9 @@
         "Full test list from the design doc's Testing section is implemented and passing"
       ],
       "tests_required": true,
-      "build_id": "e2757524",
+      "build_id": "829a734f",
       "note": "Merged manually 2026-07-29 -- build object shows FAILED (self-build test gate caught a missing PyYAML dependency, fixed by installing it into the live venv + it was already correctly listed in the generated requirements.txt), but the generated code was fully correct (540/540 tests once PyYAML was available). Manually merged (git fetch + merge --no-ff, same mechanism deploy_build uses) after user sign-off, since the terminal FAILED build object could not reach WAITING_FOR_DEPLOY_APPROVAL on its own. Full live-repo suite passes post-merge (540/540).",
-      "failure_reason": "Build e2757524 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 829a734f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13Z",
@@ -784,8 +786,8 @@
       ],
       "priority": 11,
       "assigned_agent": "qwen3",
-      "build_id": "21e817a6",
-      "failure_reason": "Build 21e817a6 missing from builds.json (deleted or stale reference)"
+      "build_id": "5eea88dd",
+      "failure_reason": "Build 5eea88dd missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19BB",
@@ -796,7 +798,7 @@
       "priority": 11,
       "assigned_agent": "qwen3",
       "build_id": "df5df26f",
-      "failure_reason": null
+      "failure_reason": "Build df5df26f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12L",
@@ -835,14 +837,17 @@
     {
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
-      "description": "Implement Trust Engine: continuously calculate trust. Trust: providers, knowledge, memory, tools, predictions, plans, external APIs, users. Trust influences decisions.",
+      "description": "Legal-specific trust scoring: per-source reliability scores (Tier 1 official > Tier 3 secondary), per-document classification confidence from QC agents, citation verification against knowledge graph, AI response confidence scoring based on source quality + citation coverage, auto-flag responses with confidence < 0.7 for operator review.",
       "status": "failed",
-      "dependencies": [],
+      "dependencies": [
+        "19E"
+      ],
       "priority": 12,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "89370b8c",
-      "failure_reason": "Build 89370b8c missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 89370b8c missing from builds.json (deleted or stale reference)",
+      "title": "19L: Legal Trust Engine"
     },
     {
       "id": "13A",
@@ -1120,16 +1125,17 @@
     {
       "id": "19Q",
       "name": "Cerebrum: Brain Health - Monitor reasoning quality, memory integrity, hallucination rates",
-      "description": "Create Brain Health Monitor: continuously monitor reasoning quality, memory integrity, knowledge integrity, hallucination rates, provider reliability, learning effectiveness, prediction accuracy, decision quality, planning quality, infrastructure awareness. Detect degradation early.",
+      "description": "Continuous integrity monitoring for Legal Brain: daily hash verification of all permanent documents (SHA-256), missing publication detection vs official source sitemaps, citation integrity checks, hash-based dedup across entire corpus, conflicting version detection, embedding integrity validation, source availability monitoring, Telegram alerts for any integrity failures.",
       "status": "failed",
       "dependencies": [
-        "19A",
-        "19B"
+        "18C",
+        "19E"
       ],
       "priority": 17,
       "assigned_agent": "qwen3",
       "build_id": "7b6fce2a",
-      "failure_reason": "Build 7b6fce2a missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 7b6fce2a missing from builds.json (deleted or stale reference)",
+      "title": "19Q: Legal Brain Health & Integrity"
     },
     {
       "id": "13F",
@@ -1213,19 +1219,6 @@
         "13C",
         "13F",
         "13Q"
-      ],
-      "priority": 19,
-      "build_id": null,
-      "failure_reason": null
-    },
-    {
-      "id": "13I",
-      "name": "Kai Future Roadmap Generator",
-      "description": "Kai can create NEW roadmap phases (e.g. Phase 14+) from its own observations, using roadmap_engine.add_phase() (Phase 13A) -- always defaulting to status='proposed', never 'pending', so a human must explicitly promote it before get_next_phase()/advance_roadmap() will ever act on it. This is the mechanism that makes 'AI can propose roadmap items, AI cannot approve its own changes' actually true rather than just documented.",
-      "status": "pending",
-      "dependencies": [
-        "13C",
-        "13H"
       ],
       "priority": 19,
       "build_id": null,
@@ -1629,8 +1622,8 @@
       "status": "failed",
       "dependencies": [],
       "priority": 35,
-      "build_id": "d75c918a",
-      "failure_reason": "Build d75c918a missing from builds.json (deleted or stale reference)"
+      "build_id": "a2f6522a",
+      "failure_reason": "Build a2f6522a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17Y",
@@ -1689,7 +1682,7 @@
       "id": "17Z",
       "name": "Wire in self-hosted Qwen3-Coder RunPod provider",
       "description": "Operator set up a RunPod pod 2026-08-02: 1x RTX 5090 (32GB VRAM), 60GB RAM, 15 vCPU (AMD EPYC 9354), running the official RunPod vLLM Serverless template with model QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ (4-bit AWQ, ~16GB weights), quantization=awq, max_model_len=65536 as a starting point. Intended role: an additional fallback text/coding provider in Kai's rotation, not a primary -- billed per-request via RunPod Serverless (on-demand, not always-on), no hard budget ceiling set by the operator.\n\nRUNPOD_API_KEY stored in .env 2026-08-02. NOT YET VERIFIED -- returned 401 on every standard RunPod auth pattern tried live (REST API Bearer token against rest.runpod.io/v1/pods, GraphQL api_key query param and Bearer header against api.runpod.io/graphql, plain non-Bearer Authorization header). Key is 64 characters, doesn't look truncated. Before any code is written for this phase: (1) confirm with the operator that this key shows as active in the RunPod dashboard (Settings > API Keys), regenerate if not; (2) once a working key is confirmed, get the actual pod endpoint URL (RunPod Serverless exposes this as https://api.runpod.io/v2/<endpoint-id>/openai/v1 or similar -- confirm the exact live URL from the RunPod console's 'Connect' tab rather than assuming the pattern) and confirm the vLLM worker actually finished loading the model (watch pod logs for 'Uvicorn running on...' with no AWQ kernel/compute-capability errors -- RTX 5090 is very new Blackwell silicon, flagged live as a real risk, not yet confirmed either way).\n\nOnce both are confirmed: register as a new provider via core.ai_provider.register_provider() (run_text_task only, no coding_agent -- this is a plain OpenAI-compatible chat-completions endpoint, not an agentic tool-use loop, same category as call_deepseek_native_flash), available_fn checking RUNPOD_API_KEY and the pod endpoint responding, cost_tier='paid' (real per-request GPU billing, unlike the free-tier/native-key providers). Add into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- slots in after existing top-priority providers, never ahead of or displacing them; this is capacity, not a replacement for anything currently working.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nUPDATE 2026-08-02: RUNPOD_API_KEY confirmed working (200 from rest.runpod.io/v1/pods, correct key was rpa_Q8XL0NLBHLYVNSK4EYRBCD0MH1ERKZBBDNFJCFIG...qpl8al, operator's paste had it run together with the pod ID). Pod cp937mgptqc1kp confirmed live: 1x GPU, 125GB RAM, 21 vCPU, image runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404 (bare PyTorch/Jupyter template, not the vLLM Serverless template originally discussed), $0.99/hr always-on billing (not the Serverless on-demand option originally chosen). Operator confirmed they set this pod up themselves/manually rather than via the vLLM Hub template.\n\nConfirmed live: pod is reachable (Jupyter on 8888 responds normally via https://cp937mgptqc1kp-8888.proxy.runpod.net/), but port 8000 (where vLLM would serve) returns 404 through RunPod's proxy -- that port was never declared as exposed on this pod (only 8888/http and 22/tcp are), so even if vLLM is running inside the container, nothing outside can reach it yet. This needs the operator to add the actual serving port to the pod's exposed ports in the RunPod console (Edit Pod) and restart it before this phase can proceed to real provider registration.\n\nUPDATE 2026-08-02 (live debugging session): first real vLLM start attempt confirmed the model itself loads fine on this RTX 5090 (AWQ/Marlin kernel, FlashAttention v2, torch.compile all succeeded, 15.74 GiB into VRAM) -- the actual crash was narrower than initially feared: FlashInfer (vLLM's optional sampling-kernel library, separate from AWQ/quantization) doesn't yet recognize this GPU's Blackwell compute capability ('FlashInfer requires GPUs with sm75 or higher' -- a misleading message; the real issue is an unrecognized-architecture check, not insufficient hardware). Trying VLLM_USE_FLASHINFER_SAMPLER=0 (falls back to vLLM's default sampler) and/or upgrading flashinfer-python as the fix -- not yet confirmed working as of this note.\n\nAlso confirmed live: this pod's root filesystem is EPHEMERAL -- only /workspace (the attached network volume) persists across a pod restart. A pip-installed vllm vanished after one restart (container ID changed 89754eaa8f69 -> 86d104907baa mid-session), requiring a full reinstall. Whatever this phase eventually builds must account for this: either install into a venv under /workspace, or bake a custom pod image with vllm/flashinfer pre-installed, or provision via RunPod Serverless (ephemeral by design, expects a proper image) rather than a hand-configured persistent pod. Do not assume a manual pip install survives a restart.\n\nCONFIRMED WORKING 2026-08-02: full stack verified live end-to-end -- vLLM 0.26.0 serving QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ on RunPod pod cp937mgptqc1kp (RTX 5090), started with VLLM_USE_FLASHINFER_SAMPLER=0 (bypasses the FlashInfer/Blackwell sampling-kernel incompatibility). Real chat completion request returned a correct response through https://cp937mgptqc1kp-8000.proxy.runpod.net/v1/chat/completions (OpenAI-compatible). Port 8000 is reachable via RunPod's proxy despite not appearing in the pod's declared 'ports' list via the REST API -- the proxy evidently doesn't require explicit port declaration the way earlier testing assumed.\n\nSECURITY GAP, must be fixed before real provider registration: this endpoint currently has NO AUTHENTICATION -- anyone with the URL can submit inference requests and consume GPU time at the operator's expense. vLLM supports an --api-key flag (or VLLM_API_KEY env var) requiring a bearer token on every request -- this must be set before core.ai_provider.register_provider() wires this in, and the key stored in .env the same way every other provider credential is.\n\nOperational risk carried over from the earlier note: pod restarts wipe the root filesystem, so vllm/flashinfer need reinstalling and the server needs restarting (with --api-key once that's added) after every restart until this is made durable (venv under /workspace, or a custom image).",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 45,
       "build_id": "0ace498f",
@@ -1702,35 +1695,13 @@
         "Tests cover: registration, availability, text_task dispatch, routing position across all 12 text roles"
       ],
       "tests_required": true,
-      "failure_reason": null
-    },
-    {
-      "id": "17P",
-      "name": "Juris Kai: multi-tenant paid legal-assistant Telegram bot (subscriptions + per-document billing)",
-      "description": "User directive 2026-07-31: turn the Juris Kai bot (@Juriskai_bot, token already configured) into a paid, multi-tenant product distinct from the private single-user Law Tutor bot (core.law_tutor, built 2026-07-31 for one non-operational family member). Requirements as given: every user gets their own account, no shared accounts; monthly subscription tier; separate small per-document fee for users who want Kai to analyze a specific uploaded document, billed by counting files/pages; if the bot is added to a Telegram group, billing must still apply (not a free loophole); new users get an onboarding disclaimer message ('this is a tutor/research assistant, not a lawyer') before first use. User-uploaded documents/analysis stay scoped to that user's own profile/chat only and are never merged into the shared Ghana Legal Brain corpus (17O) -- always labeled as user-uploaded and unverified when referenced back to that user. Payment provider: user is deciding between Telegram's built-in Payments API and Hubtel (already integrated in this environment for SMS, and the natural fit for Ghana Mobile Money, which the target audience likely uses more than cards) -- do not build billing against a specific provider until that decision is final. New requirement: a dedicated 'Juris Kai' tab on the Kai Dashboard for managing billing, subscriptions, per-user usage, and the document-approval workflow described in 17O. Security boundary: this is NOT the same trust model as core.law_tutor (single trusted family member) -- Juris Kai is open to paying strangers, so it needs real per-user auth/accounts and must NOT gain any path to Kai's operational capabilities (same core.build_manager/core.approval/core.deployment_manager import boundary already enforced and tested for core.law_tutor applies here, arguably with even less room for error given the larger, less-trusted user base).",
-      "status": "pending",
-      "dependencies": [
-        "17O-D"
-      ],
-      "priority": 5,
-      "completion_criteria": [
-        "Every Juris Kai user has their own isolated account/session -- no shared state between users, covered by a test",
-        "A chosen payment provider (Telegram Payments or Hubtel, per the user's decision) is wired up for both the monthly subscription and the per-document fee, with page/file-count-based pricing for the latter",
-        "The bot correctly detects and bills when added to a group, not just 1:1 chats",
-        "New users receive the required onboarding disclaimer before their first substantive response",
-        "User-uploaded document analysis is verified, by test, to never write into the shared Ghana Legal Brain corpus (17O) under any code path",
-        "A 'Juris Kai' tab exists on the Kai Dashboard covering subscriptions, per-user usage/billing, and (jointly with 17O) the document-approval queue",
-        "This module's import graph never reaches core.build_manager / core.approval / core.deployment_manager, verified the same way as core.law_tutor's existing structural test"
-      ],
-      "tests_required": true,
-      "note": "Queued 2026-07-31. Depends on 17O (the shared knowledge base and its approval workflow) and on the user's payment-provider decision -- do not start implementation until both are resolved.",
-      "build_id": null
+      "failure_reason": "Build 0ace498f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "15A",
       "name": "Kai platform auth foundation: local accounts + capability-based permissions",
       "description": "Foundation for the 'Kai Enterprise Platform' initiative (user proposal 2026-07-29, trimmed after review). Scope, deliberately narrow: local username/password accounts (no external OAuth) plus a capability-based permission check -- capabilities like deploy.build, approve.architecture, chat.use, roadmap.create, provider.configure, each independently checkable in code -- mapped to exactly two initial roles: 'operator' (every capability, i.e. what the single existing bridge-token operator already has today) and 'viewer' (read-only: dashboard/chat reads, no write capabilities). Capability checks must live in one shared module (e.g. core/authz.py) that every write endpoint in core/api.py calls, not duplicated per-endpoint logic. Explicitly deferred from the original proposal, and why: full OAuth (Google/Microsoft/GitHub) + MFA + service accounts was scoped for a system with exactly one real user today -- add a second auth provider only when a real second person needs one, not speculatively. A 6-role taxonomy (Owner/Architect/Developer/Analyst/Customer/Guest) was cut to 2 roles for the same reason -- the capability model means adding a narrower role later is a mapping change, not a redesign, so there is no lock-in cost to starting minimal. The 'Customer' role scoped to assigned projects implied a multi-tenant customer-facing product pivot that was never a stated goal -- if that direction is wanted later it needs its own explicit decision, not a permissions bullet. Multi-organization support (isolated users/projects/learning/providers per org) was cut entirely: there is one organization. None of these are permanently ruled out, just not built until a real need exists -- a future roadmap phase should re-propose them with a concrete driving need, not reintroduce them speculatively. Explicitly low priority and deferred (user directive 2026-07-30): multi-user work should not be picked up ahead of any single-user-focused work still pending.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13H"
       ],
@@ -1746,7 +1717,7 @@
       "tests_required": true,
       "note": "Deferred 2026-07-30 per user directive: multi-user/enterprise features (15A-15H) are explicitly out of scope until the single-user Kai chat experience (13X, 16A) is complete and proven. Kai has exactly one operator for now. Revisit this whole phase group after 13X/16A/13H ship -- do not spend build effort preparing for multiple users before then.",
       "build_id": "5276508f",
-      "failure_reason": null
+      "failure_reason": "Build 5276508f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "15B",
@@ -1889,7 +1860,7 @@
       "id": "17Q",
       "name": "Kai Operations Appliance (KOA): dedicated ops/infrastructure-management machine",
       "description": "User directive 2026-07-31, explicitly deferred: 'This project is NOT to begin immediately... Only after every pending roadmap has been completed, tested, documented, and marked complete should you begin this project.' Do not start this ahead of any other queued phase (17A/17K/17M/17N/17O/17P and anything added after) regardless of how it might otherwise be prioritized. Builds on and supersedes the earlier informational document kai-dedicated-computer-2026-07-31.md (uploaded to /uploads, recommended Zorin OS) -- the user has now selected Zorin and wants the delta between that informational doc and this fuller operational spec identified and folded in, not a second document written from scratch. Missing from the original doc that this spec adds: Infrastructure-as-Code (Ansible playbooks, cloud-init, Docker Compose, systemd units, all version controlled, reproducible from bare hardware), a real observability stack (evaluate and likely adopt Prometheus/Grafana/Loki/Alertmanager/node_exporter, reusing existing components where practical rather than duplicating what 17O's Monitoring Service will already provide), backup verification/restore-testing discipline ('a backup is only successful if it can be restored'), disaster recovery coordination, AI-governance controls for autonomous actions (approval workflows, rollback plans, audit trails, confidence reporting, execution logging), and Zero Trust / least-privilege security posture beyond the basic hardening the original doc covered. Purpose: KOA is an operational command center ONLY -- infrastructure management, secure remote administration, AI orchestration, monitoring, secrets management, WireGuard/SSH management, deployment coordination. It explicitly does NOT host production workloads, document repositories, embeddings, or vector databases -- those stay on 17O's dedicated Knowledge Platform infrastructure, accessed by KOA only through authenticated APIs. Required process before any code/config is written: audit the current Kai ecosystem fresh at that time (do not assume this session's architecture reports are still accurate -- validate against whatever the actual implementation looks like once prior phases are done), review Proxmox A, review Proxmox B if reachable by then, review all running services/security controls/deployment workflows, and produce a readiness report. Required final deliverable before ANY deployment: a Completion Report / executive briefing (not the implementation itself) covering exactly what the user specified -- (1) Executive Summary in plain language, (2) a 'What You Need From Me' checklist covering hardware/OS install/BIOS/storage/encryption passphrases/WireGuard config/SSH key approval/DNS/certificates/Bitwarden/MFA/network+firewall+router changes/backup destinations/credentials/physical installation/testing help/maintenance decisions, each item marked mandatory-or-optional with reasoning, timing, and expected effort, (3) an Integration Plan describing exactly how KOA connects to Proxmox A, Proxmox B, Kai, Juris Kai, Law Tutor, the AI router, monitoring, and backups, (4) a Migration Plan (changes required, downtime, rollback, risks, validation), (5) a Readiness Checklist (ready to purchase hardware / install OS / configure networking / integrate with Kai / migrate / go to production). The user must review and approve this briefing before any production change happens -- this phase's own completion criteria are about producing that briefing, not about the appliance being live.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "17A",
         "17K",
@@ -1906,7 +1877,8 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-31 directly from the user's Telegram request, explicitly deferred by the user's own instruction to run last, after every other currently-queued phase completes. Do not reprioritize ahead of anything else.",
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "875e282c"
     },
     {
       "id": "TK-176d6efe",
@@ -1951,50 +1923,6 @@
       "tests_required": false,
       "priority": 99,
       "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
-    },
-    {
-      "id": "TK-96ddd758",
-      "name": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
-      "description": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-44eee510",
-      "name": "17O-C: Copyright classification engine \u2014 per-document license detection, metadata-only mode for restricted content, oper",
-      "description": "17O-C: Copyright classification engine \u2014 per-document license detection, metadata-only mode for restricted content, operator review queue",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-525d42a6",
-      "name": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
-      "description": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-d569b912",
-      "name": "17O-H: Scheduled acquisition jobs \u2014 daily legislation check, weekly judgment scan, monthly full refresh, quarterly accur",
-      "description": "17O-H: Scheduled acquisition jobs \u2014 daily legislation check, weekly judgment scan, monthly full refresh, quarterly accuracy review",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
     },
     {
       "id": "TK-36a0b3dd",
@@ -2186,7 +2114,7 @@
       "dependencies": [
         "17O-A"
       ],
-      "status": "failed",
+      "status": "completed",
       "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",
       "completion_criteria": [
         "7-category directory taxonomy created",
@@ -2194,7 +2122,7 @@
         "Conflict detection: any analysis conflicting with Constitution must cite conflict"
       ],
       "assigned_provider": "qwen3_coding",
-      "build_id": "41a05b68",
+      "build_id": "c56429df",
       "failure_reason": "Build 41a05b68 missing from builds.json (deleted or stale reference)"
     },
     {
@@ -2204,7 +2132,7 @@
       "dependencies": [
         "17O-B"
       ],
-      "status": "failed",
+      "status": "completed",
       "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
       "completion_criteria": [
         "Metadata schema with all required fields",
@@ -2222,7 +2150,7 @@
       "dependencies": [
         "17O-C"
       ],
-      "status": "failed",
+      "status": "completed",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",
@@ -2365,7 +2293,7 @@
     },
     {
       "id": "18A-a",
-      "name": "18A-a: Kai OS Security - Auth + Rate Limiting",
+      "name": "18A-a: Kai OS Security - Auth + Rate Limiting (built by Fable)",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2382,13 +2310,13 @@
     },
     {
       "id": "18A-b",
-      "name": "18A-b: Kai OS Security - Audit + Hardening",
+      "name": "18A-b: Kai OS Security - Audit + Hardening (built by Fable)",
       "priority": 2,
       "dependencies": [
         "18A-a"
       ],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "completed",
       "description": "Audit logging for all write operations. Input validation hardening. Security headers (CSP, HSTS). Dependency vulnerability scanning. Security documentation.",
       "completion_criteria": [
         "Audit log for all write operations",
@@ -2405,13 +2333,14 @@
         "18A-a"
       ],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "in_progress",
       "description": "Multi-user chat: per-user conversation history, authentication-based access, user isolation (users cannot see other users conversations).",
       "completion_criteria": [
         "Per-user conversation history",
         "Authentication-based chat access",
         "User conversation isolation"
-      ]
+      ],
+      "build_id": "5521535b"
     },
     {
       "id": "15F-b",
@@ -2445,8 +2374,8 @@
         "qwen4_text properly registered (no openai hijack)",
         "15 active providers with clean routing"
       ],
-      "build_id": "c4d32c4c",
-      "failure_reason": "Build c4d32c4c missing from builds.json (deleted or stale reference)"
+      "build_id": "b787070d",
+      "failure_reason": "Build b787070d missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "AI-2",
@@ -2549,6 +2478,47 @@
         "Audit log for all credential access",
         "Migration of existing .env keys to vault"
       ]
+    },
+    {
+      "id": "18D",
+      "title": "18D: Research Session Logging",
+      "description": "Every legal query generates a reproducible Research Session: session_id, user_id, query, retrieved_authorities, search_strategy, citations used, model, confidence, brain_version, timestamp. Append-only log in Legal Brain's dedicated DB. API: GET /legal-brain/v1/sessions. Export to JSON/PDF. Privacy: user-uploaded docs NOT stored, only permanent corpus doc IDs.",
+      "status": "pending",
+      "dependencies": [
+        "18C"
+      ],
+      "priority": 5,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T03:11:10.744954+00:00",
+      "updated_at": "2026-08-07T03:11:10.744954+00:00"
+    },
+    {
+      "id": "18E",
+      "title": "18E: Legal Brain Command Center",
+      "description": "Merge all Legal Brain management into Kai Command Center: Source Registry, Download Queue, Verification Pipeline, Malware Scanning, OCR Processing, Metadata Extraction, Citation Index, Version History, Integrity Monitoring, Audit Ledger, Research Sessions, Temporary Workspaces, Storage Analytics, Performance Metrics, Scheduler, Agent Health \u2014 16+ panels.",
+      "status": "pending",
+      "dependencies": [
+        "18C",
+        "18D",
+        "13O"
+      ],
+      "priority": 6,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T03:11:10.744954+00:00",
+      "updated_at": "2026-08-07T03:11:10.744954+00:00"
+    },
+    {
+      "id": "18F",
+      "title": "18F: Legal Brain Domain Plugin Architecture",
+      "description": "Design plugin interface for future non-Ghana jurisdictions: JSON schema for jurisdiction plugins, isolation guarantees (each domain = own DB + vector store + KG), domains disabled by default operator-activated, Ghana Legal Brain as reference implementation, stub interfaces for Medical/Family/Finance domains. Design only \u2014 implementation per-domain later.",
+      "status": "proposed",
+      "dependencies": [
+        "18C"
+      ],
+      "priority": 20,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T03:11:10.744954+00:00",
+      "updated_at": "2026-08-07T03:11:10.744954+00:00"
     }
   ],
   "_audit": {
@@ -2564,5 +2534,6 @@
       "15D (retry SSE)",
       "17R (retry routing)"
     ]
-  }
+  },
+  "updated_at": "2026-08-07T03:11:36.950375+00:00"
 }

@@ -401,6 +401,38 @@ def classify_task(description):
 # between the two paths. If one fails, the fixed tail catches it.
 CODING_ROTATING_FRONT = ["qwen3_coding"]
 
+# --- Purge disabled providers from all routing on import ---
+# Reads memory/provider_state.json and removes any provider whose persisted
+# state is `false` (or `{"enabled": false}`) from every role list and the
+# coding rotating front.  The dashboard toggle writes this file; this block
+# ensures Kai's in-memory routing mirrors it immediately on restart without
+# manual edits to ROLE_PROVIDERS.
+import json as _json
+from pathlib import Path as _Path
+
+_STATE_PATH = _Path(__file__).parent.parent.parent / "memory" / "provider_state.json"
+try:
+    if _STATE_PATH.exists():
+        _raw = _json.loads(_STATE_PATH.read_text())
+        _disabled = {
+            name for name, val in _raw.items()
+            if val is False or (isinstance(val, dict) and val.get("enabled") is False)
+        }
+        if _disabled:
+            # ROLE_PROVIDERS (includes LAW_TUTOR + JURIS_KAI merged in)
+            for _role, _providers in ROLE_PROVIDERS.items():
+                ROLE_PROVIDERS[_role] = [p for p in _providers if p not in _disabled]
+            # LAW_TUTOR_ROLE_PROVIDERS
+            for _role, _providers in LAW_TUTOR_ROLE_PROVIDERS.items():
+                LAW_TUTOR_ROLE_PROVIDERS[_role] = [p for p in _providers if p not in _disabled]
+            # JURIS_KAI_ROLE_PROVIDERS
+            for _role, _providers in JURIS_KAI_ROLE_PROVIDERS.items():
+                JURIS_KAI_ROLE_PROVIDERS[_role] = [p for p in _providers if p not in _disabled]
+            # CODING_ROTATING_FRONT
+            CODING_ROTATING_FRONT = [p for p in CODING_ROTATING_FRONT if p not in _disabled]
+except Exception:
+    pass  # never let a bad state file break imports
+
 
 def _candidates_for(task_type):
     if task_type == "coding":
@@ -926,3 +958,28 @@ def _derive_health(name, info, attempts, success_rate, quota, current_job):
             return "degraded"
         return "error"
     return "healthy"
+
+
+def remove_provider_from_roles(name: str) -> int:
+    """Remove a provider from every role list in the router.
+
+    Cleans ROLE_PROVIDERS, LAW_TUTOR_ROLE_PROVIDERS, JURIS_KAI_ROLE_PROVIDERS,
+    and CODING_ROTATING_FRONT.  Returns the number of lists the provider was
+    removed from.
+    """
+    count = 0
+    for role, providers in list(ROLE_PROVIDERS.items()):
+        if name in providers:
+            providers.remove(name)
+            count += 1
+    # Also clean the sub-role dicts that get merged in
+    for sub_roles in (LAW_TUTOR_ROLE_PROVIDERS, JURIS_KAI_ROLE_PROVIDERS):
+        for role, providers in list(sub_roles.items()):
+            if name in providers:
+                providers.remove(name)
+                count += 1
+    global CODING_ROTATING_FRONT
+    if name in CODING_ROTATING_FRONT:
+        CODING_ROTATING_FRONT = [n for n in CODING_ROTATING_FRONT if n != name]
+        count += 1
+    return count

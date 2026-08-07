@@ -50,8 +50,8 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.module_registry import get_registered_modules
-from core.ai_provider import list_providers, set_provider_enabled
-from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat
+from core.ai_provider import list_providers, set_provider_enabled, deregister_provider
+from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
 import core.kai.identity as kai_identity
@@ -867,6 +867,45 @@ def toggle_provider_endpoint(
     if not set_provider_enabled(name, body.enabled):
         raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
     return {"name": name, "enabled": body.enabled}
+
+
+@app.delete("/providers/{name}")
+def delete_provider_endpoint(
+    name: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Permanently remove a provider from Kai.
+
+    Deletes the provider from the registry, persisted state, and all
+    routing chains.  Returns 409 if this is the last provider of its
+    capability type (e.g. last coding_agent provider)."""
+    from core.ai_provider import get_provider
+    info = get_provider(name)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+
+    # Guard: don't let the user delete the last coding-capable provider
+    caps = info.get("capabilities") or []
+    if "coding_agent" in caps:
+        from core.ai_provider import _PROVIDERS as _all
+        other_coding = any(
+            n != name and "coding_agent" in (e.get("capabilities") or [])
+            for n, e in _all.items()
+        )
+        if not other_coding:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot delete '{name}': it is the last coding_agent provider. "
+                       "Add another coding provider first.",
+            )
+
+    roles_removed = remove_provider_from_roles(name)
+    deregister_provider(name)
+    return {
+        "deleted": True,
+        "name": name,
+        "roles_removed": roles_removed,
+    }
 
 
 @app.get("/api/modules")

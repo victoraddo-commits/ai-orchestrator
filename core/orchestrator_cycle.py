@@ -97,7 +97,19 @@ def run_cycle():
     # Single advance_builds() call processes all builds — existing GENERATING
     # builds AND the ones just spawned by advance_roadmap(). ThreadPoolExecutor
     # with max_workers=MAX_CONCURRENT_BUILDS runs them in parallel.
-    builds = advance_builds()
+    #
+    # V3.1: wrap with a hard timeout (900s / 15min) so a hung opencode
+    # subprocess doesn't deadlock the entire cycle.  advance_roadmap() runs
+    # BEFORE this call, so new phases are already spawned; the timeout just
+    # means the next scheduler tick (300s later) gets a fresh cycle.
+    import concurrent.futures as _cf
+    with _cf.ThreadPoolExecutor(max_workers=1) as _timeout_pool:
+        _future = _timeout_pool.submit(advance_builds)
+        try:
+            builds = _future.result(timeout=900)
+        except _cf.TimeoutError:
+            info("advance_builds timed out after 900s — cycle continues, builds still in flight")
+            builds = load_builds()
 
     # After this cycle's builds have been advanced as far as they can go
     # without a human, flag any that are now stuck waiting -- this is the

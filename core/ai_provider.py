@@ -124,6 +124,22 @@ def list_providers():
     }
 
 
+def deregister_provider(name: str) -> bool:
+    """Remove a provider from the registry and persisted state.
+
+    Returns True if the provider was found and removed, False if not found.
+    This only removes from the registry -- callers must also remove the
+    provider from ai_router.ROLE_PROVIDERS and any other routing structures.
+    """
+    entry = _PROVIDERS.pop(name, None)
+    if entry is None:
+        return False
+    state = _load_provider_state()
+    state.pop(name, None)
+    _save_provider_state(state)
+    return True
+
+
 def set_provider_enabled(name: str, enabled: bool) -> bool:
     """Toggle a provider on or off.  Persisted to memory/provider_state.json
     so the setting survives process restarts.  Returns True if the provider

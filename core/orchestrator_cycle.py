@@ -11,6 +11,8 @@ from core.approval_watchdog import check_stale_approvals, check_stale_failures
 from core.logger import info
 import core.telegram_bridge as telegram_bridge
 from core.monitoring.budget_monitor import check_budgets
+import core.gpu_lifecycle as gpu_lifecycle
+import core.vpn_failover as vpn_failover
 
 
 def _safe_send(message_text):
@@ -49,6 +51,52 @@ def _safe_check_budget():
 def run_cycle():
 
     info("=== orchestrator cycle started ===")
+
+    # V3: GPU lifecycle heartbeat — verify pod health and update activity
+    try:
+        gpu_lifecycle.heartbeat()
+    except Exception as error:
+        info(f"gpu heartbeat failed: {type(error).__name__}")
+
+    # TK-41173c52: Auto-recover offline pods detected by heartbeat
+    try:
+        recovery_events = gpu_lifecycle.auto_recover_pods()
+        for evt in recovery_events:
+            info(
+                f"pod recovery: {evt['pod_id']} ({evt['role']}) "
+                f"attempt={evt['attempt']} success={evt['success']} "
+                f"— {evt.get('note', '')}"
+            )
+            # Alert on exhaustion
+            pod_config = gpu_lifecycle.POD_BY_ID.get(evt["pod_id"])
+            if pod_config and gpu_lifecycle.notify_restart_exhausted(pod_config):
+                info(
+                    f"RESTART EXHAUSTED: pod {evt['pod_id']} ({evt['role']}) "
+                    f"failed {gpu_lifecycle.MAX_RESTART_ATTEMPTS} restart attempts "
+                    f"— manual intervention required"
+                )
+                gpu_lifecycle.mark_restart_exhaustion_notified(pod_config)
+    except Exception as error:
+        info(f"pod auto-recovery failed: {type(error).__name__}")
+
+    # TK-176d6efe: VPN failover — check WireGuard tunnel to Proxmox B and
+    # attempt recovery if the tunnel is down.
+    vpn_events = []
+    try:
+        vpn_events = vpn_failover.attempt_recovery()
+        for evt in vpn_events:
+            if evt.get("severity") == "critical":
+                info(f"VPN FAILOVER CRITICAL: {evt.get('message', '')}")
+            elif evt.get("severity") == "warning":
+                info(f"VPN FAILOVER WARNING: {evt.get('message', '')}")
+            else:
+                info(
+                    f"vpn failover: {evt.get('type')} "
+                    f"attempt={evt.get('attempt', '-')} "
+                    f"success={evt.get('success', '-')}"
+                )
+    except Exception as error:
+        info(f"vpn failover check failed: {type(error).__name__}")
 
 
     state = refresh_state()
@@ -90,7 +138,19 @@ def run_cycle():
     # Single advance_builds() call processes all builds — existing GENERATING
     # builds AND the ones just spawned by advance_roadmap(). ThreadPoolExecutor
     # with max_workers=MAX_CONCURRENT_BUILDS runs them in parallel.
-    builds = advance_builds()
+    #
+    # V3.1: wrap with a hard timeout (900s / 15min) so a hung opencode
+    # subprocess doesn't deadlock the entire cycle.  advance_roadmap() runs
+    # BEFORE this call, so new phases are already spawned; the timeout just
+    # means the next scheduler tick (300s later) gets a fresh cycle.
+    import concurrent.futures as _cf
+    with _cf.ThreadPoolExecutor(max_workers=1) as _timeout_pool:
+        _future = _timeout_pool.submit(advance_builds)
+        try:
+            builds = _future.result(timeout=900)
+        except _cf.TimeoutError:
+            info("advance_builds timed out after 900s — cycle continues, builds still in flight")
+            builds = load_builds()
 
     # After this cycle's builds have been advanced as far as they can go
     # without a human, flag any that are now stuck waiting -- this is the
@@ -169,6 +229,21 @@ def run_cycle():
                 info(f"telegram message->build record failed: {type(error).__name__}")
 
 
+    # V3: GPU lifecycle events
+    gpu_events = []
+    try:
+        gpu_events = gpu_lifecycle.manage_gpu_lifecycle()
+    except Exception as error:
+        info(f"gpu lifecycle failed: {type(error).__name__}")
+
+    # V3: GPU metrics for dashboard
+    gpu_metrics = {}
+    try:
+        gpu_metrics = gpu_lifecycle.get_gpu_dashboard()
+    except Exception as error:
+        info(f"gpu metrics failed: {type(error).__name__}")
+
+
     result = {
 
         "state": state,
@@ -185,7 +260,14 @@ def run_cycle():
 
         "remediation": remediation,
 
-        "verification": verification
+        "verification": verification,
+
+        # V3 additions
+        "gpu_events": gpu_events,
+        "gpu_metrics": gpu_metrics,
+
+        # TK-176d6efe: VPN failover
+        "vpn_events": vpn_events,
 
     }
 

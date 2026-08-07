@@ -34,6 +34,7 @@ Five lifecycle objects all share a common schema from `core/lifecycle.py::new_ob
 | `roadmap.json` | Machine-readable phase tracking — the source of truth for what's done/next |
 | `core/scheduler.py` | Main loop entry (systemd) |
 | `core/ai/ai_router.py` | Provider routing with fallback chains |
+| `core/ai/secrets.py` | Secure provider API key storage (never exposed) |
 | `core/ai_provider.py` | Provider registry (register_provider) |
 | `core/ai/provider_health.py` | Quota, health tracking |
 | `core/api.py` | FastAPI HTTP endpoint |
@@ -46,20 +47,21 @@ Five lifecycle objects all share a common schema from `core/lifecycle.py::new_ob
 | `config/providers.yaml` | Provider config (mainly docker/proxmox tools) |
 | `memory/` | Runtime state (json files — gitignored) |
 
-## Provider routing (as of 2026-08-03)
+## Provider routing (as of 2026-08-07)
 
 ### Coding providers (agentic tool-use, build/self-modifying work)
 
 ```
-CODING_ROTATING_FRONT: ["opencode_claude"]  (Fable 5, sole front — credits healthy)
-Fixed tail: opencode_claude_sonnet → opencode_claude_opus → qwen3_coding → omniroute → claude → opencode → opencode_minimax
+CODING_ROTATING_FRONT: ["qwen4_coding"]  (Qwen4 RunPod — primary)
+Fixed tail: qwen4Z → opencode_claude → opencode_claude_sonnet → opencode_claude_opus → omniroute → claude → opencode → opencode_minimax
 ```
 
-- `opencode_claude` — Fable 5 via OpenCode Zen (separate billing, healthy). Primary.
-- `qwen3_coding` — Qwen2.5-Coder-32B on RunPod A100 SXM 80GB (tool-calling confirmed live). Primary in CODING_ROTATING_FRONT.
+- `qwen4_coding` — Qwen4 Pod A (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB. Primary — sole member of CODING_ROTATING_FRONT.
+- `qwen4Z` — Qwen4 Pod A via opencode CLI agent loop. Full tool-use capability. Fallback.
+- `opencode_claude` — Fable 5 via OpenCode Zen (separate billing, healthy). Fallback.
 - `claude` — Direct CloudCLI/Anthropic subscription. Out of credit currently, in tail.
 - `omniroute` — Self-hosted aggregator gateway on localhost:20128. Always-on fallback.
-- `openrouter_claude_opus/sonnet` — DROPPED (OpenRouter account out of credit).
+- `openrouter_claude_opus`, `openrouter_claude_sonnet`, `opencode_deepseek` — DEREGISTERED (OpenRouter account out of credit; removed from registry 2026-08-07).
 
 ### Text-task providers (chat/completion, no tool use)
 
@@ -67,31 +69,36 @@ The Provider rotation varies by task_type. Key roles:
 
 | Role | Primary | Fallback chain |
 |------|---------|----------------|
-| planning | gemini | geminix → deepseek_native_flash → opencode_claude → deepseek_native_pro → deepseek → claude |
-| architecture | deepseek_native_flash | gemini → geminix → deepseek → openai → claude |
-| review | openai* | deepseek_native_flash → deepseek → gemini → geminix → claude |
-| classification | groq | deepseek_native_flash → gemini → geminix → deepseek → claude |
-| documentation | deepseek_native_flash | groq → deepseek → claude |
-| log_analysis | groq | claude |
+| planning | qwen4_text | qwen4_pod_b → gemini → geminix → deepseek_native_flash → omniroute_deepseek_flash → opencode_claude → deepseek_native_pro → claude |
+| architecture | qwen4_pod_b | qwen4_text → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → openai → claude |
+| review | qwen4_pod_b | qwen4_text → openai → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → claude |
+| classification | qwen4_pod_b | qwen4_text → groq → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → claude |
+| documentation | qwen4_pod_b | qwen4_text → deepseek_native_flash → omniroute_deepseek_flash → groq → claude |
+| log_analysis | qwen4_pod_b | qwen4_text → groq → omniroute_deepseek_flash → claude |
 
-*Note: The "openai" slot currently points to the self-hosted Qwen3-Coder RunPod (hijacked in `llm_clients.call_openai`). Phase 17Z is registering this properly as its own provider name.
+- `qwen4_text` — Qwen4 Pod A (GENERATOR pod, RTX PRO 6000 96GB). Primary text generator.
+- `qwen4_pod_b` — Qwen4 Pod B (REVIEW/DEPLOY pod, separate RTX PRO 6000 96GB). Primary reviewer.
+- `openai` — Slot removed 2026-08-07. Was aliasing qwen4_text. Use `qwen4_text` directly.
 
 ### Provider status
 
 | Provider | Type | Status | Billing |
 |----------|------|--------|---------|
-| opencode_claude (Fable 5) | coding | ✅ healthy | OpenCode Zen (separate) |
-| qwen3_coding (RunPod) | coding | ✅ fallback | $0.99/hr GPU |
-| qwen3/openai (RunPod text) | text | ✅ working but needs proper reg | same GPU |
+| qwen4_coding (RunPod A) | coding | ✅ primary | $0.99/hr GPU |
+| qwen4Z (RunPod A via opencode) | coding | ✅ fallback | same GPU |
+| qwen4_text (RunPod A) | text | ✅ primary | same GPU |
+| qwen4_pod_b (RunPod B) | text | ✅ primary (review) | separate $0.99/hr GPU |
+| opencode_claude (Fable 5) | both | ✅ healthy | OpenCode Zen (separate) |
+| openai | text | ✅ aliases qwen4_text | same GPU |
 | omniroute | both | ✅ fallback | self-hosted |
+| omniroute_deepseek_flash | text | ✅ fallback | self-hosted |
+| omniroute_sonnet | coding | ✅ legal module | self-hosted |
 | gemini | text | ✅ healthy (credit reloaded) | Google billing |
 | geminix (2nd account) | text | ✅ fallback | Google billing |
 | groq | text | ✅ healthy | free tier |
 | deepseek_native_flash | text | ✅ healthy | native api.deepseek.com |
 | deepseek_native_pro | text | ✅ healthy | native api.deepseek.com |
-| deepseek (OpenRouter) | text | ✅ healthy | OpenRouter |
 | claude (direct) | both | ⚠️ out of credit | Anthropic subscription |
-| openrouter_claude_* | coding | ❌ OpenRouter out of credit | OpenRouter |
 | minimax | text | ⚠️ excluded (0/4 verified) | |
 | opencode_minimax | coding | ⚠️ in tail only | OpenCode Zen |
 | local | both | ❌ placeholder | N/A |
@@ -113,7 +120,8 @@ The Provider rotation varies by task_type. Key roles:
 | **17M** | Free-tier Provider Expansion | 30 | none | Add free providers as fallback, never displace top-priority |
 | **17N** | Voice/Phone AI (MiniMax) | 60 | none | Design proposal only — no code yet |
 | **17V** | Kai Conversation Memory | 33 | 13X | Session envelopes, long-term operator store, guarded compression |
-| **17Z** | Qwen3-Coder RunPod Provider | 45 | none | Proper text provider registration (not the "openai" hijack) |
+| **17Z** | Qwen4 RunPod Provider | 45 | none | Proper text provider registration with qwen4_text/qwen4_pod_b |**
+| **18A-ai** | AI Gateway | 40 | none | OpenAI-compatible /v1 endpoint for external consumers |
 
 ### Failed (10 phases)
 13I (Future roadmap generator), 13L (Performance-weighted routing), 14A (Stuck-phase detection), 15G (AI Workforce Center), 17E (Multi-node Proxmox), 17G (UI/UX polish), 17I (App portfolio awareness), 17R (AI routing resilience), 17S (OpenCode Zen dedicated keys), 17U (Provider config editor), 17W (Telegram native UX), 17X (Automated resiliency)
@@ -140,6 +148,11 @@ All runtime state lives in `memory/` (gitignored). Each file is `{"schema_versio
 | `improvement_proposals.json` | Kai's strategic proposals |
 | `remediation.json` | Remediation records |
 | `verification_history.json` | Verification outcomes |
+| `api_keys.json` | AI Gateway consumer keys (hashed) |
+| `gateway_audit.json` | AI Gateway request audit trail |
+| `provider_secrets.json` | Provider API keys (encrypted, 0600 perms, never exposed) |
+| `secret_access_audit.json` | Secrets access audit log |
+| `provider_state.json` | Per-provider enable/disable toggles |
 
 ## Operations quick reference
 
@@ -170,32 +183,34 @@ When a new AI provider picks up Kai's work:
 2. **Check `roadmap.json`** for current phase status
 3. **Check `memory/builds.json`** for any WAITING_FOR_USER_INPUT or stuck builds
 4. **Prioritize in-progress phases** by priority score (lower = more urgent, except 15A at 50 which blocks other work)
-5. **17Z is the current active work** — Qwen3-Coder RunPod text provider registration
+5. **18A-ai is the current active work** — AI Gateway (OpenAI-compatible /v1 endpoints)
 6. **Run tests** before any code change: `.venv/bin/python -m pytest`
 7. **After deploy**: watch one full scheduler cycle (`journalctl -u ai-orchestrator -f`)
 
-### Current active task: 17Z — Qwen3-Coder RunPod text provider
+### Current active task: AI Gateway (Phase 1)
 
 **Context:**
-- RunPod pod `c5ib0n2adowifp` running vLLM on A100 SXM 80GB
-- Model: `Qwen/Qwen2.5-Coder-32B-Instruct-AWQ` (AWQ quantized)
-- Endpoint: `https://c5ib0n2adowifp-8000.proxy.runpod.net/v1` (OpenAI-compatible)
-- Auth: API key in `.env` as `VLLM_QWEN3_CODER_API_KEY`
-- Confirmed live: 2026-08-02 with real chat completion
-- $0.99/hr always-on billing, root filesystem is ephemeral
+- AI Gateway module (`core/ai_gateway/`) provides OpenAI-compatible /v1 endpoints
+- Mounted on the existing FastAPI app (port 8000) alongside the observability API
+- External consumers authenticate with bearer API keys, not dashboard JWT
+- Rate-limited per consumer key, with audit logging and cost tracking
 
-**What's already done:**
-- `qwen3_coding` registered as coding agent (tool-use loop via opencode CLI)
-- `call_openai()` in `llm_clients.py` is hijacked to point to this RunPod
-- Env vars `VLLM_QWEN3_CODER_BASE_URL`, `VLLM_QWEN3_CODER_MODEL`, `VLLM_QWEN3_CODER_API_KEY` all set
+**What's already done (17Z — Qwen3/Qwen4 RunPod Provider):**
+- `qwen4_text` (was `qwen3_coder_text`) properly registered as text_task provider
+- `qwen4_coding` registered as coding agent (tool-use loop via opencode CLI)
+- `qwen4Z` registered as coding agent via opencode CLI
+- `qwen4_pod_b` registered as dedicated review/deploy text pod
+- `call_qwen4_text()` in `llm_clients.py` (was `call_qwen3_coder_text`)
+- `call_qwen4_pod_b_text()` in `llm_clients.py` (was `call_qwen3_pod_b_text`)
+- `openai` slot aliases qwen4_text (description updated, same endpoint)
+- All qwen3→qwen4 provider renames complete across source, tests, and docs
+- 3 dead OpenRouter-billed providers deregistered from registry
 
-**What 17Z needs:**
-1. Proper `call_qwen3_coder_text()` function in `llm_clients.py` (or reuse existing endpoint with own name)
-2. Register as `qwen3_coder_text` via `core.ai_provider.register_provider()` (run_text_task only)
-3. Add to `ROLE_PROVIDERS` in `ai_router.py` as fallback capacity (after primary, before claude universal fallback)
-4. `cost_tier='paid'` (real GPU billing, unlike free-tier providers)
-5. `available_fn` checking VLLM_QWEN3_CODER_API_KEY + endpoint responding
-6. Tests covering the new provider registration and routing
+**AI Gateway routes:**
+- `POST /v1/chat/completions` — OpenAI-compatible chat
+- `POST /v1/chat/completions/stream` — SSE streaming (simulated)
+- `GET /v1/models` — list available models
+- `GET /v1/providers` — provider health/status
 
 ### Other in-progress work
 

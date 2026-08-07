@@ -66,12 +66,13 @@ def get_cursor():
 
 
 def init_database():
-    from core.klaus.schema import SCHEMA_SQL
+    from core.klaus.schema import SCHEMA_SQL, MIGRATION_SQL
 
     conn = get_connection()
     cur = conn.cursor()
     try:
         cur.execute(SCHEMA_SQL)
+        cur.execute(MIGRATION_SQL)
         conn.commit()
         _ensure_storage()
         return True
@@ -287,6 +288,8 @@ def insert_chunk(
     embedding: Optional[List[float]] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> int:
+    # Strip NUL bytes from content — PostgreSQL rejects them
+    content = content.replace("\x00", "")
     with get_cursor() as cur:
         cur.execute(
             """INSERT INTO klaus_document_chunks
@@ -438,3 +441,266 @@ def get_storage_estimate() -> int:
             return row["doc_count"] if row else 0
     except Exception:
         return 0
+
+
+# ── Tier Management ─────────────────────────────────────────────────────
+
+def seed_acquisition_tiers() -> int:
+    """Seed the 16 acquisition tiers from schema constants. Returns count seeded."""
+    from core.klaus.schema import ACQUISITION_TIERS
+
+    count = 0
+    with get_cursor() as cur:
+        for tier_num, info in ACQUISITION_TIERS.items():
+            cur.execute(
+                """INSERT INTO klaus_acquisition_tiers
+                   (tier_number, tier_name, tier_category, priority_weight, coverage_target)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (tier_number) DO UPDATE SET
+                       tier_name = EXCLUDED.tier_name,
+                       tier_category = EXCLUDED.tier_category,
+                       priority_weight = EXCLUDED.priority_weight,
+                       coverage_target = EXCLUDED.coverage_target""",
+                (tier_num, info["name"], info["category"], info["weight"], info["target"]),
+            )
+            count += 1
+    return count
+
+
+def get_tier(tier_number: int) -> Optional[Dict[str, Any]]:
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM klaus_acquisition_tiers WHERE tier_number = %s",
+            (tier_number,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def list_tiers() -> List[Dict[str, Any]]:
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM klaus_acquisition_tiers ORDER BY tier_number")
+        return [dict(r) for r in cur.fetchall()]
+
+
+def set_document_tier(document_id: int, tier_number: int):
+    """Set the acquisition tier for a document. Called by TierClassificationAgent."""
+    with get_cursor() as cur:
+        cur.execute(
+            "UPDATE klaus_documents SET tier_id = "
+            "(SELECT id FROM klaus_acquisition_tiers WHERE tier_number = %s) "
+            "WHERE id = %s",
+            (tier_number, document_id),
+        )
+        # Update tier counter
+        cur.execute(
+            """UPDATE klaus_acquisition_tiers
+               SET acquisition_current = (
+                   SELECT COUNT(*) FROM klaus_documents
+                   WHERE tier_id = klaus_acquisition_tiers.id
+               )
+               WHERE tier_number = %s""",
+            (tier_number,),
+        )
+
+
+def get_documents_by_tier(
+    tier_number: int, limit: int = 100, offset: int = 0
+) -> List[Dict[str, Any]]:
+    with get_cursor() as cur:
+        cur.execute(
+            """SELECT d.* FROM klaus_documents d
+               JOIN klaus_acquisition_tiers t ON d.tier_id = t.id
+               WHERE t.tier_number = %s
+               ORDER BY d.created_at DESC LIMIT %s OFFSET %s""",
+            (tier_number, limit, offset),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def get_tier_coverage_stats() -> List[Dict[str, Any]]:
+    """Return per-tier coverage statistics with counts and gap analysis."""
+    with get_cursor() as cur:
+        cur.execute(
+            """SELECT
+                   t.tier_number,
+                   t.tier_name,
+                   t.tier_category,
+                   t.coverage_target,
+                   t.acquisition_current,
+                   t.status,
+                   COUNT(d.id) as actual_count,
+                   CASE
+                       WHEN t.coverage_target > 0
+                       THEN ROUND(COUNT(d.id)::numeric / t.coverage_target * 100, 1)
+                       ELSE 0
+                   END as coverage_pct
+               FROM klaus_acquisition_tiers t
+               LEFT JOIN klaus_documents d ON d.tier_id = t.id
+               GROUP BY t.id, t.tier_number, t.tier_name, t.tier_category,
+                        t.coverage_target, t.acquisition_current, t.status
+               ORDER BY t.tier_number"""
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def update_tier_acquisition_count(tier_number: int):
+    """Recalculate acquisition_current for a given tier."""
+    with get_cursor() as cur:
+        cur.execute(
+            """UPDATE klaus_acquisition_tiers t
+               SET acquisition_current = (
+                   SELECT COUNT(*) FROM klaus_documents d
+                   WHERE d.tier_id = t.id
+               ),
+               last_acquired_at = CASE
+                   WHEN (SELECT COUNT(*) FROM klaus_documents d WHERE d.tier_id = t.id) > 0
+                   THEN CURRENT_TIMESTAMP
+                   ELSE t.last_acquired_at
+               END
+               WHERE t.tier_number = %s""",
+            (tier_number,),
+        )
+
+
+# ── Legal Authority Records ─────────────────────────────────────────────
+
+def insert_authority_record(
+    document_id: int,
+    authority_type: str,
+    citation_text: Optional[str] = None,
+    neutral_citation: Optional[str] = None,
+    court_identifier: Optional[str] = None,
+    judge_names: Optional[List[str]] = None,
+    parties: Optional[str] = None,
+    case_number: Optional[str] = None,
+    docket_number: Optional[str] = None,
+    date_argued: Optional[str] = None,
+    date_decided: Optional[str] = None,
+    status: str = "current",
+    ratio_decidendi: Optional[str] = None,
+    obiter_dicta: Optional[str] = None,
+    headnotes: Optional[str] = None,
+    legislation_history: Optional[Dict[str, Any]] = None,
+    amendment_chain: Optional[List[int]] = None,
+    repeal_status: Optional[str] = None,
+    gazette_number: Optional[str] = None,
+    gazette_date: Optional[str] = None,
+    consolidation_date: Optional[str] = None,
+    authoritative_version: bool = False,
+    language: str = "en",
+    source_trust_level: str = "unverified",
+) -> int:
+    with get_cursor() as cur:
+        cur.execute(
+            """INSERT INTO klaus_legal_authority_records
+               (document_id, authority_type, citation_text, neutral_citation,
+                court_identifier, judge_names, parties, case_number, docket_number,
+                date_argued, date_decided, status, ratio_decidendi, obiter_dicta,
+                headnotes, legislation_history, amendment_chain, repeal_status,
+                gazette_number, gazette_date, consolidation_date,
+                authoritative_version, language, source_trust_level)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               ON CONFLICT (document_id) DO UPDATE SET
+                   authority_type = EXCLUDED.authority_type,
+                   status = EXCLUDED.status,
+                   updated_at = CURRENT_TIMESTAMP
+               RETURNING id""",
+            (
+                document_id, authority_type, citation_text, neutral_citation,
+                court_identifier, judge_names, parties, case_number, docket_number,
+                date_argued, date_decided, status, ratio_decidendi, obiter_dicta,
+                headnotes, Json(legislation_history) if legislation_history else None,
+                amendment_chain, repeal_status,
+                gazette_number, gazette_date, consolidation_date,
+                authoritative_version, language, source_trust_level,
+            ),
+        )
+        row = cur.fetchone()
+        return row["id"]
+
+
+def get_authority_record(document_id: int) -> Optional[Dict[str, Any]]:
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM klaus_legal_authority_records WHERE document_id = %s",
+            (document_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def update_authority_record(document_id: int, **fields) -> bool:
+    """Update specific fields on a Legal Authority Record."""
+    if not fields:
+        return False
+    allowed = {
+        "authority_type", "citation_text", "neutral_citation", "court_identifier",
+        "judge_names", "parties", "case_number", "docket_number",
+        "date_argued", "date_decided", "status", "ratio_decidendi",
+        "obiter_dicta", "headnotes", "legislation_history", "amendment_chain",
+        "repeal_status", "gazette_number", "gazette_date", "consolidation_date",
+        "authoritative_version", "language", "source_trust_level",
+    }
+    set_clauses = []
+    params = []
+    for key, value in fields.items():
+        if key not in allowed:
+            continue
+        set_clauses.append(f"{key} = %s")
+        if key == "legislation_history" and value is not None:
+            params.append(Json(value))
+        else:
+            params.append(value)
+    if not set_clauses:
+        return False
+    set_clauses.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(document_id)
+    with get_cursor() as cur:
+        cur.execute(
+            f"UPDATE klaus_legal_authority_records SET {', '.join(set_clauses)} "
+            f"WHERE document_id = %s",
+            params,
+        )
+    return True
+
+
+def list_authority_records(
+    authority_type: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> List[Dict[str, Any]]:
+    clauses = []
+    params = []
+    if authority_type:
+        clauses.append("a.authority_type = %s")
+        params.append(authority_type)
+    if status:
+        clauses.append("a.status = %s")
+        params.append(status)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    with get_cursor() as cur:
+        cur.execute(
+            f"""SELECT a.*, d.title, d.category
+                FROM klaus_legal_authority_records a
+                JOIN klaus_documents d ON a.document_id = d.id
+                {where}
+                ORDER BY a.created_at DESC LIMIT %s OFFSET %s""",
+            params + [limit, offset],
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def count_documents_by_tier() -> Dict[int, int]:
+    """Return {tier_number: document_count} for all tiers."""
+    with get_cursor() as cur:
+        cur.execute(
+            """SELECT t.tier_number, COUNT(d.id) as ct
+               FROM klaus_acquisition_tiers t
+               LEFT JOIN klaus_documents d ON d.tier_id = t.id
+               GROUP BY t.tier_number
+               ORDER BY t.tier_number"""
+        )
+        return {r["tier_number"]: r["ct"] for r in cur.fetchall()}

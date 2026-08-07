@@ -1,14 +1,15 @@
 """
 KLAUS Legal Knowledge Acquisition System - Quality Control Agents
 
-Five agents form the quality-control layer before any document
+Six agents form the quality-control layer before any document
 enters the shared knowledge base:
 
 1. SourceVerificationAgent - validates source authenticity
 2. LegalClassificationAgent - categorizes documents and copyright
-3. CitationExtractionAgent - parses internal citations/cross-references
-4. QualityAssuranceAgent - completeness, duplication, formatting
-5. KnowledgeCuratorAgent - final integration + operator review flags
+3. TierClassificationAgent - maps documents to 16-tier priority system
+4. CitationExtractionAgent - parses internal citations/cross-references
+5. QualityAssuranceAgent - completeness, duplication, formatting
+6. KnowledgeCuratorAgent - final integration + operator review flags
 
 Each agent reviews every document; all must pass before the document
 reaches 'approved' status.
@@ -28,6 +29,8 @@ from core.klaus.db_manager import (
 from core.klaus.schema import (
     KNOWLEDGE_CATEGORIES,
     COPYRIGHT_CLASSIFICATIONS,
+    ACQUISITION_TIERS,
+    AUTHORITY_TYPES,
 )
 
 
@@ -239,6 +242,228 @@ class QualityAssuranceAgent:
         )
 
 
+class TierClassificationAgent:
+    """
+    Maps documents to the 16-tier Ghana Legal Corpus Acquisition priority system.
+
+    T1  Constitutional Law          T9  Property & Land Law
+    T2  Primary Legislation (Acts)  T10 Family & Succession Law
+    T3  Subsidiary Legislation      T11 Intellectual Property Law
+    T4  Judicial Precedents         T12 Technology & Data Law
+    T5  Criminal Law                T13 Banking & Finance Law
+    T6  Commercial & Contract Law   T14 Government & Administrative
+    T7  Employment & Labour Law     T15 Case Law & Digests
+    T8  Tax & Revenue Law           T16 Official Publications
+    """
+
+    # ── Tier classification signals (keyword → tier_number) ─────────
+    # Order matters: more specific patterns checked first.
+    TIER_SIGNALS: List[Tuple[str, int]] = [
+        # T1: Constitutional
+        (r"\bconstitution\b", 1),
+        (r"\bconstitutional\b", 1),
+        # T3: Subsidiary Legislation (check before T2 since LI/CI are specific)
+        (r"\bL\.?\s*I\.?\s+\d+", 3),
+        (r"\bC\.?\s*I\.?\s+\d+", 3),
+        (r"\bE\.?\s*I\.?\s+\d+", 3),
+        (r"\blegislative\s+instrument\b", 3),
+        (r"\bconstitutional\s+instrument\b", 3),
+        # T2: Primary Legislation
+        (r"\bAct\s+\d{3,4}\b", 2),
+        (r"\bAct,\s+\d{4}\b", 2),
+        (r"\bACT\s+\d{3}\b", 2),
+        # T5: Criminal Law
+        (r"\bcriminal\b", 5),
+        (r"\boffence", 5),
+        (r"\bnarcotic\b", 5),
+        (r"\bpenal\b", 5),
+        (r"\bpenalty\b", 5),
+        (r"\bcommunity\s+service\b", 5),
+        # T8: Tax & Revenue (before T2 so specific tax acts go here)
+        (r"\btax\b", 8),
+        (r"\brevenue\b", 8),
+        (r"\bexcise\b", 8),
+        (r"\bcustoms\b", 8),
+        (r"\blevy\b", 8),
+        (r"\bVAT\b", 8),
+        (r"\bvalue\s+added\s+tax\b", 8),
+        # T13: Banking & Finance (before T2 so banking acts go here)
+        (r"\bbank\b", 13),
+        (r"\bbanking\b", 13),
+        (r"\bfinance\b", 13),
+        (r"\bsecurit(?:y|ies)\b", 13),
+        (r"\binvestment\b", 13),
+        (r"\binsurance\b", 13),
+        (r"\bvirtual\s+asset\b", 13),
+        # T12: Technology & Data
+        (r"\belectronic\b", 12),
+        (r"\bcyber\b", 12),
+        (r"\bdata\s+protection\b", 12),
+        (r"\bvirtual\b", 12),
+        # T7: Employment
+        (r"\blabour\b", 7),
+        (r"\bemployment\b", 7),
+        (r"\bfactory\b", 7),
+        (r"\bwork(?:er|men)", 7),
+        # T6: Commercial
+        (r"\bcommercial\b", 6),
+        (r"\bcontract\b", 6),
+        (r"\bsale\s+of\s+goods\b", 6),
+        (r"\bhire\s+purchase\b", 6),
+        (r"\bcompanies?\b", 6),
+        (r"\bbusiness\s+name", 6),
+        (r"\bpartnership", 6),
+        (r"\bchartered\s+accountant", 6),
+        # T9: Property
+        (r"\bland\b", 9),
+        (r"\bproperty\b", 9),
+        (r"\bmortgage\b", 9),
+        (r"\bconveyanc", 9),
+        # T10: Family
+        (r"\bfamily\b", 10),
+        (r"\bmarriage\b", 10),
+        (r"\bdivorce\b", 10),
+        (r"\bsuccession\b", 10),
+        (r"\bintestate\b", 10),
+        (r"\bdomestic\s+violence\b", 10),
+        (r"\bhuman\s+sexual\b", 10),
+        # T11: Intellectual Property
+        (r"\bcopyright\b", 11),
+        (r"\bpatent\b", 11),
+        (r"\btrademark\b", 11),
+        (r"\bintellectual\s+property\b", 11),
+        # T14: Government
+        (r"\bgovernment\b", 14),
+        (r"\bpublic\s+offic", 14),
+        (r"\bparliament", 14),
+        (r"\bcivil\s+service\b", 14),
+        (r"\bgovernance\b", 14),
+        (r"\bconduct\s+of\s+public\b", 14),
+        # T4: Judicial (catch broader judicial terms after specifics)
+        (r"\bcourt", 4),
+        (r"\bjudicial\b", 4),
+        (r"\btribunal\b", 4),
+        (r"\bjudge\b", 4),
+        (r"\blegal\s+profession\b", 4),
+        (r"\blegal\s+education\b", 4),
+        (r"\bextradition\b", 4),
+    ]
+
+    # Title-based supplementary signals (checked against title only)
+    TITLE_SIGNALS: List[Tuple[str, int]] = [
+        (r"\bConstitution\b", 1),
+        (r"\bBill,?\s*\d{4}\b", 16),  # Bills → T16 Publications
+        (r"\bBill\b", 16),
+        (r"\bAmendment\b", 2),  # Amendments → T2 (primary legislation)
+    ]
+
+    # Category-to-tier fallback mapping
+    CATEGORY_TIER_MAP = {
+        "Constitutional Law": 1,
+        "Legislation": 2,
+        "Judiciary": 4,
+        "Legal Procedure": 5,
+        "International Law": 14,
+        "Legal Scholarship": 16,
+    }
+
+    @classmethod
+    def classify(cls, document_id: int) -> Tuple[int, str, str]:
+        """Classify a document into a 16-tier priority.
+
+        Returns (tier_number, authority_type, confidence_level).
+        """
+        doc = get_document(document_id)
+        if not doc:
+            return (16, "report", "low")  # Default: T16, report type
+
+        title = doc.get("title", "")
+        category = doc.get("category", "")
+        source = get_source(doc.get("source_id")) if doc.get("source_id") else None
+
+        # Step 1: Check chunks content for keyword signals
+        chunks = get_chunks_for_document(document_id)
+        combined = " ".join(c.get("content", "") for c in chunks)[:5000]  # First 5K chars
+        combined_lower = combined.lower()
+
+        tier_scores: Dict[int, float] = {}
+        for pattern, tier_num in cls.TIER_SIGNALS:
+            matches = re.findall(pattern, combined_lower, re.IGNORECASE)
+            if matches:
+                tier_scores[tier_num] = tier_scores.get(tier_num, 0) + len(matches)
+
+        # Step 2: Check title signals
+        for pattern, tier_num in cls.TITLE_SIGNALS:
+            if re.search(pattern, title, re.IGNORECASE):
+                tier_scores[tier_num] = tier_scores.get(tier_num, 0) + 2  # Title match = stronger
+
+        # Step 3: If "Act" pattern matched but no other specific tier, it's T2
+        if not tier_scores and re.search(r"\bAct\b", title, re.IGNORECASE):
+            tier_scores[2] = 1
+
+        # Step 4: Category fallback
+        if not tier_scores and category in cls.CATEGORY_TIER_MAP:
+            tier_scores[cls.CATEGORY_TIER_MAP[category]] = 0.5
+
+        # Step 5: Pick highest-scoring tier
+        if tier_scores:
+            best_tier = max(tier_scores, key=tier_scores.get)
+            best_score = tier_scores[best_tier]
+            confidence = "high" if best_score >= 3 else "medium" if best_score >= 1 else "low"
+        else:
+            best_tier = 16  # Default to T16 Official Publications
+            confidence = "low"
+
+        # Determine authority_type
+        authority_type = cls._determine_authority_type(best_tier, title, combined_lower)
+
+        log_audit_event(
+            "classification",
+            "info",
+            f"Tier classification: T{best_tier} ({ACQUISITION_TIERS[best_tier]['name']}) "
+            f"authority_type={authority_type} confidence={confidence} "
+            f"scores={dict(sorted(tier_scores.items(), key=lambda x: -x[1])[:5])}",
+            document_id,
+        )
+
+        return (best_tier, authority_type, confidence)
+
+    @classmethod
+    def _determine_authority_type(cls, tier: int, title: str, content_lower: str) -> str:
+        """Determine the authority_type for a Legal Authority Record."""
+        combined = f"{title} {content_lower}".lower()
+
+        if tier == 1:
+            return "constitution"
+        if tier == 16 and re.search(r"\bbill\b", combined):
+            return "bill"
+        if tier == 4 or tier == 15:
+            return "case"
+        if re.search(r"\bL\.?\s*I\.?\s+\d+|\bC\.?\s*I\.?\s+\d+|\bE\.?\s*I\.?\s+\d+", combined):
+            return "regulation"
+        if re.search(r"\bgazette\b", combined):
+            return "gazette"
+        if re.search(r"\breport\b", combined):
+            return "report"
+        if tier in (2, 3):
+            return "statute"
+        return "statute"  # Default for legislative documents
+
+    def verify(self, document_id: int) -> VerificationResult:
+        """Run tier classification and return VerificationResult."""
+        tier_num, authority_type, confidence = self.classify(document_id)
+
+        # Store tier on document via db_manager
+        from core.klaus.db_manager import set_document_tier
+        set_document_tier(document_id, tier_num)
+
+        return VerificationResult(
+            True,
+            f"Classified as T{tier_num}: {ACQUISITION_TIERS[tier_num]['name']} "
+            f"(authority_type={authority_type}, confidence={confidence})"
+        )
+
+
 class KnowledgeCuratorAgent:
     """
     Final gatekeeper: determines if a document is ready for the shared
@@ -308,7 +533,7 @@ class KnowledgeCuratorAgent:
 
 def run_all_agents(document_id: int) -> Dict:
     """
-    Run all five quality-control agents against a document.
+    Run all six quality-control agents against a document.
     Returns the combined result dict.
     """
     results = {}
@@ -318,6 +543,9 @@ def run_all_agents(document_id: int) -> Dict:
 
     lc = LegalClassificationAgent().verify(document_id)
     results["legal_classification"] = {"passed": lc.passed, "reason": lc.reason, "warnings": lc.warnings}
+
+    tc = TierClassificationAgent().verify(document_id)
+    results["tier_classification"] = {"passed": tc.passed, "reason": tc.reason, "warnings": tc.warnings}
 
     ce = CitationExtractionAgent().verify(document_id)
     results["citation_extraction"] = {"passed": ce.passed, "reason": ce.reason, "warnings": ce.warnings}

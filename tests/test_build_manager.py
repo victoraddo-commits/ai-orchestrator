@@ -1006,7 +1006,7 @@ def test_code_review_attaches_opencode_claude_findings_for_other_builds(monkeypa
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "qwen3_coding", "task_type": "coding", "duration_ms": 10,
+            "provider": "qwen4_coding", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True, "response_text": "Done.",
                 "files_changed": ["app/main.py"],

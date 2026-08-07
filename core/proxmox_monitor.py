@@ -3,10 +3,15 @@
 Extends the existing health/incident/remediation pipeline to cover both
 Proxmox A (192.168.99.2) and Proxmox B (via WireGuard).  Detects node
 availability, LXC/VM health, storage usage, and backup status.
+
+TK-176d6efe: VPN failover — each node now supports a fallback_host (tried
+when the primary is unreachable) and retry with exponential backoff on
+initial connection failure.
 """
 
 import json
 import os
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -15,32 +20,49 @@ PROXMOX_NODES = [
     {
         "name": "pve",
         "host": os.environ.get("PROXMOX_HOST", "192.168.99.2"),
+        # TK-176d6efe: LAN is primary, no fallback needed — but if Proxmox A
+        # ever goes remote, set PROXMOX_FALLBACK_HOST in the environment.
+        "fallback_host": os.environ.get("PROXMOX_FALLBACK_HOST", ""),
         "token": os.environ.get("PROXMOX_TOKEN", ""),
     },
     {
         "name": "pve-b",
         "host": os.environ.get("PROXMOX_B_HOST", "10.8.0.102"),
+        # TK-176d6efe: WireGuard is primary.  If the tunnel goes down, try
+        # the fallback (LAN IP if Proxmox B is ever routable that way, or a
+        # secondary WG endpoint).  Set PROXMOX_B_FALLBACK_HOST to enable.
+        "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
         "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
         "token_secret": os.environ.get("PROXMOX_B_TOKEN_SECRET", ""),
     },
 ]
 PROXMOX_NODES = [n for n in PROXMOX_NODES if n.get("token") or n.get("token_secret")]
 
+# TK-176d6efe: retry constants
+_MAX_RETRIES = int(os.environ.get("PROXMOX_RETRY_COUNT", "3"))
+_RETRY_BASE_DELAY = float(os.environ.get("PROXMOX_RETRY_BASE_SECONDS", "1.5"))
+_REQUEST_TIMEOUT = int(os.environ.get("PROXMOX_REQUEST_TIMEOUT", "15"))
 
-def _api_get(node, path):
-    host = node["host"]
+# TK-176d6efe: per-node VPN health cache (shared across collect_all_nodes calls)
+_vpn_status_cache: dict[str, dict] = {}
+
+
+def _build_headers(node):
+    """Build Proxmox API auth headers for a node config."""
     token = node.get("token", "")
     if token:
-        headers = {"Authorization": f"PVEAPIToken={token}"}
-    else:
-        tid = node.get("token_id", "")
-        tsec = node.get("token_secret", "")
-        headers = {"Authorization": f"PVEAPIToken={tid}={tsec}"}
+        return {"Authorization": f"PVEAPIToken={token}"}
+    tid = node.get("token_id", "")
+    tsec = node.get("token_secret", "")
+    return {"Authorization": f"PVEAPIToken={tid}={tsec}"}
 
+
+def _do_request(host, headers, path, timeout=_REQUEST_TIMEOUT):
+    """Single request attempt.  Returns data dict or None."""
     try:
         resp = requests.get(
             f"https://{host}:8006/api2/json/{path}",
-            headers=headers, timeout=15, verify=False,
+            headers=headers, timeout=timeout, verify=False,
         )
         if resp.status_code == 200:
             return resp.json().get("data", {})
@@ -49,13 +71,79 @@ def _api_get(node, path):
     return None
 
 
+def _api_get(node, path):
+    """Fetch *path* from *node*, trying primary → fallback with retries.
+
+    TK-176d6efe: each host is tried up to _MAX_RETRIES times with
+    exponential backoff.  If the primary fails all retries and a
+    fallback_host is configured, the fallback gets the same treatment.
+    """
+
+    headers = _build_headers(node)
+    hosts_to_try = [node["host"]]
+
+    fallback = node.get("fallback_host", "")
+    if fallback and fallback != node["host"]:
+        hosts_to_try.append(fallback)
+
+    last_error = None
+
+    for host in hosts_to_try:
+        for attempt in range(1, _MAX_RETRIES + 1):
+            result = _do_request(host, headers, path)
+            if result is not None:
+                # Update VPN status cache for this node
+                _vpn_status_cache[node["name"]] = {
+                    "host_used": host,
+                    "reachable": True,
+                    "checked_at": datetime.now(timezone.utc).isoformat(),
+                    "attempts": attempt,
+                }
+                return result
+
+            last_error = f"no response from {host} after {attempt} attempt(s)"
+            if attempt < _MAX_RETRIES:
+                delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                time.sleep(delay)
+
+        # Mark this host as failed in cache before trying fallback
+        _vpn_status_cache[node["name"]] = {
+            "host_used": host,
+            "reachable": False,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "attempts": _MAX_RETRIES,
+            "error": "unreachable",
+        }
+
+    return None
+
+
+def get_vpn_status(node_name=None):
+    """TK-176d6efe: Return cached VPN/tunnel status for one or all nodes.
+
+    Returns: dict node_name → {reachable, host_used, checked_at, attempts, error?}
+    """
+    if node_name:
+        v = _vpn_status_cache.get(node_name)
+        return {node_name: v} if v else {}
+    return dict(_vpn_status_cache)
+
+
 def collect_node_health(node):
     h = {"node": node["name"], "host": node["host"], "reachable": False,
          "checked_at": datetime.now(timezone.utc).isoformat()}
 
+    # TK-176d6efe: include fallback info
+    if node.get("fallback_host"):
+        h["fallback_host"] = node["fallback_host"]
+
     node_info = _api_get(node, "nodes")
     if not node_info:
         h["error"] = "unreachable"
+        # TK-176d6efe: merge VPN/tunnel status into health record
+        vpn = _vpn_status_cache.get(node["name"])
+        if vpn:
+            h["vpn_status"] = vpn
         return h
     h["reachable"] = True
 

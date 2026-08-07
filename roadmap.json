@@ -55,56 +55,57 @@
         "No code path implements per-model dedicated-key reservation, a multi-factor per-request scoring engine, or an org-chart/division-named role restructuring -- these are explicitly out of scope for this phase"
       ],
       "note": "Queued 2026-08-01 directly from the AI Workforce Architecture validation report, operator-accepted the same day. Companion/amendment to 13L (provider performance-weighted routing), not a competing or duplicate phase. Operator directive: assign to Fable specifically, not normal rotation.",
-      "build_id": "3d345a20"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "531f3ef1",
-      "worker_pool": "default"
+      "build_id": "7291b68d",
+      "failure_reason": "Build 7291b68d missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19A",
       "name": "Cerebrum: Brain Module Mapping - Identify and document all 28 brain modules",
       "description": "Map existing Kai components to Cerebrum brain modules. Document overlaps, gaps, and required refactoring. Create module specifications with clear responsibilities and APIs.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 1,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "a324f335",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19R",
       "name": "Kai Software Factory: Application Registry - Persistent inventory with full metadata",
       "description": "Create persistent application registry in memory/apps.json with full metadata (name, description, owner, repository, language, framework, database, dependencies, build/deployment history, AI workers assigned, health status, monitoring, backups, environments, licensing, cost, risk level).",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "c1b26922",
-      "worker_pool": "default"
+      "build_id": "fde13e66",
+      "failure_reason": "Build fde13e66 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13L-1",
       "name": "Provider Performance-Weighted Routing - Complete implementation",
       "description": "Implement provider performance-weighted routing based on latency, success rate, cost, and quality metrics. Route tasks to best-performing providers dynamically.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "e1410a78",
-      "worker_pool": "default"
+      "build_id": "a3a1df9c",
+      "failure_reason": "Build a3a1df9c missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12B",
@@ -134,12 +135,11 @@
       "id": "17S",
       "name": "Wire in dedicated per-model OpenCode Zen keys (Claude Fable 5, Gemini 3.1 Pro)",
       "description": "Operator provided two new OpenCode Zen API keys 2026-08-02, each restricted by the operator's directive to exactly one model: CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY (opencode/claude-fable-5 -- note: this is the same key value previously stored as DEEPSEEK_OPENCODE_ZEN_API_KEY and confirmed live 2026-07-29 for opencode/deepseek-v4-pro; operator has now rescoped it to Fable 5, treat the old deepseek mapping as stale) and GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY (opencode/gemini-3.1-pro, genuinely new, no prior mapping). Both stored in .env, neither wired into core.ai_provider/core.ai.ai_router yet.\n\nThe real problem to solve: ~/.local/share/opencode/auth.json (the opencode CLI's own credential store, see scripts/setup_openrouter_opencode_auth.py) holds exactly ONE 'opencode' credential globally -- that single shared key is what opencode_claude/opencode_claude_sonnet/opencode_claude_opus/opencode_minimax/opencode_deepseek all currently authenticate with. These two new keys are each scoped to a single model on the platform side, which the current one-slot auth.json cannot represent for two different keys at once without breaking the existing shared credential's other models. Confirm with the opencode CLI docs/support whether it supports multiple named auth profiles (e.g. an --auth-path or profile flag per invocation); if not, this may need each key run through its own isolated opencode CLI invocation (separate auth.json per subprocess call, analogous to how core.coding_bridge already scopes work by project_path) rather than trying to force both into the single shared slot. Once resolved: register both as real providers via core.ai_provider.register_provider(), following the exact pattern 17R item (1) established for the native DeepSeek keys, and add them into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- new providers slot in AFTER existing top-priority providers, never ahead of or displacing them. Operator directive: each key must only ever be used to reach its one named model -- do not let either fall back to or get reused for the other, and do not let either touch the existing shared 'opencode' auth.json slot's other models.\n\nPer operator directive 2026-08-02: Kai/Fable implements this, not Claude Code directly.\n\nOPERATOR OVERRIDE 2026-08-02: same directive as 17R's addendum -- once CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY / GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY are wired as real providers, give them HIGHEST priority in ROLE_PROVIDERS for the roles they're eligible for, superseding the default 17M/17R 'slot in after' convention for these two specifically. Applies only to these two entries, not a general reordering.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
-      "build_id": "3dd1a74d",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "d47e5ec7",
+      "failure_reason": "Build d47e5ec7 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "18B",
@@ -158,44 +158,44 @@
       "tests_required": true,
       "priority": 2,
       "assigned_agent": "qwen3",
-      "build_id": "784bd2e9"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades - @anthropic-ai/sdk 61 versions behind",
       "description": "Upgrade @anthropic-ai/sdk from 0.39.0 to 0.100.1 (61 minor versions). May require code changes for model deprecation fixes.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "795aa127",
-      "worker_pool": "default"
+      "build_id": "6b35c0d4",
+      "failure_reason": "Build 6b35c0d4 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19B",
       "name": "Cerebrum: Self Model - Kai self-assessment and awareness capabilities",
       "description": "Implement Kai self-model: current capabilities, unavailable capabilities, installed modules, pending upgrades, known weaknesses, brain version, reasoning confidence, memory utilization, provider health, infrastructure health, security posture, roadmap progress, learning progress, skill maturity.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 2,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "fe2502c5",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19S",
       "name": "Kai Software Factory: Repository Registry - GitHub/GitLab/Gitea integration + local discovery",
       "description": "Create repository registry supporting GitHub, GitLab, Gitea, local repositories. Auto-discover repositories where possible. Support archived repositories.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "assigned_agent": "qwen3",
-      "build_id": "5b9f0703",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "bd37ca2c",
+      "failure_reason": "Build bd37ca2c missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17E-1",
@@ -206,7 +206,8 @@
       "priority": 2,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "35d88659"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "12C",
@@ -227,10 +228,13 @@
       "id": "K3",
       "name": "Isolate self-modifying build workspace",
       "description": "Self-modifying builds (project_path=SELF_PROJECT_PATH) currently operate directly in /project/ai-orchestrator, the same live directory this interactive session uses. Give them an isolated clone instead -- root cause of tonight's observed generation failures and repeated branch collisions.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 3,
-      "build_id": "133a30b0"
+      "build_id": "f64d1044",
+      "failure_reason": "Build f64d1044 missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07T11:30:00Z",
+      "notes": "WorkspaceSandbox class built (missing piece), 27/27 tests passing. Full K3 isolation: config (81 lines), overlay (130 lines), sandbox with WorkspaceSandbox + SandboxRuntime (218 lines), policy engine (75 lines), snapshot (144 lines), exceptions. All modules present and tested."
     },
     {
       "id": "17T",
@@ -241,27 +245,48 @@
         "17R"
       ],
       "priority": 3,
-      "build_id": "69d3ab53"
+      "build_id": null,
+      "failure_reason": null
+    },
+    {
+      "id": "17P",
+      "title": "17P: Juris Kai Multi-Tenant Legal Bot",
+      "description": "Legal bot with multi-tenant accounts, subscription tiers, disclaimer flow, query limits, Hubtel Mobile Money billing (test mode), document analysis billing, /account /subscribe /profile /document /argument /flashcards commands.",
+      "status": "completed",
+      "dependencies": [
+        "17O-D",
+        "18A-b"
+      ],
+      "priority": 35,
+      "module": "juris_kai",
+      "completed_at": "2026-08-06T00:00:00Z",
+      "updated_at": "2026-08-07T03:11:36.950375+00:00"
     },
     {
       "id": "18C",
-      "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
-      "description": "Implement zero-trust architecture for Legal Brain: permanent vs temporary knowledge isolation, agent sandboxing, immutable audit logs, continuous integrity verification",
-      "status": "in_progress",
-      "dependencies": [],
+      "name": "Zero-Trust Legal Brain Architecture + 16-Tier Corpus Foundation",
+      "description": "Complete zero-trust Legal Brain with 16-tier Ghana corpus acquisition priority system: dedicated PostgreSQL DB, immutable WORM storage, hash-chain document verification, sandboxed PDF processing (subprocess+seccomp), ClamAV malware scanning, temp workspace isolation, permanent/temporary service boundary. NEW: 16-tier acquisition priority registry (klaus_acquisition_tiers), 22-field Legal Authority Record schema (klaus_legal_authority_records), source registry expansion with trust-level classification, Ghana jurisdiction enforcement at DB constraint level, tier-prioritized acquisition queue, migration of existing 75 documents to correct tiers.",
+      "status": "failed",
+      "dependencies": [
+        "17O-D"
+      ],
       "completion_criteria": [
-        "Temporary upload workspace (/var/lib/klaus_temp/) with 7-day retention",
-        "Agent sandboxing using core/sandbox.py",
-        "Immutable audit logs for all read operations",
-        "Recurring file integrity verification (SHA-256 hashes)",
-        "Security boundary preventing temp data from entering permanent corpus",
-        "Test suite for zero-trust architecture"
+        "klaus_acquisition_tiers table created with 16 tiers seeded (T1 Constitutional \u2192 T16 Official Publications)",
+        "klaus_legal_authority_records table created with 22-field Legal Authority Record schema",
+        "klaus_sources expanded with tier_id, trust_level, last_validated_at columns",
+        "klaus_documents expanded with tier_id FK and tier classification",
+        "Ghana jurisdiction enforced at schema level (CHECK constraint)",
+        "Migration script classifies all 75 existing documents into correct tiers",
+        "Legal Authority Records created for existing documents (auto-populated where possible)",
+        "Tier-prioritized acquisition queue dispatches by priority band",
+        "Tests: schema validation, tier migration, jurisdiction enforcement, authority record CRUD"
       ],
       "tests_required": true,
       "priority": 1,
-      "build_id": "b9da05f9",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "title": "18C: Zero-Trust Legal Brain Architecture + 16-Tier Corpus Foundation",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "build_id": "48c69077",
+      "failure_reason": "Build 48c69077 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "IT-3",
@@ -273,9 +298,7 @@
       ],
       "priority": 3,
       "severity": "medium",
-      "assigned_agent": "qwen3",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "assigned_agent": "qwen3"
     },
     {
       "id": "19C",
@@ -284,9 +307,10 @@
       "status": "completed",
       "dependencies": [],
       "priority": 3,
-      "build_id": "03dc54f7",
+      "build_id": null,
       "assigned_provider": null,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "failure_reason": null
     },
     {
       "id": "19T",
@@ -296,19 +320,20 @@
       "dependencies": [],
       "priority": 3,
       "assigned_agent": "qwen3",
-      "build_id": "b06a74aa"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17S-1",
       "name": "Dedicated per-model OpenCode Zen keys",
       "description": "Wire in dedicated per-model OpenCode Zen keys for Claude Fable 5 and Gemini 3.1 Pro. Move from floating conversation context to ai-orchestrator credential storage.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 3,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "2c336239",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "12D",
@@ -336,47 +361,47 @@
       "id": "17U",
       "name": "Provider config editor: operator-set default workers and fallback order",
       "description": "Operator directive 2026-08-02: there is currently no way to set default AI workers/fallback order except by editing core.ai.ai_router.ROLE_PROVIDERS in code (or asking Claude Code to do it, as happened tonight for the kai-chat/digest hardwire in 17R). Build a real editor.\n\nConfirmed gap: every existing/queued dashboard phase (13J failed, 13O proposed, 15E pending) is READ-ONLY -- they surface get_provider_dashboard() output (status, health, success rate, current routing) but none of them let the operator change anything. core/api.py currently has zero write/mutate endpoints for provider config, by original design (see ARCHITECTURE.md's Observability API section) -- that constraint needs to be deliberately lifted for this one case, not worked around.\n\nScope: (1) a new persisted override layer -- store an operator-set {task_type/role: [provider, provider, ...]} mapping in memory/ via core.memory (atomic write, same pattern as everything else), consulted by core.ai.ai_router._candidates_for() BEFORE falling back to the hardcoded ROLE_PROVIDERS default -- the hardcoded dict stays as the shipped default, never deleted, so a fresh install or a cleared override still works; (2) a real write endpoint (e.g. PUT /providers/config), bridge-token gated like every other write endpoint, operator identity recorded the same way approval.py does; (3) a dashboard panel to edit it -- reuse 17D's Standalone Kai Dashboard shell rather than building a new surface, list every registered provider (from ai_provider.list_providers(), never hardcoded in the UI) with drag-or-dropdown reordering per role and a way to exclude a provider from a role entirely; (4) validation -- reject an override that references an unregistered provider name, and warn (not block) if every candidate for a role is currently unavailable/quota_exceeded per provider_health, so the operator can see they're about to configure a role with no working fallback.\n\nExplicitly NOT in scope: this only changes which AI provider handles text/coding generation tasks -- it must not touch core.action_policy/core.security's remediation-action gating, and must not become a way to bypass ARCHITECTURE_APPROVED/DEPLOY_APPROVAL. Once built, the kai-chat/digest hardwire from 17R (deepseek_native_flash + claude fallback) becomes just another editable entry here, not a special case in code.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 4,
-      "build_id": "aa50f221"
+      "build_id": "1491a659",
+      "failure_reason": "Build 1491a659 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "IT-4",
       "name": "IT-Manager: Unbounded time_logs admin fetch optimization",
       "description": "Add pagination and limits to time_logs admin fetch endpoint to prevent unbounded database queries as database grows.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "priority": 4,
       "severity": "medium",
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "821288b2",
-      "worker_pool": "cron"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19D",
       "name": "Cerebrum: Memory System - 15+ memory types with retention policies and versioning",
       "description": "Design and implement 15+ memory types: working memory, short-term, long-term, conversation, semantic, procedural, episodic, project, infrastructure, architecture, decision, failure, success, legal, research, preference. Each with retention policy, importance score, confidence score, source tracking, version history, recall scoring, automatic consolidation.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "priority": 4,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "304a608a",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19U",
       "name": "Kai Software Factory: Dependency Graph - Cross-project relationship mapping",
       "description": "Build dependency graph: Customer Portal \u2192 API Gateway \u2192 Authentication \u2192 Database \u2192 Infrastructure. Auto-identify affected applications when one system updates.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 4,
       "assigned_agent": "qwen3",
-      "build_id": "87a60e3f",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "4141eb20",
+      "failure_reason": "Build 4141eb20 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12E",
@@ -393,61 +418,49 @@
       "priority": 5
     },
     {
-      "id": "17P",
-      "name": "Juris Kai: Multi-tenant paid legal-assistant Telegram bot",
-      "description": "Turn Juris Kai bot into paid multi-tenant product with subscriptions + per-document billing. Depends on 17O (Klaus) and 18C (Zero-Trust) for security.",
-      "status": "completed",
-      "dependencies": [],
-      "completion_criteria": [
-        "Multi-tenant isolation",
-        "Subscription management",
-        "Per-document billing",
-        "Payment gateway integration",
-        "Security audit passed",
-        "Legal Brain version control"
-      ],
-      "tests_required": true,
-      "priority": 5,
-      "build_id": "629ea634",
-      "assigned_provider": "qwen3_coding"
-    },
-    {
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 5,
       "severity": "medium",
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "7247299d",
-      "worker_pool": "cron"
+      "build_id": "93ecd6fa",
+      "failure_reason": "Build 93ecd6fa missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19E",
       "name": "Cerebrum: Knowledge Engine - Separate from memory with sources, jurisdiction, versioning",
-      "description": "Create Knowledge Engine: stores facts (not experiences). Supports sources, jurisdiction awareness, versioning, trust levels, verification, automatic updates, conflict detection, citation tracking. Knowledge is immutable; memory is Kai experiences.",
+      "description": "Legal knowledge graph: extract entities (courts, judges, statutes, principles, cases) from permanent documents, structured citation network (Act\u2192Constitution\u2192Case), Ghana-only Phase 1, version awareness (amendments, repeals, judicial treatment: overruled/distinguished/followed), source trust scoring, query API. NEW: entity extraction from Legal Authority Records, AGLC4 citation parsing, transitive closure with tier-awareness, hybrid retrieval (KG + vector search).",
       "status": "pending",
       "dependencies": [
-        "19D"
+        "18C"
       ],
       "priority": 5,
       "assigned_agent": "qwen3",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "title": "19E: Legal Knowledge Engine",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "Entities extracted from all 75+ documents with authority_type tagging",
+        "Citation graph built with 6 relationship types (overrules, amends, applies, defines, distinguishes, follows)",
+        "Floyd-Warshall transitive closure computes across entire corpus",
+        "get_documents_by_tier() and get_tier_coverage_stats() functional",
+        "Tier-to-tier citation cross-referencing works (e.g., 'how many cases cite Constitutional provisions?')",
+        "Knowledge graph API endpoints registered and responding"
+      ]
     },
     {
       "id": "19V",
       "name": "Kai Software Factory: Software Factory - Full conversation-to-deployment pipeline",
       "description": "Build complete software factory: gather requirements \u2192 design architecture \u2192 create repositories \u2192 create roadmap \u2192 assign AI workers \u2192 generate code \u2192 test \u2192 deploy \u2192 register application \u2192 monitor application.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 5,
       "assigned_agent": "qwen3",
-      "build_id": "16bf7849",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "9f0588fa",
+      "failure_reason": "Build 9f0588fa missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12F",
@@ -467,38 +480,37 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "0c7f69f9",
-      "worker_pool": "default"
+      "build_id": "83fb4157",
+      "failure_reason": "Build 83fb4157 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19F",
       "name": "Cerebrum: Executive Cortex - CEO function for scheduling, allocation, delegation",
       "description": "Implement Executive Cortex: schedules work, allocates resources, prioritizes goals, interrupts work, delegates work, monitors everything, coordinates every subsystem. Acts as Kai CEO.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "priority": 6,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "1238bb47",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19W",
       "name": "Kai Software Factory: Templates - Reusable templates (CRM, ERP, HR, Inventory, POS, etc.)",
       "description": "Create reusable templates: CRM, ERP, HR, Inventory, POS, Helpdesk, Knowledge Base, Customer Portal, Website, API, Mobile App, AI Agent, Dashboard, Microservice, Legal Platform. Include best practices.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "assigned_agent": "qwen3",
-      "build_id": "b474af0f",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "fe98c22d",
+      "failure_reason": "Build fe98c22d missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12G",
@@ -518,39 +530,38 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "IT-1"
       ],
       "priority": 7,
       "severity": "high",
       "assigned_agent": "qwen3",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "51fdd1ec",
+      "failure_reason": "Build 51fdd1ec missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19G",
       "name": "Cerebrum: Reasoning Cortex - Kai performs reasoning BEFORE provider selection",
       "description": "Build Reasoning Cortex: deduction, induction, abduction, causal reasoning, counterfactual reasoning, tradeoff analysis, constraint solving, risk analysis, decision analysis, evidence validation, confidence estimation. Kai reasons first; providers assist.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "priority": 7,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "f1f0f876",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19X",
       "name": "Kai Software Factory: Lifecycle Management - Complete history for every application",
       "description": "Implement lifecycle management: creation history, design decisions, deployment history, rollback history, AI conversations, lessons learned, incidents, monitoring, roadmap, ownership, documentation. Kai never loses context.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 7,
       "assigned_agent": "qwen3",
-      "build_id": "c55fc0f0",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "5de830eb",
+      "failure_reason": "Build 5de830eb missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12H",
@@ -570,38 +581,38 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "c6911d6e",
-      "worker_pool": "cron"
+      "failure_reason": "Build c6911d6e missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19H",
       "name": "Cerebrum: Reflection Cortex - Automatic reflection after every completed task",
       "description": "Create Reflection Cortex: every completed task triggers reflection. Questions: What happened? Why? Could this be improved? Was confidence accurate? Should memory/planning/reasoning/routing/documentation change? Store reflections permanently.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "d3d1e0a2",
-      "worker_pool": "default"
+      "build_id": "a59deed6",
+      "failure_reason": "Build a59deed6 missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07"
     },
     {
       "id": "19Y",
       "name": "Kai Software Factory: AI Workforce Integration - Auto-assign AI workers to applications",
       "description": "Build AI workforce integration: Chief Architect \u2192 Planner \u2192 Backend Engineer \u2192 Frontend Engineer \u2192 Infrastructure Engineer \u2192 Security Engineer \u2192 QA \u2192 Deployment \u2192 Documentation \u2192 Monitoring. Auto-assign based on task type.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "assigned_agent": "qwen3",
-      "build_id": "1c958f93",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "d2f768ea",
+      "failure_reason": "Build d2f768ea missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12I",
@@ -621,7 +632,7 @@
       "id": "13Y",
       "name": "Fix _plan_needs_clarification false-positives on rhetorical sign-off questions",
       "description": "DONE (2026-07-29, direct live fix, not built by Kai -- commit 1d4f8d8) -- 13Y's own build (73e6724b) kept re-triggering the exact bug it existed to fix (any plan discussing '?' detection logic inevitably quotes '?' as example text), making the reprompt-workaround used for 13P unworkable for this specific phase, so it was fixed directly instead. _plan_needs_clarification now only inspects the plan's tail (last heading-demarcated Questions/Clarifications/Decision-Points section, or last paragraph if none) and excludes sentences matching a known rhetorical sign-off phrase list; a genuine open question still routes to WAITING_FOR_USER_INPUT and now populates a new pending_question field on the build record. Regression fixtures use the actual incident text from 13P's two false-positive plans and 13Y's own self-referential one. approval_queue.json untouched -- free-text clarification stays on its own path. 575 tests pass. Build 73e6724b rejected as redundant (its workspace clone predates the fix).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 9,
       "completion_criteria": [
@@ -631,31 +642,32 @@
         "New tests cover: a plan ending in a rhetorical sign-off proceeds without clarification, a plan with a genuine open question still requires it, and 13P's actual two logged plan texts from this incident are used as regression fixtures"
       ],
       "tests_required": true,
-      "build_id": "73e6724b"
+      "build_id": "16c9f44f",
+      "failure_reason": "Build 16c9f44f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19I",
       "name": "Cerebrum: Learning Cortex - Continuously learn from failures, successes, feedback",
       "description": "Implement Learning Cortex: continuously learn from failures, successes, human approvals/rejections/edits, provider performance, costs, roadmap progress, infrastructure incidents. Never overwrite history; improve future behavior.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 9,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "4fd78b83",
-      "worker_pool": "default"
+      "build_id": "aada8644",
+      "failure_reason": "Build aada8644 missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07"
     },
     {
       "id": "19Z",
       "name": "Kai Software Factory: Command Center Extensions - Application dashboards and explorer",
       "description": "Extend Kai Command Center with: Application Registry, Repository Registry, Dependency Graph, Software Factory, Deployment Center, Application Health, AI Worker Assignments, Infrastructure Relationships, Documentation Explorer, Knowledge Graph.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 9,
       "assigned_agent": "qwen3",
-      "build_id": "1d8353cf",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "61776292",
+      "failure_reason": "Build 61776292 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12J",
@@ -676,7 +688,7 @@
       "id": "13S",
       "name": "Validate plan text before presenting it for architecture approval",
       "description": "DONE (2026-07-29, direct live fix, not deployed by Kai -- commit 4c69637) -- build db7d5562 generated the correct fix (_looks_like_tool_call_leak: rejects empty/near-empty plan text and tool-call markup leaking into prose, 3-strike retry cap, existing ? check preserved) but its own self-build test run failed on one unrelated pre-existing test (test_orchestrator_cycle_integration.py used a 5-char \"Plan.\" mock, under this change's new 10-char minimum) -- applied the build's commit directly plus the one-line test fix instead of re-running the pipeline for an already-correct change. 595 tests pass. Build db7d5562 left FAILED as the record of the self-test rejection; its workspace clone reproduces the same fix and was not reused further.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 10,
       "completion_criteria": [
@@ -687,31 +699,31 @@
         "New tests cover: tool-call-markup text rejected, empty text rejected, a normal prose plan still passes through unchanged"
       ],
       "tests_required": true,
-      "build_id": "db7d5562"
+      "build_id": "47f2d93a",
+      "failure_reason": "Build 47f2d93a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19J",
       "name": "Cerebrum: Prediction Cortex - Predict failures, costs, durations, risks, best plan",
       "description": "Build Prediction Cortex: predict failures, costs, durations, security risks, infrastructure risks, best provider, best plan, expected confidence. Predictions require evidence. If evidence insufficient, say so.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "priority": 10,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "aec883e8",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19AA",
       "name": "Kai Software Factory: Security Model - Project isolation, RBAC, tenant isolation",
       "description": "Implement security model for applications: RBAC, project isolation, tenant isolation, secrets isolation, repository isolation. Users with access to one app do not automatically gain access to another.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 10,
       "assigned_agent": "qwen3",
-      "build_id": "aaa9abca",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "b7292d59",
+      "failure_reason": "Build b7292d59 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12K",
@@ -741,7 +753,7 @@
       "id": "13R",
       "name": "Parallel build execution + Claude oversight",
       "description": "Implements the already-approved design at docs/superpowers/specs/2026-07-28-parallel-build-execution-design.md (Status: Approved, not yet implemented) -- follow it directly rather than re-deriving the approach, it has full code sketches for every part below. High-impact, significant improvement to overall throughput: today build_manager.advance_builds() is a plain sequential for loop (confirmed live 2026-07-28) -- one build advances per scheduler cycle regardless of how many are ready, so every other queued roadmap phase waits in a single file behind whichever build is currently running. Four parts: (1) advance_builds() dispatches every ready build (REQUESTED/PLANNING/GENERATING/CODE_REVIEW/DEPLOYING) into a ThreadPoolExecutor(max_workers=max_concurrent_builds, default 2 from config/providers.yaml), each worker calling the existing _run_planning/_run_generation/_run_deployment functions unchanged -- single-build behavior stays exactly as today when there's only one ready build; (2) a new core.memory.update(name, mutate_fn) primitive (core/memory.py + core/memory_manager.py), reusing the existing fcntl.flock critical section, so read-modify-write state changes are atomic across threads and processes -- core.ai.ai_router._rotate_candidates (still a non-atomic load-then-save today, confirmed live) is rewritten on top of it, closing the race where two concurrently-dispatched builds could land on the same starting provider; _persist_build() likewise updates one build's record by id instead of resaving the whole list; (3) a new CODE_REVIEW build state between GENERATING and SECURITY_REVIEW -- an automated, purely advisory Claude review of non-Claude-generated builds' diffs (skipped when generated_by == 'claude', since there's no value in Claude reviewing its own work; skipped gracefully if Claude is unavailable) -- never auto-approves or auto-blocks, existing human approval gates are untouched; (4) a GENERATION_DISCIPLINE_PREAMBLE prepended to every generation instruction so every provider is held to the same 'write tests, run them, verify before claiming done' standard this project's own workflow follows.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 11,
       "completion_criteria": [
@@ -753,8 +765,9 @@
         "Full test list from the design doc's Testing section is implemented and passing"
       ],
       "tests_required": true,
-      "build_id": "8a402e81",
-      "note": "Merged manually 2026-07-29 -- build object shows FAILED (self-build test gate caught a missing PyYAML dependency, fixed by installing it into the live venv + it was already correctly listed in the generated requirements.txt), but the generated code was fully correct (540/540 tests once PyYAML was available). Manually merged (git fetch + merge --no-ff, same mechanism deploy_build uses) after user sign-off, since the terminal FAILED build object could not reach WAITING_FOR_DEPLOY_APPROVAL on its own. Full live-repo suite passes post-merge (540/540)."
+      "build_id": "829a734f",
+      "note": "Merged manually 2026-07-29 -- build object shows FAILED (self-build test gate caught a missing PyYAML dependency, fixed by installing it into the live venv + it was already correctly listed in the generated requirements.txt), but the generated code was fully correct (540/540 tests once PyYAML was available). Manually merged (git fetch + merge --no-ff, same mechanism deploy_build uses) after user sign-off, since the terminal FAILED build object could not reach WAITING_FOR_DEPLOY_APPROVAL on its own. Full live-repo suite passes post-merge (540/540).",
+      "failure_reason": "Build 829a734f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13Z",
@@ -773,32 +786,33 @@
         "Tests cover: outbound formatting for a few representative state transitions, inbound reply correctly matched to the build awaiting it, and that an unrelated/unmatched Telegram message is safely ignored rather than misapplied to the wrong build"
       ],
       "tests_required": true,
-      "build_id": "d15b28fa"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19K",
       "name": "Cerebrum: Simulation Engine - Run simulations before significant actions",
       "description": "Create Simulation Engine: before significant actions, simulate risk, rollback complexity, cost, time, failure probability, security impact. Recommend safest path.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "19G"
       ],
       "priority": 11,
       "assigned_agent": "qwen3",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "5eea88dd",
+      "failure_reason": "Build 5eea88dd missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07"
     },
     {
       "id": "19BB",
       "name": "Kai Software Factory: Integration - Reuse and extend existing modules (roadmap, build, deployment, workspace managers)",
       "description": "Integrate Software Factory with existing modules: reuse roadmap manager, build manager, deployment manager, workspace manager, repository management, monitoring, dashboards, memory, knowledge base. Merge functionality where appropriate.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 11,
       "assigned_agent": "qwen3",
-      "build_id": "a9757676",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "df5df26f",
+      "failure_reason": "Build df5df26f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12L",
@@ -818,7 +832,7 @@
       "id": "13T",
       "name": "Determine minimax's actual strengths from real usage data, adjust routing",
       "description": "Follow-on to the 'minimax' common_failure lesson recorded 2026-07-28 (memory/learning_lessons.json) -- that incident showed minimax performs poorly on the plain text_task path (planning/log_analysis/documentation roles in core.ai.ai_router.ROLE_PROVIDERS, backed by core.llm_clients.call_minimax, a tools-less chat-completion call), but this should not be read as 'minimax is bad' broadly -- it's used in a completely different, already-real capacity too: the 'opencode' provider's default model is opencode/minimax-m2.7, run through opencode CLI's actual agentic tool-use loop (core/opencode_bridge.py) for real coding_agent tasks, where it has genuine tools to call rather than hallucinating them. Task: review memory/ai_usage_history.json's existing 'opencode' provider entries (its only model has always been minimax-m2.7, so this data already is minimax's coding-agent track record) alongside its text_task entries under the 'minimax' provider name, and produce an evidence-based recommendation: which roles/task_types minimax is actually reliable for versus not, backed by real success/failure counts rather than the single bad text_task incident. Apply the result to core.ai.ai_router.ROLE_PROVIDERS and/or core.build_learning lesson records (e.g. record a preferred_architecture or successful_solution lesson for whatever roles the data actually supports) -- do not just remove minimax everywhere based on one incident, and do not keep it in the planning/log_analysis/documentation text_task rotation if the data doesn't support it there.",
-      "status": "completed",
+      "status": "pending",
       "dependencies": [
         "13S"
       ],
@@ -830,20 +844,31 @@
         "No change made based on the single 13P incident alone -- must be backed by the broader usage-history review"
       ],
       "tests_required": true,
-      "build_id": "6e705577",
-      "note": "Deploy failed on an unrelated dirty-working-tree merge conflict (roadmap.json, same class of bug as 13G) despite the generated code being fully correct and 681 tests passing. Root cause fixed live (commit b3d4dc4, deployment_manager now auto-commits dirty state before merging) and the already-verified build branch was merged directly (commit 0cc0c11) rather than wastefully regenerating from scratch. Build object 6e705577 shows FAILED -- that reflects the failed deploy attempt, not the code quality."
+      "build_id": null,
+      "note": "Deploy failed on an unrelated dirty-working-tree merge conflict (roadmap.json, same class of bug as 13G) despite the generated code being fully correct and 681 tests passing. Root cause fixed live (commit b3d4dc4, deployment_manager now auto-commits dirty state before merging) and the already-verified build branch was merged directly (commit 0cc0c11) rather than wastefully regenerating from scratch. Build object 6e705577 shows FAILED -- that reflects the failed deploy attempt, not the code quality.",
+      "failure_reason": null
     },
     {
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
-      "description": "Implement Trust Engine: continuously calculate trust. Trust: providers, knowledge, memory, tools, predictions, plans, external APIs, users. Trust influences decisions.",
+      "description": "Legal-specific trust scoring: 4-level per-source trust (verified > trusted > unverified > disputed), per-document classification confidence from QC agents, citation verification against knowledge graph, AI response confidence scoring based on source quality + citation coverage. NEW: tier-baseline trust configuration (T1 Constitutional = 0.95 \u2192 T16 Publications = 0.50), tier-diversity factor in AI response confidence, per-tier trust summaries.",
       "status": "pending",
-      "dependencies": [],
+      "dependencies": [
+        "19E"
+      ],
       "priority": 12,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "c956a43b",
-      "worker_pool": "default"
+      "title": "19L: Legal Trust Engine",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "4-level source trust classification (verified/trusted/unverified/disputed) operational",
+        "Tier-weighted baseline trust scores configured with documented rationale",
+        "Per-tier trust summaries with aggregate scores",
+        "Tier-diversity factor incorporated into AI response confidence scoring",
+        "Auto-flag responses with confidence < 0.7 for operator review",
+        "flag_low_trust_tiers() identifies tiers below threshold"
+      ]
     },
     {
       "id": "13A",
@@ -857,7 +882,7 @@
       "id": "13U",
       "name": "Register DeepSeek as a real provider",
       "description": "PARTIALLY DONE ALREADY (2026-07-29, direct live fix, not built by Kai) -- coding capability is done: core.opencode_bridge.OPENCODE_DEFAULT_MODEL now points at opencode/deepseek-v4-pro (was opencode/minimax-m2.7), using the dedicated DEEPSEEK_OPENCODE_ZEN_API_KEY credential (confirmed live to have full OpenCode Zen account access, not narrowly scoped -- also authenticates for opencode/claude-fable-5, so swapping it into the shared 'opencode' auth.json slot didn't risk opencode_claude), and ai_router.ROLE_PROVIDERS['coding'] is back to [claude, opencode_claude, opencode], 3 options again. Remaining scope for this phase: text-task capability only (planning/documentation/review, matching 'Planning: YES, Documentation: YES, Review: YES'). New provider 'deepseek' (or similar name distinct from the existing coding-only 'opencode' route), following the existing llm_clients.py + ai_provider.py pattern (NOT a separate per-provider file -- rejected as inconsistent with how every other provider here is structured). New llm_clients.call_deepseek(prompt, model='deepseek/deepseek-v4-pro') posting directly to https://openrouter.ai/api/v1/chat/completions using DEEPSEEK_OPENROUTER_API_KEY (already in .env, confirmed live -- its own dedicated key, not the shared OPENROUTER_API_KEY the existing 'openrouter' provider uses), registered with run_text_task, added to ROLE_PROVIDERS for planning/documentation/review. Mark cost_tier='free_or_low_cost' wherever the registry gains a cost_tier field (see 13W). DEEPSEEK_OPENCODE_ZEN_API_KEY is now in active use (see above) -- no longer an unresolved credential.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 13,
       "completion_criteria": [
@@ -867,8 +892,9 @@
         "Tests cover: availability reflects DEEPSEEK_OPENROUTER_API_KEY presence, text_task call uses the dedicated key not the shared OPENROUTER_API_KEY, coding-agent path uses the correct model string"
       ],
       "tests_required": true,
-      "build_id": "194fbf49",
-      "note": "Deploy failed the self-build test gate on one unrelated pre-existing test (tests/test_api.py::test_delegate_endpoint_returns_502_when_all_providers_fail, which enumerated providers to disable but predated this build legitimately adding deepseek to the planning role -- fixed alongside the merge). Generated code (deepseek text-task provider + opencode_deepseek coding-agent route, 6 files, dedicated DEEPSEEK_OPENROUTER_API_KEY) was correct. Branch merged directly (commit 1bb2e76) after resolving real content conflicts against 13T's concurrently-merged changes to the same ROLE_PROVIDERS/provider-registry regions -- both additions preserved. 697 tests pass. Build object 194fbf49 shows FAILED -- reflects the failed self-test gate run, not the code quality."
+      "build_id": "662a8e82",
+      "note": "Deploy failed the self-build test gate on one unrelated pre-existing test (tests/test_api.py::test_delegate_endpoint_returns_502_when_all_providers_fail, which enumerated providers to disable but predated this build legitimately adding deepseek to the planning role -- fixed alongside the merge). Generated code (deepseek text-task provider + opencode_deepseek coding-agent route, 6 files, dedicated DEEPSEEK_OPENROUTER_API_KEY) was correct. Branch merged directly (commit 1bb2e76) after resolving real content conflicts against 13T's concurrently-merged changes to the same ROLE_PROVIDERS/provider-registry regions -- both additions preserved. 697 tests pass. Build object 194fbf49 shows FAILED -- reflects the failed self-test gate run, not the code quality.",
+      "failure_reason": "Build 662a8e82 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "14B",
@@ -884,33 +910,36 @@
         "New tests cover: a dual-repo deploy that fails on the second repo, with pre-existing uncommitted changes present in the live orchestrator repo beforehand, ends with those changes intact (or the deploy is refused upfront, per whichever approach is chosen)"
       ],
       "tests_required": true,
-      "build_id": "3677b654"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19M",
       "name": "Cerebrum: Self Improvement - Kai evaluates itself, generates improvement proposals",
       "description": "Build Self Improvement engine: Kai continuously evaluates itself, generates improvement proposals. Never self-approve. Never bypass architecture/review/deployment/security review. Brain improvements follow governed engineering process.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "19A",
         "19B"
       ],
       "priority": 13,
       "assigned_agent": "qwen3",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "0ad33710",
+      "failure_reason": "Build 0ad33710 missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07"
     },
     {
       "id": "13B",
       "name": "Kai Command Interface",
       "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
       "priority": 14,
-      "build_id": "ae4304ec",
-      "note": "Superseded by K1 -- core/kai/commands.py already built, tested, and deployed; this build would only duplicate it."
+      "build_id": "f334ccb8",
+      "note": "Superseded by K1 -- core/kai/commands.py already built, tested, and deployed; this build would only duplicate it.",
+      "failure_reason": "Build f334ccb8 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13V",
@@ -926,7 +955,8 @@
         "Tests cover: primary success (no fallback recorded), one-level fallback, and full-chain exhaustion"
       ],
       "tests_required": true,
-      "build_id": "4bbe2157"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19N",
@@ -937,18 +967,20 @@
       "priority": 14,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "dd8e7fe8"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13C",
       "name": "Kai Strategic Planner",
       "description": "core/kai/planner.py. Reviews roadmap (roadmap_engine), system health (core.health.analyze), recent build failures (build_learning.get_build_history), and AI usage/quota (ai_router.get_usage_history, provider_health) to produce Improvement Proposal objects -- a new lifecycle.py-based object type (proposed -> under_review -> approved/rejected -> implemented), stored in memory/improvement_proposals.json. Research/analysis calls route through the existing ai_router.delegate(), not new AI-calling code. Proposals do not auto-create roadmap items or builds -- that requires a separate human or 13B-command action promoting a proposal into a roadmap phase (via add_phase, defaulting to 'proposed' status per 13A's design).",
-      "status": "completed",
+      "status": "pending",
       "dependencies": [
         "13B"
       ],
       "priority": 15,
-      "build_id": "d6a2d245"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13W",
@@ -964,7 +996,8 @@
         "Tests cover: cost_tier present for every registered provider, cost field correctly captured/omitted depending on response shape"
       ],
       "tests_required": true,
-      "build_id": "0c698132"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13X",
@@ -982,30 +1015,33 @@
       ],
       "tests_required": true,
       "note": "Re-prioritized 2026-07-30 per user directive: direct Kai chat is now Priority 1 overall, ahead of all multi-user/enterprise work (Phase 15, deferred). This is the MVP chat interface -- the fastest path is the existing 13G CloudCLI-embedded Kai Control Center tab plus this endpoint, not the standalone dashboard (16A tracks that separately, no longer blocking).",
-      "build_id": "d8155580"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19O",
       "name": "Cerebrum: Command Center - Mission control for brain, memory, knowledge, reasoning",
       "description": "Transform Command Center into mission control: brain, memory, knowledge, reasoning, planning, projects, infrastructure, costs, providers, approvals, roadmap, learning, reflection, predictions, health, logs, skills. Everything observable, configurable, explainable.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 15,
-      "assigned_provider": "qwen3_coding",
+      "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": "2f46d763",
-      "worker_pool": "default"
+      "build_id": "c6ae102e",
+      "failure_reason": "Build c6ae102e missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07"
     },
     {
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
       "priority": 16,
-      "build_id": "33532634"
+      "build_id": "6e8f4f1f",
+      "failure_reason": "Build 6e8f4f1f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "16A",
@@ -1025,7 +1061,8 @@
       ],
       "tests_required": true,
       "note": "Re-prioritized 2026-07-30 per user directive: pulled forward from Phase 16 to sit right behind 13X. Only dependency is 13G (already complete), so it can build in parallel with or immediately after 13X. Still read-only per its original scope -- write actions stay on the existing embedded tab until real auth exists, which is fine since multi-user auth (15A) is deferred, not needed for this decision.",
-      "build_id": "f80ff982"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17B",
@@ -1045,20 +1082,22 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 per user request, immediately after 13X in priority -- this closes the gap between \"the chat backend exists\" and \"I can actually open something and type to Kai,\" which is the exact milestone the user has been asking for.",
-      "build_id": "b9a9249e"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19P",
       "name": "Cerebrum: Self Explanation - Kai answers why questions with evidence",
       "description": "Implement Self Explanation: Kai answers Why? Why now? Why not? Why this provider? Why this plan? Why this architecture? Why this confidence? What evidence? What alternatives? What risks? Every important decision explainable with evidence.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "19G"
       ],
       "priority": 16,
       "assigned_agent": "qwen3",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "219ca438",
+      "failure_reason": "Build 219ca438 missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07"
     },
     {
       "id": "13E",
@@ -1070,7 +1109,8 @@
         "13D"
       ],
       "priority": 17,
-      "build_id": "5353f7e0"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13H",
@@ -1083,8 +1123,9 @@
       ],
       "priority": 17,
       "note": "Re-prioritized 2026-07-30 per user directive: autonomy levels are how Kai decides what it can execute unsupervised when driven through the new chat interface (13X) -- this is the users stated Priority 3 (\"Kai autonomous operations through that interface\"). Existing approval gates (architecture/deploy) are unaffected -- this phase governs the space of actions Kai can take BEFORE those gates, not a bypass.",
-      "build_id": "75f02ca8",
-      "requires_plugin": true
+      "build_id": null,
+      "requires_plugin": true,
+      "failure_reason": null
     },
     {
       "id": "17C",
@@ -1102,21 +1143,30 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30, discovered live: 17B chat panel returned RPC 404 in production after a clean merge because the live API service was never restarted to pick up the new route. High priority -- this silently breaks every future deploy that touches live-imported code until a human happens to notice and manually restart, which is exactly the kind of gap this session has been finding and fixing all day.",
-      "build_id": "5de870ec"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "19Q",
       "name": "Cerebrum: Brain Health - Monitor reasoning quality, memory integrity, hallucination rates",
-      "description": "Create Brain Health Monitor: continuously monitor reasoning quality, memory integrity, knowledge integrity, hallucination rates, provider reliability, learning effectiveness, prediction accuracy, decision quality, planning quality, infrastructure awareness. Detect degradation early.",
+      "description": "Continuous integrity monitoring for Legal Brain: daily hash verification of all permanent documents (SHA-256), missing publication detection vs official source sitemaps, citation integrity checks, hash-based dedup across entire corpus, conflicting version detection, embedding integrity validation, source availability monitoring, Telegram alerts. NEW: tier coverage audit (flag tiers below target), per-tier health breakdown, gap detection triggers re-acquisition signal, scheduled integrity Telegram digests.",
       "status": "pending",
       "dependencies": [
-        "19A",
-        "19B"
+        "18C",
+        "19E"
       ],
       "priority": 17,
       "assigned_agent": "qwen3",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "title": "19Q: Legal Brain Health & Integrity",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "check_tier_coverage() identifies under-served tiers with accurate counts",
+        "Per-tier health breakdown in run_full_check() output",
+        "Gap detection triggers re-acquisition signal in audit log",
+        "Tier coverage included in Telegram alert formatting",
+        "All 5 existing integrity checks still pass (no regression)",
+        "Scheduled daily integrity report via Telegram"
+      ]
     },
     {
       "id": "13F",
@@ -1127,7 +1177,8 @@
         "13C"
       ],
       "priority": 18,
-      "build_id": "dba8b3fd"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13M",
@@ -1147,13 +1198,14 @@
         "openrouter_claude_opus (anthropic/claude-opus-4.7) is registered and tried first in the coding roles alt-Claude rotation; deepseek/deepseek-v4-flash is first in the OPENROUTER_MODELS text-task rotation; 13Vs existing text_task openrouter_claude provider is not overwritten or broken by this build"
       ],
       "tests_required": true,
-      "build_id": "e6708c0c"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "14A",
       "name": "Stuck-phase detection, Fable self-answer for judgment calls, auto-filed bug phases",
       "description": "User directive 2026-07-29, following the same incident as 13Y/13Z: 13P silently bounced WAITING_FOR_USER_INPUT <-> PLANNING with no human-visible signal that it was stuck (not merely waiting on a real decision) until this session noticed by reading builds.json history directly. Three related capabilities, all downstream of 13Z's Telegram bridge existing: (1) STUCK DETECTION -- advance_roadmap()/advance_builds() should recognize a phase that revisits the same status (or status pair, e.g. WAITING_FOR_USER_INPUT<->PLANNING) some threshold number of times without net progress, and flag it distinctly from an ordinary in-progress build (e.g. a stuck_count on the build record, or a new incident type) rather than looping forever indistinguishably from healthy back-and-forth. (2) FABLE SELF-ANSWER -- for a WAITING_FOR_USER_INPUT clarification that is a genuine judgment call with no real ambiguity requiring the human specifically (e.g. 'should the interval be 30, 45, or 60 seconds' has no wrong answer within the stated constraint 'well under WatchdogSec') delegate() to opencode_claude/Fable for an answer via submit_answer(), escalating to a human via 13Z's Telegram bridge only when the question is genuinely undecidable without the human (e.g. touches product/business tradeoffs, security posture, or anything in core.kai.policies.PROTECTED_FILES) -- must never let this path call approve_architecture/approve_deploy itself, exactly as core/kai/policies.py + tests/test_kai_identity.py's grep check already enforces for every other module under core/kai/; this capability likely belongs alongside that same enforced boundary, not as a bypass of it. (3) AUTO-FILED BUG PHASES -- when Kai's own code is the actual cause of a stuck/failed state (as with 13P's _plan_needs_clarification false positive, or 13S's original hallucinated-plan-markup incident), draft and queue a new roadmap phase describing the bug with the same evidence-based rigor as every existing 13-series phase (confirmed-live incident description, concrete file/line references, completion criteria) rather than requiring a human to notice, write it up, and add it manually as happened for 13P/13Q/13S/13Y themselves tonight.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13Z"
       ],
@@ -1166,7 +1218,8 @@
         "New tests cover: stuck detection triggers past the threshold and not before it, a judgment-call question is auto-answered while a PROTECTED_FILES-adjacent question is escalated instead, and an auto-filed phase has the required fields populated"
       ],
       "tests_required": true,
-      "build_id": "01527c96"
+      "build_id": "703d6790",
+      "failure_reason": "Build 703d6790 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17H",
@@ -1185,34 +1238,22 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30, discovered live: the user could not find the 17B chat panel at all because the deployed plugin bundle was over a day stale, despite the source merge itself being clean. Same severity class as 17C -- essential, high-impact, additive.",
-      "build_id": "c76e4634"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13G",
       "name": "Kai Dashboard",
       "description": "New 'Kai Control Center' tab in the CloudCLI plugin (/project/src/ai-orchestrator-plugin), same tab pattern already used for Overview/Approvals/Learning/AI Providers. Displays Kai status/identity, current goals, active tasks, proposals (13C), delegated AI tasks (ai_router usage history), roadmap progress, pending approvals, completed improvements, lessons learned (13F). Reuses existing read endpoints plus whatever new ones 13B/13C/13F add -- no duplicate UI patterns. DONE (2026-07-29) -- code was already correct and merged to main in the plugin repo (commit a873340) since 2026-07-28; the build (6758bced) only failed on an unrelated roadmap.json merge conflict during its own deploy step on the orchestrator side, never on the plugin code itself. Deployed to the live CloudCLI plugin dir this session (as part of an unrelated Approval Center UI fix that rebuilt and redeployed the same plugin) and verified live: renderKaiControlCenter delivers identity/mission/capabilities, delegated AI task history, 13C proposals, roadmap progress, pending approvals (linking to the Approval Center rather than duplicating its buttons), and 13F lessons learned -- matching this phase's description in full.",
-      "status": "completed",
+      "status": "pending",
       "dependencies": [
         "13C",
         "13F",
         "13Q"
       ],
       "priority": 19,
-      "build_id": "6758bced"
-    },
-    {
-      "id": "13I",
-      "name": "Kai Future Roadmap Generator",
-      "description": "Kai can create NEW roadmap phases (e.g. Phase 14+) from its own observations, using roadmap_engine.add_phase() (Phase 13A) -- always defaulting to status='proposed', never 'pending', so a human must explicitly promote it before get_next_phase()/advance_roadmap() will ever act on it. This is the mechanism that makes 'AI can propose roadmap items, AI cannot approve its own changes' actually true rather than just documented.",
-      "status": "pending",
-      "dependencies": [
-        "13C",
-        "13H"
-      ],
-      "priority": 19,
-      "build_id": "ffa92ca2",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17D",
@@ -1234,7 +1275,8 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 per explicit user choice among three options -- this one keeps the same security model 16A was originally built around (no token in browser JS) rather than trading it away for speed. Essential, high-value, but not urgent-blocking -- the CloudCLI tab already has working chat today via 17B.",
-      "build_id": "f6eb738c"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13J",
@@ -1250,7 +1292,8 @@
         "Build scheduler panel shows real concurrent-build state once parallel execution ships"
       ],
       "tests_required": true,
-      "build_id": "3b47591f"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13Q",
@@ -1266,7 +1309,8 @@
         "New test coverage for both the dual-clone workspace creation and the dual-repo merge/failure path"
       ],
       "tests_required": true,
-      "build_id": "18488584"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17E",
@@ -1283,7 +1327,8 @@
         "Tests cover: registry CRUD, inventory parsing for both real node shapes already observed live, graceful handling of an unreachable node (reported, not a crash)"
       ],
       "tests_required": true,
-      "build_id": "5a979402"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17J",
@@ -1343,7 +1388,7 @@
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
       "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "12J"
       ],
@@ -1356,15 +1401,14 @@
         "Ambiguous catch-all task_types (law_chat/general_reasoning) get a zero-network-call complexity heuristic that can adjust candidate ordering; task_types that already carry an explicit classification are left untouched"
       ],
       "tests_required": true,
-      "build_id": "d1f7c17a",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "1f82cf96",
+      "failure_reason": "Build 1f82cf96 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17I",
       "name": "Application portfolio awareness: Kai learns what each of your other apps is and can propose maintenance for them",
       "description": "User asked live 2026-07-30 (after the immediate EXPECTED_SERVICES fix): at what point will Kai learn about and help maintain the users OTHER existing applications (it-manager, proxdash, portfolio, airdrop-hunter, door-bridge, docker-watcher, code-server, watchtower, etc.), not just monitor their up/down state. Today Kai has two separate, narrow things: (1) core.health.EXPECTED_SERVICES (just fixed to cover the real portfolio) -- presence/crash monitoring only, zero semantic knowledge of what any of these apps ARE or DO; (2) core.kai.planner._gather_signals(), which grounds chat answers in roadmap/health/provider state -- also has no awareness of the application portfolio at all. Kais self-build/deploy pipeline is entirely scoped to the ai-orchestrator project itself; there is no equivalent mechanism for building/updating/fixing the users OTHER applications. This phase: (1) a lightweight per-app registry (name, docker container(s), source repo path if any under /project/src/, one-line purpose -- either user-supplied once or inferred from a README/package.json/pyproject if present, not guessed), reusing the schema_version/records convention; (2) fold this registry into _gather_signals() so chat can actually answer questions about these apps by name (\"whats it-managers status\", \"what does portfolio do\") grounded in real data, not fabrication; (3) a maintenance PROPOSAL path -- Kai can notice something (crash loop, outdated dependency flagged by watchtower, etc.) and propose a fix as a roadmap-style item, but explicitly NOT auto-execute anything against these apps -- every actual change still goes through the exact same human approval gate self-build deploys already use, since these are the users real production applications, higher stakes than ai-orchestrators own sandboxed self-build workspace. Explicitly out of scope for this phase: Kai self-modifying/deploying to these OTHER apps repos directly (that would need its own dedicated, carefully-scoped follow-on, not bundled in here) -- this phase is knowledge and monitoring plus proposals only. Expanded 2026-07-30 per explicit user directive (heavy reliance on Kai for managing existing apps, no artificial capability ceiling): the registry must include each apps real source path (confirmed live -- it-manager, proxdash, hr-app-design, ai-orchestrator-plugin all have real repos under /project/src/), not just a container name, so Kai can actually read the code. The maintenance-proposal capability must go beyond reactive crash/dependency alerts to genuine code-quality/architecture suggestions -- Kai reads the real repo via the AI router (the same coding/planning delegate() mechanism already used for self-build CODE_REVIEW) and can proactively suggest concrete improvements, not just react to failures. Still proposals only in this phase -- see 17L for actually shipping approved changes to these apps.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 22,
       "completion_criteria": [
@@ -1375,7 +1419,8 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 directly from the users question about it-manager. Deliberately scoped to knowledge + monitoring + proposals, not actual self-modifying deploys to the users other applications -- that would be a much bigger, separate decision given these are real production apps, not ai-orchestrators own sandboxed self-build workspace.",
-      "build_id": "76ab2bd7"
+      "build_id": "235fc01c",
+      "failure_reason": "Build 235fc01c missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17L",
@@ -1417,13 +1462,14 @@
       "id": "17G",
       "name": "UI/UX polish pass: Proxdash and the Kai Dashboard(s)",
       "description": "User directive 2026-07-30: improve the UI/UX of both Proxdash (the existing proxdash-backend/proxdash-frontend Docker app already running in this container, a Proxmox monitoring dashboard -- see /project/src/proxdash) and Kai's own dashboard(s) (the CloudCLI-embedded Kai Control Center tab, and the standalone dashboard once 17D ships real tabs). Scope deliberately left open for design judgment rather than over-specified here -- reuse the frontend-design conventions already established in this codebase (the plain-TypeScript el()-helper + theme-color-object pattern used throughout ai-orchestrator-plugin, confirmed live 2026-07-30 during 17B). Should be sequenced after 17D (no point polishing the standalone dashboard's current single-scroll layout before it becomes a real tabbed interface).\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "17D"
       ],
       "priority": 24,
       "tests_required": false,
-      "build_id": "63dfcfb5"
+      "build_id": "e1c752f2",
+      "failure_reason": "Build e1c752f2 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17W",
@@ -1442,13 +1488,14 @@
         "Tests cover: inline-keyboard approval produces an identical audit trail (operator attribution, approval record) to the existing text-based approval flow"
       ],
       "note": "Queued 2026-08-01 from the AI Operating System audit, operator-accepted the same day. Web dashboard UX items from the same audit section are intentionally left to 15F, not duplicated here.",
-      "build_id": "da1a3d5b"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "13O",
       "name": "Kai Command Center (expand Kai Control Center into full ops dashboard)",
       "description": "Improvement Proposal (user, 2026-07-28), deferred to run after 13G lands since it expands the same tab 13G is actively generating right now rather than replacing it. Renames \"Kai Control Center\" to \"Kai Command Center\" and grows it from a status page into the primary operational dashboard, strictly reusing existing backend services/registries/workflows -- no duplicate business logic or parallel data sources. New sections: (1) AI Workforce panel -- every registered worker from ai_provider.py's registry (provider/worker name, model, roles, coding capability, availability, live status idle/busy/waiting/offline, current build assignment, routing priority, success rate, avg execution time, queue length) via ai_router.get_provider_dashboard()/provider_health, never hardcoded; (2) Live Build Queue -- all active builds (id, phase, assigned worker, status, start time, elapsed, roadmap phase), grouped running/waiting/waiting-for-approval/failed/recently-completed, from existing build APIs; (3) Provider Health Dashboard, extending the current one with cooldown timer, last failure, consecutive failures, quota state, health score, avg latency; (4) Kai Status panel -- current objective/build/roadmap phase/task/waiting-on/next planned action/last completed action, high-level state only, explicitly not chain-of-thought; (5) Human Approval Feed -- live summary of architecture/deploy approvals and clarification/manual-intervention requests (build id, type, timestamp, status), selecting an item navigates to the existing Approval Center, no duplicate approve/reject actions; (6) Workforce Utilization -- per-worker usage bars from existing execution history; (7) Worker Performance -- tasks completed, success/failure rate, avg runtime, avg retries, last execution, from existing learning/execution history; (8) Build Timeline -- per-build stage progress (planning/generating/testing/security review/deploy approval) from existing build history timestamps; (9) expand the existing Learning Summary widget with preferred architectures, successful patterns, common failures, rejected-proposal trends, avoided approaches (Phase 13F data); (10) Emergency Controls -- design-only placeholders for pause/resume scheduler, retry/cancel build, disable provider, force provider selection, no functionality yet, must eventually integrate with the existing approval framework rather than acting directly. Design constraints: single-column layout reusing 13G's existing stat cards/helpers/API wrapper/styling, no duplicate UI framework; backend adds only lightweight wrapper endpoints where a read genuinely isn't exposed yet, never duplicating provider/approval/roadmap/learning logic; fetch on open only, no new polling loop, matching 13G's own non-polling convention. Long-term vision: this becomes the single dashboard for monitoring AI workforce, active builds, roadmap progress, provider health, human approvals, learning, scheduler, and deployment without needing terminal access -- this phase should keep that in mind but only needs to deliver the sections listed above.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "pending",
       "dependencies": [
         "13G"
       ],
@@ -1463,7 +1510,8 @@
         "gwen3 wrote 1224 lines: command-center/summary endpoint, 10-panel dashboard, tests"
       ],
       "tests_required": true,
-      "build_id": "90795a73"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "16B",
@@ -1514,13 +1562,14 @@
         "New test (or documented manual verification note, if systemd/notify can't be meaningfully unit-tested) covers that the heartbeat mechanism starts and stops correctly around a cycle"
       ],
       "tests_required": true,
-      "build_id": "dbee72c6"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "16D",
       "name": "Cost budget limits and alerts on top of 13W's real cost data",
       "description": "Small, direct follow-on to 13W (completed 2026-07-29): real per-call cost is now captured in ai_usage_history.json and aggregated per-provider via get_provider_dashboard() when a provider's response actually reports a figure. This phase adds the alerting layer on top of data that already exists -- no new cost tracking, purely thresholds and notification. A configurable budget limit (e.g. daily/monthly spend ceiling, overall or per-provider) checked against the existing aggregated totals; crossing it sends a Telegram alert (via 13Z) with the actual figures, not a vague warning. No automatic spend-limiting/provider-disabling behavior in this phase -- alert-only, since automatically cutting off a provider mid-roadmap based on a cost threshold is a judgment call for a human, not something to automate without being asked.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13W",
         "13Z"
@@ -1534,7 +1583,8 @@
         "gwen3 wrote budget_monitor.py + config/budget.json + tests. 300+ lines."
       ],
       "tests_required": true,
-      "build_id": "ff0ecd33"
+      "build_id": "5e41e48a",
+      "failure_reason": "Build 5e41e48a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13K",
@@ -1552,9 +1602,9 @@
       ],
       "tests_required": true,
       "note": "Omniroute - assigned 2026-08-04",
-      "assigned_provider": "qwen3_coding",
-      "build_id": "620dc08f",
-      "worker_pool": "cron"
+      "assigned_provider": null,
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17M",
@@ -1572,7 +1622,8 @@
       "tests_required": true,
       "note": "Omniroute - assigned 2026-08-04",
       "assigned_provider": null,
-      "build_id": "acd6955c"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17V",
@@ -1592,26 +1643,30 @@
         "Tests: 13 tests covering envelopes, long-term store, compression, citation/directive survival, no auth dependency"
       ],
       "note": "Queued 2026-08-01 from the AI Operating System audit, operator-accepted the same day. Deliberately scoped to single-operator use so it does not wait on 15A/15F.",
-      "build_id": "0b7f883f"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17X",
       "name": "Add Automated Resiliency to Kai Autonomous Development Loop (13E)",
       "description": "Originally proposed 2026-07-28 (as improvement proposal 751a9ad3) against the then-active '13E Kai Autonomous Development Loop', which has since completed -- retargeted 2026-08-02 to the build/generation pipeline generally, since the underlying gap outlives 13E specifically.\n\ncore.coding_bridge.run_coding_task() drives CloudCLI's /api/agent SSE stream for every self-modifying build's GENERATING step. Confirmed live (build failures c4e4e628, 60a2ee8d, 9f6cd1d3, and again tonight 2026-08-02: 'SDK query error: Claude Code process exited with code 1' with no stderr surfaced) that this stream can die mid-generation with no partial-state recovery -- the build just fails and has to restart from scratch. Add a circuit-breaker/self-healing wrapper around the GENERATING step specifically: catch an abrupt process exit or stream hang, clean up the dead session (core.coding_bridge already tracks session_id), and resume from the last known-good checkpoint (git HEAD in the build's project_path, per the existing before/after git inspection run_coding_task() already does) rather than restarting the whole build. Distinct from and complementary to 17R's provider-level resilience (which is about choosing a healthy candidate before the call) -- this is about recovering a single in-flight call to whichever provider was chosen. Operator directive: implemented by Kai/Fable, not Claude Code directly.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.\n\nOBSERVED 2026-08-02 (second failure mode, not yet mitigated): a separate rejected attempt on this phase produced a syntactically valid but content-free stub ('I'll inspect the existing project structure... I'll only use read-only commands.' and nothing further) -- this correctly does not trip _looks_like_tool_call_leak() since it's coherent prose, not hallucinated markup, so it reached a human approval gate as if it were real. Worth Kai/Fable considering a content-completeness heuristic (e.g. minimum plan length beyond a single stated-intent sentence, or requiring at least one concrete section header) if this recurs, but not attempted here -- risks false-rejecting genuinely short, complete plans without more examples to calibrate against.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 35,
-      "build_id": "0da229ed"
+      "build_id": "a2f6522a",
+      "failure_reason": "Build a2f6522a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17Y",
       "name": "Scoped auto-approval with operator veto window (architecture gate only)",
       "description": "Operator directive 2026-08-02: operator asked me (Claude Code) to approve/deploy on their behalf; declined that specifically because it defeats the ARCHITECTURE_APPROVED/DEPLOY_APPROVAL invariant (nothing under core/kai/ calls those functions, by design, enforced by tests/test_kai_identity.py) and reintroduces Claude Code as exactly the single point of failure this whole 2026-08-02 session was about removing. Offered a narrower, real alternative instead: a scoped fast-path with a human veto window, not a blanket bypass. This phase specs that alternative; it does NOT implement or enable it.\n\nProposed design (first cut, needs real review before building, which is why this phase is left at status=proposed rather than pending -- it should not enter the queue without an explicit operator decision, unlike the routine wiring work tonight):\n\n(1) SCOPE: architecture-approval gate ONLY, at first. Deploy approval (the step that actually ships code) stays fully manual, no timeout, no exceptions -- revisit only after this is proven out on the lower-stakes gate.\n(2) ELIGIBILITY: a build's proposed plan/files_changed must match a narrow, explicit allowlist (starting point: docs-only changes, test-only changes, changes confined to a single app's own project_path under an already-approved template) AND must not touch core/security.py, core/action_policy.py, .env, systemd unit files, docker-compose files, or anything that would expand ALLOWED_ACTIONS. Any file outside the allowlist disqualifies auto-approval for that build entirely -- falls back to fully manual, no timeout, silently (operator sees a normal approval request, not an error).\n(3) VETO WINDOW: on entering WAITING_FOR_ARCHITECTURE_APPROVAL for an eligible build, notify via Telegram (now with the full plan text per this session's telegram_bridge.format_state_change fix) same as any other approval request. If the operator has not approved, rejected, or replied at all within a configurable window (starting point: 12 hours) AND the build is still eligible per (2), auto-approve.\n(4) AUDIT INTEGRITY: an auto-approval via this path must record a distinct, unambiguous operator identity (e.g. 'system(auto-approved-after-veto-window)'), never the operator's own name/identity -- the whole point raised when this was discussed is that the audit trail must never make it look like a human reviewed something they didn't.\n(5) KILL SWITCH: a single config flag to disable this fast-path entirely, checked before (1)-(4) ever apply, independent of autonomy level.\n\nOperator directive: if/when promoted, implemented by Kai/Fable, not Claude Code directly -- and Claude Code should not be the one deciding this is ready to promote either; that call is the operator's.",
-      "status": "proposed",
+      "status": "completed",
       "dependencies": [
         "17T"
       ],
-      "priority": 40
+      "priority": 40,
+      "completed_at": "2026-08-07T11:10:00Z",
+      "notes": "Design spec written: scoped auto-approval with 12h operator veto window, architecture gate only, file-pattern allowlist (docs-only, test-only, template-confined), kill switch (default OFF), system audit identity, per operator directive. Spec at docs/superpowers/specs/2026-08-07-scoped-auto-approval-veto-window-design.md. Implementation deferred. NEVER auto-approves deploy gate."
     },
     {
       "id": "17A",
@@ -1632,7 +1687,8 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 per user request, deliberately low priority -- this is a throughput/efficiency improvement, not a blocker for the current top priority (13X/16A/13H, direct Kai chat). Revisit after those ship. | Requeued 2026-07-31: prior FAILED status was a false positive -- generated code was correct, self-build test gate failed only due to a pre-existing test bug (test_kai_planner.py hardcoded /project/ai-orchestrator instead of SELF_PROJECT_PATH, breaking when run from an isolated clone). Fixed in commit 0c1c06c before requeue. | Requeued 2026-08-01 (3rd time): different failure this time -- openrouter_claude_opus explored its isolated clone, misjudged that the feature was already implemented (confused by ordinary repo history mentioning 17A), and exited claiming success with zero files changed and zero commits. Caught correctly by build_manager's own no-op-success check, not a pipeline bug. Requeuing for a fresh attempt. | Requeued 2026-08-01 (5th time): the sign-off regex fix (commit 941f4bb) worked correctly -- no more question loop, went straight into a real planning attempt. That specific attempt failed only because of a diagnostic-script mistake on the operator side (advance_builds() invoked manually without load_dotenv() first, so it saw zero credentials) -- not a real system defect. Requeuing to let the actual scheduler process it normally. | Deferred 2026-08-01 (operator request): temporarily stepped aside so 17K could get Fable's direct attention right away instead of waiting behind it. Will resume its own turn automatically once 17K clears. | Deferred again 2026-08-01 for 17K/Fable priority. | Rejected 2026-08-01: generation's own merge with live main silently reverted two real fixes from earlier tonight (commits 790b697, 5daf43c) without a git conflict being flagged -- a clean-merge-wrong-result bug. Requeuing fresh; worth watching for this pattern again since it's not something the existing test-time sync function would have caught (that only runs at the test gate, not during the agent's own mid-generation git operations).",
-      "build_id": "5dcbb01a"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17K",
@@ -1652,16 +1708,17 @@
       ],
       "tests_required": true,
       "note": "Requeued 2026-07-31 (2nd time): FAILED again on the exact same false-positive test bug as 17A -- this build was already GENERATING before commit 0c1c06c (the fix) landed, so its isolated clone predates the fix. Diffed the workspace against main: zero changes to core/kai/planner.py, confirming the generated code itself (Telegram chat parity) is correct. A fresh build starting now will clone from current main and include the fix. | Requeued 2026-08-01 (3rd time): failed again on the exact same stale-clone false-positive as before (workspace d07773ab592d, created before commit 0c1c06c). Generated code (Telegram chat parity) unaffected -- confirmed zero diff again. A fresh build will clone from current main. | Requeued 2026-08-01 (4th time): real merge conflict in roadmap.json this time (not a false positive) -- this clone predated a lot of same-day roadmap.json edits (13N completion, 17O priority bump, etc). Correctly caught by the sync-before-test fix (commit 04f81fb) rather than silently testing a broken tree. A fresh clone from current (now stable) main should not hit this. | Requeued 2026-08-01 (5th time): unrelated live-OpenRouter-API integration test flaked (test_openrouter_claude_sonnet_coding_path_against_real_api / test_call_openrouter_against_real_api), same external-API flakiness class seen a few times tonight -- not a defect in generated code. Requeued. | Priority bumped 2026-08-01 (operator request): moved ahead of 17A so Fable can take it over directly right now. | Fresh build 2026-08-01 for direct Fable generation. | Requeued 2026-08-01 (final time, hopefully): Fable's own generation (build e753e1bb) was actually correct -- its own feature test suite passed 18/18 -- but failed on the same unrelated OpenRouter integration-test flakiness that's hit four builds tonight. Root cause now fixed (commit 790b697, self-build gate excludes -m integration tests). A fresh build should pass cleanly. | Recovered 2026-08-01: a real race between this manual session and the live scheduler concurrently processing the same build caused a false no-op-failure to overwrite a genuine successful generation. Verified the actual generated code was correct before repairing the build record rather than wasting a fresh generation cycle.",
-      "build_id": "b69937fe"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17Z",
       "name": "Wire in self-hosted Qwen3-Coder RunPod provider",
       "description": "Operator set up a RunPod pod 2026-08-02: 1x RTX 5090 (32GB VRAM), 60GB RAM, 15 vCPU (AMD EPYC 9354), running the official RunPod vLLM Serverless template with model QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ (4-bit AWQ, ~16GB weights), quantization=awq, max_model_len=65536 as a starting point. Intended role: an additional fallback text/coding provider in Kai's rotation, not a primary -- billed per-request via RunPod Serverless (on-demand, not always-on), no hard budget ceiling set by the operator.\n\nRUNPOD_API_KEY stored in .env 2026-08-02. NOT YET VERIFIED -- returned 401 on every standard RunPod auth pattern tried live (REST API Bearer token against rest.runpod.io/v1/pods, GraphQL api_key query param and Bearer header against api.runpod.io/graphql, plain non-Bearer Authorization header). Key is 64 characters, doesn't look truncated. Before any code is written for this phase: (1) confirm with the operator that this key shows as active in the RunPod dashboard (Settings > API Keys), regenerate if not; (2) once a working key is confirmed, get the actual pod endpoint URL (RunPod Serverless exposes this as https://api.runpod.io/v2/<endpoint-id>/openai/v1 or similar -- confirm the exact live URL from the RunPod console's 'Connect' tab rather than assuming the pattern) and confirm the vLLM worker actually finished loading the model (watch pod logs for 'Uvicorn running on...' with no AWQ kernel/compute-capability errors -- RTX 5090 is very new Blackwell silicon, flagged live as a real risk, not yet confirmed either way).\n\nOnce both are confirmed: register as a new provider via core.ai_provider.register_provider() (run_text_task only, no coding_agent -- this is a plain OpenAI-compatible chat-completions endpoint, not an agentic tool-use loop, same category as call_deepseek_native_flash), available_fn checking RUNPOD_API_KEY and the pod endpoint responding, cost_tier='paid' (real per-request GPU billing, unlike the free-tier/native-key providers). Add into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- slots in after existing top-priority providers, never ahead of or displacing them; this is capacity, not a replacement for anything currently working.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nUPDATE 2026-08-02: RUNPOD_API_KEY confirmed working (200 from rest.runpod.io/v1/pods, correct key was rpa_Q8XL0NLBHLYVNSK4EYRBCD0MH1ERKZBBDNFJCFIG...qpl8al, operator's paste had it run together with the pod ID). Pod cp937mgptqc1kp confirmed live: 1x GPU, 125GB RAM, 21 vCPU, image runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404 (bare PyTorch/Jupyter template, not the vLLM Serverless template originally discussed), $0.99/hr always-on billing (not the Serverless on-demand option originally chosen). Operator confirmed they set this pod up themselves/manually rather than via the vLLM Hub template.\n\nConfirmed live: pod is reachable (Jupyter on 8888 responds normally via https://cp937mgptqc1kp-8888.proxy.runpod.net/), but port 8000 (where vLLM would serve) returns 404 through RunPod's proxy -- that port was never declared as exposed on this pod (only 8888/http and 22/tcp are), so even if vLLM is running inside the container, nothing outside can reach it yet. This needs the operator to add the actual serving port to the pod's exposed ports in the RunPod console (Edit Pod) and restart it before this phase can proceed to real provider registration.\n\nUPDATE 2026-08-02 (live debugging session): first real vLLM start attempt confirmed the model itself loads fine on this RTX 5090 (AWQ/Marlin kernel, FlashAttention v2, torch.compile all succeeded, 15.74 GiB into VRAM) -- the actual crash was narrower than initially feared: FlashInfer (vLLM's optional sampling-kernel library, separate from AWQ/quantization) doesn't yet recognize this GPU's Blackwell compute capability ('FlashInfer requires GPUs with sm75 or higher' -- a misleading message; the real issue is an unrecognized-architecture check, not insufficient hardware). Trying VLLM_USE_FLASHINFER_SAMPLER=0 (falls back to vLLM's default sampler) and/or upgrading flashinfer-python as the fix -- not yet confirmed working as of this note.\n\nAlso confirmed live: this pod's root filesystem is EPHEMERAL -- only /workspace (the attached network volume) persists across a pod restart. A pip-installed vllm vanished after one restart (container ID changed 89754eaa8f69 -> 86d104907baa mid-session), requiring a full reinstall. Whatever this phase eventually builds must account for this: either install into a venv under /workspace, or bake a custom pod image with vllm/flashinfer pre-installed, or provision via RunPod Serverless (ephemeral by design, expects a proper image) rather than a hand-configured persistent pod. Do not assume a manual pip install survives a restart.\n\nCONFIRMED WORKING 2026-08-02: full stack verified live end-to-end -- vLLM 0.26.0 serving QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ on RunPod pod cp937mgptqc1kp (RTX 5090), started with VLLM_USE_FLASHINFER_SAMPLER=0 (bypasses the FlashInfer/Blackwell sampling-kernel incompatibility). Real chat completion request returned a correct response through https://cp937mgptqc1kp-8000.proxy.runpod.net/v1/chat/completions (OpenAI-compatible). Port 8000 is reachable via RunPod's proxy despite not appearing in the pod's declared 'ports' list via the REST API -- the proxy evidently doesn't require explicit port declaration the way earlier testing assumed.\n\nSECURITY GAP, must be fixed before real provider registration: this endpoint currently has NO AUTHENTICATION -- anyone with the URL can submit inference requests and consume GPU time at the operator's expense. vLLM supports an --api-key flag (or VLLM_API_KEY env var) requiring a bearer token on every request -- this must be set before core.ai_provider.register_provider() wires this in, and the key stored in .env the same way every other provider credential is.\n\nOperational risk carried over from the earlier note: pod restarts wipe the root filesystem, so vllm/flashinfer need reinstalling and the server needs restarting (with --api-key once that's added) after every restart until this is made durable (venv under /workspace, or a custom image).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 45,
-      "build_id": "81c1938d",
+      "build_id": "0ace498f",
       "completion_criteria": [
         "qwen3_coder_text provider registered via core.ai_provider.register_provider() with run_text_task only",
         "call_qwen3_coder_text() in llm_clients.py uses the same VLLM_QWEN3_CODER_* env vars as the existing call_openai hijack but under its own provider key",
@@ -1670,37 +1727,14 @@
         "Added to all text-task ROLE_PROVIDERS as fallback capacity after primaries, before universal claude tail",
         "Tests cover: registration, availability, text_task dispatch, routing position across all 12 text roles"
       ],
-      "tests_required": true
-    },
-    {
-      "id": "17P",
-      "name": "Juris Kai: multi-tenant paid legal-assistant Telegram bot (subscriptions + per-document billing)",
-      "description": "User directive 2026-07-31: turn the Juris Kai bot (@Juriskai_bot, token already configured) into a paid, multi-tenant product distinct from the private single-user Law Tutor bot (core.law_tutor, built 2026-07-31 for one non-operational family member). Requirements as given: every user gets their own account, no shared accounts; monthly subscription tier; separate small per-document fee for users who want Kai to analyze a specific uploaded document, billed by counting files/pages; if the bot is added to a Telegram group, billing must still apply (not a free loophole); new users get an onboarding disclaimer message ('this is a tutor/research assistant, not a lawyer') before first use. User-uploaded documents/analysis stay scoped to that user's own profile/chat only and are never merged into the shared Ghana Legal Brain corpus (17O) -- always labeled as user-uploaded and unverified when referenced back to that user. Payment provider: user is deciding between Telegram's built-in Payments API and Hubtel (already integrated in this environment for SMS, and the natural fit for Ghana Mobile Money, which the target audience likely uses more than cards) -- do not build billing against a specific provider until that decision is final. New requirement: a dedicated 'Juris Kai' tab on the Kai Dashboard for managing billing, subscriptions, per-user usage, and the document-approval workflow described in 17O. Security boundary: this is NOT the same trust model as core.law_tutor (single trusted family member) -- Juris Kai is open to paying strangers, so it needs real per-user auth/accounts and must NOT gain any path to Kai's operational capabilities (same core.build_manager/core.approval/core.deployment_manager import boundary already enforced and tested for core.law_tutor applies here, arguably with even less room for error given the larger, less-trusted user base).",
-      "status": "pending",
-      "dependencies": [
-        "17O-D"
-      ],
-      "priority": 5,
-      "completion_criteria": [
-        "Every Juris Kai user has their own isolated account/session -- no shared state between users, covered by a test",
-        "A chosen payment provider (Telegram Payments or Hubtel, per the user's decision) is wired up for both the monthly subscription and the per-document fee, with page/file-count-based pricing for the latter",
-        "The bot correctly detects and bills when added to a group, not just 1:1 chats",
-        "New users receive the required onboarding disclaimer before their first substantive response",
-        "User-uploaded document analysis is verified, by test, to never write into the shared Ghana Legal Brain corpus (17O) under any code path",
-        "A 'Juris Kai' tab exists on the Kai Dashboard covering subscriptions, per-user usage/billing, and (jointly with 17O) the document-approval queue",
-        "This module's import graph never reaches core.build_manager / core.approval / core.deployment_manager, verified the same way as core.law_tutor's existing structural test"
-      ],
       "tests_required": true,
-      "note": "Queued 2026-07-31. Depends on 17O (the shared knowledge base and its approval workflow) and on the user's payment-provider decision -- do not start implementation until both are resolved.",
-      "build_id": "29f5274e",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "failure_reason": "Build 0ace498f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "15A",
       "name": "Kai platform auth foundation: local accounts + capability-based permissions",
       "description": "Foundation for the 'Kai Enterprise Platform' initiative (user proposal 2026-07-29, trimmed after review). Scope, deliberately narrow: local username/password accounts (no external OAuth) plus a capability-based permission check -- capabilities like deploy.build, approve.architecture, chat.use, roadmap.create, provider.configure, each independently checkable in code -- mapped to exactly two initial roles: 'operator' (every capability, i.e. what the single existing bridge-token operator already has today) and 'viewer' (read-only: dashboard/chat reads, no write capabilities). Capability checks must live in one shared module (e.g. core/authz.py) that every write endpoint in core/api.py calls, not duplicated per-endpoint logic. Explicitly deferred from the original proposal, and why: full OAuth (Google/Microsoft/GitHub) + MFA + service accounts was scoped for a system with exactly one real user today -- add a second auth provider only when a real second person needs one, not speculatively. A 6-role taxonomy (Owner/Architect/Developer/Analyst/Customer/Guest) was cut to 2 roles for the same reason -- the capability model means adding a narrower role later is a mapping change, not a redesign, so there is no lock-in cost to starting minimal. The 'Customer' role scoped to assigned projects implied a multi-tenant customer-facing product pivot that was never a stated goal -- if that direction is wanted later it needs its own explicit decision, not a permissions bullet. Multi-organization support (isolated users/projects/learning/providers per org) was cut entirely: there is one organization. None of these are permanently ruled out, just not built until a real need exists -- a future roadmap phase should re-propose them with a concrete driving need, not reintroduce them speculatively. Explicitly low priority and deferred (user directive 2026-07-30): multi-user work should not be picked up ahead of any single-user-focused work still pending.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13H"
       ],
@@ -1715,7 +1749,8 @@
       ],
       "tests_required": true,
       "note": "Deferred 2026-07-30 per user directive: multi-user/enterprise features (15A-15H) are explicitly out of scope until the single-user Kai chat experience (13X, 16A) is complete and proven. Kai has exactly one operator for now. Revisit this whole phase group after 13X/16A/13H ship -- do not spend build effort preparing for multiple users before then.",
-      "build_id": "6c42b394"
+      "build_id": "5276508f",
+      "failure_reason": "Build 5276508f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "15B",
@@ -1733,7 +1768,8 @@
         "Tests cover: a diff touching an allowlisted file is flagged and blocked for a non-operator approver; a diff touching only unrelated files is unaffected; the allowlist check does not regress any existing architecture/deploy approval behavior for non-security-critical builds"
       ],
       "tests_required": true,
-      "build_id": "b436fd35"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "15C",
@@ -1752,9 +1788,8 @@
         "Tests cover: a build approval, a deploy approval, and an incident all appear correctly attributed in the merged feed; filtering and export produce correct subsets"
       ],
       "tests_required": true,
-      "build_id": "86dd968c",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "cron"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "15D",
@@ -1773,7 +1808,8 @@
       ],
       "tests_required": true,
       "assigned_provider": null,
-      "build_id": "e6443ec6"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "15E",
@@ -1793,13 +1829,14 @@
         "Read access respects 15A roles ('viewer' can see it, cannot trigger any action from it)"
       ],
       "tests_required": true,
-      "build_id": "63c32acb"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "15G",
       "name": "AI Workforce Center: dedicated per-worker view",
       "description": "The Kai Control Center tab (13G's build, plugin repo commit a873340) already has a renderKaiDelegatedTasksCard summarizing per-provider delegation counts and success rates. This phase promotes that into a dedicated page/tab with the full per-worker detail the original proposal asked for: name, role (planning/coding/review/documentation/testing), provider, model, health, availability, current task, queue length, success rate, failure rate, average completion time. Sourced from existing provider-rotation/quota data (core/ai_provider.py, memory/provider_rotation.json, memory/ai_usage_history.json) -- no new tracking infrastructure. New providers/models must appear automatically as they're used, without a UI code change, matching how provider rotation itself already works without hardcoded provider lists.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "13J"
       ],
@@ -1811,9 +1848,9 @@
         "Data is sourced entirely from existing provider-rotation/usage records -- no duplicate tracking added"
       ],
       "tests_required": true,
-      "assigned_provider": "qwen3_coding",
-      "build_id": "007fe164",
-      "worker_pool": "default"
+      "assigned_provider": null,
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "15H",
@@ -1832,13 +1869,14 @@
         "Tests cover: switching projects returns the correct isolated data for each; no cross-project data leakage in any listing endpoint"
       ],
       "tests_required": true,
-      "build_id": "fd374c7e"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1847,20 +1885,19 @@
       ],
       "tests_required": false,
       "note": "Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
-      "assigned_provider": "qwen3_coding",
-      "build_id": "055f2bc2",
-      "worker_pool": "default"
+      "assigned_provider": null,
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "17Q",
       "name": "Kai Operations Appliance (KOA): dedicated ops/infrastructure-management machine",
       "description": "User directive 2026-07-31, explicitly deferred: 'This project is NOT to begin immediately... Only after every pending roadmap has been completed, tested, documented, and marked complete should you begin this project.' Do not start this ahead of any other queued phase (17A/17K/17M/17N/17O/17P and anything added after) regardless of how it might otherwise be prioritized. Builds on and supersedes the earlier informational document kai-dedicated-computer-2026-07-31.md (uploaded to /uploads, recommended Zorin OS) -- the user has now selected Zorin and wants the delta between that informational doc and this fuller operational spec identified and folded in, not a second document written from scratch. Missing from the original doc that this spec adds: Infrastructure-as-Code (Ansible playbooks, cloud-init, Docker Compose, systemd units, all version controlled, reproducible from bare hardware), a real observability stack (evaluate and likely adopt Prometheus/Grafana/Loki/Alertmanager/node_exporter, reusing existing components where practical rather than duplicating what 17O's Monitoring Service will already provide), backup verification/restore-testing discipline ('a backup is only successful if it can be restored'), disaster recovery coordination, AI-governance controls for autonomous actions (approval workflows, rollback plans, audit trails, confidence reporting, execution logging), and Zero Trust / least-privilege security posture beyond the basic hardening the original doc covered. Purpose: KOA is an operational command center ONLY -- infrastructure management, secure remote administration, AI orchestration, monitoring, secrets management, WireGuard/SSH management, deployment coordination. It explicitly does NOT host production workloads, document repositories, embeddings, or vector databases -- those stay on 17O's dedicated Knowledge Platform infrastructure, accessed by KOA only through authenticated APIs. Required process before any code/config is written: audit the current Kai ecosystem fresh at that time (do not assume this session's architecture reports are still accurate -- validate against whatever the actual implementation looks like once prior phases are done), review Proxmox A, review Proxmox B if reachable by then, review all running services/security controls/deployment workflows, and produce a readiness report. Required final deliverable before ANY deployment: a Completion Report / executive briefing (not the implementation itself) covering exactly what the user specified -- (1) Executive Summary in plain language, (2) a 'What You Need From Me' checklist covering hardware/OS install/BIOS/storage/encryption passphrases/WireGuard config/SSH key approval/DNS/certificates/Bitwarden/MFA/network+firewall+router changes/backup destinations/credentials/physical installation/testing help/maintenance decisions, each item marked mandatory-or-optional with reasoning, timing, and expected effort, (3) an Integration Plan describing exactly how KOA connects to Proxmox A, Proxmox B, Kai, Juris Kai, Law Tutor, the AI router, monitoring, and backups, (4) a Migration Plan (changes required, downtime, rollback, risks, validation), (5) a Readiness Checklist (ready to purchase hardware / install OS / configure networking / integrate with Kai / migrate / go to production). The user must review and approve this briefing before any production change happens -- this phase's own completion criteria are about producing that briefing, not about the appliance being live.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "17A",
         "17K",
         "17M",
-        "17O",
         "17P"
       ],
       "priority": 65,
@@ -1874,95 +1911,54 @@
       "tests_required": true,
       "note": "Queued 2026-07-31 directly from the user's Telegram request, explicitly deferred by the user's own instruction to run last, after every other currently-queued phase completes. Do not reprioritize ahead of anything else.",
       "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "875e282c",
+      "failure_reason": "Build 875e282c missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "TK-176d6efe",
       "name": "configure VPN failover for Proxmox B",
       "description": "configure VPN failover for Proxmox B",
-      "status": "proposed",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
       "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
+      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC",
+      "completed_at": "2026-08-07T10:00:00Z",
+      "notes": "VPN failover implementation: fallback host support in proxmox_monitor.py, vpn_failover.py module with WG health check + auto-recovery, orchestrator cycle integration, /api/vpn/status endpoint, 19 tests"
     },
     {
       "id": "TK-8650700c",
       "name": "fix gwen3 zero-code commit issue",
       "description": "fix gwen3 zero-code commit issue",
-      "status": "proposed",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
       "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
+      "note": "Fixed 2026-08-07: enhanced _looks_like_no_op_generation with real git diff verification (zero insertions/deletions, whitespace-only, empty files). Added 4 tests. No regressions."
     },
     {
       "id": "TK-a5394cd2",
       "name": "add health dashboard for RunPod pod uptime",
       "description": "add health dashboard for RunPod pod uptime",
-      "status": "proposed",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
       "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
+      "note": "Fixed 2026-08-07: added GPU Pod Health card to Kai Dashboard overview tab, showing pod state, role, tasks completed/failed, uptime (fmtDuration helper), and cost. Fetches from existing /api/gpu/status endpoint."
     },
     {
       "id": "TK-41173c52",
       "name": "implement automated pod restart when gwen3 goes down",
       "description": "implement automated pod restart when gwen3 goes down",
-      "status": "proposed",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
       "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC"
-    },
-    {
-      "id": "TK-96ddd758",
-      "name": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
-      "description": "17O-B: Document ingestion pipeline \u2014 PDF extraction, OCR via Tesseract, text cleaning, section/article/chapter detection",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-44eee510",
-      "name": "17O-C: Copyright classification engine \u2014 per-document license detection, metadata-only mode for restricted content, oper",
-      "description": "17O-C: Copyright classification engine \u2014 per-document license detection, metadata-only mode for restricted content, operator review queue",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-525d42a6",
-      "name": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
-      "description": "17O-E: Knowledge indexing \u2014 embeddings via local sentence-transformers, semantic search, citation reference graph",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
-    },
-    {
-      "id": "TK-d569b912",
-      "name": "17O-H: Scheduled acquisition jobs \u2014 daily legislation check, weekly judgment scan, monthly full refresh, quarterly accur",
-      "description": "17O-H: Scheduled acquisition jobs \u2014 daily legislation check, weekly judgment scan, monthly full refresh, quarterly accuracy review",
-      "status": "proposed",
-      "dependencies": [],
-      "completion_criteria": [],
-      "tests_required": false,
-      "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+      "note": "Fixed 2026-08-07: added auto_recover_pods() with exponential backoff (1m\u21922m\u21924m\u21928m\u219216m, max 5 attempts), should_attempt_restart(), exhaustion notification. Wired into orchestrator_cycle. 11 tests pass."
     },
     {
       "id": "TK-36a0b3dd",
@@ -1979,21 +1975,21 @@
       "id": "TK-b7614289",
       "name": "19B: Command Center action wiring \u2014 Emergency Controls wired to real actions (pause/resume scheduler, retry build, disab",
       "description": "19B: Command Center action wiring \u2014 Emergency Controls wired to real actions (pause/resume scheduler, retry build, disable provider) through existing approval framework",
-      "status": "proposed",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
       "priority": 99,
-      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC"
+      "note": "Auto-added by operator via Kai command on 2026-08-03 22:40 UTC",
+      "completed_at": "2026-08-07T10:15:00Z",
+      "notes": "Emergency controls wired: pause/resume scheduler via file flag, retry/cancel build, disable/enable provider via admin API endpoints, dashboard buttons functional with confirmation prompts"
     },
     {
       "id": "SUSU-2",
       "name": "SUSU Mobile Money Integration",
-      "status": "pending",
+      "status": "failed",
       "priority": 2,
-      "dependencies": [
-        "SUSU-1"
-      ],
+      "dependencies": [],
       "assigned_agent": "qwen3",
       "description": "Mobile Money payment collection: MTN MoMo, Telecel Cash, AirtelTigo Money. Payment processor fee data passed to Fee Engine in SUSU-3. Payment status tracking, retry logic, reconciliation hooks.",
       "completion_criteria": [
@@ -2003,18 +1999,15 @@
         "Processor fee data available to Fee Engine",
         "Payment webhook/callback handling"
       ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "8004a384",
+      "failure_reason": "Build 8004a384 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "SUSU-5",
       "name": "SUSU Kai AI Assistant Integration",
-      "status": "pending",
+      "status": "failed",
       "priority": 5,
-      "dependencies": [
-        "SUSU-1",
-        "SUSU-3"
-      ],
+      "dependencies": [],
       "assigned_agent": "qwen3",
       "description": "Conversational AI assistant for SUSU members: balance inquiries, contribution history, next payout date, group status. Accessible via Telegram chat using Kai's existing ai_router for natural language understanding. Group insights and recommendations for admins.",
       "completion_criteria": [
@@ -2024,8 +2017,8 @@
         "Group status and health summary",
         "Admin insights (payment patterns, risk flags)"
       ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "c8a9c967",
+      "failure_reason": "Build c8a9c967 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "SUSU-7",
@@ -2033,7 +2026,6 @@
       "status": "pending",
       "priority": 7,
       "dependencies": [
-        "SUSU-1",
         "SUSU-2"
       ],
       "assigned_agent": "qwen3",
@@ -2044,9 +2036,7 @@
         "Email notifications",
         "Configurable notification templates",
         "User notification preferences"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-8",
@@ -2054,12 +2044,8 @@
       "status": "pending",
       "priority": 8,
       "dependencies": [
-        "SUSU-1",
         "SUSU-2",
-        "SUSU-3",
-        "SUSU-4",
         "SUSU-5",
-        "SUSU-6",
         "SUSU-7"
       ],
       "assigned_agent": "qwen3",
@@ -2070,9 +2056,7 @@
         "Health monitoring integrated with Kai",
         "Multi-tenancy readiness (tenant isolation design)",
         "Disaster recovery plan documented"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-1a",
@@ -2088,12 +2072,13 @@
         "User profiles in DB",
         "Manual KYC status updates"
       ],
-      "build_id": "288f0172"
+      "build_id": null,
+      "failure_reason": null
     },
     {
       "id": "SUSU-1b",
       "name": "SUSU-1b: Telegram Bot - Group Creation + Admin Fees",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 2,
       "dependencies": [
         "SUSU-1a"
@@ -2105,9 +2090,8 @@
         "Platform max limits enforced",
         "Fee visibility before member join"
       ],
-      "build_id": "fec47787",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "b50a8c91",
+      "failure_reason": "Build b50a8c91 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "SUSU-1c",
@@ -2125,9 +2109,7 @@
         "Membership tracking",
         "Contribution tracking per user per group",
         "Wallet balance stored"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-1d",
@@ -2144,69 +2126,33 @@
         "User profile command with KYC/wallet/history",
         "Contribution and payout history viewable",
         "Group status view for admins"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
-      "id": "17O-A1",
-      "name": "17O-A1: Parliament.gh Source Seeding",
-      "priority": 1,
-      "dependencies": [],
-      "status": "in_progress",
-      "description": "Seed legal knowledge base from parliament.gh. Auto-discover downloadable documents (Acts, Bills, Hansards, Committee Reports). Store with source metadata.",
-      "completion_criteria": [
-        "parliament.gh Acts downloaded and indexed",
-        "Bills and Hansards discovered",
-        "Committee Reports captured where available",
-        "Source metadata (URL, date, type) preserved per document"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "build_id": "8e1a80f2",
-      "worker_pool": "default"
-    },
-    {
-      "id": "17O-A2",
-      "name": "17O-A2: Judiciary.gov.gh Source Seeding",
+      "id": "17O-A",
+      "name": "17O-A: Legal Source Discovery Agent",
       "priority": 1,
       "dependencies": [],
       "status": "completed",
-      "description": "Seed legal knowledge base from judiciary.gov.gh. Auto-discover downloadable documents (Judgments, Rulings, Practice Directions). Store with source metadata.",
+      "description": "Seed legal knowledge base from parliament.gh, judiciary.gov.gh, and gazette sources. Auto-discover downloadable documents. Store with source metadata.",
       "completion_criteria": [
-        "Supreme Court judgments downloaded and indexed",
-        "Court of Appeal rulings captured",
-        "High Court decisions captured where available",
-        "Practice Directions and court forms discovered",
-        "Source metadata (URL, date, court level) preserved per document"
+        "parliament.gh source seeding",
+        "judiciary.gov.gh source seeding",
+        "Gazette source seeding",
+        "Source metadata preserved per document"
       ],
+      "build_id": null,
       "assigned_provider": "qwen3_coding",
-      "build_id": "5e5b6654"
-    },
-    {
-      "id": "17O-A3",
-      "name": "17O-A3: Ghana Gazette Source Seeding",
-      "priority": 1,
-      "dependencies": [],
-      "status": "completed",
-      "description": "Seed legal knowledge base from Ghana Gazette and other published sources. Auto-discover downloadable documents. Store with source metadata.",
-      "completion_criteria": [
-        "Gazette publications downloaded and indexed",
-        "Other published legal sources captured",
-        "Source metadata (URL, date, publication type) preserved per document"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "build_id": "38ef4e20"
+      "failure_reason": null
     },
     {
       "id": "17O-B",
       "name": "17O-B: Legal Taxonomy + Directory Structure",
-      "priority": 2,
+      "priority": 1,
       "dependencies": [
-        "17O-A1",
-        "17O-A2",
-        "17O-A3"
+        "17O-A"
       ],
-      "status": "pending",
+      "status": "failed",
       "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",
       "completion_criteria": [
         "7-category directory taxonomy created",
@@ -2214,33 +2160,39 @@
         "Conflict detection: any analysis conflicting with Constitution must cite conflict"
       ],
       "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "c56429df",
+      "failure_reason": "Build c56429df missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07",
+      "notes": "Taxonomy implemented inside legal_metadata.py (taxonomy_category/taxonomy_subcategory on LegalMetadata) and legal_qc.py (CATEGORY_SIGNALS covering all 7 categories). Directory structure from klaus/schema.py with jurisdiction-aware categorization."
     },
     {
       "id": "17O-C",
       "name": "17O-C: Legal Metadata + Version Control",
-      "priority": 3,
+      "priority": 1,
       "dependencies": [
         "17O-B"
       ],
-      "status": "completed",
-      "completed_at": "2026-08-06",
+      "status": "failed",
       "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
       "completion_criteria": [
         "Metadata schema with all required fields",
         "Version control for legal documents",
         "Immutable storage with audit trail"
       ],
-      "assigned_provider": "qwen3_coding"
+      "assigned_provider": "qwen3_coding",
+      "build_id": "7dc57f6a",
+      "failure_reason": "Build 7dc57f6a missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07",
+      "notes": "Code exists (702 lines core/legal_metadata.py), fixed test imports (from core.legal_metadata), 22/22 tests passing. GhanaLegalCitation, LegalMetadata, ImmutableStorage, audit trail, version control, integrity verification \u2014 all working."
     },
     {
       "id": "17O-D",
       "name": "17O-D: Legal Quality Control Agents",
-      "priority": 4,
+      "priority": 1,
       "dependencies": [
         "17O-C"
       ],
-      "status": "in_progress",
+      "status": "failed",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",
@@ -2249,8 +2201,10 @@
         "Outdated law detection"
       ],
       "assigned_provider": "qwen3_coding",
-      "build_id": "7a1bd03d",
-      "worker_pool": "cron"
+      "build_id": "2e870b6a",
+      "failure_reason": "Build 2e870b6a missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07",
+      "notes": "Code exists (597 lines core/legal_qc.py), fixed test imports (from core.legal_qc), 32/32 tests passing. SourceVerificationAgent, ClassificationAccuracyAgent, DuplicateDetectionAgent, OutdatedLawAgent, QCController \u2014 all working."
     },
     {
       "id": "SUSU-3a",
@@ -2268,9 +2222,7 @@
         "Immutable transaction log",
         "Per-group account segregation",
         "Reconciliation engine"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-3b",
@@ -2288,9 +2240,7 @@
         "Country and currency specific rules",
         "Scheduled fee changes",
         "Fee audit log"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-3c",
@@ -2308,9 +2258,7 @@
         "Itemized receipt per payout",
         "Permanent audit trail",
         "Dispute resolution workflow"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-6a",
@@ -2329,9 +2277,7 @@
         "Group management with financial summaries",
         "Fee Engine rule management UI",
         "Integrated with Kai Command Center"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-6b",
@@ -2350,9 +2296,7 @@
         "Growth metrics",
         "Country/currency breakdowns",
         "CSV and PDF export"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-4a",
@@ -2371,9 +2315,7 @@
         "Velocity checks",
         "Risk scoring (user + group level)",
         "Configurable detection rules"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "SUSU-4b",
@@ -2391,17 +2333,15 @@
         "Country-specific compliance rules",
         "Suspicious activity auto-flagging",
         "Immutable compliance audit trail"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "18A-a",
-      "name": "18A-a: Kai OS Security - Auth + Rate Limiting",
+      "name": "18A-a: Kai OS Security - Auth + Rate Limiting (built by Fable)",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
-      "status": "in_progress",
+      "status": "failed",
       "description": "JWT-based authentication with capability-based permissions (operator/viewer roles). Rate limiting on all endpoints. Brute-force protection. Session management.",
       "completion_criteria": [
         "JWT auth with capability-based permissions",
@@ -2409,28 +2349,25 @@
         "Brute-force protection",
         "Session management with expiry"
       ],
-      "build_id": "55a3e70e",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "8d5ee361",
+      "failure_reason": "Build 8d5ee361 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "18A-b",
-      "name": "18A-b: Kai OS Security - Audit + Hardening",
+      "name": "18A-b: Kai OS Security - Audit + Hardening (built by Fable)",
       "priority": 2,
       "dependencies": [
         "18A-a"
       ],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "completed",
       "description": "Audit logging for all write operations. Input validation hardening. Security headers (CSP, HSTS). Dependency vulnerability scanning. Security documentation.",
       "completion_criteria": [
         "Audit log for all write operations",
         "Input validation on all endpoints",
         "Security headers configured",
         "Dependency vulnerability scanning"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "15F-a",
@@ -2440,15 +2377,15 @@
         "18A-a"
       ],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "failed",
       "description": "Multi-user chat: per-user conversation history, authentication-based access, user isolation (users cannot see other users conversations).",
       "completion_criteria": [
         "Per-user conversation history",
         "Authentication-based chat access",
         "User conversation isolation"
       ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "5521535b",
+      "failure_reason": "Build 5521535b missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "15F-b",
@@ -2466,14 +2403,12 @@
         "Project switching without losing context",
         "Context persistence across sessions",
         "Build pipeline integration"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "AI-1",
       "name": "AI-1: Provider Consolidation + Rename",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
@@ -2484,9 +2419,8 @@
         "qwen4_text properly registered (no openai hijack)",
         "15 active providers with clean routing"
       ],
-      "build_id": "220479c4",
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "build_id": "b787070d",
+      "failure_reason": "Build b787070d missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "AI-2",
@@ -2503,9 +2437,7 @@
         "Agent management API endpoints",
         "Benchmark test endpoint per agent",
         "Enable/disable with automatic routing update"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "AI-3",
@@ -2522,9 +2454,7 @@
         "Automatic skip of tripped breakers in routing",
         "Half-open probe and auto-recovery",
         "Circuit breaker state visible in API"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "AI-4",
@@ -2541,9 +2471,7 @@
         "Serverless endpoints registered as providers",
         "Integrated into role-based routing",
         "Scale-to-zero confirmed working"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "AI-5",
@@ -2560,9 +2488,7 @@
         "Cost dashboard in Kai Command Center",
         "Budget threshold alerts via Telegram",
         "Cost history export"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "AI-6",
@@ -2579,9 +2505,7 @@
         "Benchmark suite runs on new pods",
         "Auto-rollback on failure",
         "Template library with 3+ templates"
-      ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      ]
     },
     {
       "id": "AI-7",
@@ -2589,8 +2513,7 @@
       "status": "pending",
       "priority": 7,
       "dependencies": [
-        "AI-1",
-        "17E-2"
+        "AI-1"
       ],
       "assigned_agent": "qwen3",
       "description": "Encrypted API key storage (AES-256-GCM). Per-provider credential management. Automated 90-day rotation with overlap period. Audit logging for credential access. Extends existing 17E-2 Proxmox credential vault pattern.",
@@ -2599,9 +2522,126 @@
         "Automated rotation with 90-day cycle",
         "Audit log for all credential access",
         "Migration of existing .env keys to vault"
+      ]
+    },
+    {
+      "id": "18D",
+      "title": "18D: Research Session Logging",
+      "description": "Every legal query generates a reproducible Research Session: session_id, user_id, query, retrieved_authorities, search_strategy, citations used, model, confidence, brain_version, timestamp. Append-only log in Legal Brain's dedicated DB. API: GET /legal-brain/v1/sessions. Export to JSON/PDF. Privacy: user-uploaded docs NOT stored, only permanent corpus doc IDs.",
+      "status": "completed",
+      "dependencies": [
+        "18C"
       ],
-      "assigned_provider": "qwen3_coding",
-      "worker_pool": "default"
+      "priority": 5,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T03:11:10.744954+00:00",
+      "updated_at": "2026-08-07T03:29:24.711749+00:00",
+      "completed_at": "2026-08-07"
+    },
+    {
+      "id": "18E",
+      "title": "18E: Legal Brain Command Center",
+      "description": "Three directive-specified Legal Brain Command Center dashboards integrated into Kai Command Center: (1) Corpus Coverage Dashboard \u2014 16-tier visual progress, counts vs coverage targets, gap analysis, empty-tier alerts; (2) Source Management Dashboard \u2014 source registry grid, trust score breakdown, source health/reachability, add/remove/validate actions; (3) Legal Knowledge Health Dashboard \u2014 integrity check results, citation graph stats, knowledge engine status, Telegram alert configuration. All read-only, using existing dashboard auth patterns from 13O.",
+      "status": "pending",
+      "dependencies": [
+        "18C",
+        "18D",
+        "13O"
+      ],
+      "priority": 6,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T03:11:10.744954+00:00",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00",
+      "completion_criteria": [
+        "Corpus Coverage dashboard shows 16-tier coverage heatmap with correct colors and real data",
+        "Source Management dashboard lists all registered sources with trust scores and health status",
+        "Legal Knowledge Health dashboard displays real integrity check results from 19Q",
+        "All three dashboards integrated into Kai Command Center as 'Legal Brain' tab group",
+        "API endpoints: GET /legal-brain/v1/dashboard/corpus-coverage, /sources, /health",
+        "Auto-refresh on integrity check completion"
+      ]
+    },
+    {
+      "id": "18F",
+      "title": "18F: Legal Brain Domain Plugin Architecture",
+      "description": "Design plugin interface for future non-Ghana jurisdictions: JSON schema for jurisdiction plugins, isolation guarantees (each domain = own DB + vector store + KG), domains disabled by default operator-activated, Ghana Legal Brain as reference implementation, stub interfaces for Medical/Family/Finance domains. Design only \u2014 implementation per-domain later.",
+      "status": "completed",
+      "dependencies": [
+        "18C"
+      ],
+      "priority": 20,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T03:11:10.744954+00:00",
+      "updated_at": "2026-08-07T03:11:10.744954+00:00",
+      "completed_at": "2026-08-07T11:00:00Z",
+      "notes": "Design spec written: domain plugin architecture with JSON manifest schema, Python ABC interface, storage isolation per domain, QC agent dispatch, Ghana reference implementation, Kenya/Medical/Family/Finance stubs. Spec at docs/superpowers/specs/2026-08-07-legal-domain-plugin-architecture-design.md. Implementation deferred to 18F-IMPL phases."
+    },
+    {
+      "id": "18G",
+      "title": "18G: Case Law Extraction Pipeline",
+      "name": "Case Law Extraction Pipeline",
+      "description": "Extract structured legal reasoning from Ghanaian case law documents: ratio decidendi (binding legal principle) extraction via LLM-assisted pipeline, obiter dicta (non-binding commentary) extraction, headnotes/syllabus extraction, parties identification (Plaintiff/Appellant v Defendant/Respondent), judge names and court composition, procedural history (lower court \u2192 appeal chain), court_identifier and neutral_citation assignment. Populates Legal Authority Records with extracted fields.",
+      "status": "pending",
+      "dependencies": [
+        "18C"
+      ],
+      "completion_criteria": [
+        "Ratio decidendi extraction pipeline functional with >80% accuracy on 5 test cases",
+        "Obiter dicta, headnotes, parties, judge_names extraction working",
+        "Extracted fields populate klaus_legal_authority_records",
+        "Works with both PDF (scanned judgments) and text (transcripts)",
+        "Tests: 5 ground-truth Ghana cases with verified extracts"
+      ],
+      "tests_required": true,
+      "priority": 3,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T12:24:29.220382+00:00",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00"
+    },
+    {
+      "id": "18H",
+      "title": "18H: Corpus Coverage Tracker & Gap Analysis",
+      "name": "Corpus Coverage Tracker & Gap Analysis",
+      "description": "Continuous monitoring of 16-tier acquisition coverage: generate 'missing authorities' list per tier from official source catalogs, priority scoring for next crawl targets, daily coverage report to Telegram, auto-prioritized crawl queue based on coverage targets, source discovery expansion for empty tiers (T6 Commercial, T7 Employment, T9 Property, T10 Family, T12 Technology, T14 Government, T15 Case Law).",
+      "status": "pending",
+      "dependencies": [
+        "18C",
+        "18E"
+      ],
+      "completion_criteria": [
+        "Coverage report generated on each acquisition cycle",
+        "Gap analysis visible in Corpus Coverage Command Center dashboard",
+        "Auto-prioritized crawl queue dispatched to discovery workers",
+        "Telegram digest with coverage delta since last report",
+        "All 16 tiers tracked with current/target counts"
+      ],
+      "tests_required": true,
+      "priority": 8,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T12:24:29.220382+00:00",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00"
+    },
+    {
+      "id": "18I",
+      "title": "18I: Source Trust Registry & Verification",
+      "name": "Source Trust Registry & Verification",
+      "description": "Systematic source verification for Legal Brain: Attorney General's Department website cataloging, Law Reform Commission publication registry, Judicial Service of Ghana case database index, Law Society/Bar Association verified source list, auto-trust assignment based on source type (official_gazette \u2192 verified, court_registry \u2192 trusted, etc.), verification workflow: pending \u2192 unverified \u2192 trusted \u2192 verified, source validation cron job.",
+      "status": "pending",
+      "dependencies": [
+        "18C"
+      ],
+      "completion_criteria": [
+        "Trust registry populated for all active sources with trust_level assigned",
+        "Verification workflow for new sources operational",
+        "Source validation cron job runs on schedule",
+        "Integration with 19L Trust Engine",
+        "Source trust visible in Source Management Command Center dashboard"
+      ],
+      "tests_required": true,
+      "priority": 4,
+      "module": "legal_brain",
+      "created_at": "2026-08-07T12:24:29.220382+00:00",
+      "updated_at": "2026-08-07T12:24:29.220382+00:00"
     }
   ],
   "_audit": {
@@ -2617,5 +2657,6 @@
       "15D (retry SSE)",
       "17R (retry routing)"
     ]
-  }
+  },
+  "updated_at": "2026-08-07T03:29:24.711749+00:00"
 }

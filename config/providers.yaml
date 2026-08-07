@@ -1,21 +1,32 @@
 # How many ready builds advance_builds() may run at the same time (13R).
-# 2026-08-06 operator directive: raised 8 -> 16 for Qwen4 pod (RTX PRO 6000 96GB).
-# 32 concurrent requests confirmed live with 0.6s avg latency, 0 failures.
-# Old A100 pod (c5ib0n2adowifp) is gone — RTX PRO 6000 handles 32+ concurrent.
-max_concurrent_builds: 16
+# 2026-08-05 operator directive: raised 4 -> 8 for Qwen4 pod (RTX PRO 6000 96GB).
+# 8 concurrent requests confirmed live with 0.89-1.02s latency each.
+max_concurrent_builds: 8
 
 providers:
 
   qwen3_coder:
     enabled: true
     type: vllm
-    name: Qwen4
+    name: Qwen4 Pod A
     gpu_acceleration: true
     base_url: https://ldtqgcshb2dwsw-8000.proxy.runpod.net/v1
     model: Qwen/Qwen3-32B-FP8
     role:
       - coding
       - text_task
+
+  qwen3_pod_b:
+    enabled: true
+    type: vllm
+    name: Qwen4 Pod B
+    gpu_acceleration: true
+    base_url: https://60jwzf36623b0o-8000.proxy.runpod.net/v1
+    model: Qwen/Qwen3-32B-FP8
+    role:
+      - review
+      - architecture
+      - deployment
 
   claude:
     enabled: true

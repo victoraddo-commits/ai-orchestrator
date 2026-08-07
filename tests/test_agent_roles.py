@@ -6,7 +6,17 @@ def _stub_provider(monkeypatch, name, response):
 
     provider = ai_provider.get_provider(name)
     monkeypatch.setitem(provider, "available_fn", lambda: True)
+    monkeypatch.setitem(provider, "enabled", True)
     monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None: response)
+
+
+def _ensure_in_role_providers(monkeypatch, name, task_type):
+    """Re-add a disabled provider to ROLE_PROVIDERS so tests can reach it."""
+    import core.ai.ai_router as ai_router
+    providers = list(ai_router.ROLE_PROVIDERS.get(task_type, []))
+    if name not in providers:
+        providers.append(name)
+    monkeypatch.setitem(ai_router.ROLE_PROVIDERS, task_type, providers)
 
 
 def test_architecture_agent_routes_to_claude(monkeypatch):
@@ -16,6 +26,7 @@ def test_architecture_agent_routes_to_claude(monkeypatch):
     import core.ai_provider as ai_provider
     monkeypatch.setitem(ai_provider.get_provider("opencode_claude"), "available_fn", lambda: False)
 
+    _ensure_in_role_providers(monkeypatch, "claude", "coding")
     _stub_provider(monkeypatch, "claude", "claude answered")
 
     result = agent_roles.architecture_agent("Design the new module")
@@ -33,9 +44,10 @@ def test_research_agent_routes_to_claude_fallback(monkeypatch):
     # api.deepseek.com call).
     import core.ai_provider as ai_provider
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "planning".
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen3_coder_text"):
+    for name in ("deepseek_native_flash", "omniroute_deepseek_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen4_text", "qwen4_pod_b"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    _ensure_in_role_providers(monkeypatch, "claude", "planning")
     _stub_provider(monkeypatch, "claude", "claude answered")
 
     result = agent_roles.research_agent("Summarize the docs")
@@ -61,11 +73,11 @@ def test_fast_analysis_agent_routes_to_groq(monkeypatch):
 
 
 def test_general_reasoning_agent_routes_to_openai(monkeypatch):
-    _stub_provider(monkeypatch, "openai", "openai answered")
+    _stub_provider(monkeypatch, "qwen4_text", "openai answered")
 
     result = agent_roles.general_reasoning_agent("Critique this proposal")
 
-    assert result["provider"] == "openai"
+    assert result["provider"] == "qwen4_text"
     assert result["task_type"] == "review"
 
 
@@ -74,11 +86,11 @@ def test_general_reasoning_agent_falls_back_to_claude_when_openai_unavailable(mo
     # demonstrates the fallback instead.
     import core.ai_provider as ai_provider
 
-    monkeypatch.setitem(ai_provider.get_provider("openai"), "available_fn", lambda: False)
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review".
-    for name in ("deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen3_coder_text"):
+    for name in ("deepseek_native_flash", "omniroute_deepseek_flash", "deepseek", "gemini", "geminix", "qwen4_text", "qwen4_pod_b"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    _ensure_in_role_providers(monkeypatch, "claude", "review")
     _stub_provider(monkeypatch, "claude", "claude answered")
 
     result = agent_roles.general_reasoning_agent("Critique this proposal")

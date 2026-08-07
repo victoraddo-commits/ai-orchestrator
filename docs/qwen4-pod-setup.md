@@ -75,8 +75,8 @@ providers:
 
 ### 3. Router (`core/ai/ai_router.py`)
 Qwen4 must be first in every role's provider list:
-- `qwen3_coding` for `coding` (coding_agent)
-- `qwen3_coder_text` for all text_task roles (planning, architecture, review, etc.)
+- `qwen4_coding` for `coding` (coding_agent)
+- `qwen4_text` for all text_task roles (planning, architecture, review, etc.)
 
 ### 4. Coding implementation (`core/ai_provider.py`)
 **DO NOT use opencode CLI for coding** — it panics under concurrent load:
@@ -84,7 +84,7 @@ Qwen4 must be first in every role's provider list:
 thread panicked at fff-core/src/scan.rs
 Resource temporarily unavailable
 ```
-Use `_qwen3_coding_run_coding_task` which calls the vLLM chat endpoint directly via `call_qwen3_coder_text()`, writes output to `generated.py`, and commits.
+Use `_qwen4_coding_run_coding_task` which calls the vLLM chat endpoint directly via `call_qwen4_text()`, writes output to `generated.py`, and commits.
 
 ### 5. OmniRoute registration
 ```bash
@@ -121,8 +121,8 @@ curl -s -H "Authorization: Bearer $KEY" https://<pod-id>-8000.proxy.runpod.net/v
 # Test coding (direct API)
 .venv/bin/python -c "
 from dotenv import load_dotenv; load_dotenv('.env')
-from core.ai_provider import _qwen3_coding_run_coding_task
-result = _qwen3_coding_run_coding_task('/tmp/test', 'Write hello.py')
+from core.ai_provider import _qwen4_coding_run_coding_task
+result = _qwen4_coding_run_coding_task('/tmp/test', 'Write hello.py')
 print(result['success'])
 "
 

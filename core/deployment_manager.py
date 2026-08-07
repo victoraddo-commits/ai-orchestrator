@@ -293,15 +293,6 @@ def _commit_dirty_working_tree(live_repo):
 def _merge_branch_into_live_repo(live_repo, clone_path, branch, build_name):
     _commit_dirty_working_tree(live_repo)
 
-    # 2026-08-06: A previous failed deploy may have left the live repo on
-    # a stale build branch (merge abort doesn't always switch back to main).
-    # Must be on main before merging, otherwise the merge lands on the wrong
-    # branch and the next deploy rebases against a stale base.
-    subprocess.run(
-        ["git", "-C", str(live_repo), "checkout", "main"],
-        capture_output=True, text=True,
-    )
-
     fetch = subprocess.run(
         ["git", "-C", str(live_repo), "fetch", "-q", clone_path, f"{branch}:{branch}"],
         capture_output=True, text=True,
@@ -309,35 +300,28 @@ def _merge_branch_into_live_repo(live_repo, clone_path, branch, build_name):
     if fetch.returncode != 0:
         return {"merged": False, "reason": f"Failed to fetch build branch: {fetch.stderr.strip()}"}
 
-    # Rebase the fetched branch onto current main before merging.
-    # The clone was already synced with main earlier (roadmap_manager._sync_clone_with_live_repo
-    # uses `git rebase origin/main`), but another build may have merged into
-    # main since then. Rebase replays only this build's unique commits on top
-    # of whatever is current right now; the subsequent --no-ff merge is then
-    # guaranteed clean.
-    rebase = subprocess.run(
-        ["git", "-C", str(live_repo), "rebase", "main", branch],
-        capture_output=True, text=True,
-    )
-    if rebase.returncode != 0:
-        subprocess.run(
-            ["git", "-C", str(live_repo), "rebase", "--abort"],
-            capture_output=True, text=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(live_repo), "branch", "-D", branch],
-            capture_output=True, text=True,
-        )
-        return {
-            "merged": False,
-            "reason": f"Merge conflict merging {branch}: {rebase.stderr.strip()}",
-        }
-
     merge = subprocess.run(
         ["git", "-C", str(live_repo), "merge", "--no-ff", "-m",
          f"Merge {branch}: {build_name}", branch],
         capture_output=True, text=True,
     )
+
+    if merge.returncode != 0:
+        # If the merge failed because the working tree was somehow still
+        # dirty (despite _commit_dirty_working_tree above), try one more
+        # commit+merge before giving up. The "stash" in git's error message
+        # is its internal mechanism for saving/restoring dirty state during
+        # a merge — it only appears when the tree isn't actually clean.
+        if "stash" in merge.stderr.lower():
+            try:
+                _commit_dirty_working_tree(live_repo)
+                merge = subprocess.run(
+                    ["git", "-C", str(live_repo), "merge", "--no-ff", "-m",
+                     f"Merge {branch}: {build_name}", branch],
+                    capture_output=True, text=True,
+                )
+            except RuntimeError:
+                pass  # fall through to the failure path below
 
     if merge.returncode != 0:
         subprocess.run(
@@ -350,7 +334,7 @@ def _merge_branch_into_live_repo(live_repo, clone_path, branch, build_name):
         )
         return {
             "merged": False,
-            "reason": f"Merge failed after rebase merging {branch}: {merge.stderr.strip()}",
+            "reason": f"Merge conflict merging {branch}: {merge.stderr.strip()}",
         }
 
     subprocess.run(

@@ -91,7 +91,7 @@ def test_schema_sql_contains_indexes():
 
 def test_schema_sql_has_pgvector_extension():
     from core.klaus.schema import SCHEMA_SQL
-    assert 'CREATE EXTENSION IF NOT EXISTS "pgvector"' in SCHEMA_SQL
+    assert "CREATE EXTENSION IF NOT EXISTS vector" in SCHEMA_SQL
 
 
 def test_schema_sql_has_embedding_column():

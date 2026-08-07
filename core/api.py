@@ -53,7 +53,7 @@ from core.build_manager import (
 from core.project_templates import TEMPLATES
 from core.build_learning import summarize_templates, get_build_history, summarize_lessons
 from core.module_registry import get_registered_modules
-from core.ai_provider import list_providers, set_provider_enabled, deregister_provider
+from core.ai_provider import list_providers, set_provider_enabled, deregister_provider, register_provider
 from core.ai.agent_registry import (
     list_agents, get_agent, register_agent, enable_agent, disable_agent,
     test_agent, get_agent_stats, get_cost_history, get_performance_history,
@@ -1397,6 +1397,65 @@ def delete_provider_endpoint(
         "deleted": True,
         "name": name,
         "roles_removed": roles_removed,
+    }
+
+
+class ProviderRegisterBody(BaseModel):
+    name: str
+    kind: str = "cloud"               # cloud | local | api
+    description: str = ""
+    cost_tier: str = "free_or_low_cost"  # free_or_low_cost | medium_cost | high_cost | custom
+    capabilities: list[str] = []       # e.g. ["coding_agent", "text_task", "file_access"]
+
+
+@app.post("/providers")
+def register_provider_endpoint(
+    body: ProviderRegisterBody,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Register a new AI provider.
+
+    Creates a lightweight provider entry with the given capabilities.
+    The provider starts with no run_* callbacks — it will be a
+    placeholder until a proper worker is configured. This endpoint is
+    designed for admin UI use, letting operators add providers that
+    can later be fully configured.
+
+    If a provider with the same name already exists, returns 409.
+    """
+    from core.ai_provider import get_provider
+    from core.ai.ai_router import ROLE_PROVIDERS
+    existing = get_provider(body.name)
+    if existing is not None:
+        raise HTTPException(
+            status_code=409, detail=f"Provider '{body.name}' already exists"
+        )
+
+    # Register with None callbacks — placeholder until full config
+    caps = set(body.capabilities)
+    has_coding = "coding_agent" in caps
+    has_text = "text_task" in caps
+
+    register_provider(
+        name=body.name,
+        run_coding_task=(lambda *a, **kw: None) if has_coding else None,
+        run_text_task=(lambda *a, **kw: None) if has_text else None,
+        kind=body.kind,
+        description=body.description,
+        cost_tier=body.cost_tier,
+    )
+
+    # Optionally add to text_task routing if requested
+    if has_text:
+        ROLE_PROVIDERS.setdefault("classification", []).append(body.name)
+        ROLE_PROVIDERS.setdefault("documentation", []).append(body.name)
+
+    return {
+        "registered": True,
+        "name": body.name,
+        "capabilities": sorted(caps),
+        "kind": body.kind,
+        "cost_tier": body.cost_tier,
     }
 
 

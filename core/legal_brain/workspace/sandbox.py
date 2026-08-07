@@ -39,11 +39,13 @@ class SandboxFileTooLarge(SandboxError):
 
 def _check_file_size(file_path: str) -> int:
     """Check file size and return bytes. Raises if too large."""
+    from .. import config as _cfg
     size = os.path.getsize(file_path)
-    max_bytes = SANDBOX_MAX_FILE_SIZE_MB * 1024 * 1024
-    if size > max_bytes:
+    max_mb = _cfg.SANDBOX_MAX_FILE_SIZE_MB
+    max_bytes = max_mb * 1024 * 1024
+    if max_bytes > 0 and size > max_bytes:
         raise SandboxFileTooLarge(
-            f"File size {size} exceeds limit of {max_bytes} bytes ({SANDBOX_MAX_FILE_SIZE_MB}MB)"
+            f"File size {size} exceeds limit of {max_bytes} bytes ({max_mb}MB)"
         )
     return size
 

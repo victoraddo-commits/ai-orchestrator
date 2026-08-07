@@ -24,14 +24,29 @@ def add_source(
     tier: int,
     jurisdiction: str = "Ghana",
 ) -> str:
-    """Register a legal source. Returns source ID."""
-    source_id = str(uuid.uuid4())
+    """Register a legal source. Returns source ID.
+
+    If the URL already exists, updates last_checked and returns the existing ID.
+    """
+    now = _now()
     with get_connection() as conn:
+        # Check for existing
+        existing = conn.execute(
+            "SELECT id FROM sources WHERE url = ?", (url,)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE sources SET last_checked = ?, status = 'active' WHERE url = ?",
+                (now, url),
+            )
+            return existing["id"]
+
+        # Insert new
+        source_id = str(uuid.uuid4())
         conn.execute(
             """INSERT INTO sources (id, url, domain, tier, jurisdiction, status, last_checked)
-               VALUES (?, ?, ?, ?, ?, 'active', ?)
-               ON CONFLICT(url) DO UPDATE SET last_checked = ?""",
-            (source_id, url, domain, tier, jurisdiction, _now(), _now()),
+               VALUES (?, ?, ?, ?, ?, 'active', ?)""",
+            (source_id, url, domain, tier, jurisdiction, now),
         )
     return source_id
 
@@ -127,7 +142,7 @@ def insert_document(
                 copyright_classification, access_level, review_status,
                 effective_date, page_count, file_size_bytes,
                 parent_doc_id, approved_by)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 doc_id, source_id, title, content_hash, prev_hash, file_path,
                 category, jurisdiction, court, year, citation_text,

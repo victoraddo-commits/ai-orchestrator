@@ -62,14 +62,14 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "7291b68d",
-      "failure_reason": "Build ec80c2f0 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 7291b68d missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19A",
@@ -264,7 +264,7 @@
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture: Permanent/Temporary separation, sandboxing",
       "description": "Complete zero-trust Legal Brain: dedicated PostgreSQL DB, immutable WORM storage, hash-chain document verification, sandboxed PDF processing (subprocess+seccomp), ClamAV malware scanning, temp workspace isolation (per-session SQLite on tmpfs), permanent/temporary service boundary, 6-stage ingestion pipeline, migration of existing approved klaus_documents to new architecture.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "17O-D",
         "18A-a",
@@ -282,8 +282,10 @@
       "priority": 1,
       "build_id": "71a1ea2d",
       "assigned_provider": "qwen3_coding",
-      "failure_reason": "Build e65657ed missing from builds.json (deleted or stale reference)",
-      "title": "18C: Zero-Trust Legal Brain Architecture"
+      "failure_reason": "Build 71a1ea2d missing from builds.json (deleted or stale reference)",
+      "title": "18C: Zero-Trust Legal Brain Architecture",
+      "completed_at": "2026-08-07",
+      "updated_at": "2026-08-07T03:29:24.711749+00:00"
     },
     {
       "id": "IT-3",
@@ -439,7 +441,9 @@
       "assigned_agent": "qwen3",
       "build_id": "1dabf3c9",
       "failure_reason": "Build 1dabf3c9 missing from builds.json (deleted or stale reference)",
-      "title": "19E: Legal Knowledge Engine"
+      "title": "19E: Legal Knowledge Engine",
+      "completed_at": "2026-08-07",
+      "updated_at": "2026-08-07T03:29:24.711749+00:00"
     },
     {
       "id": "19V",
@@ -520,14 +524,15 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "IT-1"
       ],
       "priority": 7,
       "severity": "high",
       "assigned_agent": "qwen3",
-      "build_id": "51fdd1ec"
+      "build_id": "51fdd1ec",
+      "failure_reason": "Build 51fdd1ec missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19G",
@@ -570,14 +575,14 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "c6911d6e",
-      "failure_reason": null
+      "failure_reason": "Build c6911d6e missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19H",
@@ -847,7 +852,9 @@
       "assigned_agent": "qwen3",
       "build_id": "89370b8c",
       "failure_reason": "Build 89370b8c missing from builds.json (deleted or stale reference)",
-      "title": "19L: Legal Trust Engine"
+      "title": "19L: Legal Trust Engine",
+      "completed_at": "2026-08-07",
+      "updated_at": "2026-08-07T03:29:24.711749+00:00"
     },
     {
       "id": "13A",
@@ -1135,7 +1142,9 @@
       "assigned_agent": "qwen3",
       "build_id": "7b6fce2a",
       "failure_reason": "Build 7b6fce2a missing from builds.json (deleted or stale reference)",
-      "title": "19Q: Legal Brain Health & Integrity"
+      "title": "19Q: Legal Brain Health & Integrity",
+      "completed_at": "2026-08-07",
+      "updated_at": "2026-08-07T03:29:24.711749+00:00"
     },
     {
       "id": "13F",
@@ -1860,7 +1869,7 @@
       "id": "17Q",
       "name": "Kai Operations Appliance (KOA): dedicated ops/infrastructure-management machine",
       "description": "User directive 2026-07-31, explicitly deferred: 'This project is NOT to begin immediately... Only after every pending roadmap has been completed, tested, documented, and marked complete should you begin this project.' Do not start this ahead of any other queued phase (17A/17K/17M/17N/17O/17P and anything added after) regardless of how it might otherwise be prioritized. Builds on and supersedes the earlier informational document kai-dedicated-computer-2026-07-31.md (uploaded to /uploads, recommended Zorin OS) -- the user has now selected Zorin and wants the delta between that informational doc and this fuller operational spec identified and folded in, not a second document written from scratch. Missing from the original doc that this spec adds: Infrastructure-as-Code (Ansible playbooks, cloud-init, Docker Compose, systemd units, all version controlled, reproducible from bare hardware), a real observability stack (evaluate and likely adopt Prometheus/Grafana/Loki/Alertmanager/node_exporter, reusing existing components where practical rather than duplicating what 17O's Monitoring Service will already provide), backup verification/restore-testing discipline ('a backup is only successful if it can be restored'), disaster recovery coordination, AI-governance controls for autonomous actions (approval workflows, rollback plans, audit trails, confidence reporting, execution logging), and Zero Trust / least-privilege security posture beyond the basic hardening the original doc covered. Purpose: KOA is an operational command center ONLY -- infrastructure management, secure remote administration, AI orchestration, monitoring, secrets management, WireGuard/SSH management, deployment coordination. It explicitly does NOT host production workloads, document repositories, embeddings, or vector databases -- those stay on 17O's dedicated Knowledge Platform infrastructure, accessed by KOA only through authenticated APIs. Required process before any code/config is written: audit the current Kai ecosystem fresh at that time (do not assume this session's architecture reports are still accurate -- validate against whatever the actual implementation looks like once prior phases are done), review Proxmox A, review Proxmox B if reachable by then, review all running services/security controls/deployment workflows, and produce a readiness report. Required final deliverable before ANY deployment: a Completion Report / executive briefing (not the implementation itself) covering exactly what the user specified -- (1) Executive Summary in plain language, (2) a 'What You Need From Me' checklist covering hardware/OS install/BIOS/storage/encryption passphrases/WireGuard config/SSH key approval/DNS/certificates/Bitwarden/MFA/network+firewall+router changes/backup destinations/credentials/physical installation/testing help/maintenance decisions, each item marked mandatory-or-optional with reasoning, timing, and expected effort, (3) an Integration Plan describing exactly how KOA connects to Proxmox A, Proxmox B, Kai, Juris Kai, Law Tutor, the AI router, monitoring, and backups, (4) a Migration Plan (changes required, downtime, rollback, risks, validation), (5) a Readiness Checklist (ready to purchase hardware / install OS / configure networking / integrate with Kai / migrate / go to production). The user must review and approve this briefing before any production change happens -- this phase's own completion criteria are about producing that briefing, not about the appliance being live.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "17A",
         "17K",
@@ -1878,7 +1887,8 @@
       "tests_required": true,
       "note": "Queued 2026-07-31 directly from the user's Telegram request, explicitly deferred by the user's own instruction to run last, after every other currently-queued phase completes. Do not reprioritize ahead of anything else.",
       "assigned_provider": "qwen3_coding",
-      "build_id": "875e282c"
+      "build_id": "875e282c",
+      "failure_reason": "Build 875e282c missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "TK-176d6efe",
@@ -2114,7 +2124,7 @@
       "dependencies": [
         "17O-A"
       ],
-      "status": "completed",
+      "status": "failed",
       "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",
       "completion_criteria": [
         "7-category directory taxonomy created",
@@ -2123,7 +2133,7 @@
       ],
       "assigned_provider": "qwen3_coding",
       "build_id": "c56429df",
-      "failure_reason": "Build 41a05b68 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build c56429df missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17O-C",
@@ -2132,7 +2142,7 @@
       "dependencies": [
         "17O-B"
       ],
-      "status": "completed",
+      "status": "failed",
       "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
       "completion_criteria": [
         "Metadata schema with all required fields",
@@ -2150,7 +2160,7 @@
       "dependencies": [
         "17O-C"
       ],
-      "status": "completed",
+      "status": "failed",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",
@@ -2333,14 +2343,15 @@
         "18A-a"
       ],
       "assigned_agent": "qwen3",
-      "status": "in_progress",
+      "status": "failed",
       "description": "Multi-user chat: per-user conversation history, authentication-based access, user isolation (users cannot see other users conversations).",
       "completion_criteria": [
         "Per-user conversation history",
         "Authentication-based chat access",
         "User conversation isolation"
       ],
-      "build_id": "5521535b"
+      "build_id": "5521535b",
+      "failure_reason": "Build 5521535b missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "15F-b",
@@ -2483,14 +2494,15 @@
       "id": "18D",
       "title": "18D: Research Session Logging",
       "description": "Every legal query generates a reproducible Research Session: session_id, user_id, query, retrieved_authorities, search_strategy, citations used, model, confidence, brain_version, timestamp. Append-only log in Legal Brain's dedicated DB. API: GET /legal-brain/v1/sessions. Export to JSON/PDF. Privacy: user-uploaded docs NOT stored, only permanent corpus doc IDs.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "18C"
       ],
       "priority": 5,
       "module": "legal_brain",
       "created_at": "2026-08-07T03:11:10.744954+00:00",
-      "updated_at": "2026-08-07T03:11:10.744954+00:00"
+      "updated_at": "2026-08-07T03:29:24.711749+00:00",
+      "completed_at": "2026-08-07"
     },
     {
       "id": "18E",
@@ -2535,5 +2547,5 @@
       "17R (retry routing)"
     ]
   },
-  "updated_at": "2026-08-07T03:11:36.950375+00:00"
+  "updated_at": "2026-08-07T03:29:24.711749+00:00"
 }

@@ -766,20 +766,42 @@ def api_pipeline_overview():
 
 @app.get("/api/budget")
 def api_budget_dashboard():
-    """2026-08-07: Cost tracking — GPU pods decommissioned. DeepSeek Native cost projection: ~$25-30/month."""
+    """AI-5: Cost tracking dashboard — real usage data with pricing."""
+    from core.ai.cost_tracker import get_cost_summary, get_monthly_summary
+
+    monthly = get_monthly_summary()
+    summary_30d = get_cost_summary(days=30)
+    summary_7d = get_cost_summary(days=7)
+
     return {
-        "status": "transitioned",
-        "previous_monthly_cost": 3000,
-        "current_monthly_cost": 30,
-        "savings": 2970,
-        "providers": {
-            "deepseek_native_flash": {"monthly_cost": 20, "cost_per_million_input": 0.14, "cost_per_million_output": 0.28},
-            "deepseek_native_pro": {"monthly_cost": 10, "cost_per_million_input": 0.42, "cost_per_million_output": 0.84},
-            "gemini": {"monthly_cost": 0, "tier": "free"},
-            "geminix": {"monthly_cost": 0, "tier": "free"},
-            "groq": {"monthly_cost": 0, "tier": "free"},
-        },
+        "monthly": monthly,
+        "trailing_30d": summary_30d,
+        "trailing_7d": summary_7d,
     }
+
+
+@app.get("/api/costs/providers/{provider}")
+def api_cost_provider_detail(provider: str, days: int = 30):
+    """AI-5: Per-provider cost breakdown."""
+    from core.ai.cost_tracker import get_provider_cost_detail
+
+    return get_provider_cost_detail(provider, days=days)
+
+
+@app.get("/api/costs/trend")
+def api_cost_trend(days: int = 14):
+    """AI-5: Daily cost trend."""
+    from core.ai.cost_tracker import get_daily_trend
+
+    return {"trend": get_daily_trend(days=days)}
+
+
+@app.get("/api/costs/monthly")
+def api_cost_monthly(year: int = None, month: int = None):
+    """AI-5: Monthly cost summary (defaults to current month)."""
+    from core.ai.cost_tracker import get_monthly_summary
+
+    return get_monthly_summary(year=year, month=month)
 
 # ---- end V3 ----
 
@@ -1100,6 +1122,103 @@ def agents_bootstrap_endpoint(
     """Seed the agent registry with agents from existing providers. Idempotent."""
     count = bootstrap_default_agents()
     return {"ok": True, "created": count, "total_agents": len(list_agents())}
+
+
+# ── AI-7: Credential Vault endpoints ─────────────────────────────────────
+# Write-gated endpoints for managing encrypted provider credentials.
+# All responses exclude the actual api_key — keys are never returned
+# through any API; they are only decrypted internally at call time.
+
+from core.ai.credential_vault import (
+    store_credential,
+    retrieve_credential,
+    retrieve_api_key as vault_get_api_key,
+    list_vault_entries,
+    delete_vault_entry,
+    check_health as vault_check_health,
+    check_rotation_needed,
+    mark_rotated,
+    migrate_plaintext_keys,
+    get_vault_status,
+    ROTATION_DAYS,
+    OVERLAP_DAYS,
+)
+
+
+class VaultCredentialRequest(BaseModel):
+    api_key: str
+    api_base: str = ""
+    models: list[str] = []
+
+
+@app.get("/kai/vault")
+def vault_list_endpoint():
+    """List all credential vault entries (metadata only, no keys)."""
+    return {
+        "entries": list_vault_entries(),
+        "status": get_vault_status(),
+    }
+
+
+@app.get("/kai/vault/rotation")
+def vault_rotation_endpoint():
+    """Check which credentials are due for rotation."""
+    return {
+        "rotation_due": check_rotation_needed(),
+        "rotation_days": ROTATION_DAYS,
+        "overlap_days": OVERLAP_DAYS,
+    }
+
+
+@app.post("/kai/vault/{provider}")
+def vault_store_endpoint(
+    provider: str,
+    body: VaultCredentialRequest,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Store or update an encrypted credential. The key is never logged."""
+    store_credential(provider, body.api_key, body.api_base, body.models)
+    mark_rotated(provider)
+    return {"ok": True, "provider": provider}
+
+
+@app.delete("/kai/vault/{provider}")
+def vault_delete_endpoint(
+    provider: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Delete a credential from the vault."""
+    if not delete_vault_entry(provider):
+        raise HTTPException(status_code=404, detail=f"No credential for '{provider}'")
+    return {"ok": True, "provider": provider}
+
+
+@app.post("/kai/vault/{provider}/rotate")
+def vault_rotate_endpoint(
+    provider: str,
+    body: VaultCredentialRequest,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Rotate a provider's API key. Old key is logged for audit."""
+    store_credential(provider, body.api_key, body.api_base, body.models)
+    mark_rotated(provider)
+    return {"ok": True, "provider": provider, "rotated": True}
+
+
+@app.post("/kai/vault/{provider}/health")
+def vault_health_endpoint(provider: str):
+    """Test a credential by calling the provider's /v1/models."""
+    result = vault_check_health(provider)
+    return {"provider": provider, **result}
+
+
+@app.post("/kai/vault/migrate")
+def vault_migrate_endpoint(
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """One-time: encrypt existing plaintext keys with AES-256-GCM."""
+    result = migrate_plaintext_keys()
+    return result
 
 
 # ── AI Circuit Breaker endpoints ─────────────────────────────────────────

@@ -61,7 +61,8 @@ def test_register_provider_adds_a_new_entry():
 def test_gemini_groq_openai_providers_are_registered_with_text_task_capability():
     providers = ai_provider.list_providers()
 
-    for name in ("gemini", "groq", "qwen4_text", "openrouter", "minimax", "deepseek"):
+    # 2026-08-07: qwen4_text deregistered — RunPod pods decommissioned.
+    for name in ("gemini", "groq", "openrouter", "minimax", "deepseek", "deepseek_native_flash", "deepseek_native_pro"):
         assert name in providers
         assert "text_task" in providers[name]["capabilities"]
         assert "coding_agent" not in providers[name]["capabilities"]
@@ -488,35 +489,6 @@ def test_deepseek_provider_has_text_task_capability_only():
 
 
 
-# --- 2026-08-02: qwen4_coding -- self-hosted Qwen3-Coder as a real coding_agent, via a custom opencode provider ---
-
-def test_qwen4_coding_provider_is_registered_with_coding_agent_capability_only():
-    providers = ai_provider.list_providers()
-    assert "qwen4_coding" in providers
-    assert "coding_agent" in providers["qwen4_coding"]["capabilities"]
-    assert "text_task" not in providers["qwen4_coding"]["capabilities"]
-
-
-def test_qwen4_coding_provider_defaults_to_correct_model(monkeypatch, tmp_path):
-    # V3: qwen4_coding uses direct vLLM API (call_qwen4_text),
-    # NOT opencode_bridge. The model is set via QWEN3_CODING_MODEL.
-    from core.ai_provider import QWEN3_CODING_MODEL
-    assert "Qwen3-32B-FP8" in QWEN3_CODING_MODEL or "Qwen/Qwen3-32B-FP8" in QWEN3_CODING_MODEL
-
-
-def test_qwen4_coding_provider_availability_requires_opencode_and_both_env_vars(monkeypatch):
-    import core.ai_provider as provider_module
-
-    # V3: qwen4_coding availability only checks VLLM_QWEN3_CODER env vars,
-    # not shutil.which (direct vLLM API doesn't need opencode CLI).
-    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
-    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://example.proxy.runpod.net/v1")
-    assert ai_provider.list_providers()["qwen4_coding"]["available"] is True
-
-    monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
-    assert ai_provider.list_providers()["qwen4_coding"]["available"] is False
-
-
 # --- 17R item 1: native DeepSeek providers (api.deepseek.com, no OpenRouter/Zen quota exposure) ---
 
 def test_deepseek_native_pro_provider_availability_reflects_env_var(monkeypatch):
@@ -617,13 +589,6 @@ def test_every_registered_provider_has_a_valid_cost_tier():
         ("opencode_minimax", "free_or_low_cost"),
         # 2026-08-02: qwen4_coding -- same self-hosted RunPod GPU as "qwen4_text"
         # below, own-hardware billing rather than per-call.
-        ("qwen4_coding", "free_or_low_cost"),
-        # 2026-08-02: "qwen4_text" now means the self-hosted Qwen3-Coder vLLM
-        # instance (own RunPod GPU pod, not per-call billing) -- moved out
-        # of "paid" the same day it was repointed away from the real OpenAI
-        # API. See core.llm_clients.call_openai / core.ai_provider's
-        # "qwen4_text" registration.
-        ("qwen4_text", "paid"),
         # real per-call billing / materially expensive models
         ("claude", "paid"),
         ("openrouter", "paid"),
@@ -841,48 +806,4 @@ def test_openrouter_run_text_task_uses_the_rotated_model(monkeypatch):
     assert models_used == llm_clients.OPENROUTER_MODELS[:2]
 
 
-# 17Z: Qwen3-Coder-30B-A3B-Instruct-AWQ text-task provider on RunPod RTX 5090
-def test_qwen4_text_provider_is_registered():
-    provider = ai_provider.get_provider("qwen4_text")
-    assert provider is not None
-    assert provider["run_text_task"] is not None
-    assert provider["run_coding_task"] is None  # text-task only, no coding agent
-    assert provider["cost_tier"] == "paid"  # real per-request GPU billing
-
-
-def test_qwen4_text_availability_reflects_env_vars(monkeypatch):
-    monkeypatch.delenv("VLLM_QWEN3_CODER_API_KEY", raising=False)
-    monkeypatch.delenv("VLLM_QWEN3_CODER_BASE_URL", raising=False)
-    assert ai_provider.list_providers()["qwen4_text"]["available"] is False
-
-    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
-    assert ai_provider.list_providers()["qwen4_text"]["available"] is False  # still needs URL
-
-    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://test.runpod.net/v1")
-    assert ai_provider.list_providers()["qwen4_text"]["available"] is True
-
-
-def test_qwen4_text_run_text_task_calls_llm_clients(monkeypatch):
-    import core.llm_clients as llm_clients
-
-    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
-    monkeypatch.setenv("VLLM_QWEN3_CODER_BASE_URL", "https://test.runpod.net/v1")
-    captured = {}
-
-    def fake_call_qwen4_text(prompt, timeout=60):
-        captured["prompt"] = prompt
-        return "qwen4_text response"
-
-    monkeypatch.setattr(llm_clients, "call_qwen4_text", fake_call_qwen4_text)
-
-    provider = ai_provider.get_provider("qwen4_text")
-    result = provider["run_text_task"]("what is the capital of ghana?")
-
-    assert result == "qwen4_text response"
-    assert captured["prompt"] == "what is the capital of ghana?"
-
-
-def test_qwen4_text_has_text_task_capability_only():
-    entry = ai_provider.list_providers()["qwen4_text"]
-    assert "text_task" in entry["capabilities"]
-    assert "coding_agent" not in entry["capabilities"]
+# 2026-08-07: qwen4_text tests removed — RunPod pods decommissioned.

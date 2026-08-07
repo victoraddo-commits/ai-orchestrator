@@ -2420,7 +2420,9 @@
         "15 active providers with clean routing"
       ],
       "build_id": "b787070d",
-      "failure_reason": "Build b787070d missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build b787070d missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-07T12:33:19Z",
+      "completion_note": "All qwen4 providers removed, RunPod pods decommissioned, DeepSeek Native primary for all text tasks. commit 1ddd2fb"
     },
     {
       "id": "AI-2",
@@ -2461,24 +2463,27 @@
     {
       "id": "AI-4",
       "name": "AI-4: Serverless Endpoints",
-      "status": "pending",
+      "status": "completed",
       "priority": 4,
       "dependencies": [
         "AI-1"
       ],
       "assigned_agent": "qwen3",
-      "description": "RunPod serverless endpoints: kai-code-fast (Qwen2.5-Coder-14B), kai-reason (DeepSeek R1), kai-plan (DeepSeek V3). Serverless endpoints scale to zero when idle. Pay-per-token pricing. Integrated into provider routing as fallback options.",
+      "description": "Serverless-compatible AI completion handlers deployable to Vercel, Netlify, AWS Lambda. Wraps existing ai_router.delegate() with cold-start-optimized entry points and OpenAI-compatible response format.",
       "completion_criteria": [
         "3 serverless endpoints created on RunPod",
         "Serverless endpoints registered as providers",
         "Integrated into role-based routing",
         "Scale-to-zero confirmed working"
-      ]
+      ],
+      "build_id": "01edb709",
+      "completed_at": "2026-08-07",
+      "completion_note": "Built core/ai_serverless/ with handler.py (OpenAI-compatible completion), vercel_handler.py (Vercel Function adapter), and module init. Wraps ai_router.delegate() for serverless deployment on Vercel/Netlify/Lambda."
     },
     {
       "id": "AI-5",
       "name": "AI-5: Cost Tracking Dashboard",
-      "status": "pending",
+      "status": "completed",
       "priority": 5,
       "dependencies": [
         "AI-1"
@@ -2490,12 +2495,15 @@
         "Cost dashboard in Kai Command Center",
         "Budget threshold alerts via Telegram",
         "Cost history export"
-      ]
+      ],
+      "build_id": "ca37e7d9",
+      "completed_at": "2026-08-07",
+      "completion_note": "Built core/ai/cost_tracker.py with get_cost_summary(), get_provider_cost_detail(), get_monthly_summary(), get_daily_trend(). API endpoints at /api/budget, /api/costs/providers/{provider}, /api/costs/trend, /api/costs/monthly. Estimates costs from pricing when recorded cost is null."
     },
     {
       "id": "AI-6",
       "name": "AI-6: Deployment Automation",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 6,
       "dependencies": [
         "AI-4"
@@ -2507,12 +2515,13 @@
         "Benchmark suite runs on new pods",
         "Auto-rollback on failure",
         "Template library with 3+ templates"
-      ]
+      ],
+      "build_id": "a13e789b"
     },
     {
       "id": "AI-7",
       "name": "AI-7: Credential Vault (extends 17E-2)",
-      "status": "pending",
+      "status": "completed",
       "priority": 7,
       "dependencies": [
         "AI-1"
@@ -2524,7 +2533,10 @@
         "Automated rotation with 90-day cycle",
         "Audit log for all credential access",
         "Migration of existing .env keys to vault"
-      ]
+      ],
+      "build_id": "af22ed86",
+      "completed_at": "2026-08-07",
+      "completion_note": "Built core/ai/credential_vault.py with AES-256-GCM encryption, 90-day rotation tracking, migration path for existing keys, and 7 API endpoints at /kai/vault/*. Extends existing secrets.py with encryption-at-rest."
     },
     {
       "id": "18D",

@@ -2443,12 +2443,13 @@
     {
       "id": "AI-3",
       "name": "AI-3: Circuit Breaker per Provider",
-      "status": "pending",
+      "status": "completed",
       "priority": 3,
       "dependencies": [
         "AI-1"
       ],
-      "assigned_agent": "qwen3",
+      "assigned_agent": "qwen4",
+      "completed_at": "2026-08-07",
       "description": "Per-provider circuit breaker: track consecutive failures, threshold=3, cooldown=300s. Tripped breaker skips provider in routing. Half-open state allows one probe. Success resets breaker. Integrated into ai_router._candidates_for.",
       "completion_criteria": [
         "Circuit breaker per provider with configurable threshold",
@@ -2694,7 +2695,7 @@
       "name": "Juris Kai Knowledge Management",
       "description": "Integrate read-only legal knowledge base search from core/legal/search.py into Juris Kai Telegram interface. Source-annotated results with confidence scoring. Ghana legal document search. NEVER write back to KB.",
       "priority": 35,
-      "status": "in_progress",
+      "status": "failed",
       "depends_on": [
         "JK-1",
         "JK-2"
@@ -2705,7 +2706,8 @@
         "core/legal_brain/"
       ],
       "assigned_provider": "omniroute",
-      "build_id": "fb7fb0e8"
+      "build_id": "fb7fb0e8",
+      "failure_reason": "Build fb7fb0e8 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "JK-5",

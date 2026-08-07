@@ -59,6 +59,7 @@ from core.ai.agent_registry import (
     test_agent, get_agent_stats, get_cost_history, get_performance_history,
     record_benchmark, bootstrap_default_agents,
 )
+from core.ai import circuit_breaker
 from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
@@ -1102,6 +1103,95 @@ def agents_bootstrap_endpoint(
     """Seed the agent registry with agents from existing providers. Idempotent."""
     count = bootstrap_default_agents()
     return {"ok": True, "created": count, "total_agents": len(list_agents())}
+
+
+# ── AI Circuit Breaker endpoints ─────────────────────────────────────────
+# Per-provider circuit breaker management: list, inspect, reset, configure.
+
+class CircuitBreakerConfig(BaseModel):
+    threshold: int = 3
+    cooldown_seconds: int = 300
+
+
+class CircuitBreakerTrip(BaseModel):
+    detail: str = "manual trip"
+
+
+@app.get("/kai/circuit-breakers")
+def circuit_breakers_list_endpoint():
+    """List all circuit breakers with their state, failures, and config."""
+    breakers = circuit_breaker.list_all_breakers()
+    now = datetime.now(timezone.utc)
+    enriched = []
+    for b in breakers:
+        cooldown = b.get("cooldown_seconds", 300)
+        tripped_at = b.get("tripped_at")
+        remaining = None
+        if tripped_at and b.get("state") == "open":
+            try:
+                elapsed = (now - datetime.fromisoformat(tripped_at)).total_seconds()
+                remaining = max(0, int(cooldown - elapsed))
+            except (ValueError, TypeError):
+                pass
+        enriched.append({**b, "cooldown_remaining_seconds": remaining})
+    return {"circuit_breakers": enriched}
+
+
+@app.get("/kai/circuit-breakers/{provider}")
+def circuit_breaker_get_endpoint(provider: str):
+    """Get a single provider's circuit breaker state."""
+    snapshot = circuit_breaker.get_breaker_snapshot(provider)
+    if not snapshot:
+        return {"provider": provider, "state": "closed", "consecutive_failures": 0}
+    return {"provider": provider, **snapshot}
+
+
+@app.post("/kai/circuit-breakers/{provider}/reset")
+def circuit_breaker_reset_endpoint(
+    provider: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Reset a provider's circuit breaker (clear all failures)."""
+    circuit_breaker.clear_breaker(provider)
+    return {"ok": True, "provider": provider, "state": "closed"}
+
+
+@app.post("/kai/circuit-breakers/reset-all")
+def circuit_breaker_reset_all_endpoint(
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Reset every circuit breaker."""
+    count = circuit_breaker.reset_all_breakers()
+    return {"ok": True, "cleared": count}
+
+
+@app.post("/kai/circuit-breakers/{provider}/trip")
+def circuit_breaker_trip_endpoint(
+    provider: str,
+    body: CircuitBreakerTrip | None = None,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Force-trip a provider's circuit breaker (for testing/admin)."""
+    detail = body.detail if body else "manual trip"
+    entry = circuit_breaker.trip_breaker_manually(provider, detail=detail)
+    return {"ok": True, "provider": provider, **entry}
+
+
+@app.put("/kai/circuit-breakers/{provider}/config")
+def circuit_breaker_config_endpoint(
+    provider: str,
+    body: CircuitBreakerConfig,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Set per-provider failure threshold and cooldown."""
+    circuit_breaker.set_threshold(provider, body.threshold)
+    circuit_breaker.set_cooldown(provider, body.cooldown_seconds)
+    return {
+        "ok": True,
+        "provider": provider,
+        "threshold": body.threshold,
+        "cooldown_seconds": body.cooldown_seconds,
+    }
 
 
 @app.get("/api/modules")

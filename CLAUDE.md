@@ -38,6 +38,7 @@ Five lifecycle objects all share a common schema from `core/lifecycle.py::new_ob
 | `core/ai_provider.py` | Provider registry (register_provider) |
 | `core/ai/agent_registry.py` | Agent registry (model + GPU + cost + benchmarks per provider) |
 | `core/ai/provider_health.py` | Quota, health tracking |
+| `core/ai/circuit_breaker.py` | Per-provider circuit breaker (threshold=3, cooldown=300s, half-open probe) |
 | `core/api.py` | FastAPI HTTP endpoint |
 | `core/build_manager.py` | Application builder lifecycle |
 | `core/memory.py` | Memory save/load API |
@@ -226,6 +227,14 @@ When a new AI provider picks up Kai's work:
 - `GET /kai/agents/{id}/performance` — recent performance data points
 - `POST /kai/agents/{id}/benchmarks` — record benchmark results (write-gated)
 - `POST /kai/agents/bootstrap` — seed registry from existing providers (write-gated)
+
+**Circuit Breaker routes:**
+- `GET /kai/circuit-breakers` — list all breaker states with cooldown remaining
+- `GET /kai/circuit-breakers/{provider}` — get single breaker snapshot
+- `POST /kai/circuit-breakers/{provider}/reset` — reset a breaker (write-gated)
+- `POST /kai/circuit-breakers/reset-all` — clear all breakers (write-gated)
+- `POST /kai/circuit-breakers/{provider}/trip` — force-trip a breaker (write-gated)
+- `PUT /kai/circuit-breakers/{provider}/config` — set threshold + cooldown (write-gated)
 
 ### Other in-progress work
 

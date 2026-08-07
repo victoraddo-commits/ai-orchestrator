@@ -36,6 +36,7 @@ Five lifecycle objects all share a common schema from `core/lifecycle.py::new_ob
 | `core/ai/ai_router.py` | Provider routing with fallback chains |
 | `core/ai/secrets.py` | Secure provider API key storage (never exposed) |
 | `core/ai_provider.py` | Provider registry (register_provider) |
+| `core/ai/agent_registry.py` | Agent registry (model + GPU + cost + benchmarks per provider) |
 | `core/ai/provider_health.py` | Quota, health tracking |
 | `core/api.py` | FastAPI HTTP endpoint |
 | `core/build_manager.py` | Application builder lifecycle |
@@ -149,6 +150,7 @@ All runtime state lives in `memory/` (gitignored). Each file is `{"schema_versio
 | `remediation.json` | Remediation records |
 | `verification_history.json` | Verification outcomes |
 | `api_keys.json` | AI Gateway consumer keys (hashed) |
+| `agents.json` | AI Agent registry (model, GPU, cost, benchmark, fallback data) |
 | `gateway_audit.json` | AI Gateway request audit trail |
 | `provider_secrets.json` | Provider API keys (encrypted, 0600 perms, never exposed) |
 | `secret_access_audit.json` | Secrets access audit log |
@@ -211,6 +213,19 @@ When a new AI provider picks up Kai's work:
 - `POST /v1/chat/completions/stream` — SSE streaming (simulated)
 - `GET /v1/models` — list available models
 - `GET /v1/providers` — provider health/status
+
+**Agent Registry routes:**
+- `GET /kai/agents` — list all agents (optional `?status=active|disabled` filter)
+- `GET /kai/agents/{id}` — get single agent
+- `POST /kai/agents` — register/update agent (write-gated)
+- `POST /kai/agents/{id}/enable` — enable agent (write-gated)
+- `POST /kai/agents/{id}/disable` — disable agent (write-gated)
+- `POST /kai/agents/{id}/test` — quick health test against provider
+- `GET /kai/agents/{id}/stats` — aggregate success rate, avg latency, total cost
+- `GET /kai/agents/{id}/costs` — recent cost history entries
+- `GET /kai/agents/{id}/performance` — recent performance data points
+- `POST /kai/agents/{id}/benchmarks` — record benchmark results (write-gated)
+- `POST /kai/agents/bootstrap` — seed registry from existing providers (write-gated)
 
 ### Other in-progress work
 

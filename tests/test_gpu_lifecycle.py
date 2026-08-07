@@ -218,3 +218,189 @@ class TestPodRoles:
         from core.gpu_lifecycle import POD_A, POD_B
         assert POD_A.pod_id != POD_B.pod_id
         assert POD_A.endpoint_url != POD_B.endpoint_url
+
+
+class TestAutoRecovery:
+    """TK-41173c52: Automated pod restart when gwen3 goes down."""
+
+    def test_should_attempt_restart_returns_false_for_ready_pod(self, monkeypatch):
+        from core.gpu_lifecycle import should_attempt_restart, POD_A
+
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {POD_A.pod_id: {"state": "READY", "restart_attempts": 0}},
+        )
+        assert not should_attempt_restart(POD_A)
+
+    def test_should_attempt_restart_returns_true_for_offline_pod(self, monkeypatch):
+        from core.gpu_lifecycle import should_attempt_restart, POD_A
+
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {POD_A.pod_id: {"state": "OFFLINE", "restart_attempts": 0}},
+        )
+        assert should_attempt_restart(POD_A)
+
+    def test_should_attempt_restart_returns_false_when_max_attempts_exceeded(self, monkeypatch):
+        from core.gpu_lifecycle import should_attempt_restart, POD_A, MAX_RESTART_ATTEMPTS
+
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {
+                POD_A.pod_id: {
+                    "state": "OFFLINE",
+                    "restart_attempts": MAX_RESTART_ATTEMPTS,
+                }
+            },
+        )
+        assert not should_attempt_restart(POD_A)
+
+    def test_should_attempt_restart_respects_backoff_cooldown(self, monkeypatch):
+        from core.gpu_lifecycle import should_attempt_restart, POD_A, _now_iso
+
+        now = _now_iso()
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {
+                POD_A.pod_id: {
+                    "state": "OFFLINE",
+                    "restart_attempts": 2,
+                    "last_restart_attempt": now,  # just attempted
+                    "restart_backoff_seconds": 120,
+                }
+            },
+        )
+        # Backoff hasn't elapsed — should not attempt
+        assert not should_attempt_restart(POD_A)
+
+    def test_should_attempt_restart_allows_retry_after_backoff_elapses(self, monkeypatch):
+        from core.gpu_lifecycle import should_attempt_restart, POD_A
+        from datetime import datetime, timezone, timedelta
+
+        long_ago = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {
+                POD_A.pod_id: {
+                    "state": "OFFLINE",
+                    "restart_attempts": 2,
+                    "last_restart_attempt": long_ago,
+                    "restart_backoff_seconds": 120,
+                }
+            },
+        )
+        assert should_attempt_restart(POD_A)
+
+    def test_reset_restart_counter_clears_attempts(self, monkeypatch):
+        from core.gpu_lifecycle import reset_restart_counter, POD_A, load_pod_states
+
+        state = {
+            POD_A.pod_id: {
+                "pod_id": POD_A.pod_id,
+                "state": "READY",
+                "restart_attempts": 5,
+                "last_restart_attempt": "2026-08-07T00:00:00Z",
+                "restart_backoff_seconds": 960,
+            }
+        }
+        monkeypatch.setattr("core.gpu_lifecycle.load_pod_states", lambda: state)
+        save_calls = []
+
+        monkeypatch.setattr("core.gpu_lifecycle.save_pod_states", lambda s: save_calls.append(s))
+        monkeypatch.setattr("core.gpu_lifecycle._update_pod_state", lambda pid, fn: fn(state[pid]))
+        monkeypatch.setattr("core.gpu_lifecycle.load", lambda name: list(state.values()))
+        monkeypatch.setattr("core.gpu_lifecycle.save", lambda name, data: None)
+
+        # Actually call reset through _update_pod_state mock
+        pod = state[POD_A.pod_id]
+        reset_restart_counter(POD_A)
+        assert pod["restart_attempts"] == 0
+        assert pod["restart_backoff_seconds"] == 60
+        assert pod["last_restart_attempt"] is None
+
+    def test_auto_recover_skips_healthy_pods(self, monkeypatch):
+        from core.gpu_lifecycle import auto_recover_pods, POD_A, POD_B
+
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {
+                POD_A.pod_id: {"state": "READY", "restart_attempts": 0},
+                POD_B.pod_id: {"state": "READY", "restart_attempts": 0},
+            },
+        )
+        events = auto_recover_pods()
+        assert len(events) == 0
+
+    def test_auto_recover_skips_exhausted_pods(self, monkeypatch):
+        from core.gpu_lifecycle import auto_recover_pods, POD_A, POD_B, MAX_RESTART_ATTEMPTS
+
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {
+                POD_A.pod_id: {
+                    "state": "OFFLINE",
+                    "restart_attempts": MAX_RESTART_ATTEMPTS,
+                    "last_restart_attempt": "2026-08-07T00:00:00Z",
+                    "restart_backoff_seconds": 960,
+                },
+                POD_B.pod_id: {"state": "READY", "restart_attempts": 0},
+            },
+        )
+        monkeypatch.setattr("core.gpu_lifecycle.save_pod_states", lambda s: None)
+        monkeypatch.setattr("core.gpu_lifecycle.load", lambda name: [])
+        events = auto_recover_pods()
+        assert len(events) == 0
+
+    def test_notify_restart_exhausted_returns_true_when_limit_hit(self, monkeypatch):
+        from core.gpu_lifecycle import notify_restart_exhausted, POD_A, MAX_RESTART_ATTEMPTS
+
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {
+                POD_A.pod_id: {
+                    "state": "OFFLINE",
+                    "restart_attempts": MAX_RESTART_ATTEMPTS,
+                    "last_restart_attempt": "2026-08-07T00:00:00Z",
+                }
+            },
+        )
+        assert notify_restart_exhausted(POD_A)
+
+    def test_notify_restart_exhausted_returns_false_when_already_notified(self, monkeypatch):
+        from core.gpu_lifecycle import notify_restart_exhausted, POD_A, MAX_RESTART_ATTEMPTS
+
+        monkeypatch.setattr(
+            "core.gpu_lifecycle.load_pod_states",
+            lambda: {
+                POD_A.pod_id: {
+                    "state": "OFFLINE",
+                    "restart_attempts": MAX_RESTART_ATTEMPTS,
+                    "last_restart_attempt": "2026-08-07T00:00:00Z",
+                    "_restart_exhaustion_notified": True,
+                }
+            },
+        )
+        assert not notify_restart_exhausted(POD_A)
+
+    def test_mark_restart_exhaustion_notified_sets_flag(self, monkeypatch):
+        from core.gpu_lifecycle import mark_restart_exhaustion_notified, POD_A
+        from core.gpu_lifecycle import notify_restart_exhausted
+
+        state = {
+            POD_A.pod_id: {
+                "pod_id": POD_A.pod_id,
+                "state": "OFFLINE",
+                "restart_attempts": 5,
+                "last_restart_attempt": "2026-08-07T00:00:00Z",
+            }
+        }
+        monkeypatch.setattr("core.gpu_lifecycle.load_pod_states", lambda: state)
+        monkeypatch.setattr("core.gpu_lifecycle.save_pod_states", lambda s: None)
+        monkeypatch.setattr("core.gpu_lifecycle.load", lambda name: list(state.values()))
+        monkeypatch.setattr("core.gpu_lifecycle.save", lambda name, data: None)
+        monkeypatch.setattr(
+            "core.gpu_lifecycle._update_pod_state",
+            lambda pid, fn: fn(state[pid]),
+        )
+        mark_restart_exhaustion_notified(POD_A)
+        assert state[POD_A.pod_id]["_restart_exhaustion_notified"] is True

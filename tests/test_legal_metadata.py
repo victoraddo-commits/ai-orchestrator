@@ -8,10 +8,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from legal_metadata import (
+from core.legal_metadata import (
     DocumentStatus,
     CourtLevel,
     LegislationType,

@@ -325,8 +325,17 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
 .util-bar-label { display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--muted); }
 
 .emergency-control { display: flex; gap: 12px; flex-wrap: wrap; }
-.emergency-control button { opacity: 0.5; cursor: not-allowed; }
+.emergency-control button { }
+.emergency-control button:disabled { opacity: 0.5; cursor: not-allowed; }
+.emergency-control button.pause-btn { background: var(--warn, #e36209); color: #fff; }
+.emergency-control button.resume-btn { background: var(--ok, #22863a); color: #fff; }
+.emergency-control button.cancel-btn { background: var(--critical, #cb2431); color: #fff; }
+.emergency-control button.retry-btn { background: var(--accent, #58a6ff); color: #fff; }
+.emergency-control button.disable-btn { background: var(--warn, #e36209); color: #fff; }
 .emergency-hint { color: var(--muted); font-size: 0.78rem; margin-top: 8px; }
+.emergency-status { font-size: 0.82rem; margin-top: 8px; padding: 6px 10px; border-radius: 4px; }
+.emergency-status.ok { background: rgba(34,134,58,0.15); color: var(--ok, #22863a); }
+.emergency-status.paused { background: rgba(227,98,9,0.15); color: var(--warn, #e36209); }
 
 .approval-feed-row { cursor: pointer; }
 .approval-feed-row:hover { background: rgba(88,166,255,0.08); }
@@ -436,6 +445,10 @@ tr:hover { background: rgba(255,255,255,0.03); }
     <div class="card" id="card-providers-overview">
       <h3>Provider Health &amp; Cost</h3>
       <div id="providers-overview-content"><span class="loading">loading...</span></div>
+    </div>
+    <div class="card" id="card-gpu-health">
+      <h3>GPU Pod Health</h3>
+      <div id="gpu-health-content"><span class="loading">loading...</span></div>
     </div>
     <div class="card" id="card-learning-overview">
       <h3>Learning Summary</h3>
@@ -938,6 +951,15 @@ tr:hover { background: rgba(255,255,255,0.03); }
     return new Date(iso).toLocaleString();
   }
 
+  function fmtDuration(seconds) {
+    if (!seconds || seconds < 0) return "—";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return h + "h " + m + "m";
+    if (m > 0) return m + "m";
+    return Math.round(seconds) + "s";
+  }
+
   function $(id) { return document.getElementById(id); }
 
   // ── Login modal ────────────────────────────────────────────────────────
@@ -1172,6 +1194,43 @@ tr:hover { background: rgba(255,255,255,0.03); }
       });
     } catch (e) {
       $("providers-overview-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
+    }
+
+    // GPU pod health (TK-a5394cd2)
+    try {
+      const gpu = await fetchJSON("/api/gpu/status");
+      if (gpu.pods && gpu.pods.length) {
+        let html = '<table><thead><tr><th>Pod</th><th>Role</th><th>State</th><th>Tasks</th><th>Uptime</th><th>Cost</th></tr></thead><tbody>';
+        for (const pod of gpu.pods) {
+          const stateBadge = pod.state === "READY" || pod.state === "BUSY" ? "ok" :
+                             pod.state === "OFFLINE" ? "critical" :
+                             pod.state === "STARTING" || pod.state === "HEALTH_CHECK" ? "warn" : "pending";
+          const stateLabel = pod.state || "unknown";
+          const tasks = `${pod.tasks_completed || 0} done / ${pod.tasks_failed || 0} failed`;
+          const uptime = pod.active_seconds ? fmtDuration(pod.active_seconds) : "—";
+          const cost = pod.total_cost != null ? `$${pod.total_cost.toFixed(2)}` : "—";
+          html += `<tr>
+            <td title="${esc(pod.pod_id||'')}">${esc(pod.role||pod.pod_id||'-')}</td>
+            <td>${esc(pod.role||'-')}</td>
+            <td><span class="badge ${stateBadge}">${stateLabel}</span></td>
+            <td>${tasks}</td>
+            <td>${uptime}</td>
+            <td>${cost}</td>
+          </tr>`;
+        }
+        html += "</tbody></table>";
+        if (gpu.summary) {
+          html += `<div class="spread" style="margin-top:8px">
+            <span class="label">Combined hourly: $${gpu.summary.combined_hourly_cost?.toFixed(2)||'—'}</span>
+            <span class="value">Total: $${gpu.summary.total_cost?.toFixed(2)||'—'}</span>
+          </div>`;
+        }
+        $("gpu-health-content").innerHTML = html;
+      } else {
+        $("gpu-health-content").innerHTML = '<span class="empty">no GPU pods configured</span>';
+      }
+    } catch (e) {
+      $("gpu-health-content").innerHTML = `<span class="error">${esc(e.message)}</span>`;
     }
 
     // Learning overview
@@ -1941,19 +2000,118 @@ tr:hover { background: rgba(255,255,255,0.03); }
       $("cmd-learning").innerHTML = lsHtml;
 
       // ── 10. Emergency Controls ───────────────────────────────
-      $("cmd-emergency").innerHTML = `
-        <div class="emergency-control">
-          <button class="btn" disabled>Pause Scheduler</button>
-          <button class="btn" disabled>Resume Scheduler</button>
-          <button class="btn" disabled>Retry Build</button>
-          <button class="btn" disabled>Cancel Build</button>
-          <button class="btn" disabled>Disable Provider</button>
-          <button class="btn" disabled>Force Provider</button>
-        </div>
-        <div class="emergency-hint">
-          Emergency controls will integrate with the existing approval framework. Currently design-only placeholders; no functionality is wired.
-        </div>
-      `;
+      try {
+        const adminRes = await fetch("/api/admin/status");
+        const adminData = await adminRes.json();
+        const sched = adminData.scheduler || {};
+        const providers = adminData.providers || [];
+
+        // Status indicator
+        const pausedHtml = sched.paused
+          ? `<div class="emergency-status paused">⚠ Scheduler PAUSED since ${sched.paused_at || "unknown"}${sched.reason ? " — " + sched.reason : ""}</div>`
+          : `<div class="emergency-status ok">● Scheduler running</div>`;
+
+        $("cmd-emergency").innerHTML = `
+          ${pausedHtml}
+          <div class="emergency-control" style="margin-top:10px;">
+            <button class="btn pause-btn" id="btn-pause-sched" ${sched.paused ? "disabled" : ""}>⏸ Pause Scheduler</button>
+            <button class="btn resume-btn" id="btn-resume-sched" ${!sched.paused ? "disabled" : ""}>▶ Resume Scheduler</button>
+            <button class="btn retry-btn" id="btn-retry-build">🔄 Retry Failed Build</button>
+            <button class="btn cancel-btn" id="btn-cancel-build">✕ Cancel Build</button>
+          </div>
+          <div class="emergency-control" style="margin-top:6px;">
+            <select id="sel-provider-disable" style="padding:6px 8px;border-radius:4px;background:var(--bg);color:var(--fg);border:1px solid var(--border);min-width:160px;">
+              <option value="">-- select provider --</option>
+              ${providers.map(p => `<option value="${p.name}">${p.name} ${p.healthy ? "✓" : "✕"}</option>`).join("")}
+            </select>
+            <button class="btn disable-btn" id="btn-disable-provider">🚫 Disable Provider</button>
+            <button class="btn resume-btn" id="btn-enable-provider">✓ Enable Provider</button>
+          </div>
+          <div class="emergency-hint" id="emergency-result">
+            Emergency controls take effect immediately. Pause/resume uses the scheduler pause file; provider disable updates health tracking.
+          </div>
+        `;
+
+        // ── Wire button handlers ─────────────────────────────────
+        $("btn-pause-sched").addEventListener("click", async () => {
+          const reason = prompt("Reason for pausing the scheduler?") || "paused via dashboard";
+          const res = await fetch("/api/admin/pause-scheduler", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({reason})
+          });
+          const data = await res.json();
+          $("emergency-result").textContent = data.ok ? "✅ Scheduler paused." : "❌ Failed: " + JSON.stringify(data);
+          refresh();
+        });
+
+        $("btn-resume-sched").addEventListener("click", async () => {
+          const res = await fetch("/api/admin/resume-scheduler", {method: "POST"});
+          const data = await res.json();
+          $("emergency-result").textContent = data.ok ? "✅ Scheduler resumed." : "❌ Failed: " + JSON.stringify(data);
+          refresh();
+        });
+
+        $("btn-retry-build").addEventListener("click", async () => {
+          const buildId = prompt("Build ID to retry?");
+          if (!buildId) return;
+          const reason = prompt("Reason for retry?") || "retry via dashboard";
+          const res = await fetch("/api/admin/retry-build", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({build_id: buildId, reason})
+          });
+          const data = await res.json();
+          $("emergency-result").textContent = data.ok
+            ? `✅ Build ${buildId} retried (${data.old_status} → ${data.new_status}).`
+            : `❌ Failed: ${JSON.stringify(data)}`;
+        });
+
+        $("btn-cancel-build").addEventListener("click", async () => {
+          const buildId = prompt("Build ID to cancel?");
+          if (!buildId) return;
+          if (!confirm(`Cancel build ${buildId}? This marks it FAILED.`)) return;
+          const reason = prompt("Reason for cancellation?") || "cancelled via dashboard";
+          const res = await fetch("/api/admin/cancel-build", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({build_id: buildId, reason})
+          });
+          const data = await res.json();
+          $("emergency-result").textContent = data.ok
+            ? `✅ Build ${buildId} cancelled (${data.old_status} → ${data.new_status}).`
+            : `❌ Failed: ${JSON.stringify(data)}`;
+        });
+
+        $("btn-disable-provider").addEventListener("click", async () => {
+          const providerName = $("sel-provider-disable").value;
+          if (!providerName) { alert("Select a provider first."); return; }
+          const reason = prompt("Reason for disabling?") || "disabled via dashboard";
+          const res = await fetch("/api/admin/disable-provider", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({provider_name: providerName, reason})
+          });
+          const data = await res.json();
+          $("emergency-result").textContent = data.ok
+            ? `✅ Provider ${providerName} disabled.`
+            : `❌ Failed: ${JSON.stringify(data)}`;
+          refresh();
+        });
+
+        $("btn-enable-provider").addEventListener("click", async () => {
+          const providerName = $("sel-provider-disable").value;
+          if (!providerName) { alert("Select a provider first."); return; }
+          const res = await fetch("/api/admin/enable-provider", {
+            method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({provider_name: providerName})
+          });
+          const data = await res.json();
+          $("emergency-result").textContent = data.ok
+            ? `✅ Provider ${providerName} re-enabled.`
+            : `❌ Failed: ${JSON.stringify(data)}`;
+          refresh();
+        });
+
+      } catch (err) {
+        $("cmd-emergency").innerHTML = `<div class="emergency-status paused">⚠ Failed to load emergency controls: ${err.message}</div>`;
+      }
 
       $("cmd-refresh-timer").textContent = "updated " + new Date().toLocaleTimeString();
     }

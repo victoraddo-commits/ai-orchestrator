@@ -28,4 +28,13 @@ def isolated_law_documents(tmp_path, monkeypatch):
     monkeypatch.setenv("AI_ORCHESTRATOR_LAW_DOCUMENTS_DIR", str(test_docs_dir))
     monkeypatch.setattr(law_documents, "DOCUMENTS_DIR", test_docs_dir)
 
-    yield test_docs_dir
+
+@pytest.fixture(autouse=True)
+def isolated_cerebrum_feedback():
+    """Reset cerebrum feedback store between tests to prevent state leakage."""
+    try:
+        import core.cerebrum.feedback as feedback
+        feedback.reset_feedback_store()
+    except (ImportError, AttributeError):
+        pass
+    yield

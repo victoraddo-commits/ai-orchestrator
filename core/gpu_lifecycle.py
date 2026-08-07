@@ -87,6 +87,10 @@ VALID_STATES = frozenset({
 
 IDLE_TIMEOUT_SECONDS = 600  # 10 minutes
 
+# Automated pod recovery (TK-41173c52)
+MAX_RESTART_ATTEMPTS = 5
+BASE_RESTART_BACKOFF_SECONDS = 60  # 1 minute base, doubles each attempt
+
 GPU_LIFECYCLE_FILE = "gpu_lifecycle.json"
 
 
@@ -113,6 +117,10 @@ def _pod_state_default(pod_config: PodConfig) -> dict:
         "tasks_failed": 0,
         "total_cost": 0.0,
         "current_task_id": None,
+        # Automated recovery (TK-41173c52)
+        "restart_attempts": 0,
+        "last_restart_attempt": None,
+        "restart_backoff_seconds": BASE_RESTART_BACKOFF_SECONDS,
     }
 
 
@@ -582,7 +590,118 @@ def heartbeat():
             if check_pod_health(pod_config, timeout=5):
                 pod["last_activity"] = _now_iso()
             else:
-                # Pod went offline unexpectedly
+                # Pod went offline unexpectedly — mark offline for recovery
                 pod["state"] = "OFFLINE"
                 pod["last_activity"] = _now_iso()
     save_pod_states(states)
+
+
+def should_attempt_restart(pod_config: PodConfig) -> bool:
+    """Check if a pod is eligible for automated restart (TK-41173c52).
+
+    A pod is eligible when:
+    - It's OFFLINE (crashed, not deliberately stopped)
+    - It hasn't exceeded MAX_RESTART_ATTEMPTS
+    - Its backoff cooldown has elapsed since the last attempt
+    """
+    states = load_pod_states()
+    pod = states.get(pod_config.pod_id, {})
+    if pod.get("state") != "OFFLINE":
+        return False
+
+    attempts = pod.get("restart_attempts", 0)
+    if attempts >= MAX_RESTART_ATTEMPTS:
+        return False  # exhausted retries — needs manual intervention
+
+    last_attempt = pod.get("last_restart_attempt")
+    if last_attempt:
+        try:
+            last_dt = datetime.fromisoformat(last_attempt)
+            backoff = pod.get("restart_backoff_seconds", BASE_RESTART_BACKOFF_SECONDS)
+            elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
+            if elapsed < backoff:
+                return False  # still in cooldown
+        except (ValueError, TypeError):
+            pass
+
+    return True
+
+
+def reset_restart_counter(pod_config: PodConfig):
+    """Reset restart counter after a pod has been healthy for a while."""
+    def _reset(pod):
+        pod["restart_attempts"] = 0
+        pod["restart_backoff_seconds"] = BASE_RESTART_BACKOFF_SECONDS
+        pod["last_restart_attempt"] = None
+
+    _update_pod_state(pod_config.pod_id, _reset)
+
+
+def auto_recover_pods() -> list:
+    """Attempt to restart offline pods that are eligible for recovery (TK-41173c52).
+
+    Called each scheduler cycle. Returns a list of recovery events.
+    Implements exponential backoff: 1m → 2m → 4m → 8m → 16m (max 5 attempts).
+
+    After MAX_RESTART_ATTEMPTS failed restarts, the pod requires manual
+    intervention — Kai won't keep restarting it indefinitely.
+    """
+    events = []
+
+    for pod_config in ALL_PODS:
+        if not should_attempt_restart(pod_config):
+            continue
+
+        # Track the attempt
+        def _pre_restart(pod):
+            pod["restart_attempts"] = pod.get("restart_attempts", 0) + 1
+            pod["last_restart_attempt"] = _now_iso()
+            # Double backoff for next attempt
+            pod["restart_backoff_seconds"] = pod.get(
+                "restart_backoff_seconds", BASE_RESTART_BACKOFF_SECONDS
+            ) * 2
+
+        _update_pod_state(pod_config.pod_id, _pre_restart)
+
+        # Attempt restart
+        success = start_pod(pod_config)
+        events.append({
+            "action": "auto_recover",
+            "pod_id": pod_config.pod_id,
+            "role": pod_config.role,
+            "success": success,
+            "attempt": load_pod_states().get(
+                pod_config.pod_id, {}
+            ).get("restart_attempts", 0),
+        })
+
+        if not success:
+            # start_pod already transitioned back to OFFLINE on failure
+            events[-1]["note"] = "restart failed, backoff continues"
+        else:
+            events[-1]["note"] = "pod restarted successfully"
+
+    return events
+
+
+def notify_restart_exhausted(pod_config: PodConfig) -> bool:
+    """Check if pod has hit the restart limit and needs manual intervention.
+
+    Returns True if notifications haven't been sent yet for this exhaustion.
+    """
+    states = load_pod_states()
+    pod = states.get(pod_config.pod_id, {})
+    if pod.get("restart_attempts", 0) < MAX_RESTART_ATTEMPTS:
+        return False
+    if pod.get("state") != "OFFLINE":
+        return False
+    # Notification hasn't been sent yet for this exhaustion
+    return not pod.get("_restart_exhaustion_notified", False)
+
+
+def mark_restart_exhaustion_notified(pod_config: PodConfig):
+    """Mark that a notification was sent for restart exhaustion."""
+    def _mark(pod):
+        pod["_restart_exhaustion_notified"] = True
+
+    _update_pod_state(pod_config.pod_id, _mark)

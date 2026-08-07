@@ -2138,7 +2138,7 @@
       "dependencies": [
         "17O-A"
       ],
-      "status": "failed",
+      "status": "completed",
       "description": "Directory taxonomy: 01 Constitution, 02 Legislation (Acts/LIs/Regulations), 03 Case Law (Supreme/Appeal/High Court), 04 Procedure (Civil/Criminal/Evidence), 05 Specialized Law, 06 International Law, 07 Legal Reasoning. 1992 Constitution as supreme authority.",
       "completion_criteria": [
         "7-category directory taxonomy created",
@@ -2148,7 +2148,7 @@
       "assigned_provider": "qwen3_coding",
       "build_id": "c56429df",
       "failure_reason": "Build c56429df missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07T11:30:00Z",
+      "completed_at": "2026-08-07",
       "notes": "Taxonomy implemented inside legal_metadata.py (taxonomy_category/taxonomy_subcategory on LegalMetadata) and legal_qc.py (CATEGORY_SIGNALS covering all 7 categories). Directory structure from klaus/schema.py with jurisdiction-aware categorization."
     },
     {
@@ -2158,7 +2158,7 @@
       "dependencies": [
         "17O-B"
       ],
-      "status": "failed",
+      "status": "completed",
       "description": "Metadata schema: jurisdiction, court, year, citation, judge, parties, status (current/overruled/amended). Version control for documents. Immutable storage with audit trail.",
       "completion_criteria": [
         "Metadata schema with all required fields",
@@ -2168,7 +2168,7 @@
       "assigned_provider": "qwen3_coding",
       "build_id": "7dc57f6a",
       "failure_reason": "Build 7dc57f6a missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07T11:30:00Z",
+      "completed_at": "2026-08-07",
       "notes": "Code exists (702 lines core/legal_metadata.py), fixed test imports (from core.legal_metadata), 22/22 tests passing. GhanaLegalCitation, LegalMetadata, ImmutableStorage, audit trail, version control, integrity verification \u2014 all working."
     },
     {
@@ -2178,7 +2178,7 @@
       "dependencies": [
         "17O-C"
       ],
-      "status": "failed",
+      "status": "completed",
       "description": "QC agents: source verification (every entry traceable to primary source), legal classification accuracy check, duplicate detection (0.85 cosine threshold), outdated law flagging.",
       "completion_criteria": [
         "Source verification agent running",
@@ -2189,7 +2189,7 @@
       "assigned_provider": "qwen3_coding",
       "build_id": "2e870b6a",
       "failure_reason": "Build 2e870b6a missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07T11:30:00Z",
+      "completed_at": "2026-08-07",
       "notes": "Code exists (597 lines core/legal_qc.py), fixed test imports (from core.legal_qc), 32/32 tests passing. SourceVerificationAgent, ClassificationAccuracyAgent, DuplicateDetectionAgent, OutdatedLawAgent, QCController \u2014 all working."
     },
     {

@@ -1,0 +1,30 @@
+[Unit]
+Description=Juris Kai Telegram Bot — Legal Assistant
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/project/ai-orchestrator
+Environment=PYTHONUNBUFFERED=1
+# Bot token — set via environment file or inline
+EnvironmentFile=-/etc/juris-kai.env
+ExecStart=/project/ai-orchestrator/.venv/bin/python -m core.juris_kai.bot
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=juris-kai
+
+# Security hardening (does NOT share user with main Kai orchestrator)
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/project/ai-orchestrator/memory
+ReadOnlyPaths=/project/ai-orchestrator/core
+ReadWritePaths=-/project/ai-orchestrator/logs
+
+[Install]
+WantedBy=multi-user.target

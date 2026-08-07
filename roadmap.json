@@ -2642,6 +2642,103 @@
       "module": "legal_brain",
       "created_at": "2026-08-07T12:24:29.220382+00:00",
       "updated_at": "2026-08-07T12:24:29.220382+00:00"
+    },
+    {
+      "id": "JK-1",
+      "name": "Juris Kai Telegram UX",
+      "description": "Native Telegram menu system with reply keyboards: Learn Law, Cases, Practice, Study Tools, Documents, Progress, Settings. Inline buttons for disclaimer acceptance, quiz answers. First-time user onboarding flow. Back buttons and persistent menus.",
+      "priority": 40,
+      "status": "completed",
+      "completed_at": "2026-08-07T13:54:34.397654+00:00",
+      "depends_on": [],
+      "related_files": [
+        "core/juris_kai/bot.py",
+        "core/juris_kai/menus.py"
+      ]
+    },
+    {
+      "id": "JK-2",
+      "name": "Juris Kai Security Isolation",
+      "description": "Admin menu gated by JURIS_KAI_ADMIN_IDS. Rate limiting per user. Security audit logging (auth failures, admin denials, abuse detection). Operational import boundary tests. Separate systemd service from Kai core.",
+      "priority": 45,
+      "status": "completed",
+      "completed_at": "2026-08-07T13:54:34.397654+00:00",
+      "depends_on": [
+        "JK-1"
+      ],
+      "related_files": [
+        "core/juris_kai/accounts.py",
+        "core/juris_kai/bot.py",
+        "systemd/ai-orchestrator-juris-kai.service"
+      ]
+    },
+    {
+      "id": "JK-3",
+      "name": "Juris Kai Admin Console",
+      "description": "Admin-only Telegram menu: Bot health, user activity, error logs, provider status, cost monitor. Knowledge management stubs. Security monitoring. Dashboard stats via Telegram.",
+      "priority": 42,
+      "status": "completed",
+      "completed_at": "2026-08-07T13:54:34.397654+00:00",
+      "depends_on": [
+        "JK-1",
+        "JK-2"
+      ],
+      "related_files": [
+        "core/juris_kai/bot.py",
+        "core/juris_kai/dashboard.py"
+      ]
+    },
+    {
+      "id": "JK-4",
+      "name": "Juris Kai Knowledge Management",
+      "description": "Integrate read-only legal knowledge base search from core/legal/search.py into Juris Kai Telegram interface. Source-annotated results with confidence scoring. Ghana legal document search. NEVER write back to KB.",
+      "priority": 35,
+      "status": "in_progress",
+      "depends_on": [
+        "JK-1",
+        "JK-2"
+      ],
+      "related_files": [
+        "core/juris_kai/bot.py",
+        "core/legal/search.py",
+        "core/legal_brain/"
+      ],
+      "assigned_provider": "omniroute",
+      "build_id": "fb7fb0e8"
+    },
+    {
+      "id": "JK-5",
+      "name": "Juris Kai Analytics",
+      "description": "User engagement metrics: queries per day, topic popularity, retention rates, conversion rates (trial\u2192paid). Cost per user tracking. AI response quality sampling. Export for business intelligence.",
+      "priority": 25,
+      "status": "in_progress",
+      "depends_on": [
+        "JK-1",
+        "JK-3"
+      ],
+      "related_files": [
+        "core/juris_kai/dashboard.py",
+        "core/juris_kai/accounts.py"
+      ],
+      "assigned_provider": "omniroute",
+      "build_id": "1791086a"
+    },
+    {
+      "id": "JK-6",
+      "name": "Juris Kai Monetization Readiness",
+      "description": "Live Hubtel API integration (currently test mode). Payment webhook handling. Automatic subscription activation on payment confirmation. Receipt generation. Payment dispute handling flows.",
+      "priority": 30,
+      "status": "in_progress",
+      "depends_on": [
+        "JK-1",
+        "JK-2"
+      ],
+      "related_files": [
+        "core/juris_kai/payments.py",
+        "core/juris_kai/accounts.py"
+      ],
+      "assigned_provider": "omniroute",
+      "build_id": "92e1c42f"
     }
   ],
   "_audit": {

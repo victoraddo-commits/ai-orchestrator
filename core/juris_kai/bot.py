@@ -122,11 +122,15 @@ HELP_TEXT = (
 # Telegram API helpers
 # ---------------------------------------------------------------------------
 
-def telegram_api(method: str, data: dict) -> dict:
-    """Call the Telegram Bot API. Returns the decoded JSON response."""
+def telegram_api(method: str, data: dict, timeout: int = 35) -> dict:
+    """Call the Telegram Bot API. Returns the decoded JSON response.
+
+    Default timeout is 35s to accommodate getUpdates long-polling (POLL_TIMEOUT=25s
+    + network buffer).
+    """
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
     try:
-        resp = requests.post(url, json=data, timeout=15)
+        resp = requests.post(url, json=data, timeout=timeout)
         return resp.json()
     except Exception as exc:
         logger.error(f"Telegram API call failed: {method} — {exc}")

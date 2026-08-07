@@ -57,6 +57,13 @@ def test_research_agent_routes_to_claude_fallback(monkeypatch):
 
 
 def test_fast_analysis_agent_routes_to_groq(monkeypatch):
+    import core.ai_provider as ai_provider
+    # qwen3_coder_text leads "classification" and is now available
+    # (reasoning-model fallback fix deployed) — disable it so groq
+    # is the next candidate this test expects.
+    monkeypatch.setitem(ai_provider.get_provider("qwen3_coder_text"), "available_fn", lambda: False)
+    # groq is disabled in persisted provider state — re-enable for this test.
+    monkeypatch.setitem(ai_provider.get_provider("groq"), "enabled", True)
     _stub_provider(monkeypatch, "groq", "groq answered")
 
     result = agent_roles.fast_analysis_agent("Triage this log")

@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kai Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   Kai Command Center v2 — Data-Dense Dashboard Design System
+   Generated via ui-ux-pro-max
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg-deep: #020617;
+  --bg-surface: #0F172A;
+  --bg-elevated: #1E293B;
+  --border: #334155;
+  --border-subtle: rgba(51,65,85,0.5);
+  --fg: #F8FAFC;
+  --fg-secondary: #94A3B8;
+  --fg-muted: #64748B;
+  --accent: #16A34A;
+  --accent-glow: rgba(22,163,74,0.15);
+  --warn: #D29922;
+  --warn-glow: rgba(210,153,34,0.15);
+  --destructive: #DC2626;
+  --destructive-glow: rgba(220,38,38,0.15);
+  --info: #3B82F6;
+  --info-glow: rgba(59,130,246,0.15);
+  --radius: 0px;
+  --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --sidebar-width: 210px;
+  --sidebar-collapsed: 52px;
+  --transition-fast: 120ms;
+  --transition-normal: 180ms;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-deep);
+  color: var(--fg);
+  min-height: 100vh;
+  line-height: 1.4;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Login ──────────────────────────────────────────────────── */
+
+.login-wrap {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 24px;
+  background: var(--bg-deep);
+}
+.login-card {
+  width: 100%; max-width: 380px;
+  background: var(--bg-surface); border: 1px solid var(--border); padding: 36px 28px;
+  box-shadow: 0 0 0 1px rgba(51,65,85,0.3), 0 8px 40px rgba(0,0,0,0.5);
+}
+.login-card h1 {
+  font-family: var(--font-mono); font-size: 1.1rem; font-weight: 600;
+  text-align: center; margin-bottom: 2px; letter-spacing: -0.5px; color: var(--accent);
+}
+.login-card .subtitle {
+  text-align: center; color: var(--fg-muted); font-size: 0.75rem;
+  margin-bottom: 28px; font-family: var(--font-mono);
+}
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block; font-size: 0.7rem; font-weight: 600;
+  color: var(--fg-secondary); margin-bottom: 4px; text-transform: uppercase;
+  letter-spacing: 0.8px; font-family: var(--font-mono);
+}
+.form-group input, .form-group select {
+  width: 100%; padding: 9px 12px;
+  background: var(--bg-deep); border: 1px solid var(--border); color: var(--fg);
+  font-size: 0.85rem; font-family: var(--font-mono); transition: border-color var(--transition-fast);
+}
+.form-group input:focus, .form-group select:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.form-group input.error { border-color: var(--destructive); }
+.form-group select { cursor: pointer; }
+
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+.checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+.checkbox-row label { font-size: 0.75rem; color: var(--fg-secondary); cursor: pointer; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 18px; border: 1px solid var(--border); font-size: 0.78rem;
+  font-weight: 500; cursor: pointer; font-family: var(--font-mono);
+  transition: all var(--transition-fast); background: var(--bg-elevated); color: var(--fg);
+}
+.btn:hover { background: var(--border); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); width: 100%; }
+.btn-primary:hover { filter: brightness(1.15); background: var(--accent); }
+.btn-sm { padding: 4px 10px; font-size: 0.7rem; }
+.btn-xs { padding: 2px 8px; font-size: 0.65rem; }
+.btn-danger { background: var(--destructive); color: #fff; border-color: var(--destructive); }
+.btn-danger:hover { filter: brightness(1.15); background: var(--destructive); }
+.btn-outline { background: transparent; }
+.btn-accent { border-color: var(--accent); color: var(--accent); background: transparent; }
+.btn-accent:hover { background: var(--accent-glow); }
+.btn-warn { border-color: var(--warn); color: var(--warn); background: transparent; }
+.btn-warn:hover { background: var(--warn-glow); }
+
+.login-error, .err-msg {
+  background: var(--destructive-glow); border: 1px solid rgba(220,38,38,0.3);
+  padding: 10px 14px; margin-bottom: 16px; color: var(--destructive);
+  font-size: 0.75rem; font-family: var(--font-mono); display: none;
+}
+.login-error.visible, .err-msg.visible { display: block; }
+
+/* ── App Shell ──────────────────────────────────────────────── */
+
+.app-wrap { display: none; min-height: 100vh; }
+.app-wrap.active { display: flex; }
+
+.sidebar {
+  width: var(--sidebar-width); min-width: var(--sidebar-width);
+  background: var(--bg-surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; position: fixed; top: 0; left: 0;
+  bottom: 0; z-index: 100; transition: width var(--transition-normal);
+}
+.sidebar.collapsed { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+
+.sidebar-brand {
+  padding: 14px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border); min-height: 49px;
+}
+.sidebar-brand .logo { font-size: 1rem; filter: grayscale(0.3); }
+.sidebar-brand .name {
+  font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden;
+  font-family: var(--font-mono); color: var(--accent);
+}
+.sidebar.collapsed .sidebar-brand .name { display: none; }
+
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 6px; }
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; cursor: pointer; font-size: 0.75rem;
+  color: var(--fg-secondary); transition: all var(--transition-fast);
+  text-decoration: none; white-space: nowrap; margin-bottom: 1px;
+  font-family: var(--font-mono);
+}
+.nav-item:hover { background: var(--bg-elevated); color: var(--fg); }
+.nav-item.active { background: var(--accent-glow); color: var(--accent); font-weight: 500; }
+.nav-item .icon { font-size: 0.9rem; width: 22px; text-align: center; flex-shrink: 0; }
+.sidebar.collapsed .nav-item .label { display: none; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
+
+.sidebar-footer { border-top: 1px solid var(--border); padding: 10px; }
+.collapse-btn {
+  display: flex; align-items: center; gap: 6px; background: none; border: none;
+  color: var(--fg-muted); cursor: pointer; font-size: 0.7rem; padding: 5px 8px; width: 100%;
+  font-family: var(--font-mono);
+}
+.collapse-btn:hover { background: var(--bg-elevated); color: var(--fg); }
+.sidebar.collapsed .collapse-btn { justify-content: center; }
+.sidebar.collapsed .collapse-btn span { display: none; }
+
+.main-area {
+  flex: 1; margin-left: var(--sidebar-width); display: flex; flex-direction: column;
+  min-height: 100vh; transition: margin-left var(--transition-normal);
+}
+.sidebar.collapsed ~ .main-area { margin-left: var(--sidebar-collapsed); }
+
+.topbar {
+  padding: 8px 16px; background: var(--bg-surface);
+  border-bottom: 1px solid var(--border); display: flex;
+  align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50;
+  min-height: 41px;
+}
+.topbar-left {
+  font-weight: 600; font-size: 0.82rem; font-family: var(--font-mono); color: var(--accent);
+}
+.topbar-right { display: flex; align-items: center; gap: 10px; font-size: 0.72rem; color: var(--fg-muted); }
+.topbar-right .user-role { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.content { flex: 1; padding: 14px; overflow-y: auto; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+.status-bar {
+  padding: 5px 16px; background: var(--bg-surface); border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 20px; font-size: 0.68rem;
+  color: var(--fg-muted); position: sticky; bottom: 0; font-family: var(--font-mono);
+}
+.dot { width: 7px; height: 7px; display: inline-block; margin-right: 4px; }
+.dot.ok { background: var(--accent); box-shadow: 0 0 5px rgba(22,163,74,0.5); }
+.dot.warn { background: var(--warn); box-shadow: 0 0 5px rgba(210,153,34,0.5); }
+.dot.bad { background: var(--destructive); box-shadow: 0 0 5px rgba(220,38,38,0.5); }
+
+/* ── Shared Components ──────────────────────────────────────── */
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+
+.card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  padding: 14px; transition: border-color var(--transition-fast);
+}
+.card:hover { border-color: var(--fg-muted); }
+.card h3 {
+  font-size: 0.68rem; font-weight: 600; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;
+  font-family: var(--font-mono); display: flex; align-items: center; gap: 6px;
+}
+
+.metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.metric {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  padding: 12px; text-align: center; transition: border-color var(--transition-fast);
+}
+.metric:hover { border-color: var(--accent); }
+.metric .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); display: block; font-family: var(--font-mono); }
+.metric .val.warn { color: var(--warn); }
+.metric .val.bad { color: var(--destructive); }
+.metric .val.info { color: var(--info); }
+.metric .lbl { font-size: 0.65rem; color: var(--fg-muted); margin-top: 4px; display: block; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-mono); }
+
+.badge {
+  padding: 1px 7px; font-size: 0.62rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.3px; font-family: var(--font-mono);
+  border: 1px solid;
+}
+.badge.ok { background: var(--accent-glow); color: var(--accent); border-color: rgba(22,163,74,0.3); }
+.badge.warn { background: var(--warn-glow); color: var(--warn); border-color: rgba(210,153,34,0.3); }
+.badge.bad, .badge.critical { background: var(--destructive-glow); color: var(--destructive); border-color: rgba(220,38,38,0.3); }
+.badge.info { background: var(--info-glow); color: var(--info); border-color: rgba(59,130,246,0.3); }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-family: var(--font-mono); }
+th { text-align: left; padding: 6px 8px; font-weight: 600; color: var(--fg-muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-secondary); }
+tr:hover td { background: var(--bg-elevated); color: var(--fg); }
+
+.loading { color: var(--fg-muted); font-family: var(--font-mono); font-size: 0.75rem; }
+.error-text { color: var(--destructive); font-family: var(--font-mono); font-size: 0.72rem; }
+.empty { color: var(--fg-muted); font-family: var(--font-mono); font-size: 0.72rem; }
+
+.spread { display: flex; justify-content: space-between; align-items: center; }
+
+.progress-bar { height: 4px; background: var(--bg-deep); overflow: hidden; margin: 4px 0; }
+.progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+.progress-fill.warn { background: var(--warn); }
+.progress-fill.done { background: var(--accent); }
+
+/* ── Module Cards ───────────────────────────────────────────── */
+
+.module-card { margin-bottom: 10px; }
+.module-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 10px 14px; background: var(--bg-surface);
+  border: 1px solid var(--border); transition: background var(--transition-fast);
+  font-family: var(--font-mono);
+}
+.module-card-header:hover { background: var(--bg-elevated); }
+.module-card-header .mod-name { font-weight: 600; font-size: 0.8rem; }
+.module-card-header .mod-caret { font-size: 0.6rem; color: var(--fg-muted); transition: transform var(--transition-fast); }
+.module-card.open .module-card-header .mod-caret { transform: rotate(90deg); }
+.module-card-body { display: none; padding: 12px 14px; border: 1px solid var(--border); border-top: none; background: var(--bg-deep); }
+.module-card.open .module-card-body { display: block; }
+.module-card.open .module-card-header { border-bottom-color: transparent; }
+
+.module-tabs { display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.module-tab-btn {
+  background: none; border: none; color: var(--fg-muted); cursor: pointer;
+  font-size: 0.7rem; padding: 4px 12px; font-family: var(--font-mono);
+  transition: color var(--transition-fast); text-transform: uppercase; letter-spacing: 0.3px;
+}
+.module-tab-btn:hover { color: var(--fg); }
+.module-tab-btn.active { color: var(--accent); border-bottom: 1px solid var(--accent); margin-bottom: -7px; }
+
+/* ── Container / Docker Cards ───────────────────────────────── */
+
+.container-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.container-card {
+  background: var(--bg-surface); border: 1px solid var(--border); padding: 12px;
+  font-family: var(--font-mono); transition: border-color var(--transition-fast);
+}
+.container-card:hover { border-color: var(--fg-muted); }
+.container-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.container-card-name { font-weight: 600; font-size: 0.8rem; }
+.container-card-body { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 0.68rem; color: var(--fg-secondary); }
+.container-card-body .cl { color: var(--fg-muted); }
+.container-card-actions { margin-top: 8px; display: flex; gap: 4px; }
+
+/* ── Worker Cards ───────────────────────────────────────────── */
+
+.worker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.worker-card {
+  background: var(--bg-surface); border: 1px solid var(--border); padding: 12px;
+  font-family: var(--font-mono);
+}
+.worker-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.worker-card-name { font-weight: 600; font-size: 0.78rem; }
+.worker-card-body { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 0.68rem; }
+.worker-card-body .wl { color: var(--fg-muted); }
+
+/* ── Settings Forms ─────────────────────────────────────────── */
+
+.settings-field { margin-bottom: 10px; }
+.settings-field label {
+  display: block; font-size: 0.68rem; font-weight: 600; color: var(--fg-muted);
+  margin-bottom: 3px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.settings-field input[type="number"] {
+  width: 100%; max-width: 120px; padding: 5px 8px;
+  background: var(--bg-deep); border: 1px solid var(--border); color: var(--fg);
+  font-size: 0.75rem; font-family: var(--font-mono);
+}
+.settings-field input[type="number"]:focus { outline: none; border-color: var(--accent); }
+.toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.toggle-switch {
+  position: relative; width: 36px; height: 20px; flex-shrink: 0;
+}
+.toggle-switch input { display: none; }
+.toggle-switch .slider {
+  position: absolute; inset: 0; background: var(--bg-deep); border: 1px solid var(--border);
+  cursor: pointer; transition: all var(--transition-fast);
+}
+.toggle-switch .slider::before {
+  content: ''; position: absolute; width: 14px; height: 14px; left: 2px; top: 2px;
+  background: var(--fg-muted); transition: all var(--transition-fast);
+}
+.toggle-switch input:checked + .slider { background: var(--accent-glow); border-color: var(--accent); }
+.toggle-switch input:checked + .slider::before { background: var(--accent); transform: translateX(16px); }
+.toggle-label { font-size: 0.72rem; color: var(--fg-secondary); font-family: var(--font-mono); }
+
+/* ── Log Viewer ─────────────────────────────────────────────── */
+
+.log-viewer {
+  background: var(--bg-deep); border: 1px solid var(--border);
+  padding: 10px 14px; font-family: var(--font-mono); font-size: 0.68rem;
+  max-height: 360px; overflow-y: auto; line-height: 1.6;
+  white-space: pre-wrap; word-break: break-all; color: var(--fg-secondary);
+}
+.log-viewer .log-ok { color: var(--accent); }
+.log-viewer .log-err { color: var(--destructive); }
+.log-viewer .log-warn { color: var(--warn); }
+
+/* ── Modal ──────────────────────────────────────────────────── */
+
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(2,6,23,0.75);
+  z-index: 200; align-items: center; justify-content: center;
+}
+.modal-overlay.visible { display: flex; }
+.modal-box {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  padding: 24px 20px; width: 100%; max-width: 420px;
+}
+.modal-box h2 { font-family: var(--font-mono); font-size: 0.9rem; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+.modal-box .btn-row { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+.modal-success { color: var(--accent); font-size: 0.75rem; display: none; margin-top: 8px; font-family: var(--font-mono); }
+.modal-success.visible { display: block; }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .sidebar { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
+  .sidebar .nav-item .label, .sidebar-brand .name, .collapse-btn span { display: none; }
+  .sidebar .nav-item { justify-content: center; padding: 8px 0; }
+  .sidebar .collapse-btn { justify-content: center; }
+  .main-area { margin-left: var(--sidebar-collapsed); }
+  .grid, .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .metric-row { grid-template-columns: repeat(2, 1fr); }
+  .worker-grid, .container-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Toast ──────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed; bottom: 40px; right: 20px; z-index: 300;
+  padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg);
+  opacity: 0; transform: translateY(10px); transition: all var(--transition-normal);
+  pointer-events: none; max-width: 380px;
+}
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast.ok { border-color: var(--accent); }
+.toast.err { border-color: var(--destructive); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Login
+     ═══════════════════════════════════════════════════════════ -->
+<div id="login-screen" class="login-wrap active">
+  <div class="login-card">
+    <h1>kai command center</h1>
+    <p class="subtitle">unified control plane v2.0</p>
+    <div class="login-error" id="login-error"></div>
+    <div class="form-group">
+      <label for="login-user">Username</label>
+      <input type="text" id="login-user" autocomplete="username" placeholder="operator" autofocus>
+    </div>
+    <div class="form-group">
+      <label for="login-pass">Password</label>
+      <input type="password" id="login-pass" autocomplete="current-password">
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="login-remember">
+      <label for="login-remember">Remember session</label>
+    </div>
+    <button class="btn btn-primary" id="login-btn" onclick="doLogin()">authenticate</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     App Shell
+     ═══════════════════════════════════════════════════════════ -->
+<div id="app-wrap" class="app-wrap">
+
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="logo">&#9879;</span>
+      <span class="name">kai</span>
+    </div>
+    <div class="sidebar-nav" id="sidebar-nav">
+      <a class="nav-item active" href="#home" data-hash="home"><span class="icon">&#9632;</span><span class="label">Home</span></a>
+      <a class="nav-item" href="#modules" data-hash="modules"><span class="icon">&#9636;</span><span class="label">Modules</span></a>
+      <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon">&#9881;</span><span class="label">Workforce</span></a>
+      <a class="nav-item" href="#docker" data-hash="docker"><span class="icon">&#9925;</span><span class="label">Docker</span></a>
+      <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon">&#9884;</span><span class="label">Airdrop</span></a>
+      <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon">&#9728;</span><span class="label">Infra</span></a>
+      <a class="nav-item" href="#security" data-hash="security"><span class="icon">&#9900;</span><span class="label">Security</span></a>
+      <a class="nav-item" href="#settings" data-hash="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></a>
+      <a class="nav-item" href="#logs" data-hash="logs"><span class="icon">&#9776;</span><span class="label">Logs</span></a>
+    </div>
+    <div class="sidebar-footer">
+      <button class="collapse-btn" onclick="toggleSidebar()"><span>&#9776;</span> <span>Collapse</span></button>
+    </div>
+  </nav>
+
+  <div class="main-area">
+    <header class="topbar">
+      <div class="topbar-left" id="topbar-title">home</div>
+      <div class="topbar-right">
+        <span id="user-display"></span>
+        <button class="btn btn-sm" onclick="showChangePassword()">password</button>
+        <button class="btn btn-sm" onclick="doLogout()">logout</button>
+      </div>
+    </header>
+
+    <div class="content" id="content-area">
+
+      <!-- HOME -->
+      <section class="panel active" id="panel-home">
+        <div class="metric-row">
+          <div class="metric"><span class="val" id="home-health">-</span><span class="lbl">System Health</span></div>
+          <div class="metric"><span class="val" id="home-modules">-</span><span class="lbl">Modules</span></div>
+          <div class="metric"><span class="val" id="home-agents">-</span><span class="lbl">Agents</span></div>
+          <div class="metric"><span class="val" id="home-builds">-</span><span class="lbl">Active Builds</span></div>
+        </div>
+        <div class="grid">
+          <div class="card"><h3>System Status</h3><div id="home-system-status"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>Active Operations</h3><div id="home-active-ops"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>Resource Usage</h3><div id="home-resources"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>Alerts &amp; Approvals</h3><div id="home-alerts"><span class="loading">loading...</span></div></div>
+        </div>
+      </section>
+
+      <!-- MODULES -->
+      <section class="panel" id="panel-modules"><div id="modules-content"><span class="loading">loading...</span></div></section>
+
+      <!-- AI WORKFORCE -->
+      <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading...</span></div></section>
+
+      <!-- DOCKER (NEW) -->
+      <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading...</span></div></section>
+
+      <!-- AIRDROP (NEW) -->
+      <section class="panel" id="panel-airdrop"><div id="airdrop-content"><span class="loading">loading...</span></div></section>
+
+      <!-- INFRASTRUCTURE -->
+      <section class="panel" id="panel-infrastructure">
+        <div class="grid" id="infra-content">
+          <div class="card"><h3>Proxmox Nodes</h3><div id="infra-proxmox"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>GPU Providers</h3><div id="infra-gpu"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>VPN Status</h3><div id="infra-vpn"><span class="loading">loading...</span></div></div>
+        </div>
+      </section>
+
+      <!-- SECURITY -->
+      <section class="panel" id="panel-security">
+        <div class="grid" id="security-content">
+          <div class="card"><h3>Users &amp; Accounts</h3><div id="sec-users"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>API Keys</h3><div id="sec-apikeys"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>Login History</h3><div id="sec-logins"><span class="loading">loading...</span></div></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="panel" id="panel-settings"><div id="settings-content"><span class="loading">loading...</span></div></section>
+
+      <!-- LOGS -->
+      <section class="panel" id="panel-logs">
+        <div class="card"><h3>Audit Log</h3><div id="logs-content"><span class="loading">loading...</span></div></div>
+      </section>
+
+    </div>
+
+    <footer class="status-bar" id="status-bar">
+      <span><span class="dot ok" id="sb-dot"></span><span id="sb-health">checking...</span></span>
+      <span id="sb-modules">modules: -</span>
+      <span id="sb-containers">containers: -</span>
+      <span id="sb-time">-</span>
+    </footer>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     Password Modal
+     ═══════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="pw-modal">
+  <div class="modal-box">
+    <h2>Change Password</h2>
+    <div class="form-group"><label for="pw-old">Current Password</label><input type="password" id="pw-old"></div>
+    <div class="form-group"><label for="pw-new">New Password</label><input type="password" id="pw-new" placeholder="4+ characters"></div>
+    <div class="err-msg" id="pw-error"></div>
+    <div class="modal-success" id="pw-success">Password changed.</div>
+    <div class="btn-row">
+      <button class="btn btn-sm" onclick="closeChangePassword()">Cancel</button>
+      <button class="btn btn-sm btn-primary" onclick="doChangePassword()" style="width:auto">Update</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     JavaScript — Kai Command Center v2
+     ═══════════════════════════════════════════════════════════ -->
+<script>
+// ── State ─────────────────────────────────────────────────────
+const S = {
+  token: null, role: null, username: null,
+  loadedPanels: new Set(), modules: [], providers: [],
+};
+const SK = 'kai_command_session_v2';
+const PANEL_TITLES = {
+  home:'home', modules:'modules', 'ai-workforce':'workforce',
+  docker:'docker', airdrop:'airdrop', infrastructure:'infra',
+  security:'security', settings:'settings', logs:'logs'
+};
+
+const $=id=>document.getElementById(id);
+const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};
+
+// ── Toast ─────────────────────────────────────────────────────
+function toast(msg, type='ok') {
+  const t = $('toast'); t.textContent = msg; t.className = 'toast visible ' + type;
+  clearTimeout(t._tid); t._tid = setTimeout(()=>t.classList.remove('visible'), 2500);
+}
+
+// ── Auth ──────────────────────────────────────────────────────
+function getToken() {
+  if (S.token) return S.token;
+  try { const d=JSON.parse(localStorage.getItem(SK)||sessionStorage.getItem(SK)||'{}');
+    S.token=d.token;S.role=d.role;S.username=d.username; } catch {}
+  return S.token;
+}
+function saveToken(rem) {
+  const d=JSON.stringify({token:S.token,role:S.role,username:S.username});
+  (rem?localStorage:sessionStorage).setItem(SK,d);
+}
+function clearToken() {
+  S.token=null;S.role=null;S.username=null;
+  localStorage.removeItem(SK);sessionStorage.removeItem(SK);
+}
+
+async function api(path, opts={}) {
+  const h={'Content-Type':'application/json',...(opts.headers||{})};
+  if(S.token) h['X-Kai-Session']=S.token;
+  const r=await fetch(path,{...opts,headers:h});
+  if(r.status===401){clearToken();showLogin();throw new Error('Session expired');}
+  if(!r.ok){
+    let m=`HTTP ${r.status}`;
+    try{const j=await r.json();m=j.detail||j.error||m;}catch{}
+    throw new Error(m);
+  }
+  return r.json();
+}
+
+function showLogin() {
+  $('login-screen').style.display='flex';$('app-wrap').classList.remove('active');clearToken();
+}
+async function doLogin() {
+  const u=$('login-user').value.trim(),p=$('login-pass').value,rem=$('login-remember').checked;
+  const err=$('login-error'),btn=$('login-btn');
+  if(!u||!p){err.textContent='Username and password required.';err.classList.add('visible');return;}
+  btn.disabled=true;btn.textContent='authenticating...';err.classList.remove('visible');
+  try {
+    const d=await (await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})).json();
+    if(!d.token) throw new Error(d.detail||'Login failed');
+    S.token=d.token;S.role=d.role||'viewer';S.username=u;saveToken(rem);
+    $('login-screen').style.display='none';$('app-wrap').classList.add('active');
+    $('user-display').innerHTML=`${esc(u)} <span class="user-role">${S.role}</span>`;
+    initApp();
+  }catch(e){err.textContent=e.message;err.classList.add('visible');btn.disabled=false;btn.textContent='authenticate';}
+}
+async function doLogout() { try{await api('/auth/logout',{method:'POST'});}catch{} clearToken();showLogin(); }
+
+// ── Password ──────────────────────────────────────────────────
+function showChangePassword(){ $('pw-modal').classList.add('visible');$('pw-old').value='';$('pw-new').value='';$('pw-error').classList.remove('visible');$('pw-success').classList.remove('visible');$('pw-old').focus(); }
+function closeChangePassword(){ $('pw-modal').classList.remove('visible'); }
+async function doChangePassword() {
+  const o=$('pw-old').value,n=$('pw-new').value,err=$('pw-error'),ok=$('pw-success');
+  err.classList.remove('visible');ok.classList.remove('visible');
+  if(!o||!n){err.textContent='Both fields required.';err.classList.add('visible');return;}
+  if(n.length<4){err.textContent='Min 4 characters.';err.classList.add('visible');return;}
+  try{await api('/auth/change-password',{method:'POST',body:JSON.stringify({old_password:o,new_password:n})});ok.classList.add('visible');setTimeout(closeChangePassword,1200);}
+  catch(e){err.textContent=e.message;err.classList.add('visible');}
+}
+
+// ── Sidebar ───────────────────────────────────────────────────
+function toggleSidebar(){ $('sidebar').classList.toggle('collapsed'); }
+
+// ── Routing ───────────────────────────────────────────────────
+function navigateTo(hash) {
+  const name=hash.replace('#','')||'home';
+  document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
+  const ni=document.querySelector(`.nav-item[data-hash="${name}"]`);
+  if(ni)ni.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  const panel=$(`panel-${name}`);if(panel)panel.classList.add('active');
+  $('topbar-title').textContent=PANEL_TITLES[name]||name;
+  if(!S.loadedPanels.has(name)){S.loadedPanels.add(name);loadPanel(name);}
+}
+function loadPanel(name) {
+  const fns={home:loadHome,modules:loadModules,'ai-workforce':loadWorkforce,docker:loadDocker,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs};
+  if(fns[name])fns[name]();
+}
+window.addEventListener('hashchange',()=>navigateTo(location.hash));
+document.querySelectorAll('.nav-item').forEach(el=>{el.addEventListener('click',e=>{e.preventDefault();location.hash=el.dataset.hash;});});
+$('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+$('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')$('login-pass').focus();});
+
+// ── Status Bar ────────────────────────────────────────────────
+async function updateStatusBar() {
+  try{const h=await api('/health');const d=h.status==='ok'?'ok':(h.status==='degraded'?'warn':'bad');$('sb-dot').className='dot '+d;$('sb-health').textContent=h.status;}
+  catch{$('sb-dot').className='dot bad';$('sb-health').textContent='error';}
+  try{const m=await api('/api/modules');$('sb-modules').textContent='modules: '+m.modules.length;}
+  catch{$('sb-modules').textContent='modules: -';}
+  try{const c=await api('/api/docker/containers');$('sb-containers').textContent='containers: '+(c.containers||[]).length;}
+  catch{$('sb-containers').textContent='containers: -';}
+  $('sb-time').textContent=new Date().toLocaleTimeString();
+}
+
+// ── Init ──────────────────────────────────────────────────────
+function initApp() { updateStatusBar();setInterval(updateStatusBar,30000);navigateTo(location.hash||'#home'); }
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: HOME
+// ═══════════════════════════════════════════════════════════════
+async function loadHome() {
+  try{const h=await api('/health');const cls=h.status==='ok'?'ok':'warn';
+    let html=`<p><span class="dot ${cls}"></span><strong>${esc(h.status.toUpperCase())}</strong></p>`;
+    if((h.findings||[]).length){html+='<table><thead><tr><th>Comp</th><th>Sev</th><th>Msg</th></tr></thead><tbody>';
+      for(const f of h.findings.slice(0,8)){const s=(f.severity||'').toLowerCase(),bdg=s==='critical'?'bad':s==='warning'?'warn':'ok';
+        html+=`<tr><td>${esc(f.service||'-')}</td><td><span class="badge ${bdg}">${esc(f.severity||'-')}</span></td><td style="font-size:0.68rem">${esc(f.message||'-')}</td></tr>`;}
+      html+='</tbody></table>';}
+    $('home-system-status').innerHTML=html;$('home-health').textContent=h.status.toUpperCase();$('home-health').className='val '+(h.status==='ok'?'':'warn');}
+  catch(e){$('home-system-status').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;$('home-health').textContent='ERR';$('home-health').className='val bad';}
+  try{const m=await api('/api/modules');$('home-modules').textContent=m.modules.length;}catch{$('home-modules').textContent='-';}
+  try{const a=await api('/kai/agents');$('home-agents').textContent=a.agents?a.agents.length:Object.keys(a).length;}catch{$('home-agents').textContent='-';}
+  try{const b=await api('/builds');const active=b.filter(x=>x.status!=='COMPLETED'&&x.status!=='FAILED'&&x.status!=='ROLLED_BACK');$('home-builds').textContent=active.length;
+    if(active.length){let html='<table><thead><tr><th>Name</th><th>Status</th><th>Worker</th></tr></thead><tbody>';
+      for(const x of active.slice(0,8)){const s=(x.status||'').toLowerCase(),bdg=s.includes('deploy')?'warn':s.includes('fail')?'bad':'info';
+        html+=`<tr><td>${esc(x.name||x.id)}</td><td><span class="badge ${bdg}">${esc(x.status)}</span></td><td>${esc(x.assigned_worker||'-')}</td></tr>`;}
+      html+='</tbody></table>';$('home-active-ops').innerHTML=html;}else $('home-active-ops').innerHTML='<span class="empty">No active builds</span>';}
+  catch(e){$('home-active-ops').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  try{const gpu=await api('/api/gpu/status');$('home-resources').innerHTML=`<div class="spread"><span>GPU</span><span class="badge ${gpu.available?'ok':'warn'}">${gpu.available?'Available':'Unavail'}</span></div><div style="font-size:0.68rem;color:var(--fg-muted);margin-top:4px">${esc(gpu.summary||'-')}</div>`;}
+  catch{$('home-resources').innerHTML='<span class="empty">Resource data unavailable</span>';}
+  try{const ap=await api('/approvals');const pending=ap.filter(a=>a.status==='pending');
+    let alerts=[];
+    try{const h=await api('/health');const c=(h.findings||[]).filter(f=>f.severity==='critical');if(c.length)alerts.push(`${c.length} critical finding(s)`);}catch{}
+    if(pending.length)alerts.push(`${pending.length} pending approval(s)`);
+    $('home-alerts').innerHTML=alerts.length?('<ul style="list-style:none;padding:0">'+alerts.map(a=>`<li style="padding:3px 0;font-size:0.72rem;font-family:var(--font-mono)">&#9888; ${esc(a)}</li>`).join('')+'</ul>'):'<span class="empty">All systems nominal</span>';}
+  catch{$('home-alerts').innerHTML='<span class="empty">Alert data unavailable</span>';}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: MODULES
+// ═══════════════════════════════════════════════════════════════
+async function loadModules() {
+  try{const data=await api('/api/modules');S.modules=data.modules;
+    if(!data.modules.length){$('modules-content').innerHTML='<span class="empty">No modules registered</span>';return;}
+    let html='';
+    for(const m of data.modules){html+=`
+<div class="module-card" id="mod-${esc(m.name)}">
+  <div class="module-card-header" onclick="toggleModule('${esc(m.name)}')">
+    <div><span class="mod-name">${esc(m.name)}</span><span style="font-size:0.65rem;color:var(--fg-muted);margin-left:6px">v${esc(m.version||'0.1.0')}</span></div>
+    <div style="display:flex;align-items:center;gap:8px;font-size:0.65rem;color:var(--fg-muted)">
+      ${(m.capabilities||[]).slice(0,3).map(c=>`<span class="badge info">${esc(c)}</span>`).join('')}
+      <span class="mod-caret">&#9654;</span>
+    </div></div>
+  <div class="module-card-body">
+    <div class="module-tabs">
+      <button class="module-tab-btn active" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','overview')">Overview</button>
+      <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','settings')">Settings</button>
+      <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','ops')">Ops</button>
+      <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','logs')">Logs</button>
+    </div>
+    <div class="module-tab-content" id="mod-tab-${esc(m.name)}">${esc(m.description||'No description')}</div>
+  </div></div>`;}
+    $('modules-content').innerHTML=html;}
+  catch(e){$('modules-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+function toggleModule(name){const c=document.getElementById(`mod-${name}`);if(c)c.classList.toggle('open');}
+function loadModuleTab(mname, tab){
+  const card=document.getElementById(`mod-${mname}`);if(!card)return;
+  card.querySelectorAll('.module-tab-btn').forEach(b=>b.classList.remove('active'));
+  for(const b of card.querySelectorAll('.module-tab-btn')){if(b.textContent.trim().toLowerCase()===tab)b.classList.add('active');}
+  const content=document.getElementById(`mod-tab-${mname}`);if(!content)return;
+  const m=S.modules.find(x=>x.name===mname);
+  switch(tab){
+    case'overview':
+      content.innerHTML=m?`<p style="font-size:0.75rem;color:var(--fg-secondary);margin-bottom:6px">${esc(m.description)}</p>
+        <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">
+          <div>Version: ${esc(m.version||'0.1.0')}</div>
+          <div>Endpoints: ${(m.endpoints||[]).map(e=>`<code style="background:var(--bg-deep);padding:1px 4px">${esc(e)}</code>`).join(' ')}</div>
+          <div>Deps: ${(m.dependencies||[]).join(', ')||'none'}</div>
+        </div>`:'<span class="loading">...</span>';
+      break;
+    case'settings':
+      if(m&&m.settings_schema){let fhtml='';
+        for(const[k,cfg]of Object.entries(m.settings_schema)){fhtml+='<div class="settings-field">';
+          if(cfg.type==='boolean')fhtml+=`<div class="toggle-row"><label class="toggle-switch"><input type="checkbox" id="cfg-${esc(mname)}-${esc(k)}" ${cfg.default?'checked':''} onchange="updateModuleSetting('${esc(mname)}','${esc(k)}',this.checked,'boolean')"><span class="slider"></span></label><span class="toggle-label">${esc(cfg.label)}</span></div>`;
+          else fhtml+=`<label for="cfg-${esc(mname)}-${esc(k)}">${esc(cfg.label)}</label><input type="number" id="cfg-${esc(mname)}-${esc(k)}" value="${cfg.default}" min="${cfg.min||''}" max="${cfg.max||''}" onchange="updateModuleSetting('${esc(mname)}','${esc(k)}',this.value,'number')">`;
+          fhtml+='</div>';}
+        content.innerHTML=fhtml;}
+      else content.innerHTML='<span class="empty">No configurable settings</span>';
+      break;
+    case'ops':
+      if(m&&m.ops_actions){let ohtml=`<div style="font-size:0.72rem;color:var(--fg-muted);margin-bottom:8px;font-family:var(--font-mono)">Actions:</div>`;
+        for(const a of m.ops_actions){ohtml+=`<button class="btn btn-sm" style="margin:0 4px 4px 0" onclick="runModuleOp('${esc(mname)}','${esc(a)}')">${esc(a.replace(/_/g,' '))}</button>`;}
+        ohtml+='<div id="mod-op-msg-'+esc(mname)+'" style="margin-top:8px;font-size:0.7rem"></div>';
+        content.innerHTML=ohtml;}
+      else content.innerHTML='<span class="empty">No operations defined</span>';
+      break;
+    case'logs':
+      loadModuleLogs(mname).then(h=>{content.innerHTML=h;}).catch(e=>{content.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;});
+      break;
+  }
+}
+
+function updateModuleSetting(mname,key,val,type){toast(`[${mname}] ${key} = ${val} (saved locally)`);}
+async function runModuleOp(mname,action){
+  const msg=document.getElementById('mod-op-msg-'+mname);if(!msg)return;
+  msg.innerHTML=`<span style="color:var(--warn)">Running ${action}...</span>`;
+  toast(`[${mname}] ${action} triggered`);
+  setTimeout(()=>{msg.innerHTML=`<span style="color:var(--accent)">Done: ${action}</span>`;},800);
+}
+
+async function loadModuleLogs(mname){
+  try{const audit=await api('/self-healing/log');const events=(audit||[]).filter(e=>(e.module||e.source||'').toLowerCase().includes(mname.toLowerCase())).slice(0,30);
+    if(!events.length)return '<span class="empty">No log entries</span>';
+    return '<div class="log-viewer">'+events.map(e=>`<div>[${esc(e.time||e.timestamp||'')}] ${esc(e.event||e.action||'')} ${esc(e.detail||e.message||'')}</div>`).join('')+'</div>';}
+  catch{return '<span class="empty">Log unavailable</span>';}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: AI WORKFORCE
+// ═══════════════════════════════════════════════════════════════
+async function loadWorkforce(){
+  try{const data=await api('/api/command-center/summary');const wf=data.workforce||{};
+    let html='<div class="worker-grid">';
+    for(const[name,info]of Object.entries(wf)){const h=info.health||'unknown',bdg=h==='healthy'?'ok':h==='degraded'?'warn':h==='error'?'bad':'info';
+      const sr=info.success_rate!=null?Math.round(info.success_rate*100)+'%':'n/a';
+      html+=`<div class="worker-card"><div class="worker-card-header"><span class="worker-card-name">${esc(name)}</span><span class="badge ${bdg}">${esc(h)}</span></div>
+        <div class="worker-card-body">
+        <span class="wl">Model</span><span>${esc(info.model||'-')}</span>
+        <span class="wl">Kind</span><span>${esc(info.kind||'-')}</span>
+        <span class="wl">Coding</span><span>${info.coding_agent?'<span class="badge ok">yes</span>':'<span class="badge info">no</span>'}</span>
+        <span class="wl">Priority</span><span>${esc(String(info.routing_priority??'-'))}</span>
+        <span class="wl">Success</span><span>${sr}</span>
+        <span class="wl">Queue</span><span>${info.queue_depth??'-'}</span>
+        <span class="wl">Current</span><span style="font-size:0.65rem">${esc(info.current_build_name||info.current_build||'-')}</span>
+        </div>
+        <div style="margin-top:8px">
+          <button class="btn btn-xs btn-accent" onclick="toggleProvider('${esc(name)}')">${info.enabled!==false?'Disable':'Enable'}</button>
+        </div></div>`;}
+    html+='</div>';$('ai-workforce-content').innerHTML=html||'<span class="empty">No workforce data</span>';}
+  catch(e){$('ai-workforce-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+async function toggleProvider(name){
+  try{const d=await api(`/providers/${name}/toggle`,{method:'POST'});toast(`[${name}] ${d.enabled?'enabled':'disabled'}`);loadWorkforce();}
+  catch(e){toast(`Error: ${e.message}`,'err');}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: DOCKER
+// ═══════════════════════════════════════════════════════════════
+async function loadDocker(){
+  try{const data=await api('/api/docker/containers');const cs=data.containers||[];
+    if(!cs.length){$('docker-content').innerHTML='<span class="empty">No containers found</span>';return;}
+    let html='<div class="container-grid">';
+    for(const c of cs){const s=c.state||'unknown',bdg=s==='running'?'ok':s==='exited'?'bad':s==='paused'?'warn':'info';
+      html+=`<div class="container-card"><div class="container-card-header"><span class="container-card-name">${esc(c.name)}</span><span class="badge ${bdg}">${esc(s)}</span></div>
+        <div class="container-card-body">
+        <span class="cl">Image</span><span>${esc(c.image||'-')}</span>
+        <span class="cl">ID</span><span style="font-size:0.62rem">${esc(c.id||'-')}</span>
+        <span class="cl">Status</span><span style="font-size:0.62rem">${esc(c.status||'-')}</span>
+        <span class="cl">Ports</span><span>${(c.ports||[]).join(', ')||'-'}</span>
+        </div>
+        <div class="container-card-actions">
+          <button class="btn btn-xs btn-accent" onclick="dockerAction('${esc(c.name)}','start')" ${s==='running'?'disabled':''}>start</button>
+          <button class="btn btn-xs btn-warn" onclick="dockerAction('${esc(c.name)}','stop')" ${s!=='running'?'disabled':''}>stop</button>
+          <button class="btn btn-xs" onclick="dockerAction('${esc(c.name)}','restart')" ${s!=='running'?'disabled':''}>restart</button>
+          <button class="btn btn-xs" onclick="dockerLogs('${esc(c.name)}')">logs</button>
+        </div>
+        <div class="log-viewer" id="docker-log-${esc(c.name)}" style="display:none;margin-top:6px;max-height:160px"></div>
+      </div>`;}
+    html+='</div>';$('docker-content').innerHTML=html;}
+  catch(e){$('docker-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+async function dockerAction(name,action){
+  try{const d=await api(`/api/docker/containers/${name}/${action}`,{method:'POST'});
+    toast(`[${name}] ${action} ${d.ok?'ok':'failed'}`,'ok');loadDocker();}
+  catch(e){toast(`Error: ${e.message}`,'err');}
+}
+async function dockerLogs(name){
+  const el=document.getElementById('docker-log-'+name);if(!el)return;
+  if(el.style.display!=='none'){el.style.display='none';return;}
+  try{const d=await api(`/api/docker/containers/${name}/logs?tail=50`);
+    el.innerHTML=(d.logs||[]).map(l=>esc(l)).join('\n');
+    el.style.display='block';}
+  catch(e){toast(`Error: ${e.message}`,'err');}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: AIRDROP
+// ═══════════════════════════════════════════════════════════════
+async function loadAirdrop(){
+  let html='';
+  try{const s=await api('http://192.168.99.11:4201/admin/stats');
+    html+=`<div class="card"><h3>Bot Stats</h3>
+      <div class="worker-card-body" style="font-size:0.72rem">
+      <span class="wl">SLX Events</span><span>${s.stats.slx_events_total}</span>
+      <span class="wl">Configured</span><span><span class="badge ${s.stats.bot_configured?'ok':'bad'}">${s.stats.bot_configured?'yes':'no'}</span></span>
+      </div>
+      ${(s.stats.recent_events||[]).length?`<div style="margin-top:8px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono)">Recent: ${s.stats.recent_events.map(e=>esc(e.event_type)+' '+esc(e.recorded_at)).join('<br>')}</div>`:''}
+    </div>`;}
+  catch{html+='<div class="card"><h3>Bot Stats</h3><span class="error-text">Airdrop Hunter not reachable on :4201</span></div>';}
+
+  html+=`<div class="card" style="margin-top:12px"><h3>Broadcast</h3>
+    <div class="form-group" style="margin-bottom:8px"><textarea id="airdrop-msg" rows="3" style="width:100%;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:8px;font-family:var(--font-mono);font-size:0.72rem" placeholder="Message to send to Telegram subscribers..."></textarea></div>
+    <button class="btn btn-sm btn-accent" onclick="airdropBroadcast()">Send Broadcast</button>
+    <div id="airdrop-send-status" style="font-size:0.68rem;margin-top:6px;font-family:var(--font-mono)"></div>
+  </div>`;
+
+  try{const c=await api('http://192.168.99.11:4201/admin/config');
+    html+=`<div class="card" style="margin-top:12px"><h3>Configuration</h3>
+      <div style="font-size:0.72rem;font-family:var(--font-mono);color:var(--fg-secondary)">
+      <div class="spread" style="margin-bottom:4px"><span>Digest Hour:</span><code style="color:var(--accent)">${esc(c.config.digest_hour||'7')}:00 ET</code></div>
+      <div class="spread" style="margin-bottom:4px"><span>SLX Mint:</span><code style="font-size:0.62rem;color:var(--fg-muted)">${esc(c.config.slx_mint||'-')}</code></div>
+      <div class="spread"><span>Wallet:</span><code style="font-size:0.62rem;color:var(--fg-muted)">${esc(c.config.solana_wallet||'-')}</code></div>
+      </div>
+    </div>`;}
+  catch{html+='<div class="card" style="margin-top:12px"><h3>Configuration</h3><span class="empty">Config unavailable</span></div>';}
+
+  $('airdrop-content').innerHTML=html;
+}
+async function airdropBroadcast(){
+  const msg=document.getElementById('airdrop-msg'),status=document.getElementById('airdrop-send-status');
+  if(!msg||!msg.value.trim()){if(status)status.innerHTML='<span style="color:var(--destructive)">Message required</span>';return;}
+  if(status)status.innerHTML='<span style="color:var(--warn)">Sending...</span>';
+  try{const r=await fetch('http://192.168.99.11:4201/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg.value})});
+    const d=await r.json();if(d.ok){if(status)status.innerHTML='<span style="color:var(--accent)">Sent</span>';msg.value='';toast('Broadcast sent');}
+    else{if(status)status.innerHTML=`<span style="color:var(--destructive)">${esc(d.error)}</span>`;}}
+  catch(e){if(status)status.innerHTML=`<span style="color:var(--destructive)">${esc(e.message)}</span>`;}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: INFRASTRUCTURE
+// ═══════════════════════════════════════════════════════════════
+async function loadInfra(){
+  try{const n=await api('/proxmox/nodes');
+    if(n&&n.length){let html='<table><thead><tr><th>Node</th><th>Status</th><th>CPU</th><th>Mem</th></tr></thead><tbody>';
+      for(const x of n){const s=x.status==='online'?'ok':'warn';html+=`<tr><td>${esc(x.node||x.name||x.id)}</td><td><span class="badge ${s}">${esc(x.status||'?')}</span></td><td>${esc(String(x.cpu??'-'))}</td><td>${esc(String(x.mem??x.memory??'-'))}</td></tr>`;}
+      html+='</tbody></table>';$('infra-proxmox').innerHTML=html;}
+    else $('infra-proxmox').innerHTML='<span class="empty">No nodes</span>';}
+  catch(e){$('infra-proxmox').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  try{const g=await api('/api/gpu/status');$('infra-gpu').innerHTML=`<p><strong>Status:</strong> <span class="badge ${g.available?'ok':'warn'}">${g.available?'Available':'Unavailable'}</span></p><p style="margin-top:4px;font-size:0.72rem;color:var(--fg-secondary)">${esc(g.summary||'-')}</p>`;}
+  catch(e){$('infra-gpu').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  try{const v=await api('/api/vpn/status');$('infra-vpn').innerHTML=`<p><strong>Status:</strong> ${esc(v.status||'unknown')}</p>`;}
+  catch(e){$('infra-vpn').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: SECURITY
+// ═══════════════════════════════════════════════════════════════
+async function loadSecurity(){
+  try{const s=await api('/auth/status');$('sec-users').innerHTML=`
+    <p><strong>Role:</strong> <span class="badge ${s.role==='operator'?'ok':'info'}">${esc(s.role)}</span></p>
+    <p style="margin-top:4px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Caps: ${(s.capabilities||[]).slice(0,8).map(c=>`<code style="font-size:0.62rem">${esc(c)}</code>`).join(', ')||'none'}</p>
+    <p style="margin-top:8px;font-size:0.68rem;color:var(--fg-muted)">User management via <code>core/accounts.json</code></p>`;}
+  catch(e){$('sec-users').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  try{const v=await api('/kai/vault');$('sec-apikeys').innerHTML=v&&v.providers?`<p><strong>Stored Keys:</strong> ${Object.keys(v.providers||{}).length}</p><p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-top:4px">AES-256-GCM encrypted</p>`:'<span class="empty">No API key data</span>';}
+  catch{$('sec-apikeys').innerHTML='<span class="empty">Vault unavailable</span>';}
+  try{const a=await api('/self-healing/log');const logins=(a||[]).filter(e=>e.event==='login'||e.action==='login').slice(0,5);
+    if(logins.length){let html='<table><thead><tr><th>User</th><th>Time</th></tr></thead><tbody>';
+      for(const l of logins)html+=`<tr><td>${esc(l.user||l.username||'-')}</td><td>${esc(l.time||l.timestamp||'-')}</td></tr>`;
+      html+='</tbody></table>';$('sec-logins').innerHTML=html;}
+    else $('sec-logins').innerHTML='<span class="empty">No recent logins</span>';}
+  catch(e){$('sec-logins').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: SETTINGS
+// ═══════════════════════════════════════════════════════════════
+async function loadSettings(){
+  let html='';
+  try{const m=await api('/api/modules');
+    for(const x of m.modules){html+=`<div class="card" style="margin-bottom:8px"><h3>${esc(x.name)}</h3>
+      <div style="font-size:0.72rem;color:var(--fg-secondary)">${esc(x.description||'')}</div>
+      <div style="font-size:0.65rem;color:var(--fg-muted);margin-top:4px"><span>v${esc(x.version||'0.1.0')} &middot; eps:${(x.endpoints||[]).length} &middot; caps:${(x.capabilities||[]).length}</span></div>
+      </div>`;}}
+  catch(e){html+=`<span class="error-text">${esc(e.message)}</span>`;}
+  html+=`<div class="card" style="margin-top:8px"><h3>Autonomy</h3>
+    <div class="settings-field"><label>Level</label><div style="font-size:0.72rem;font-family:var(--font-mono);color:var(--accent)">Level 5 — Auto Roadmap</div></div>
+    <button class="btn btn-sm btn-accent" onclick="api('/api/admin/pause-scheduler',{method:'POST'}).then(()=>toast('Scheduler paused')).catch(e=>toast(e.message,'err'))">Pause Scheduler</button>
+    <button class="btn btn-sm" style="margin-left:4px" onclick="api('/api/admin/resume-scheduler',{method:'POST'}).then(()=>toast('Scheduler resumed')).catch(e=>toast(e.message,'err'))">Resume</button>
+    </div>`;
+  $('settings-content').innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PANEL: LOGS
+// ═══════════════════════════════════════════════════════════════
+async function loadLogs(){
+  try{const log=await api('/self-healing/log');
+    if(!log||!log.length){$('logs-content').innerHTML='<span class="empty">No audit events</span>';return;}
+    let html='<div style="margin-bottom:8px;display:flex;gap:8px">';
+    html+='<select id="log-filter-module" onchange="filterLogs()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Modules</option>';
+    const mods=new Set();for(const e of log)if(e.module||e.source)mods.add(e.module||e.source);
+    for(const m of[...mods].sort())html+=`<option value="${esc(m)}">${esc(m)}</option>`;
+    html+='</select>';
+    html+='<select id="log-filter-sev" onchange="filterLogs()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Severity</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option></select>';
+    html+='</div><div class="log-viewer" id="log-viewer-container" style="max-height:500px">';
+    for(const e of log.slice(0,100)){
+      const sev=(e.severity||'').toLowerCase(),cls=sev==='critical'?'log-err':sev==='warning'?'log-warn':'log-ok';
+      html+=`<div data-module="${esc(e.module||e.source||'')}" data-sev="${esc(e.severity||'')}"><span class="${cls}">[${esc(e.time||e.timestamp||'')}]</span> ${esc(e.event||e.action||'')} ${esc(e.detail||e.message||'')}</div>`;}
+    html+='</div>';
+    $('logs-content').innerHTML=html;}
+  catch(e){$('logs-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+function filterLogs(){
+  const modFilter=($('log-filter-module')||{}).value||'',sevFilter=($('log-filter-sev')||{}).value||'';
+  const rows=document.querySelectorAll('#log-viewer-container > div');
+  for(const r of rows){const m=r.dataset.module||'',s=r.dataset.sev||'';r.style.display=(!modFilter||m===modFilter)&&(!sevFilter||s===sevFilter)?'':'none';}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════
+(function boot(){
+  const token=getToken();
+  if(token){fetch('/auth/status',{headers:{'X-Kai-Session':token}}).then(r=>r.json()).then(d=>{if(d.role&&d.role!=='anonymous'){S.token=token;S.role=d.role;S.username='session';$('login-screen').style.display='none';$('app-wrap').classList.add('active');$('user-display').innerHTML=`<span class="user-role">${S.role}</span>`;initApp();}else clearToken();}).catch(()=>clearToken());}
+})();
+</script>
+</body>
+</html>

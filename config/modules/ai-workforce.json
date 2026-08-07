@@ -1,8 +1,13 @@
 {
   "name": "ai-workforce",
   "version": "1.0.0",
-  "description": "AI provider workforce panel -- displays provider health, quota, routing priority and current build assignments",
+  "description": "AI provider workforce panel — displays provider health, quota, routing priority and current build assignments",
   "endpoints": ["/providers", "/providers/dashboard", "/api/command-center/summary"],
   "capabilities": ["provider-management", "health-monitoring", "workforce-visualization"],
-  "dependencies": []
+  "dependencies": [],
+  "settings_schema": {
+    "max_concurrent_builds": {"type": "number", "default": 4, "label": "Max concurrent builds", "min": 1, "max": 16},
+    "auto_failover": {"type": "boolean", "default": true, "label": "Auto failover to next provider"}
+  },
+  "ops_actions": ["refresh_health", "reset_quotas"]
 }

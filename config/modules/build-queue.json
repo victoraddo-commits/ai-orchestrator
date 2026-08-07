@@ -1,8 +1,13 @@
 {
   "name": "build-queue",
   "version": "1.0.0",
-  "description": "Application builder lifecycle management -- creates, monitors, approves, and deploys application builds through the full pipeline",
+  "description": "Application builder lifecycle management — creates, monitors, approves, and deploys application builds through the full pipeline",
   "endpoints": ["/builds", "/builds/{build_id}", "/builds/{build_id}/answer", "/builds/{build_id}/generate", "/builds/{build_id}/rollback"],
   "capabilities": ["build-management", "application-builder", "deployment"],
-  "dependencies": ["approval-center"]
+  "dependencies": ["approval-center"],
+  "settings_schema": {
+    "max_retries": {"type": "number", "default": 3, "label": "Max build retries", "min": 0, "max": 10},
+    "build_timeout_minutes": {"type": "number", "default": 30, "label": "Build timeout (minutes)", "min": 5, "max": 120}
+  },
+  "ops_actions": ["cancel_stuck", "retry_failed", "purge_completed"]
 }

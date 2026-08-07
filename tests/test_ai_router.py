@@ -19,11 +19,15 @@ def test_classify_task_falls_back_to_coding_for_unrecognized_text():
 
 
 @pytest.mark.parametrize("description,expected_provider", [
-    # gemini re-enabled 2026-08-02 (credit reloaded) -- back to its original
-    # evidence-based "planning" primary now that its quota problem is gone.
+    # 2026-08-07: planning chain = deepseek_native_flash, deepseek_native_pro,
+    # gemini, ... -- gemini is 3rd, reached after the native deepseek providers
+    # are disabled.
     ("Design an application architecture", "gemini"),
-    ("Build authentication system", "claude"),
+    # 2026-08-07: log_analysis chain = deepseek_native_flash, groq, ... --
+    # groq is 2nd, reached after deepseek_native_flash is disabled.
     ("Analyze Docker error log", "groq"),
+    # "Build authentication system" → "claude" case removed 2026-08-07: claude
+    # is no longer in the coding chain (out of credit, removed).
 ])
 def test_delegate_routes_to_expected_provider(monkeypatch, description, expected_provider):
     import core.ai_provider as ai_provider
@@ -36,12 +40,17 @@ def test_delegate_routes_to_expected_provider(monkeypatch, description, expected
     # via api.deepseek.com if left available) -- disabled for the same reason.
     # qwen4_coding joined CODING_ROTATING_FRONT as primary coding provider
     # 2026-08-03 (real opencode CLI call via RunPod if left available).
+    # 2026-08-07: qwen4_coding/qwen4_text removed — RunPod pods decommissioned.
+    # Disable every provider except the one we expect so the delegate call
+    # is forced to hit it.
     for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude",
-                 "deepseek_native_pro", "qwen4_coding", "opencode_claude_sonnet",
+                 "deepseek_native_pro", "opencode_claude_sonnet",
                  "opencode_claude_opus", "omniroute", "opencode", "opencode_minimax"):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+        provider = ai_provider.get_provider(name)
+        if provider is not None:
+            monkeypatch.setitem(provider, "available_fn", lambda: False)
 
-    for name in ("claude", "gemini", "groq", "qwen4_text"):
+    for name in ("claude", "gemini", "groq"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: True)
         if provider.get("run_text_task"):
@@ -55,10 +64,11 @@ def test_delegate_routes_to_expected_provider(monkeypatch, description, expected
 def test_delegate_documentation_task_accepts_gemini_or_groq(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # deepseek_native_flash now sits ahead of groq/gemini in "documentation"
-    # (2026-08-02 gemini delegation) -- disable it so this test still
+    # deepseek_native_flash and omniroute_deepseek_flash now sit ahead of
+    # groq/gemini in "documentation" -- disable them so this test still
     # exercises the groq/gemini choice it's named for.
     monkeypatch.setitem(ai_provider.get_provider("deepseek_native_flash"), "available_fn", lambda: False)
+    monkeypatch.setitem(ai_provider.get_provider("omniroute_deepseek_flash"), "available_fn", lambda: False)
 
     for name in ("claude", "gemini", "groq"):
         provider = ai_provider.get_provider(name)
@@ -74,13 +84,18 @@ def test_delegate_documentation_task_accepts_gemini_or_groq(monkeypatch):
 def test_delegate_falls_back_when_first_choice_unavailable(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # opencode_claude gained a real text_task route 2026-08-02 and now sits
-    # in "planning" too -- disabled so this test doesn't make a real
-    # opencode/Zen call.
-    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix", "qwen4_text"):
+    # Disable all "planning" chain members + add claude as last resort.
+    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax",
+                 "opencode_claude", "deepseek_native_pro", "geminix", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ai_router.ROLE_PROVIDERS["planning"] + ["claude"],
+    })
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude answered")
 
@@ -102,12 +117,18 @@ def test_delegate_falls_back_when_first_choice_call_raises(monkeypatch):
     monkeypatch.setitem(primary, "available_fn", lambda: True)
     monkeypatch.setitem(primary, "run_text_task", boom)
 
-    # opencode_claude gained a real text_task route 2026-08-02 -- disabled
-    # so this test doesn't make a real opencode/Zen call.
-    for name in ("gemini", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix", "qwen4_text"):
+    # Disable remaining planning candidates so claude (appended below) answers.
+    for name in ("gemini", "openrouter", "deepseek", "minimax", "opencode_claude",
+                 "deepseek_native_pro", "geminix", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ai_router.ROLE_PROVIDERS["planning"] + ["claude"],
+    })
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude answered")
 
@@ -121,7 +142,7 @@ def test_delegate_raises_when_every_candidate_fails(monkeypatch):
 
     # opencode_claude gained a real text_task route 2026-08-02 -- included
     # here so every "planning" candidate really is unavailable.
-    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax", "claude", "opencode_claude", "deepseek_native_pro", "geminix", "qwen4_text"):
+    for name in ("deepseek_native_flash", "gemini", "openrouter", "deepseek", "minimax", "claude", "opencode_claude", "deepseek_native_pro", "geminix", "omniroute_deepseek_flash"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
@@ -143,13 +164,20 @@ def test_delegate_skips_a_candidate_known_to_be_quota_exceeded_without_calling_i
     )
 
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude answered")
 
     # opencode_claude gained a real text_task route 2026-08-02 -- disabled
     # so this test doesn't make a real opencode/Zen call.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "minimax", "opencode_claude", "deepseek_native_pro", "geminix", "qwen4_text"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "minimax", "opencode_claude",
+                 "deepseek_native_pro", "geminix", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ai_router.ROLE_PROVIDERS["planning"] + ["claude"],
+    })
 
     result = ai_router.delegate("Design an application architecture")
 
@@ -171,10 +199,17 @@ def test_delegate_still_tries_a_candidate_with_only_a_recorded_error_not_quota_e
 
     # opencode_claude gained a real text_task route 2026-08-02 -- disabled
     # so this test doesn't make a real opencode/Zen call.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen4_text"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude",
+                 "deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ai_router.ROLE_PROVIDERS["planning"] + ["claude"],
+    })
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude recovered")
 
@@ -190,10 +225,17 @@ def test_delegate_records_usage_on_success(monkeypatch):
     # make a real opencode/Zen call.
     import core.ai_provider as ai_provider
 
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen4_text"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude",
+                 "deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ai_router.ROLE_PROVIDERS["planning"] + ["claude"],
+    })
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "planned")
 
@@ -222,10 +264,17 @@ def test_delegate_records_usage_on_failure_too(monkeypatch):
     # so this test doesn't make a real opencode/Zen call (it would otherwise
     # be tried between deepseek_native_flash's failure and claude's success,
     # breaking the exact 2-entry history this test asserts below).
-    for name in ("openrouter", "deepseek", "minimax", "gemini", "geminix", "opencode_claude", "deepseek_native_pro", "qwen4_text"):
+    for name in ("openrouter", "deepseek", "minimax", "gemini", "geminix",
+                 "opencode_claude", "deepseek_native_pro", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ai_router.ROLE_PROVIDERS["planning"] + ["claude"],
+    })
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "ok")
 
@@ -242,15 +291,18 @@ def test_delegate_records_usage_on_failure_too(monkeypatch):
 def test_delegate_with_coding_agent_capability_calls_run_coding_task_not_run_text_task(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # 13M: every candidate ahead of claude in the coding order must be
-    # stubbed unavailable for claude to be the one that answers. qwen4_coding
-    # joined 2026-08-02 (real, env-var-available in this process since
-    # core.api's load_dotenv() leaks VLLM_QWEN3_CODER_* into the whole
-    # pytest session) -- included so it doesn't make a real opencode call.
-    for name in ("opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "qwen4_coding"):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # 2026-08-07: coding chain = opencode_claude → opencode_claude_sonnet →
+    # opencode_claude_opus → omniroute → opencode → opencode_minimax.
+    # This test overrides to ["claude"] for simplicity -- the aim is exactly
+    # to verify that capability=coding_agent calls run_coding_task, not
+    # run_text_task, regardless of which provider answers.
+    monkeypatch.setattr(
+        ai_router, "ROLE_PROVIDERS",
+        {**ai_router.ROLE_PROVIDERS, "coding": ["claude"]},
+    )
 
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_text_task",
@@ -280,6 +332,7 @@ def test_delegate_with_coding_agent_capability_falls_back_to_opencode_when_claud
     import core.ai_provider as ai_provider
 
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_coding_task",
@@ -293,6 +346,7 @@ def test_delegate_with_coding_agent_capability_falls_back_to_opencode_when_claud
         lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": ["a.py"], "commits": [], "tool_errors": []},
     )
 
+    monkeypatch.setattr(ai_router, "CODING_ROTATING_FRONT", [])
     monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
 
     result = ai_router.delegate(
@@ -316,6 +370,7 @@ def test_delegate_records_a_confirmed_usage_limit_message_as_quota_exceeded(monk
     import core.ai.provider_health as provider_health
 
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_coding_task",
@@ -331,6 +386,7 @@ def test_delegate_records_a_confirmed_usage_limit_message_as_quota_exceeded(monk
         opencode, "run_coding_task",
         lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
     )
+    monkeypatch.setattr(ai_router, "CODING_ROTATING_FRONT", [])
     monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
 
     ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
@@ -344,7 +400,10 @@ def test_delegate_records_a_generic_coding_failure_as_error_not_quota_exceeded(m
     import core.ai_provider as ai_provider
     import core.ai.provider_health as provider_health
 
+    monkeypatch.setattr(ai_router, "CODING_ROTATING_FRONT", [])
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_coding_task",
@@ -450,6 +509,7 @@ def test_delegate_does_not_notify_for_non_opencode_quota_exceeded(monkeypatch):
     monkeypatch.setattr(telegram_bridge, "send_message", lambda text: sent.append(text))
 
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_coding_task",
@@ -465,6 +525,7 @@ def test_delegate_does_not_notify_for_non_opencode_quota_exceeded(monkeypatch):
         opencode, "run_coding_task",
         lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
     )
+    monkeypatch.setattr(ai_router, "CODING_ROTATING_FRONT", [])
     monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
 
     ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
@@ -508,6 +569,9 @@ def test_opencode_quota_notify_failure_does_not_break_delegate(monkeypatch):
 def test_delegate_accepts_explicit_task_type_override(monkeypatch):
     import core.ai_provider as ai_provider
 
+    # Disable deepseek_native_flash (first in log_analysis) so groq answers.
+    monkeypatch.setitem(ai_provider.get_provider("deepseek_native_flash"), "available_fn", lambda: False)
+
     groq = ai_provider.get_provider("groq")
     monkeypatch.setitem(groq, "available_fn", lambda: True)
     monkeypatch.setitem(groq, "run_text_task", lambda p, timeout=60, project_path=None: "forced")
@@ -518,40 +582,34 @@ def test_delegate_accepts_explicit_task_type_override(monkeypatch):
     assert result["task_type"] == "log_analysis"
 
 
-def test_delegate_review_task_type_routes_to_openai(monkeypatch):
+def test_delegate_review_task_type_routes_to_primary(monkeypatch):
     import core.ai_provider as ai_provider
 
-    openai = ai_provider.get_provider("qwen4_text")
-    monkeypatch.setitem(openai, "available_fn", lambda: True)
-    monkeypatch.setitem(openai, "run_text_task", lambda p, timeout=60, project_path=None: "reviewed")
+    primary = ai_provider.get_provider("deepseek_native_flash")
+    monkeypatch.setitem(primary, "available_fn", lambda: True)
+    monkeypatch.setitem(primary, "run_text_task", lambda p, timeout=60, project_path=None: "reviewed")
 
     result = ai_router.delegate("Critique this design", task_type="review")
 
-    assert result["provider"] == "qwen4_text"
+    assert result["provider"] == "deepseek_native_flash"
 
 
-def test_delegate_review_task_type_falls_back_to_claude_as_last_resort(monkeypatch):
-    # gemini removed from "review" entirely 2026-08-02 (was the
-    # second-to-last fallback here before being disabled) -- claude is now
-    # review's genuine last resort.
+def test_delegate_review_task_type_falls_back_to_last_resort(monkeypatch):
+    # 2026-08-07: review chain = deepseek_native_flash -> omniroute_deepseek_flash
+    # -> gemini -> geminix. Disable all but the last (geminix).
     import core.ai_provider as ai_provider
 
-    monkeypatch.setitem(ai_provider.get_provider("qwen4_text"), "available_fn", lambda: False)
-    monkeypatch.setitem(ai_provider.get_provider("deepseek"), "available_fn", lambda: False)
     monkeypatch.setitem(ai_provider.get_provider("deepseek_native_flash"), "available_fn", lambda: False)
-    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review" --
-    # disabled so this test still exercises claude as the genuine last resort.
+    monkeypatch.setitem(ai_provider.get_provider("omniroute_deepseek_flash"), "available_fn", lambda: False)
     monkeypatch.setitem(ai_provider.get_provider("gemini"), "available_fn", lambda: False)
-    monkeypatch.setitem(ai_provider.get_provider("geminix"), "available_fn", lambda: False)
-    monkeypatch.setitem(ai_provider.get_provider("qwen4_text"), "available_fn", lambda: False)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude reviewed")
+    last = ai_provider.get_provider("geminix")
+    monkeypatch.setitem(last, "available_fn", lambda: True)
+    monkeypatch.setitem(last, "run_text_task", lambda p, timeout=60, project_path=None: "geminix reviewed")
 
     result = ai_router.delegate("Critique this design", task_type="review")
 
-    assert result["provider"] == "claude"
+    assert result["provider"] == "geminix"
 
 
 def test_get_provider_dashboard_summarizes_last_request_per_provider(monkeypatch):
@@ -563,10 +621,17 @@ def test_get_provider_dashboard_summarizes_last_request_per_provider(monkeypatch
 
     # opencode_claude gained a real text_task route 2026-08-02 -- disabled
     # so this test doesn't make a real opencode/Zen call.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen4_text"):
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "opencode_claude",
+                 "deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ai_router.ROLE_PROVIDERS["planning"] + ["claude"],
+    })
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "planned")
 
@@ -616,26 +681,24 @@ def test_get_provider_dashboard_surfaces_a_recorded_claude_error(monkeypatch):
 
 def test_delegate_rotates_starting_candidate_across_successive_calls(monkeypatch):
     # A strict fallback-only order starves whichever candidate never fails
-    # first (e.g. openai for review) -- rotation gives every role candidate
-    # a real turn as the first attempt so idle credits (openrouter, minimax,
-    # ...) actually get used instead of sitting untouched. ("review" is used
-    # here rather than "planning" because planning is now FIXED_ORDER --
-    # gemini's lead there is evidence-backed, not just a default.)
+    # first -- rotation gives every role candidate a real turn as the first
+    # attempt so idle credits actually get used. ("review" is used here
+    # rather than "planning" because planning is now FIXED_ORDER.)
     import core.ai_provider as ai_provider
 
-    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review".
-    # qwen4_text added 2026-08-03 (17Z) as fallback capacity.
-    review_candidates = ["qwen4_text", "deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen4_text", "claude"]
+    # 2026-08-07: review chain = deepseek_native_flash -> omniroute_deepseek_flash
+    # -> gemini -> geminix.
+    review_candidates = ai_router.ROLE_PROVIDERS["review"]
     for name in review_candidates:
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: True)
         monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None, n=name: f"from {n}")
 
     # Call n+1 times (rotate through all candidates once, wrapping back to
-    # the first entry "qwen4_text" on call 8).
-    seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(8)]
+    # the first entry on the final call).
+    seen = [ai_router.delegate("Critique this design", task_type="review")["provider"] for _ in range(len(review_candidates) + 1)]
 
-    assert seen == review_candidates + ["qwen4_text"]
+    assert seen == review_candidates + [review_candidates[0]]
 
 
 def test_delegate_planning_always_tries_same_primary_first_not_rotated(monkeypatch):
@@ -667,10 +730,10 @@ def test_delegate_planning_always_tries_same_primary_first_not_rotated(monkeypat
 def test_delegate_rotation_is_tracked_independently_per_task_type(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # "review"'s rotation index 1 is deepseek_native_flash as of the
-    # 2026-08-02 gemini delegation (ROLE_PROVIDERS["review"] =
-    # ["qwen4_text", "deepseek_native_flash", "deepseek", "claude", "gemini"]).
-    for name in ("qwen4_text", "deepseek_native_flash", "gemini", "claude", "groq", "openrouter"):
+    # 2026-08-07: review = ["deepseek_native_flash", "omniroute_deepseek_flash",
+    # "gemini", "geminix"], log_analysis = ["deepseek_native_flash", "groq",
+    # "omniroute_deepseek_flash"].
+    for name in ("deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "groq"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: True)
         monkeypatch.setitem(provider, "run_text_task", lambda p, timeout=60, project_path=None, n=name: f"from {n}")
@@ -679,48 +742,42 @@ def test_delegate_rotation_is_tracked_independently_per_task_type(monkeypatch):
     log_result = ai_router.delegate("Check the logs", task_type="log_analysis")["provider"]
     second = ai_router.delegate("Critique this design", task_type="review")["provider"]
 
-    assert [first, second] == ["qwen4_text", "deepseek_native_flash"]
-    assert log_result == "groq"
+    review_chain = ai_router.ROLE_PROVIDERS["review"]
+    assert [first, second] == [review_chain[0], review_chain[1]]
+    assert log_result == ai_router.ROLE_PROVIDERS["log_analysis"][0]
 
 
 def test_delegate_rotation_still_falls_through_to_next_candidate_on_failure(monkeypatch):
-    # "review"'s rotation index 1 is deepseek_native_flash as of the
-    # 2026-08-02 gemini delegation -- that's the one exercised failing here,
-    # not gemini (now last, unreached once claude below succeeds).
+    # 2026-08-07: review chain = deepseek_native_flash -> omniroute_deepseek_flash
+    # -> gemini -> geminix. First call lands on deepseek_native_flash (index 0),
+    # second rotates to omniroute_deepseek_flash which fails, fallback to gemini.
     import core.ai_provider as ai_provider
 
-    openai = ai_provider.get_provider("qwen4_text")
-    monkeypatch.setitem(openai, "available_fn", lambda: True)
-    monkeypatch.setitem(openai, "run_text_task", lambda p, timeout=60, project_path=None: "from openai")
+    first_primary = ai_provider.get_provider("deepseek_native_flash")
+    monkeypatch.setitem(first_primary, "available_fn", lambda: True)
+    monkeypatch.setitem(first_primary, "run_text_task", lambda p, timeout=60, project_path=None: "from deepseek_native_flash")
 
-    primary = ai_provider.get_provider("deepseek_native_flash")
-    monkeypatch.setitem(primary, "available_fn", lambda: True)
+    second_primary = ai_provider.get_provider("omniroute_deepseek_flash")
+    monkeypatch.setitem(second_primary, "available_fn", lambda: True)
 
     def boom(p, timeout=60, project_path=None):
-        raise RuntimeError("deepseek_native_flash down")
+        raise RuntimeError("omniroute_deepseek_flash down")
 
-    monkeypatch.setitem(primary, "run_text_task", boom)
+    monkeypatch.setitem(second_primary, "run_text_task", boom)
 
-    monkeypatch.setitem(ai_provider.get_provider("deepseek"), "available_fn", lambda: False)
-    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review" --
-    # disabled so the fallback walk still reaches claude, not gemini, here.
-    monkeypatch.setitem(ai_provider.get_provider("gemini"), "available_fn", lambda: False)
-    # 17Z: qwen4_text and geminix disabled so the fallback reaches claude.
     monkeypatch.setitem(ai_provider.get_provider("geminix"), "available_fn", lambda: False)
-    monkeypatch.setitem(ai_provider.get_provider("qwen4_text"), "available_fn", lambda: False)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "from claude")
+    fallback = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(fallback, "available_fn", lambda: True)
+    monkeypatch.setitem(fallback, "run_text_task", lambda p, timeout=60, project_path=None: "from gemini")
 
-    # First call rotates to "qwen4_text" (index 0) and succeeds there.
+    # First call rotates to index 0 (deepseek_native_flash) and succeeds.
     first = ai_router.delegate("Critique this design", task_type="review")["provider"]
-    # Second call rotates its starting point to "deepseek_native_flash",
-    # which fails -- fallback must still walk forward past unavailable
-    # deepseek to "claude", not raise.
+    # Second call rotates to index 1 (omniroute_deepseek_flash), which fails
+    # -- fallback walks forward to gemini.
     second = ai_router.delegate("Critique this design", task_type="review")["provider"]
 
-    assert [first, second] == ["qwen4_text", "claude"]
+    assert [first, second] == ["deepseek_native_flash", "gemini"]
 
 
 def test_rotate_candidates_is_atomic_under_concurrent_calls():
@@ -798,11 +855,14 @@ def test_record_usage_defaults_cost_to_null_not_an_estimate():
 def test_delegate_coding_agent_records_the_cost_reported_by_the_provider(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ( "opencode_claude",
-                 "opencode_claude_sonnet", "opencode_claude_opus"):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # Override coding chain to use claude directly for this cost-recording test.
+    monkeypatch.setattr(
+        ai_router, "ROLE_PROVIDERS",
+        {**ai_router.ROLE_PROVIDERS, "coding": ["claude"]},
+    )
 
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_coding_task",
@@ -822,11 +882,14 @@ def test_delegate_coding_agent_records_the_cost_reported_by_the_provider(monkeyp
 def test_delegate_records_null_cost_when_the_response_carries_none(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ( "opencode_claude",
-                 "opencode_claude_sonnet", "opencode_claude_opus"):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # Override coding chain to use claude directly for this no-cost test.
+    monkeypatch.setattr(
+        ai_router, "ROLE_PROVIDERS",
+        {**ai_router.ROLE_PROVIDERS, "coding": ["claude"]},
+    )
 
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_coding_task",
@@ -866,7 +929,13 @@ def test_delegate_records_cost_even_for_a_result_level_failure(monkeypatch):
     # A failed generation still incurred the cost the provider billed for it.
     import core.ai_provider as ai_provider
 
+    # Override to force the exact coding chain we want. Also disable
+    # CODING_ROTATING_FRONT's opencode_claude so it doesn't get prepended.
+    monkeypatch.setattr(ai_router, "CODING_ROTATING_FRONT", [])
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
+
     claude = ai_provider.get_provider("claude")
+    monkeypatch.setitem(claude, "enabled", True)
     monkeypatch.setitem(claude, "available_fn", lambda: True)
     monkeypatch.setitem(
         claude, "run_coding_task",
@@ -882,7 +951,6 @@ def test_delegate_records_cost_even_for_a_result_level_failure(monkeypatch):
         opencode, "run_coding_task",
         lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
     )
-    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode"]})
 
     ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")
 
@@ -974,17 +1042,22 @@ def test_minimax_coding_agent_route_is_in_the_coding_rotation():
     assert "opencode_minimax" in ai_router.ROLE_PROVIDERS["coding"]
 
 
-def test_minimax_coding_agent_route_is_not_ahead_of_the_claude_family():
+def test_minimax_coding_agent_route_is_not_ahead_of_the_family():
     # "observe", not "trusted": 3 attempts is below MIN_SAMPLE_SIZE, so it
     # earns a place in the rotation, not the front of it.
+    # 2026-08-07: direct "claude" is no longer in the coding chain (out of
+    # credit). opencode_claude (Fable 5) is the primary.
     coding = ai_router.ROLE_PROVIDERS["coding"]
 
-    assert coding.index("opencode_minimax") > coding.index("claude")
     assert coding.index("opencode_minimax") > coding.index("opencode_claude")
 
 
-def test_coding_role_still_ends_on_a_claude_family_universal_fallback():
-    assert "claude" in ai_router.ROLE_PROVIDERS["coding"]
+def test_coding_role_still_ends_on_opencode_fallback():
+    # 2026-08-07: direct "claude" (CloudCLI/Anthropic subscription, out of
+    # credit) is no longer in the coding chain. opencode_claude (Fable 5,
+    # healthy) is the primary — and the Claude-family universal fallback.
+    assert "opencode_claude" in ai_router.ROLE_PROVIDERS["coding"]
+    assert "opencode" in ai_router.ROLE_PROVIDERS["coding"]
 
 
 def test_every_coding_candidate_supports_the_coding_agent_capability():
@@ -1012,24 +1085,29 @@ def test_every_text_role_candidate_supports_the_text_task_capability(role):
 def test_delegate_falls_through_to_opencode_minimax_when_the_others_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("claude", "opencode_claude", "opencode_minimax"):
+    # 2026-08-07: coding chain is opencode_claude -> opencode_claude_sonnet ->
+    # opencode_claude_opus -> omniroute -> opencode -> opencode_minimax
+    for name in ("opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "omniroute", "opencode", "opencode_minimax"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: True)
 
-    def fail(project_path, instruction, timeout=60):
+    def fail(project_path, instruction, **kwargs):
         raise RuntimeError("nope")
 
-    monkeypatch.setitem(ai_provider.get_provider("claude"), "run_coding_task", fail)
     monkeypatch.setitem(ai_provider.get_provider("opencode_claude"), "run_coding_task", fail)
+    monkeypatch.setitem(ai_provider.get_provider("opencode_claude_sonnet"), "run_coding_task", fail)
+    monkeypatch.setitem(ai_provider.get_provider("opencode_claude_opus"), "run_coding_task", fail)
+    monkeypatch.setitem(ai_provider.get_provider("omniroute"), "run_coding_task", fail)
+    monkeypatch.setitem(ai_provider.get_provider("opencode"), "run_coding_task", fail)
     monkeypatch.setitem(
         ai_provider.get_provider("opencode_minimax"),
         "run_coding_task",
-        lambda project_path, instruction, timeout=60: {"success": True, "response_text": "done"},
+        lambda project_path, instruction, **kwargs: {"success": True, "response_text": "done"},
     )
     monkeypatch.setattr(
         ai_router,
         "ROLE_PROVIDERS",
-        {**ai_router.ROLE_PROVIDERS, "coding": ["claude", "opencode_claude", "opencode_minimax"]},
+        {**ai_router.ROLE_PROVIDERS, "coding": ["opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "omniroute", "opencode", "opencode_minimax"]},
     )
 
     result = ai_router.delegate("Build a widget", capability="coding_agent", project_path="/tmp/x")
@@ -1042,19 +1120,18 @@ def test_delegate_falls_through_to_opencode_minimax_when_the_others_fail(monkeyp
 def test_delegate_planning_task_includes_deepseek_as_a_candidate(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # opencode_claude gained a real text_task route 2026-08-02 and sits
-    # ahead of "deepseek" in "planning" -- disabled so this test doesn't
-    # make a real opencode/Zen call.
-    for name in ("gemini", "openrouter", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "geminix"):
+    # 2026-08-07: "deepseek" (OpenRouter-proxied) is no longer in any chain.
+    # Test omniroute_deepseek_flash instead -- it IS in the planning chain.
+    for name in ("deepseek_native_flash", "deepseek_native_pro", "gemini", "geminix", "opencode_claude"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
-    deepseek = ai_provider.get_provider("deepseek")
-    monkeypatch.setitem(deepseek, "available_fn", lambda: True)
-    monkeypatch.setitem(deepseek, "run_text_task", lambda p, timeout=60, project_path=None: "deepseek planned")
+    odf = ai_provider.get_provider("omniroute_deepseek_flash")
+    monkeypatch.setitem(odf, "available_fn", lambda: True)
+    monkeypatch.setitem(odf, "run_text_task", lambda p, timeout=60, project_path=None: "omniroute_deepseek_flash planned")
 
     result = ai_router.delegate("Design an application architecture")
 
-    assert result["provider"] == "deepseek"
+    assert result["provider"] == "omniroute_deepseek_flash"
 
 
 def test_classification_role_prefers_groq_and_falls_back_when_unavailable(monkeypatch):
@@ -1084,48 +1161,49 @@ def test_classification_role_falls_back_to_claude_when_groq_has_no_credentials(m
 
     monkeypatch.setitem(ai_provider.get_provider("groq"), "available_fn", lambda: False)
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined
-    # "classification" -- disabled so this still exercises claude as the
+    # "classification" -- disabled so this still exercises geminix as the
     # fallback.
-    for name in ("deepseek_native_flash", "deepseek", "gemini", "geminix", "qwen4_text"):
+    for name in ("deepseek_native_flash", "deepseek", "gemini", "omniroute_deepseek_flash"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "claude classified")
+    last = ai_provider.get_provider("geminix")
+    monkeypatch.setitem(last, "available_fn", lambda: True)
+    monkeypatch.setitem(last, "run_text_task", lambda p, timeout=60, project_path=None: "geminix classified")
 
     result = ai_router.delegate("Classify this request", task_type="classification")
-    assert result["provider"] == "claude"
+    assert result["provider"] == "geminix"
 
 
-def test_delegate_documentation_task_includes_deepseek_as_a_candidate(monkeypatch):
+def test_delegate_documentation_task_includes_omniroute_deepseek_flash(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ("gemini", "groq", "openrouter", "deepseek_native_flash"):
+    # 2026-08-07: documentation chain = deepseek_native_flash, omniroute_deepseek_flash, groq.
+    for name in ("deepseek_native_flash", "groq"):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
-    deepseek = ai_provider.get_provider("deepseek")
-    monkeypatch.setitem(deepseek, "available_fn", lambda: True)
-    monkeypatch.setitem(deepseek, "run_text_task", lambda p, timeout=60, project_path=None: "deepseek documented")
+    odf = ai_provider.get_provider("omniroute_deepseek_flash")
+    monkeypatch.setitem(odf, "available_fn", lambda: True)
+    monkeypatch.setitem(odf, "run_text_task", lambda p, timeout=60, project_path=None: "omniroute_deepseek_flash documented")
 
     result = ai_router.delegate("Generate README documentation")
 
-    assert result["provider"] == "deepseek"
+    assert result["provider"] == "omniroute_deepseek_flash"
 
 
-def test_delegate_review_task_includes_deepseek_as_a_candidate(monkeypatch):
+def test_delegate_review_task_includes_omniroute_deepseek_flash_as_candidate(monkeypatch):
     import core.ai_provider as ai_provider
 
-    monkeypatch.setitem(ai_provider.get_provider("qwen4_text"), "available_fn", lambda: False)
-    monkeypatch.setitem(ai_provider.get_provider("gemini"), "available_fn", lambda: False)
     monkeypatch.setitem(ai_provider.get_provider("deepseek_native_flash"), "available_fn", lambda: False)
+    monkeypatch.setitem(ai_provider.get_provider("gemini"), "available_fn", lambda: False)
+    monkeypatch.setitem(ai_provider.get_provider("geminix"), "available_fn", lambda: False)
 
-    deepseek = ai_provider.get_provider("deepseek")
-    monkeypatch.setitem(deepseek, "available_fn", lambda: True)
-    monkeypatch.setitem(deepseek, "run_text_task", lambda p, timeout=60, project_path=None: "deepseek reviewed")
+    omniroute = ai_provider.get_provider("omniroute_deepseek_flash")
+    monkeypatch.setitem(omniroute, "available_fn", lambda: True)
+    monkeypatch.setitem(omniroute, "run_text_task", lambda p, timeout=60, project_path=None: "omniroute reviewed")
 
     result = ai_router.delegate("Critique this design", task_type="review")
 
-    assert result["provider"] == "deepseek"
+    assert result["provider"] == "omniroute_deepseek_flash"
 
 
 @pytest.mark.parametrize("role", ["coding"])
@@ -1143,40 +1221,34 @@ def test_openrouter_billed_coding_routes_disabled_2026_08_02(role):
 
 
 # --- 13M: Claude-preserving coding order + coding front rotation ------------
-# 2026-08-03 operator directive ("disable open code, assign jobs to qwen3"):
-# qwen4_coding is now the sole front-group member. opencode_claude moved to
-# the fixed tail as a fallback (Zen account quota_exceeded).
+# 2026-08-07 operator directive: qwen4_coding deregistered (RunPod pods
+# decommissioned). opencode_claude (Fable 5 via OpenCode Zen, separate
+# billing, healthy) is now the sole front-group member and primary coding
+# provider. Direct "claude" (CloudCLI/Anthropic subscription, out of credit)
+# is no longer in the coding chain.
 # See ROLE_PROVIDERS["coding"]'s comment and ai_router.CODING_ROTATING_FRONT.
 
 CODING_FIXED_TAIL = [
-    "opencode_claude",
     "opencode_claude_sonnet",
     "opencode_claude_opus",
-    # 2026-08-03: OmniRoute (localhost:20128) sits ahead of the degraded
-    # CloudCLI "claude" provider as Kai's always-on fallback -- claude hangs
-    # on its untrusted-workspace/out-of-credit state instead of failing fast,
-    # while omniroute aggregates healthy upstreams (see ROLE_PROVIDERS'
-    # comment and the omniroute provider registration in ai_provider.py).
     "omniroute",
-    "claude",
     "opencode",
     "opencode_minimax",
 ]
 
 
-def test_coding_rotating_front_is_qwen4_coding_2026_08_03():
-    # 2026-08-03 operator directive ("disable open code for now, assign jobs
-    # to qwen3"): qwen4_coding is now the sole front-group member and primary
-    # coding provider. opencode_claude (Fable 5) moved to the fixed tail as a
-    # fallback — Zen account quota_exceeded 2026-08-03. qwen3 is the only
-    # route with real capacity (self-hosted RunPod RTX 5090).
-    assert ai_router.CODING_ROTATING_FRONT == ["qwen4_coding"]
+def test_coding_rotating_front_is_opencode_claude_2026_08_07():
+    # 2026-08-07 operator directive: qwen4_coding deregistered (RunPod pods
+    # decommissioned). opencode_claude (Fable 5 via OpenCode Zen, separate
+    # billing, healthy) returned as the sole front-group member and primary
+    # coding provider.
+    assert ai_router.CODING_ROTATING_FRONT == ["opencode_claude"]
     assert ai_router.ROLE_PROVIDERS["coding"][:1] == ai_router.CODING_ROTATING_FRONT
-    # OmniRoute must sit ahead of the degraded direct claude provider as the
-    # always-on fallback (2026-08-03 operator directive).
+    # OmniRoute must sit ahead of opencode (degraded) as the always-on
+    # fallback (2026-08-07).
     coding = ai_router.ROLE_PROVIDERS["coding"]
     assert "omniroute" in coding
-    assert coding.index("omniroute") < coding.index("claude")
+    assert coding.index("omniroute") < coding.index("opencode")
 
 
 def test_candidates_for_coding_rotates_only_the_alt_claude_front_group():
@@ -1236,14 +1308,17 @@ def test_delegate_does_not_double_rotate_the_coding_candidates(monkeypatch):
 
     monkeypatch.setattr(ai_router, "_rotate_candidates", spying_rotate)
 
-    for name in ai_router.ROLE_PROVIDERS["coding"]:
+    # 2026-08-07: coding chain = opencode_claude -> opencode_claude_sonnet ->
+    # opencode_claude_opus -> omniroute -> opencode -> opencode_minimax.
+    # Disable all except the last one (opencode_minimax).
+    for name in ai_router.ROLE_PROVIDERS["coding"][:-1]:
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    last = ai_provider.get_provider("opencode_minimax")
+    monkeypatch.setitem(last, "available_fn", lambda: True)
     monkeypatch.setitem(
-        claude, "run_coding_task",
+        last, "run_coding_task",
         lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
     )
 
@@ -1254,16 +1329,19 @@ def test_delegate_does_not_double_rotate_the_coding_candidates(monkeypatch):
     assert rotate_calls == [ai_router.CODING_ROTATING_FRONT]
 
 
-def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_alt_claude_routes_are_down(monkeypatch):
+def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_front_routes_are_down(monkeypatch):
     import core.ai_provider as ai_provider
 
-    for name in ai_router.CODING_ROTATING_FRONT + ["opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus"]:
+    # 2026-08-07: coding chain = front (opencode_claude) + tail (opencode_claude_sonnet,
+    # opencode_claude_opus, omniroute, opencode, opencode_minimax). Disable the
+    # front and the first few tail entries.
+    for name in ai_router.CODING_ROTATING_FRONT + ["opencode_claude_sonnet", "opencode_claude_opus", "omniroute"]:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
+    last = ai_provider.get_provider("opencode")
+    monkeypatch.setitem(last, "available_fn", lambda: True)
     monkeypatch.setitem(
-        claude, "run_coding_task",
+        last, "run_coding_task",
         lambda project_path, instruction, **kwargs: {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []},
     )
 
@@ -1272,26 +1350,22 @@ def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_alt_claude_r
         return_attempts=True,
     )
 
-    # With every alt-Claude route unavailable, direct claude is reached --
-    # and only after every candidate ahead of it (the rotating front, the
-    # rest of the Claude family, qwen3, and the OmniRoute always-on gateway)
-    # was attempted/skipped first.
-    assert result["provider"] == "claude"
-    attempted_before_claude = [a["provider"] for a in result["attempts"]]
-    assert attempted_before_claude[:1] == ai_router.CODING_ROTATING_FRONT
-    # 2026-08-03: qwen4_coding is now the front group. opencode_claude moved
-    # to the fixed tail.  The fixed tail order is: opencode_claude →
-    # opencode_claude_sonnet → opencode_claude_opus → omniroute → claude → ...
-    assert attempted_before_claude[1:] == [
-        "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "omniroute",
-    ]
+    # With every candidate ahead of opencode unavailable, opencode is reached
+    # after the rotating front and the full tail order.
+    assert result["provider"] == "opencode"
+    attempted_before = [a["provider"] for a in result["attempts"]]
+    assert attempted_before[:1] == ai_router.CODING_ROTATING_FRONT
+    assert attempted_before[1:] == ["opencode_claude_sonnet", "opencode_claude_opus", "omniroute"]
 
 
-def test_delegate_coding_falls_all_the_way_to_opencode_when_claude_is_also_down(monkeypatch):
+def test_delegate_coding_falls_all_the_way_to_opencode_when_front_routes_are_down(monkeypatch):
     import core.ai_provider as ai_provider
 
+    # 2026-08-07: coding chain = opencode_claude -> opencode_claude_sonnet ->
+    # opencode_claude_opus -> omniroute -> opencode -> opencode_minimax.
+    # Disable all but opencode.
     for name in ai_router.CODING_ROTATING_FRONT + [
-        "opencode_claude", "opencode_claude_sonnet", "opencode_claude_opus", "claude",
+        "opencode_claude_sonnet", "opencode_claude_opus", "omniroute",
     ]:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
@@ -1323,9 +1397,9 @@ def test_delegate_coding_raises_all_providers_failed_when_every_candidate_is_dow
 
 
 def test_delegate_coding_always_picks_the_sole_front_candidate(monkeypatch):
-    # 2026-08-02: qwen4_coding is CODING_ROTATING_FRONT's sole member again
-    # (see test_coding_rotating_front_is_qwen3_alone_now_2026_08_02) -- with
-    # nothing else to rotate across, every call lands on the same provider.
+    # 2026-08-07: opencode_claude is CODING_ROTATING_FRONT's sole member --
+    # with nothing else to rotate across, every call lands on the same
+    # provider (Fable 5 via OpenCode Zen, separate billing, healthy).
     import core.ai_provider as ai_provider
 
     front = ai_router.CODING_ROTATING_FRONT
@@ -1371,14 +1445,12 @@ def test_openrouter_claude_disabled_deepseek_native_flash_took_its_slot_2026_08_
     # credit (same directive that disabled the coding role's OpenRouter
     # routes). openrouter_claude is removed from the architecture chain
     # entirely -- still registered in core.ai_provider, one-line re-add
-    # once the account's credit clears. Direct "claude" is also out of
-    # credit right now but stays in the tail rather than being removed
-    # (the operator asked to reroute its work, not delete the route), so
-    # deepseek_native_flash takes the primary slot in the meantime.
+    # once the account's credit clears. 2026-08-07: architecture primary is
+    # now deepseek_native_pro (deepseek_native_flash is second). Direct
+    # "claude" is no longer in any chain (out of credit, fully removed).
     candidates = ai_router.ROLE_PROVIDERS["architecture"]
-    assert candidates[0] == "deepseek_native_flash"
+    assert candidates[0] == "deepseek_native_pro"
     assert "openrouter_claude" not in candidates
-    assert "claude" in candidates
 
 
 @pytest.mark.parametrize("role", ["documentation", "law_case_analysis", "law_teaching"])
@@ -1414,89 +1486,10 @@ def test_gemini_reenabled_after_credit_reload_2026_08_02(role):
     assert "deepseek_native_flash" in candidates
 
 
-# 17Z: qwen4_text (self-hosted RunPod RTX 5090) -- must appear in every
-# text-task role as fallback capacity behind primaries, ahead of the universal
-# "claude" tail, and must never displace or appear ahead of any primary.
-TEXT_ROLES_WITH_QWEN3 = [
-    "planning",
-    "architecture",
-    "log_analysis",
-    "documentation",
-    "review",
-    "classification",
-    "law_document",
-    "law_case_analysis",
-    "law_teaching",
-    "law_exam",
-    "law_flashcards",
-    "law_chat",
-]
-
-
-@pytest.mark.parametrize("role", TEXT_ROLES_WITH_QWEN3)
-def test_qwen4_text_appears_in_fallback_position_in_text_roles(role):
-    candidates = ai_router.ROLE_PROVIDERS[role]
-    assert "qwen4_text" in candidates, f"qwen4_text missing from {role}: {candidates}"
-
-
-def test_qwen4_text_not_in_coding_role():
-    # qwen4_text is text-task only (OpenAI-compatible chat-completions,
-    # no tool-use loop). The coding role uses qwen4_coding instead.
-    assert "qwen4_text" not in ai_router.ROLE_PROVIDERS["coding"]
-
-
-@pytest.mark.parametrize("role", TEXT_ROLES_WITH_QWEN3)
-def test_qwen4_text_never_displaces_known_primaries(role):
-    # 17Z/17M rule: this is fallback capacity, not a replacement.
-    # It must appear AFTER every known primary for its role, never ahead of
-    # or displacing them.
-    candidates = ai_router.ROLE_PROVIDERS[role]
-    qwen4_idx = candidates.index("qwen4_text")
-
-    known_primaries = {
-        "planning": ["gemini", "geminix", "deepseek_native_flash"],
-        "architecture": ["deepseek_native_flash", "gemini"],
-        "log_analysis": ["groq"],
-        "documentation": ["deepseek_native_flash", "groq"],
-        "review": ["qwen4_text", "deepseek_native_flash"],
-        "classification": ["groq", "deepseek_native_flash"],
-        "law_document": ["gemini", "geminix"],
-        "law_case_analysis": ["claude", "deepseek_native_flash"],
-        "law_teaching": ["qwen4_text", "claude"],
-        "law_exam": ["claude", "qwen4_text"],
-        "law_flashcards": ["deepseek", "groq"],
-        "law_chat": ["groq", "deepseek"],
-    }
-
-    for primary in known_primaries.get(role, []):
-        primary_idx = candidates.index(primary)
-        assert primary_idx < qwen4_idx, (
-            f"{role}: qwen4_text at index {qwen4_idx} but primary "
-            f"{primary} is at index {primary_idx} -- fallback must not "
-            f"displace or appear ahead of any primary"
-        )
-
-
-def test_qwen4_text_before_claude_in_tail_position():
-    # In roles where claude is the universal last-resort tail (the last
-    # candidate in the list), qwen4_text should be tried before it
-    # so the paid GPU capacity gets used before the depleted Anthropic
-    # subscription. Law roles (law_*) position claude mid-chain
-    # intentionally (e.g., law_flashcards: deepseek -> groq -> claude -> ...),
-    # so this assertion only covers the non-law operational text roles.
-    claude_tail_roles = [
-        "planning", "architecture", "log_analysis", "documentation",
-        "review", "classification",
-    ]
-    for role in claude_tail_roles:
-        candidates = ai_router.ROLE_PROVIDERS[role]
-        assert "claude" in candidates
-        qwen4_idx = candidates.index("qwen4_text")
-        claude_idx = candidates.index("claude")
-        assert qwen4_idx < claude_idx, (
-            f"{role}: qwen4_text ({qwen4_idx}) must be tried before "
-            f"claude ({claude_idx})"
-        )
+# 2026-08-07: All qwen4 providers (qwen4_coding, qwen4Z, qwen4_text,
+# qwen4_pod_b) deregistered -- RunPod pods decommissioned.
+# deepseek_native_flash is now the primary fallback across all text roles,
+# and opencode_claude is the primary coding provider.
 
 
 # --- 17R: AI routing resilience ----------------------------------------------
@@ -1527,10 +1520,12 @@ def test_deepseek_native_flash_is_registered_as_text_task_provider():
 
 
 def test_deepseek_native_flash_is_primary_in_architecture_and_planning():
-    assert ai_router.ROLE_PROVIDERS["architecture"][0] == "deepseek_native_flash"
-    assert ai_router.ROLE_PROVIDERS["planning"][0] == "gemini"
+    # 2026-08-07: architecture primary is deepseek_native_pro.
+    assert ai_router.ROLE_PROVIDERS["architecture"][0] == "deepseek_native_pro"
+    # planning primary is deepseek_native_flash
+    assert ai_router.ROLE_PROVIDERS["planning"][0] == "deepseek_native_flash"
 
-    # deepseek_native_flash appears in planning (as a fallback behind gemini)
+    # deepseek_native_flash appears in planning as the primary
     assert "deepseek_native_flash" in ai_router.ROLE_PROVIDERS["planning"]
 
 
@@ -1572,24 +1567,25 @@ def test_file_access_capability_not_on_text_only_providers():
 def test_delegate_with_requires_file_access_filters_out_text_only(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # Stub every text-task provider that appears in "planning" to succeed,
-    # but also mark them unavailable so they don't interfere.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek",
-                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix",
-                 "qwen4_text", "qwen4_text"):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # Stub every text-task provider in "planning" except opencode_claude
+    # (which has file_access).
+    planning = ai_router.ROLE_PROVIDERS["planning"]
+    for name in planning:
+        provider = ai_provider.get_provider(name)
+        if name != "opencode_claude":
+            monkeypatch.setitem(provider, "available_fn", lambda: False)
 
-    # claude is the only one with file_access in this simplified test setup
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "claude with file access")
+    # opencode_claude has file_access in this simplified test setup
+    opencode = ai_provider.get_provider("opencode_claude")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(opencode, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "opencode_claude with file access")
 
     result = ai_router.delegate(
         "Read a file and respond", task_type="planning", requires_file_access=True,
     )
 
-    assert result["provider"] == "claude"
+    assert result["provider"] == "opencode_claude"
 
 
 def test_delegate_with_requires_file_access_falls_through_text_providers(monkeypatch):
@@ -1616,28 +1612,27 @@ def test_delegate_with_requires_file_access_falls_through_text_providers(monkeyp
         "Design with file access", task_type="planning", requires_file_access=True,
     )
 
-    # The first file_access-capable provider in "planning" is opencode_claude
-    # (claude is after qwen4_text at the tail).
-    assert result["provider"] in ["claude", "opencode_claude"]
+    # The first file_access-capable provider in "planning" is opencode_claude.
+    assert result["provider"] == "opencode_claude"
 
 
 def test_delegate_without_requires_file_access_does_not_filter(monkeypatch):
     import core.ai_provider as ai_provider
 
     # Without requires_file_access, text-only providers are used normally.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek",
-                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix",
-                 "qwen4_text"):
+    # Disable all but the last planning provider (opencode_claude).
+    planning = ai_router.ROLE_PROVIDERS["planning"]
+    for name in planning[:-1]:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "claude text")
+    last = ai_provider.get_provider("opencode_claude")
+    monkeypatch.setitem(last, "available_fn", lambda: True)
+    monkeypatch.setitem(last, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "opencode_claude text")
 
     result = ai_router.delegate("Design an application architecture")
 
-    assert result["provider"] == "claude"
+    assert result["provider"] == "opencode_claude"
 
 
 def test_dashboard_includes_file_access_flag():
@@ -1719,52 +1714,51 @@ def test_delegate_demotes_latency_degraded_provider(monkeypatch):
     import core.ai.provider_latency as pl
     import core.ai_provider as ai_provider
 
-    # Mark claude as latency-degraded with an extreme spike above its baseline
-    for d in (100, 100, 100, 100):
-        pl.record_latency("claude", d)
-    pl.record_latency("claude", 5000)
+    # Disable all planning candidates ahead of opencode_claude so it is reached.
+    planning = ai_router.ROLE_PROVIDERS["planning"]
+    for name in planning:
+        if name != "opencode_claude":
+            monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
-    assert pl.is_latency_degraded("claude") is True
+    opencode = ai_provider.get_provider("opencode_claude")
+    monkeypatch.setitem(opencode, "available_fn", lambda: True)
+    monkeypatch.setitem(opencode, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "opencode degraded but tried as last resort")
 
-    # opencode_claude gained a real text_task route -- disabled so it doesn't
-    # make a real Zen call.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek",
-                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen4_text"):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # Mark opencode_claude as latency-degraded with an extreme spike.
+    pl.record_latency("opencode_claude", 100)
+    pl.record_latency("opencode_claude", 100)
+    pl.record_latency("opencode_claude", 100)
+    pl.record_latency("opencode_claude", 5000)
+    assert pl.is_latency_degraded("opencode_claude") is True
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "claude degraded but tried as last resort")
-
-    # With all other candidates disabled and claude latency-degraded, claude
-    # is demoted (tried after all healthy candidates). Since it's the only
-    # one, it's tried immediately -- degradation is demotion, not exclusion.
+    # With all other candidates disabled and opencode_claude latency-degraded,
+    # it's demoted but tried as last resort -- degradation is demotion, not exclusion.
     result = ai_router.delegate("Design an application architecture", return_attempts=True)
 
-    assert result["provider"] == "claude"
-    assert result["response"] == "claude degraded but tried as last resort"
+    assert result["provider"] == "opencode_claude"
 
     degraded_notes = [a for a in result["attempts"] if a["error_type"] == "degraded_health"]
     assert len(degraded_notes) >= 1
-    assert all("claude" in (a.get("provider") or "") for a in degraded_notes)
+    assert all("opencode_claude" in (a.get("provider") or "") for a in degraded_notes)
 
 
 def test_delegate_records_latency_on_success(monkeypatch):
     import core.ai_provider as ai_provider
     import core.ai.provider_latency as pl
 
-    for name in ("deepseek_native_flash", "openrouter", "deepseek",
-                 "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen4_text"):
+    # Disable all planning candidates except the first (deepseek_native_flash).
+    planning = ai_router.ROLE_PROVIDERS["planning"]
+    for name in planning[1:]:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task", lambda p, timeout=60, project_path=None: "ok")
+    primary = ai_provider.get_provider("deepseek_native_flash")
+    monkeypatch.setitem(primary, "available_fn", lambda: True)
+    monkeypatch.setitem(primary, "run_text_task", lambda p, timeout=60, project_path=None: "ok")
 
     ai_router.delegate("Design an application architecture")
 
-    snap = pl.get_latency_snapshot("claude")
+    snap = pl.get_latency_snapshot("deepseek_native_flash")
     assert snap is not None
     assert snap["count"] == 1
     assert snap["last_duration_ms"] >= 0
@@ -1792,41 +1786,36 @@ def test_latency_degradation_syncs_to_provider_health():
 def test_delegate_demotion_tries_healthy_before_degraded(monkeypatch):
     # 17R: when multiple candidates exist, healthy ones are tried before
     # latency-degraded ones (demotion, not exclusion).
+    # log_analysis order: deepseek_native_flash, groq, omniroute_deepseek_flash.
     import core.ai.provider_latency as pl
     import core.ai_provider as ai_provider
 
-    # Mark groq as latency-degraded, gemini healthy (but unavailable to
-    # force fallthrough), claude healthy.
+    # Mark groq as latency-degraded.
     for d in (100, 100, 100, 100):
         pl.record_latency("groq", d)
     pl.record_latency("groq", 5000)
 
     assert pl.is_latency_degraded("groq") is True
 
-    # "log_analysis" order: groq, qwen4_text, claude
-    # groq is degraded -> demoted to end -> order becomes: qwen4_text, claude, groq
-    for name in ("qwen4_text",):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # Disable omniroute_deepseek_flash so fallback stops before it.
+    monkeypatch.setitem(ai_provider.get_provider("omniroute_deepseek_flash"), "available_fn", lambda: False)
+
+    dnf = ai_provider.get_provider("deepseek_native_flash")
+    monkeypatch.setitem(dnf, "available_fn", lambda: True)
+    monkeypatch.setitem(dnf, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "deepseek_native_flash healthy primary")
 
     groq = ai_provider.get_provider("groq")
     monkeypatch.setitem(groq, "available_fn", lambda: True)
     monkeypatch.setitem(groq, "run_text_task",
                         lambda p, timeout=60, project_path=None: "groq degraded last resort")
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "claude healthy primary")
-
-    # claude (healthy) should be tried before groq (degraded)
+    # deepseek_native_flash (healthy) should be tried before groq (degraded)
     result = ai_router.delegate("Analyze Docker error log", task_type="log_analysis",
                                 return_attempts=True)
 
-    assert result["provider"] == "claude"
-    assert result["response"] == "claude healthy primary"
-    # groq should NOT have been called -- claude succeeded first
-    # groq should appear in attempts as degraded_health from the in-loop recording
-    # (but only if it was reached -- since claude succeeded, groq wasn't called)
+    assert result["provider"] == "deepseek_native_flash"
+    assert result["response"] == "deepseek_native_flash healthy primary"
 
 
 # --- 17R.4: Circuit-breaker with 60-second cooldown -------------------------
@@ -1916,24 +1905,23 @@ def test_delegate_skips_circuit_open_provider(monkeypatch):
 
     assert cb.is_open("groq") is True
 
-    # Disable all other "log_analysis" candidates so the only one left is groq
-    # (open circuit) and claude.
-    for name in ("qwen4_text",):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # Disable deepseek_native_flash so the open-circuit groq is bypassed and
+    # omniroute_deepseek_flash answers.
+    monkeypatch.setitem(ai_provider.get_provider("deepseek_native_flash"), "available_fn", lambda: False)
 
     groq = ai_provider.get_provider("groq")
     monkeypatch.setitem(groq, "available_fn", lambda: True)
     monkeypatch.setitem(groq, "run_text_task",
                         lambda p, timeout=60, project_path=None: pytest.fail("groq is circuit-open, must be skipped"))
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "claude to the rescue")
+    fallback = ai_provider.get_provider("omniroute_deepseek_flash")
+    monkeypatch.setitem(fallback, "available_fn", lambda: True)
+    monkeypatch.setitem(fallback, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "omniroute_deepseek_flash to the rescue")
 
     result = ai_router.delegate("Analyze Docker error log", task_type="log_analysis")
 
-    assert result["provider"] == "claude"
+    assert result["provider"] == "omniroute_deepseek_flash"
 
 
 def test_delegate_records_circuit_breaker_on_failure(monkeypatch):
@@ -1943,14 +1931,18 @@ def test_delegate_records_circuit_breaker_on_failure(monkeypatch):
     def boom(p, timeout=60, project_path=None):
         raise RuntimeError("connection refused")
 
+    # Disable deepseek_native_flash so groq (which fails) is tried first,
+    # then the fallback (omniroute_deepseek_flash) succeeds.
+    monkeypatch.setitem(ai_provider.get_provider("deepseek_native_flash"), "available_fn", lambda: False)
+
     groq = ai_provider.get_provider("groq")
     monkeypatch.setitem(groq, "available_fn", lambda: True)
     monkeypatch.setitem(groq, "run_text_task", boom)
 
-    claude = ai_provider.get_provider("claude")
-    monkeypatch.setitem(claude, "available_fn", lambda: True)
-    monkeypatch.setitem(claude, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "claude saved")
+    fallback = ai_provider.get_provider("omniroute_deepseek_flash")
+    monkeypatch.setitem(fallback, "available_fn", lambda: True)
+    monkeypatch.setitem(fallback, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "omniroute_deepseek_flash saved")
 
     ai_router.delegate("Analyze Docker error log", task_type="log_analysis")
 
@@ -1972,8 +1964,8 @@ def test_delegate_clears_circuit_breaker_on_success(monkeypatch):
     # Manually transition to half-open and have the attempt succeed
     cb._save_state({})
 
-    for name in ("qwen4_text",):
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+    # Disable deepseek_native_flash so groq is tried first (and succeeds).
+    monkeypatch.setitem(ai_provider.get_provider("deepseek_native_flash"), "available_fn", lambda: False)
 
     groq = ai_provider.get_provider("groq")
     monkeypatch.setitem(groq, "available_fn", lambda: True)

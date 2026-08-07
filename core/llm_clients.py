@@ -73,8 +73,6 @@ class ProviderUnavailable(Exception):
 _ENV_TO_SECRETS_PROVIDER = {
     "DEEPSEEK_NATIVE_PRO_API_KEY": "deepseek",
     "DEEPSEEK_NATIVE_FLASH_API_KEY": "deepseek",
-    "VLLM_QWEN3_CODER_API_KEY": "qwen4_text",
-    "VLLM_QWEN3_POD_B_API_KEY": "qwen4_pod_b",
     "OPENROUTER_API_KEY": "openrouter",
     "DEEPSEEK_OPENROUTER_API_KEY": "deepseek",
     "GEMINI_API_KEY": "gemini",
@@ -187,74 +185,8 @@ def call_groq(prompt, model=GROQ_DEFAULT_MODEL, timeout=60):
     return data["choices"][0]["message"]["content"]
 
 
-QWEN3_CODER_BASE_URL = os.getenv("VLLM_QWEN3_CODER_BASE_URL", "").rstrip("/")
-QWEN3_CODER_MODEL = os.getenv("VLLM_QWEN3_CODER_MODEL", "")
-
-
-# 2026-08-02 operator directive: the "openai" provider slot now means the
-# self-hosted Qwen3-Coder vLLM instance, not the real OpenAI API -- same
-# "provider name keeps meaning something different underneath" convention
-# already used for "opencode" (meant minimax, then deepseek-v4-pro). Uses
-# VLLM_QWEN3_CODER_API_KEY/BASE_URL/MODEL (see .env, confirmed live via
-# GET {base_url}/models 2026-08-02) instead of OPENAI_API_KEY/
-# OPENAI_DEFAULT_MODEL/api.openai.com -- those stay defined above for
-# whenever this gets pointed back at the real API.
-def call_openai(prompt, model=None, timeout=60):
-    key = _require_key("VLLM_QWEN3_CODER_API_KEY")
-    model = model or QWEN3_CODER_MODEL
-
-    data = _post_json(
-        "openai",
-        f"{QWEN3_CODER_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=timeout,
-    )
-    return data["choices"][0]["message"]["content"]
-
-
-# 2026-08-05 (Phase 17Z): Qwen4 pod (ldtqgcshb2dwsw, RTX PRO 6000 96GB)
-# — Qwen/Qwen3-32B-FP8. Proper text-task registration under its own
-# provider name. Tracked in provider_health as "qwen4_text",
-# cost_tier='paid' (real per-request GPU billing). Also in OmniRoute as "qwen4".
-#
-# 2026-08-06: Pod A (Generator) — ldtqgcshb2dwsw, primary for coding/generation.
-def call_qwen4_text(prompt, model=None, timeout=60):
-    key = _require_key("VLLM_QWEN3_CODER_API_KEY")
-    model = model or QWEN3_CODER_MODEL
-
-    data = _post_json(
-        "qwen4_text",
-        f"{QWEN3_CODER_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=timeout,
-    )
-    return data["choices"][0]["message"]["content"]
-
-
-# Pod B (60jwzf36623b0o) env vars
-QWEN3_POD_B_BASE_URL = os.getenv("VLLM_QWEN3_POD_B_BASE_URL", "").rstrip("/")
-QWEN3_POD_B_MODEL = os.getenv("VLLM_QWEN3_POD_B_MODEL", "")
-
-
-# 2026-08-06: Pod B (Review/Deploy) — 60jwzf36623b0o, RTX PRO 6000 96GB,
-# Qwen/Qwen3-32B-FP8. Dedicated review/deployment pod — never waits behind
-# Pod A's generation workloads. Tracked in provider_health as
-# "qwen4_pod_b", cost_tier='paid'.
-def call_qwen4_pod_b_text(prompt, model=None, timeout=60):
-    key = _require_key("VLLM_QWEN3_POD_B_API_KEY")
-    model = model or QWEN3_POD_B_MODEL
-
-    data = _post_json(
-        "qwen4_pod_b",
-        f"{QWEN3_POD_B_BASE_URL}/chat/completions",
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=timeout,
-    )
-    return data["choices"][0]["message"]["content"]
-
+# RunPod pods decommissioned.
+# 2026-08-07: call_openai, call_qwen4_text, call_qwen4_pod_b_text removed.
 
 def call_openrouter(prompt, model=OPENROUTER_DEFAULT_MODEL, timeout=60):
     key = _require_key("OPENROUTER_API_KEY")

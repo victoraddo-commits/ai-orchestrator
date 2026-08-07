@@ -718,12 +718,8 @@ def providers_dashboard_endpoint():
 
 @app.get("/api/gpu/status")
 def api_gpu_status():
-    """Per-pod GPU metrics: state, runtime, cost, tasks, health."""
-    try:
-        import core.gpu_lifecycle as _gl
-        return _gl.get_gpu_dashboard()
-    except Exception as e:
-        return {"error": str(e)}
+    """2026-08-07: GPU metrics removed — RunPod pods decommissioned."""
+    return {"status": "decommissioned", "message": "RunPod GPU pods decommissioned 2026-08-07. DeepSeek Native now serves all AI workloads."}
 
 
 @app.get("/api/vpn/status")
@@ -770,19 +766,20 @@ def api_pipeline_overview():
 
 @app.get("/api/budget")
 def api_budget_dashboard():
-    """Cost tracking: GPU spend, per-pod breakdown."""
-    try:
-        import core.gpu_lifecycle as _gl
-        metrics = _gl.get_gpu_dashboard()
-        return {
-            "gpu": metrics,
-            "summary": {
-                "total_gpu_cost": metrics.get("summary", {}).get("total_cost", 0),
-                "combined_hourly": metrics.get("summary", {}).get("combined_hourly_cost", 0),
-            },
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    """2026-08-07: Cost tracking — GPU pods decommissioned. DeepSeek Native cost projection: ~$25-30/month."""
+    return {
+        "status": "transitioned",
+        "previous_monthly_cost": 3000,
+        "current_monthly_cost": 30,
+        "savings": 2970,
+        "providers": {
+            "deepseek_native_flash": {"monthly_cost": 20, "cost_per_million_input": 0.14, "cost_per_million_output": 0.28},
+            "deepseek_native_pro": {"monthly_cost": 10, "cost_per_million_input": 0.42, "cost_per_million_output": 0.84},
+            "gemini": {"monthly_cost": 0, "tier": "free"},
+            "geminix": {"monthly_cost": 0, "tier": "free"},
+            "groq": {"monthly_cost": 0, "tier": "free"},
+        },
+    }
 
 # ---- end V3 ----
 

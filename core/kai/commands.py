@@ -205,7 +205,7 @@ def _handle_provider_status(name):
 
     provider = get_provider(name)
     if not provider:
-        return {"reply": f"Provider '{name}' not found. Try: qwen4_coding, opencode_claude, gemini, groq, deepseek_native_flash"}
+        return {"reply": f"Provider '{name}' not found. Try: opencode_claude, deepseek_native_flash, gemini, groq"}
 
     info = {
         "name": name,

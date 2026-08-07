@@ -158,27 +158,27 @@ def record_usage_lesson(
     )
 
 
-def get_qwen4_coder_metrics():
+def get_deepseek_native_metrics():
     """
-    Retrieve Qwen4-Coder specific performance metrics from usage history
+    Retrieve DeepSeek Native specific performance metrics from usage history
     """
     try:
-        # Get all Qwen4-related entries
+        # Get all DeepSeek Native entries
         entries = [
             entry for entry in _history()
-            if entry.get("provider", "").startswith("qwen4_") or entry.get("provider", "") in ("qwen4_text", "qwen4_coding")
+            if entry.get("provider", "").startswith("deepseek_native_")
         ]
-        
+
         if not entries:
             return {
-                "provider": "qwen4_coder",
+                "provider": "deepseek_native",
                 "total_requests": 0,
                 "success_rate": 0.0,
                 "avg_response_time": 0.0,
                 "error_count": 0,
                 "latency_distribution": {}
             }
-        
+
         # Calculate metrics
         total_requests = len(entries)
         successful_requests = sum(1 for e in entries if e.get("success", False))
@@ -211,17 +211,17 @@ def get_qwen4_coder_metrics():
         avg_response_time = round(total_response_time / len(entries), 2) if entries else 0
         
         return {
-            "provider": "qwen4_coder",
+            "provider": "deepseek_native",
             "total_requests": total_requests,
             "success_rate": success_rate,
             "avg_response_time": avg_response_time,
             "error_count": error_count,
             "latency_distribution": latency_distribution
         }
-        
+
     except Exception as e:
         return {
-            "provider": "qwen4_coder",
+            "provider": "deepseek_native",
             "error": str(e),
             "total_requests": 0,
             "success_rate": 0.0,

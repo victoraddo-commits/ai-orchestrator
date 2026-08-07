@@ -8,10 +8,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-/* ═══════════════════════════════════════════════════════════════
-   Kai Command Center v2 — Data-Dense Dashboard Design System
-   Generated via ui-ux-pro-max
-   ═══════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════
+   Kai Command Center v3 — Professional Infrastructure Control Plane
+   Design System: Data-Dense Dashboard / Terminal Dark
+   ═══════════════════════════════════════════════════════════════════ */
 
 :root {
   --bg-deep: #020617;
@@ -24,12 +24,15 @@
   --fg-muted: #64748B;
   --accent: #16A34A;
   --accent-glow: rgba(22,163,74,0.15);
+  --accent-bright: #22C55E;
   --warn: #D29922;
   --warn-glow: rgba(210,153,34,0.15);
   --destructive: #DC2626;
   --destructive-glow: rgba(220,38,38,0.15);
   --info: #3B82F6;
   --info-glow: rgba(59,130,246,0.15);
+  --violet: #8B5CF6;
+  --violet-glow: rgba(139,92,246,0.15);
   --radius: 0px;
   --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
   --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -37,6 +40,7 @@
   --sidebar-collapsed: 52px;
   --transition-fast: 120ms;
   --transition-normal: 180ms;
+  --transition-smooth: 250ms;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,81 +50,148 @@ body {
   background: var(--bg-deep);
   color: var(--fg);
   min-height: 100vh;
-  line-height: 1.4;
+  line-height: 1.45;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Login ──────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   LOGIN — Premium Split Layout
+   ═══════════════════════════════════════════════════════════════════ */
 
-.login-wrap {
-  display: flex; align-items: center; justify-content: center;
-  min-height: 100vh; padding: 24px;
-  background: var(--bg-deep);
+#login-screen {
+  display: flex; min-height: 100vh;
 }
-.login-card {
-  width: 100%; max-width: 380px;
-  background: var(--bg-surface); border: 1px solid var(--border); padding: 36px 28px;
-  box-shadow: 0 0 0 1px rgba(51,65,85,0.3), 0 8px 40px rgba(0,0,0,0.5);
+#login-screen.hidden { display: none; }
+
+.login-brand {
+  flex: 1; background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%);
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 40px 48px; position: relative; overflow: hidden;
+  border-right: 1px solid var(--border);
 }
-.login-card h1 {
-  font-family: var(--font-mono); font-size: 1.1rem; font-weight: 600;
-  text-align: center; margin-bottom: 2px; letter-spacing: -0.5px; color: var(--accent);
+.login-brand::before {
+  content: ''; position: absolute; top: -50%; right: -30%;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(22,163,74,0.06) 0%, transparent 70%);
+  pointer-events: none;
 }
-.login-card .subtitle {
-  text-align: center; color: var(--fg-muted); font-size: 0.75rem;
+.login-brand::after {
+  content: ''; position: absolute; bottom: -20%; left: -10%;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(59,130,246,0.04) 0%, transparent 70%);
+  pointer-events: none;
+}
+.login-brand-content {
+  position: relative; z-index: 1;
+}
+.login-logo {
+  font-family: var(--font-mono); font-size: 1.6rem; font-weight: 700;
+  color: var(--accent); letter-spacing: -0.5px; margin-bottom: 4px;
+}
+.login-logo-sub {
+  font-family: var(--font-mono); font-size: 0.68rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 2px;
+}
+.login-tagline {
+  position: relative; z-index: 1; max-width: 420px;
+}
+.login-tagline h2 {
+  font-family: var(--font-sans); font-size: 1.8rem; font-weight: 600;
+  color: var(--fg); line-height: 1.25; margin-bottom: 12px;
+}
+.login-tagline p {
+  font-size: 0.82rem; color: var(--fg-secondary); line-height: 1.6;
+}
+.login-features {
+  position: relative; z-index: 1; display: flex; flex-direction: column; gap: 10px;
+}
+.login-feature {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 0.72rem; color: var(--fg-muted); font-family: var(--font-mono);
+}
+.login-feature .lf-dot {
+  width: 6px; height: 6px; background: var(--accent);
+  box-shadow: 0 0 6px rgba(22,163,74,0.5); flex-shrink: 0;
+}
+.login-form-wrap {
+  width: 440px; display: flex; align-items: center; justify-content: center;
+  padding: 48px; background: var(--bg-deep);
+}
+.login-form-card {
+  width: 100%; max-width: 360px;
+}
+.login-form-card h1 {
+  font-family: var(--font-sans); font-size: 1.3rem; font-weight: 600;
+  margin-bottom: 2px;
+}
+.login-form-card .subtitle {
+  color: var(--fg-muted); font-size: 0.75rem;
   margin-bottom: 28px; font-family: var(--font-mono);
 }
+
 .form-group { margin-bottom: 14px; }
 .form-group label {
   display: block; font-size: 0.7rem; font-weight: 600;
-  color: var(--fg-secondary); margin-bottom: 4px; text-transform: uppercase;
+  color: var(--fg-secondary); margin-bottom: 5px; text-transform: uppercase;
   letter-spacing: 0.8px; font-family: var(--font-mono);
 }
-.form-group input, .form-group select {
-  width: 100%; padding: 9px 12px;
-  background: var(--bg-deep); border: 1px solid var(--border); color: var(--fg);
-  font-size: 0.85rem; font-family: var(--font-mono); transition: border-color var(--transition-fast);
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 10px 12px;
+  background: var(--bg-surface); border: 1px solid var(--border); color: var(--fg);
+  font-size: 0.85rem; font-family: var(--font-mono); transition: all var(--transition-fast);
 }
-.form-group input:focus, .form-group select:focus {
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
   outline: none; border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-glow);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
-.form-group input.error { border-color: var(--destructive); }
-.form-group select { cursor: pointer; }
+.form-group input.error, .form-group select.error { border-color: var(--destructive); }
+.form-group select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
+.form-group textarea { resize: vertical; min-height: 60px; }
 
-.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
-.checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+.checkbox-row input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 .checkbox-row label { font-size: 0.75rem; color: var(--fg-secondary); cursor: pointer; }
+
+/* ── Buttons ──────────────────────────────────────────────────── */
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 9px 18px; border: 1px solid var(--border); font-size: 0.78rem;
   font-weight: 500; cursor: pointer; font-family: var(--font-mono);
   transition: all var(--transition-fast); background: var(--bg-elevated); color: var(--fg);
+  user-select: none;
 }
-.btn:hover { background: var(--border); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); width: 100%; }
-.btn-primary:hover { filter: brightness(1.15); background: var(--accent); }
-.btn-sm { padding: 4px 10px; font-size: 0.7rem; }
-.btn-xs { padding: 2px 8px; font-size: 0.65rem; }
+.btn:hover { background: var(--border); border-color: var(--fg-muted); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+.btn:active { transform: scale(0.98); }
+.btn-primary {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  font-weight: 600; width: 100%; padding: 11px 18px;
+}
+.btn-primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); filter: none; }
+.btn-sm { padding: 5px 12px; font-size: 0.7rem; }
+.btn-xs { padding: 3px 8px; font-size: 0.65rem; }
 .btn-danger { background: var(--destructive); color: #fff; border-color: var(--destructive); }
-.btn-danger:hover { filter: brightness(1.15); background: var(--destructive); }
+.btn-danger:hover { background: #EF4444; border-color: #EF4444; filter: none; }
 .btn-outline { background: transparent; }
 .btn-accent { border-color: var(--accent); color: var(--accent); background: transparent; }
-.btn-accent:hover { background: var(--accent-glow); }
+.btn-accent:hover { background: var(--accent-glow); border-color: var(--accent-bright); }
 .btn-warn { border-color: var(--warn); color: var(--warn); background: transparent; }
 .btn-warn:hover { background: var(--warn-glow); }
+.btn-violet { border-color: var(--violet); color: var(--violet); background: transparent; }
+.btn-violet:hover { background: var(--violet-glow); }
 
 .login-error, .err-msg {
   background: var(--destructive-glow); border: 1px solid rgba(220,38,38,0.3);
-  padding: 10px 14px; margin-bottom: 16px; color: var(--destructive);
+  padding: 10px 14px; margin-bottom: 16px; color: #FCA5A5;
   font-size: 0.75rem; font-family: var(--font-mono); display: none;
 }
 .login-error.visible, .err-msg.visible { display: block; }
 
-/* ── App Shell ──────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   APP SHELL
+   ═══════════════════════════════════════════════════════════════════ */
 
 .app-wrap { display: none; min-height: 100vh; }
 .app-wrap.active { display: flex; }
@@ -134,10 +205,12 @@ body {
 .sidebar.collapsed { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
 
 .sidebar-brand {
-  padding: 14px; display: flex; align-items: center; gap: 8px;
-  border-bottom: 1px solid var(--border); min-height: 49px;
+  padding: 15px 14px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border); min-height: 50px;
 }
-.sidebar-brand .logo { font-size: 1rem; filter: grayscale(0.3); }
+.sidebar-brand .logo {
+  font-family: var(--font-mono); font-size: 1rem; font-weight: 700; color: var(--accent);
+}
 .sidebar-brand .name {
   font-weight: 600; font-size: 0.85rem; white-space: nowrap; overflow: hidden;
   font-family: var(--font-mono); color: var(--accent);
@@ -145,6 +218,13 @@ body {
 .sidebar.collapsed .sidebar-brand .name { display: none; }
 
 .sidebar-nav { flex: 1; overflow-y: auto; padding: 6px; }
+.sidebar-section-label {
+  font-size: 0.58rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--fg-muted); padding: 10px 10px 4px;
+  font-family: var(--font-mono); opacity: 0.6;
+}
+.sidebar.collapsed .sidebar-section-label { display: none; }
+
 .nav-item {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; cursor: pointer; font-size: 0.75rem;
@@ -155,6 +235,7 @@ body {
 .nav-item:hover { background: var(--bg-elevated); color: var(--fg); }
 .nav-item.active { background: var(--accent-glow); color: var(--accent); font-weight: 500; }
 .nav-item .icon { font-size: 0.9rem; width: 22px; text-align: center; flex-shrink: 0; }
+.nav-item .icon svg { width: 16px; height: 16px; stroke: currentColor; }
 .sidebar.collapsed .nav-item .label { display: none; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px 0; }
 
@@ -175,31 +256,35 @@ body {
 .sidebar.collapsed ~ .main-area { margin-left: var(--sidebar-collapsed); }
 
 .topbar {
-  padding: 8px 16px; background: var(--bg-surface);
+  padding: 9px 18px; background: var(--bg-surface);
   border-bottom: 1px solid var(--border); display: flex;
   align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 50;
-  min-height: 41px;
+  min-height: 42px;
 }
 .topbar-left {
   font-weight: 600; font-size: 0.82rem; font-family: var(--font-mono); color: var(--accent);
 }
 .topbar-right { display: flex; align-items: center; gap: 10px; font-size: 0.72rem; color: var(--fg-muted); }
 .topbar-right .user-role { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; }
-.content { flex: 1; padding: 14px; overflow-y: auto; }
+
+.content { flex: 1; padding: 16px; overflow-y: auto; }
 .panel { display: none; }
-.panel.active { display: block; }
+.panel.active { display: block; animation: fadeIn 150ms ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
 .status-bar {
-  padding: 5px 16px; background: var(--bg-surface); border-top: 1px solid var(--border);
+  padding: 5px 18px; background: var(--bg-surface); border-top: 1px solid var(--border);
   display: flex; align-items: center; gap: 20px; font-size: 0.68rem;
   color: var(--fg-muted); position: sticky; bottom: 0; font-family: var(--font-mono);
 }
-.dot { width: 7px; height: 7px; display: inline-block; margin-right: 4px; }
+.dot { width: 7px; height: 7px; display: inline-block; margin-right: 4px; border-radius: 50%; }
 .dot.ok { background: var(--accent); box-shadow: 0 0 5px rgba(22,163,74,0.5); }
 .dot.warn { background: var(--warn); box-shadow: 0 0 5px rgba(210,153,34,0.5); }
 .dot.bad { background: var(--destructive); box-shadow: 0 0 5px rgba(220,38,38,0.5); }
 
-/* ── Shared Components ──────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════════
+   SHARED COMPONENTS
+   ═══════════════════════════════════════════════════════════════════ */
 
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
@@ -208,26 +293,31 @@ body {
 
 .card {
   background: var(--bg-surface); border: 1px solid var(--border);
-  padding: 14px; transition: border-color var(--transition-fast);
+  padding: 16px; transition: border-color var(--transition-fast);
 }
 .card:hover { border-color: var(--fg-muted); }
-.card h3 {
+.card h3, .card-header {
   font-size: 0.68rem; font-weight: 600; color: var(--fg-muted);
-  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;
+  text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px;
   font-family: var(--font-mono); display: flex; align-items: center; gap: 6px;
 }
+.card-header-actions { margin-left: auto; display: flex; gap: 4px; }
 
-.metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
 .metric {
   background: var(--bg-surface); border: 1px solid var(--border);
-  padding: 12px; text-align: center; transition: border-color var(--transition-fast);
+  padding: 14px 12px; text-align: center; transition: border-color var(--transition-fast);
 }
 .metric:hover { border-color: var(--accent); }
 .metric .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); display: block; font-family: var(--font-mono); }
 .metric .val.warn { color: var(--warn); }
 .metric .val.bad { color: var(--destructive); }
 .metric .val.info { color: var(--info); }
-.metric .lbl { font-size: 0.65rem; color: var(--fg-muted); margin-top: 4px; display: block; text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-mono); }
+.metric .val.violet { color: var(--violet); }
+.metric .lbl {
+  font-size: 0.62rem; color: var(--fg-muted); margin-top: 4px; display: block;
+  text-transform: uppercase; letter-spacing: 0.5px; font-family: var(--font-mono);
+}
 
 .badge {
   padding: 1px 7px; font-size: 0.62rem; font-weight: 600;
@@ -238,24 +328,23 @@ body {
 .badge.warn { background: var(--warn-glow); color: var(--warn); border-color: rgba(210,153,34,0.3); }
 .badge.bad, .badge.critical { background: var(--destructive-glow); color: var(--destructive); border-color: rgba(220,38,38,0.3); }
 .badge.info { background: var(--info-glow); color: var(--info); border-color: rgba(59,130,246,0.3); }
+.badge.violet { background: var(--violet-glow); color: var(--violet); border-color: rgba(139,92,246,0.3); }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-family: var(--font-mono); }
-th { text-align: left; padding: 6px 8px; font-weight: 600; color: var(--fg-muted); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
-td { padding: 5px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-secondary); }
+th { text-align: left; padding: 7px 8px; font-weight: 600; color: var(--fg-muted); font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--fg-secondary); }
 tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 
 .loading { color: var(--fg-muted); font-family: var(--font-mono); font-size: 0.75rem; }
-.error-text { color: var(--destructive); font-family: var(--font-mono); font-size: 0.72rem; }
+.error-text { color: #FCA5A5; font-family: var(--font-mono); font-size: 0.72rem; }
 .empty { color: var(--fg-muted); font-family: var(--font-mono); font-size: 0.72rem; }
 
 .spread { display: flex; justify-content: space-between; align-items: center; }
-
 .progress-bar { height: 4px; background: var(--bg-deep); overflow: hidden; margin: 4px 0; }
 .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
 .progress-fill.warn { background: var(--warn); }
-.progress-fill.done { background: var(--accent); }
 
-/* ── Module Cards ───────────────────────────────────────────── */
+/* ── Module Cards ───────────────────────────────────────────────── */
 
 .module-card { margin-bottom: 10px; }
 .module-card-header {
@@ -272,18 +361,19 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 .module-card.open .module-card-body { display: block; }
 .module-card.open .module-card-header { border-bottom-color: transparent; }
 
-.module-tabs { display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.module-tabs { display: flex; gap: 2px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; overflow-x: auto; }
 .module-tab-btn {
   background: none; border: none; color: var(--fg-muted); cursor: pointer;
-  font-size: 0.7rem; padding: 4px 12px; font-family: var(--font-mono);
-  transition: color var(--transition-fast); text-transform: uppercase; letter-spacing: 0.3px;
+  font-size: 0.68rem; padding: 4px 10px; font-family: var(--font-mono);
+  transition: color var(--transition-fast); text-transform: uppercase;
+  letter-spacing: 0.3px; white-space: nowrap;
 }
 .module-tab-btn:hover { color: var(--fg); }
 .module-tab-btn.active { color: var(--accent); border-bottom: 1px solid var(--accent); margin-bottom: -7px; }
 
-/* ── Container / Docker Cards ───────────────────────────────── */
+/* ── Container / Docker Cards ───────────────────────────────────── */
 
-.container-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.container-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
 .container-card {
   background: var(--bg-surface); border: 1px solid var(--border); padding: 12px;
   font-family: var(--font-mono); transition: border-color var(--transition-fast);
@@ -295,31 +385,48 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 .container-card-body .cl { color: var(--fg-muted); }
 .container-card-actions { margin-top: 8px; display: flex; gap: 4px; }
 
-/* ── Worker Cards ───────────────────────────────────────────── */
+/* ── Worker Cards ───────────────────────────────────────────────── */
 
-.worker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 10px; }
+.worker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; }
 .worker-card {
-  background: var(--bg-surface); border: 1px solid var(--border); padding: 12px;
-  font-family: var(--font-mono);
+  background: var(--bg-surface); border: 1px solid var(--border); padding: 14px;
+  font-family: var(--font-mono); transition: border-color var(--transition-fast);
 }
-.worker-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.worker-card:hover { border-color: var(--fg-muted); }
+.worker-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .worker-card-name { font-weight: 600; font-size: 0.78rem; }
-.worker-card-body { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 0.68rem; }
+.worker-card-body { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 0.68rem; color: var(--fg-secondary); }
 .worker-card-body .wl { color: var(--fg-muted); }
+.worker-card-actions { margin-top: 10px; display: flex; gap: 4px; flex-wrap: wrap; }
 
-/* ── Settings Forms ─────────────────────────────────────────── */
+/* ── Inline Dropdown ────────────────────────────────────────────── */
+
+.inline-dropdown {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.68rem; font-family: var(--font-mono);
+}
+.inline-dropdown select {
+  background: var(--bg-deep); border: 1px solid var(--border); color: var(--fg);
+  padding: 3px 20px 3px 6px; font-size: 0.65rem; font-family: var(--font-mono);
+  cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 4px center;
+}
+.inline-dropdown select:focus { outline: none; border-color: var(--accent); }
+
+/* ── Settings Forms ─────────────────────────────────────────────── */
 
 .settings-field { margin-bottom: 10px; }
 .settings-field label {
   display: block; font-size: 0.68rem; font-weight: 600; color: var(--fg-muted);
   margin-bottom: 3px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.5px;
 }
-.settings-field input[type="number"] {
-  width: 100%; max-width: 120px; padding: 5px 8px;
+.settings-field input[type="number"], .settings-field input[type="text"] {
+  width: 100%; max-width: 160px; padding: 5px 8px;
   background: var(--bg-deep); border: 1px solid var(--border); color: var(--fg);
   font-size: 0.75rem; font-family: var(--font-mono);
 }
-.settings-field input[type="number"]:focus { outline: none; border-color: var(--accent); }
+.settings-field input:focus { outline: none; border-color: var(--accent); }
 .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .toggle-switch {
   position: relative; width: 36px; height: 20px; flex-shrink: 0;
@@ -337,7 +444,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 .toggle-switch input:checked + .slider::before { background: var(--accent); transform: translateX(16px); }
 .toggle-label { font-size: 0.72rem; color: var(--fg-secondary); font-family: var(--font-mono); }
 
-/* ── Log Viewer ─────────────────────────────────────────────── */
+/* ── Log Viewer ─────────────────────────────────────────────────── */
 
 .log-viewer {
   background: var(--bg-deep); border: 1px solid var(--border);
@@ -349,25 +456,43 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 .log-viewer .log-err { color: var(--destructive); }
 .log-viewer .log-warn { color: var(--warn); }
 
-/* ── Modal ──────────────────────────────────────────────────── */
+/* ── Modal ──────────────────────────────────────────────────────── */
 
 .modal-overlay {
-  display: none; position: fixed; inset: 0; background: rgba(2,6,23,0.75);
+  display: none; position: fixed; inset: 0; background: rgba(2,6,23,0.8);
   z-index: 200; align-items: center; justify-content: center;
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
 }
 .modal-overlay.visible { display: flex; }
 .modal-box {
   background: var(--bg-surface); border: 1px solid var(--border);
-  padding: 24px 20px; width: 100%; max-width: 420px;
+  padding: 24px; width: 100%; max-width: 480px;
+  animation: modalIn 200ms ease-out;
 }
-.modal-box h2 { font-family: var(--font-mono); font-size: 0.9rem; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
-.modal-box .btn-row { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+@keyframes modalIn { from { opacity: 0; transform: scale(0.96) translateY(-8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.modal-box h2 { font-family: var(--font-mono); font-size: 0.9rem; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+.modal-box .btn-row { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
 .modal-success { color: var(--accent); font-size: 0.75rem; display: none; margin-top: 8px; font-family: var(--font-mono); }
 .modal-success.visible { display: block; }
 
-/* ── Responsive ─────────────────────────────────────────────── */
+/* ── Toast ──────────────────────────────────────────────────────── */
+
+.toast {
+  position: fixed; bottom: 40px; right: 20px; z-index: 300;
+  padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border);
+  font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg);
+  opacity: 0; transform: translateY(10px); transition: all var(--transition-normal);
+  pointer-events: none; max-width: 400px;
+}
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast.ok { border-color: var(--accent); }
+.toast.err { border-color: var(--destructive); }
+
+/* ── Responsive ─────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
+  .login-brand { display: none; }
+  .login-form-wrap { width: 100%; padding: 24px; }
   .sidebar { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
   .sidebar .nav-item .label, .sidebar-brand .name, .collapse-btn span { display: none; }
   .sidebar .nav-item { justify-content: center; padding: 8px 0; }
@@ -378,49 +503,82 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
   .worker-grid, .container-grid { grid-template-columns: 1fr; }
 }
 
-/* ── Toast ──────────────────────────────────────────────────── */
+/* ── User Action Row (legal panel) ──────────────────────────────── */
 
-.toast {
-  position: fixed; bottom: 40px; right: 20px; z-index: 300;
-  padding: 10px 16px; background: var(--bg-elevated); border: 1px solid var(--border);
-  font-family: var(--font-mono); font-size: 0.72rem; color: var(--fg);
-  opacity: 0; transform: translateY(10px); transition: all var(--transition-normal);
-  pointer-events: none; max-width: 380px;
+.action-row {
+  display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
 }
-.toast.visible { opacity: 1; transform: translateY(0); }
-.toast.ok { border-color: var(--accent); }
-.toast.err { border-color: var(--destructive); }
+.action-row select {
+  background: var(--bg-deep); border: 1px solid var(--border); color: var(--fg);
+  padding: 3px 20px 3px 6px; font-size: 0.65rem; font-family: var(--font-mono);
+  cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 4px center;
+}
+.action-row select:focus { outline: none; border-color: var(--accent); }
+
+/* ── Search input ───────────────────────────────────────────────── */
+
+.search-input {
+  flex: 1; min-width: 180px; background: var(--bg-deep);
+  border: 1px solid var(--border); color: var(--fg);
+  padding: 6px 10px; font-size: 0.72rem; font-family: var(--font-mono);
+  transition: border-color var(--transition-fast);
+}
+.search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+/* ── Field hint ─────────────────────────────────────────────────── */
+
+.field-hint { font-size: 0.62rem; color: var(--fg-muted); margin-top: 3px; font-family: var(--font-mono); }
 </style>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════════
-     Login
-     ═══════════════════════════════════════════════════════════ -->
-<div id="login-screen" class="login-wrap active">
-  <div class="login-card">
-    <h1>kai command center</h1>
-    <p class="subtitle">unified control plane v2.0</p>
-    <div class="login-error" id="login-error"></div>
-    <div class="form-group">
-      <label for="login-user">Username</label>
-      <input type="text" id="login-user" autocomplete="username" placeholder="operator" autofocus>
+<!-- ═══════════════════════════════════════════════════════════════════
+     LOGIN — Premium Split Screen
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-brand">
+    <div class="login-brand-content">
+      <div class="login-logo">kai</div>
+      <div class="login-logo-sub">Command Center</div>
     </div>
-    <div class="form-group">
-      <label for="login-pass">Password</label>
-      <input type="password" id="login-pass" autocomplete="current-password">
+    <div class="login-tagline">
+      <h2>Unified infrastructure control plane for autonomous operations</h2>
+      <p>Observe, reason, remediate, and learn — with human approval gates on every action. Manage AI providers, legal modules, Docker containers, and more from a single terminal-dark interface.</p>
     </div>
-    <div class="checkbox-row">
-      <input type="checkbox" id="login-remember">
-      <label for="login-remember">Remember session</label>
+    <div class="login-features">
+      <div class="login-feature"><span class="lf-dot"></span>10-panel command center with real-time metrics</div>
+      <div class="login-feature"><span class="lf-dot"></span>AI workforce management with provider routing</div>
+      <div class="login-feature"><span class="lf-dot"></span>Legal module administration (Juris Kai, SUSU, Legal Brain)</div>
+      <div class="login-feature"><span class="lf-dot"></span>Docker container lifecycle + Airdrop Hunter control</div>
     </div>
-    <button class="btn btn-primary" id="login-btn" onclick="doLogin()">authenticate</button>
+  </div>
+  <div class="login-form-wrap">
+    <div class="login-form-card">
+      <h1>Welcome back</h1>
+      <p class="subtitle">Sign in to access the control plane</p>
+      <div class="login-error" id="login-error"></div>
+      <div class="form-group">
+        <label for="login-user">Username</label>
+        <input type="text" id="login-user" autocomplete="username" placeholder="operator" autofocus>
+      </div>
+      <div class="form-group">
+        <label for="login-pass">Password</label>
+        <input type="password" id="login-pass" autocomplete="current-password" placeholder="········">
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="login-remember">
+        <label for="login-remember">Remember this session for 7 days</label>
+      </div>
+      <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
+    </div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════
-     App Shell
-     ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     APP SHELL
+     ═══════════════════════════════════════════════════════════════════ -->
 <div id="app-wrap" class="app-wrap">
 
   <nav class="sidebar" id="sidebar">
@@ -429,19 +587,23 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <span class="name">kai</span>
     </div>
     <div class="sidebar-nav" id="sidebar-nav">
-      <a class="nav-item active" href="#home" data-hash="home"><span class="icon">&#9632;</span><span class="label">Home</span></a>
-      <a class="nav-item" href="#modules" data-hash="modules"><span class="icon">&#9636;</span><span class="label">Modules</span></a>
-      <a class="nav-item" href="#legal" data-hash="legal"><span class="icon">&#9872;</span><span class="label">Legal</span></a>
-      <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon">&#9881;</span><span class="label">Workforce</span></a>
-      <a class="nav-item" href="#docker" data-hash="docker"><span class="icon">&#9925;</span><span class="label">Docker</span></a>
-      <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon">&#9884;</span><span class="label">Airdrop</span></a>
-      <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon">&#9728;</span><span class="label">Infra</span></a>
-      <a class="nav-item" href="#security" data-hash="security"><span class="icon">&#9900;</span><span class="label">Security</span></a>
-      <a class="nav-item" href="#settings" data-hash="settings"><span class="icon">&#9881;</span><span class="label">Settings</span></a>
-      <a class="nav-item" href="#logs" data-hash="logs"><span class="icon">&#9776;</span><span class="label">Logs</span></a>
+      <div class="sidebar-section-label">Overview</div>
+      <a class="nav-item active" href="#home" data-hash="home"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Home</span></a>
+      <div class="sidebar-section-label">Management</div>
+      <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
+      <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
+      <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
+      <div class="sidebar-section-label">Infrastructure</div>
+      <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
+      <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span><span class="label">Airdrop</span></a>
+      <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span class="label">Infra</span></a>
+      <div class="sidebar-section-label">System</div>
+      <a class="nav-item" href="#security" data-hash="security"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><span class="label">Security</span></a>
+      <a class="nav-item" href="#settings" data-hash="settings"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Settings</span></a>
+      <a class="nav-item" href="#logs" data-hash="logs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span><span class="label">Logs</span></a>
     </div>
     <div class="sidebar-footer">
-      <button class="collapse-btn" onclick="toggleSidebar()"><span>&#9776;</span> <span>Collapse</span></button>
+      <button class="collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg> <span>Collapse</span></button>
     </div>
   </nav>
 
@@ -451,7 +613,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <div class="topbar-right">
         <span id="user-display"></span>
         <button class="btn btn-sm" onclick="showChangePassword()">password</button>
-        <button class="btn btn-sm" onclick="doLogout()">logout</button>
+        <button class="btn btn-sm" onclick="doLogout()">sign out</button>
       </div>
     </header>
 
@@ -466,58 +628,58 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
           <div class="metric"><span class="val" id="home-builds">-</span><span class="lbl">Active Builds</span></div>
         </div>
         <div class="grid">
-          <div class="card"><h3>System Status</h3><div id="home-system-status"><span class="loading">loading...</span></div></div>
-          <div class="card"><h3>Active Operations</h3><div id="home-active-ops"><span class="loading">loading...</span></div></div>
-          <div class="card"><h3>Resource Usage</h3><div id="home-resources"><span class="loading">loading...</span></div></div>
-          <div class="card"><h3>Alerts &amp; Approvals</h3><div id="home-alerts"><span class="loading">loading...</span></div></div>
+          <div class="card"><h3>System Status</h3><div id="home-system-status"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Active Operations</h3><div id="home-active-ops"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Resource Usage</h3><div id="home-resources"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Alerts &amp; Approvals</h3><div id="home-alerts"><span class="loading">loading…</span></div></div>
         </div>
       </section>
 
       <!-- MODULES -->
-      <section class="panel" id="panel-modules"><div id="modules-content"><span class="loading">loading...</span></div></section>
+      <section class="panel" id="panel-modules"><div id="modules-content"><span class="loading">loading…</span></div></section>
 
-      <!-- LEGAL (dedicated panel for juris-kai/susu/legal-brain/klaus) -->
-      <section class="panel" id="panel-legal"><div id="legal-content"><span class="loading">loading...</span></div></section>
+      <!-- LEGAL -->
+      <section class="panel" id="panel-legal"><div id="legal-content"><span class="loading">loading…</span></div></section>
 
       <!-- AI WORKFORCE -->
-      <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading...</span></div></section>
+      <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading…</span></div></section>
 
-      <!-- DOCKER (NEW) -->
-      <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading...</span></div></section>
+      <!-- DOCKER -->
+      <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading…</span></div></section>
 
-      <!-- AIRDROP (NEW) -->
-      <section class="panel" id="panel-airdrop"><div id="airdrop-content"><span class="loading">loading...</span></div></section>
+      <!-- AIRDROP -->
+      <section class="panel" id="panel-airdrop"><div id="airdrop-content"><span class="loading">loading…</span></div></section>
 
       <!-- INFRASTRUCTURE -->
       <section class="panel" id="panel-infrastructure">
-        <div class="grid" id="infra-content">
-          <div class="card"><h3>Proxmox Nodes</h3><div id="infra-proxmox"><span class="loading">loading...</span></div></div>
-          <div class="card"><h3>GPU Providers</h3><div id="infra-gpu"><span class="loading">loading...</span></div></div>
-          <div class="card"><h3>VPN Status</h3><div id="infra-vpn"><span class="loading">loading...</span></div></div>
+        <div class="grid">
+          <div class="card"><h3>Proxmox Nodes</h3><div id="infra-proxmox"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>GPU Providers</h3><div id="infra-gpu"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>VPN Status</h3><div id="infra-vpn"><span class="loading">loading…</span></div></div>
         </div>
       </section>
 
       <!-- SECURITY -->
       <section class="panel" id="panel-security">
-        <div class="grid" id="security-content">
-          <div class="card"><h3>Users &amp; Accounts</h3><div id="sec-users"><span class="loading">loading...</span></div></div>
-          <div class="card"><h3>API Keys</h3><div id="sec-apikeys"><span class="loading">loading...</span></div></div>
-          <div class="card"><h3>Login History</h3><div id="sec-logins"><span class="loading">loading...</span></div></div>
+        <div class="grid">
+          <div class="card"><h3>Users &amp; Accounts</h3><div id="sec-users"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>API Keys</h3><div id="sec-apikeys"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Login History</h3><div id="sec-logins"><span class="loading">loading…</span></div></div>
         </div>
       </section>
 
       <!-- SETTINGS -->
-      <section class="panel" id="panel-settings"><div id="settings-content"><span class="loading">loading...</span></div></section>
+      <section class="panel" id="panel-settings"><div id="settings-content"><span class="loading">loading…</span></div></section>
 
       <!-- LOGS -->
       <section class="panel" id="panel-logs">
-        <div class="card"><h3>Audit Log</h3><div id="logs-content"><span class="loading">loading...</span></div></div>
+        <div class="card"><h3>Audit Log</h3><div id="logs-content"><span class="loading">loading…</span></div></div>
       </section>
 
     </div>
 
     <footer class="status-bar" id="status-bar">
-      <span><span class="dot ok" id="sb-dot"></span><span id="sb-health">checking...</span></span>
+      <span><span class="dot ok" id="sb-dot"></span><span id="sb-health">checking…</span></span>
       <span id="sb-modules">modules: -</span>
       <span id="sb-containers">containers: -</span>
       <span id="sb-time">-</span>
@@ -525,16 +687,18 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════
-     Password Modal
-     ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     MODALS
+     ═══════════════════════════════════════════════════════════════════ -->
+
+<!-- Change Password -->
 <div class="modal-overlay" id="pw-modal">
   <div class="modal-box">
     <h2>Change Password</h2>
     <div class="form-group"><label for="pw-old">Current Password</label><input type="password" id="pw-old"></div>
     <div class="form-group"><label for="pw-new">New Password</label><input type="password" id="pw-new" placeholder="4+ characters"></div>
     <div class="err-msg" id="pw-error"></div>
-    <div class="modal-success" id="pw-success">Password changed.</div>
+    <div class="modal-success" id="pw-success">Password updated successfully.</div>
     <div class="btn-row">
       <button class="btn btn-sm" onclick="closeChangePassword()">Cancel</button>
       <button class="btn btn-sm btn-primary" onclick="doChangePassword()" style="width:auto">Update</button>
@@ -542,18 +706,56 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
   </div>
 </div>
 
+<!-- Add Provider -->
+<div class="modal-overlay" id="add-provider-modal">
+  <div class="modal-box">
+    <h2>Add AI Provider</h2>
+    <div class="form-group"><label for="ap-name">Provider Name</label><input type="text" id="ap-name" placeholder="e.g. new_qwen_instance"></div>
+    <div class="form-group"><label for="ap-description">Description</label><input type="text" id="ap-description" placeholder="e.g. Qwen 3 32B on RunPod"></div>
+    <div class="form-group"><label for="ap-kind">Kind</label><select id="ap-kind"><option value="cloud">cloud</option><option value="local">local</option><option value="api">api</option></select></div>
+    <div class="form-group"><label for="ap-cost">Cost Tier</label><select id="ap-cost"><option value="free_or_low_cost">Free / Low Cost</option><option value="paid">Paid</option><option value="free">Free</option></select></div>
+    <div class="form-group">
+      <label>Capabilities</label>
+      <div style="display:flex;gap:16px;margin-top:6px">
+        <label class="toggle-row" style="margin-bottom:0"><div class="toggle-switch"><input type="checkbox" id="ap-cap-coding"><span class="slider"></span></div><span class="toggle-label">Coding Agent</span></label>
+        <label class="toggle-row" style="margin-bottom:0"><div class="toggle-switch"><input type="checkbox" id="ap-cap-text"><span class="slider"></span></div><span class="toggle-label">Text Task</span></label>
+      </div>
+      <div class="field-hint">Coding agents have tool-use capability; text providers handle completions</div>
+    </div>
+    <div class="err-msg" id="ap-error"></div>
+    <div class="modal-success" id="ap-success">Provider registered.</div>
+    <div class="btn-row">
+      <button class="btn btn-sm" onclick="closeAddProvider()">Cancel</button>
+      <button class="btn btn-sm btn-accent" onclick="doAddProvider()">Register</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-box">
+    <h2 id="confirm-title">Confirm</h2>
+    <p id="confirm-msg" style="font-size:0.75rem;color:var(--fg-secondary);margin-bottom:8px;font-family:var(--font-mono)"></p>
+    <div class="err-msg" id="confirm-error"></div>
+    <div class="btn-row">
+      <button class="btn btn-sm" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-sm btn-danger" id="confirm-ok-btn" onclick="runConfirm()">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<!-- ═══════════════════════════════════════════════════════════
-     JavaScript — Kai Command Center v2
-     ═══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     JAVASCRIPT — Kai Command Center v3
+     ═══════════════════════════════════════════════════════════════════ -->
 <script>
-// ── State ─────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────
 const S = {
   token: null, role: null, username: null,
-  loadedPanels: new Set(), modules: [], providers: [],
+  loadedPanels: new Set(), modules: [], providers: [], _confirmCb: null
 };
-const SK = 'kai_command_session_v2';
+const SK = 'kai_command_session_v3';
 const PANEL_TITLES = {
   home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
@@ -563,13 +765,27 @@ const PANEL_TITLES = {
 const $=id=>document.getElementById(id);
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};
 
-// ── Toast ─────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────
 function toast(msg, type='ok') {
   const t = $('toast'); t.textContent = msg; t.className = 'toast visible ' + type;
-  clearTimeout(t._tid); t._tid = setTimeout(()=>t.classList.remove('visible'), 2500);
+  clearTimeout(t._tid); t._tid = setTimeout(()=>t.classList.remove('visible'), 2800);
 }
 
-// ── Auth ──────────────────────────────────────────────────────
+// ── Confirm Modal ─────────────────────────────────────────────────
+function confirmAction(title, msg, cb) {
+  $('confirm-title').textContent = title;
+  $('confirm-msg').textContent = msg;
+  $('confirm-error').classList.remove('visible');
+  S._confirmCb = cb;
+  $('confirm-modal').classList.add('visible');
+}
+function closeConfirm() { $('confirm-modal').classList.remove('visible'); S._confirmCb = null; }
+function runConfirm() {
+  if (S._confirmCb) { try { S._confirmCb(); } catch(e) { toast(e.message,'err'); } }
+  closeConfirm();
+}
+
+// ── Auth ──────────────────────────────────────────────────────────
 function getToken() {
   if (S.token) return S.token;
   try { const d=JSON.parse(localStorage.getItem(SK)||sessionStorage.getItem(SK)||'{}');
@@ -599,40 +815,40 @@ async function api(path, opts={}) {
 }
 
 function showLogin() {
-  $('login-screen').style.display='flex';$('app-wrap').classList.remove('active');clearToken();
+  $('login-screen').classList.remove('hidden');$('app-wrap').classList.remove('active');clearToken();
 }
 async function doLogin() {
   const u=$('login-user').value.trim(),p=$('login-pass').value,rem=$('login-remember').checked;
   const err=$('login-error'),btn=$('login-btn');
-  if(!u||!p){err.textContent='Username and password required.';err.classList.add('visible');return;}
-  btn.disabled=true;btn.textContent='authenticating...';err.classList.remove('visible');
+  if(!u||!p){err.textContent='Username and password are required.';err.classList.add('visible');return;}
+  btn.disabled=true;btn.innerHTML='Signing in…';err.classList.remove('visible');
   try {
     const d=await (await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})})).json();
-    if(!d.token) throw new Error(d.detail||'Login failed');
+    if(!d.token) throw new Error(d.detail||'Authentication failed');
     S.token=d.token;S.role=d.role||'viewer';S.username=u;saveToken(rem);
-    $('login-screen').style.display='none';$('app-wrap').classList.add('active');
+    $('login-screen').classList.add('hidden');$('app-wrap').classList.add('active');
     $('user-display').innerHTML=`${esc(u)} <span class="user-role">${S.role}</span>`;
     initApp();
-  }catch(e){err.textContent=e.message;err.classList.add('visible');btn.disabled=false;btn.textContent='authenticate';}
+  }catch(e){err.textContent=e.message;err.classList.add('visible');btn.disabled=false;btn.innerHTML='Sign in';}
 }
-async function doLogout() { try{await api('/auth/logout',{method:'POST'});}catch{} clearToken();showLogin(); }
+async function doLogout() { try{await api('/auth/logout',{method:'POST'});}catch{} clearToken();$('login-screen').classList.remove('hidden');$('app-wrap').classList.remove('active'); }
 
-// ── Password ──────────────────────────────────────────────────
+// ── Password ──────────────────────────────────────────────────────
 function showChangePassword(){ $('pw-modal').classList.add('visible');$('pw-old').value='';$('pw-new').value='';$('pw-error').classList.remove('visible');$('pw-success').classList.remove('visible');$('pw-old').focus(); }
 function closeChangePassword(){ $('pw-modal').classList.remove('visible'); }
 async function doChangePassword() {
   const o=$('pw-old').value,n=$('pw-new').value,err=$('pw-error'),ok=$('pw-success');
   err.classList.remove('visible');ok.classList.remove('visible');
-  if(!o||!n){err.textContent='Both fields required.';err.classList.add('visible');return;}
-  if(n.length<4){err.textContent='Min 4 characters.';err.classList.add('visible');return;}
+  if(!o||!n){err.textContent='Both fields are required.';err.classList.add('visible');return;}
+  if(n.length<4){err.textContent='Minimum 4 characters.';err.classList.add('visible');return;}
   try{await api('/auth/change-password',{method:'POST',body:JSON.stringify({old_password:o,new_password:n})});ok.classList.add('visible');setTimeout(closeChangePassword,1200);}
   catch(e){err.textContent=e.message;err.classList.add('visible');}
 }
 
-// ── Sidebar ───────────────────────────────────────────────────
+// ── Sidebar ───────────────────────────────────────────────────────
 function toggleSidebar(){ $('sidebar').classList.toggle('collapsed'); }
 
-// ── Routing ───────────────────────────────────────────────────
+// ── Routing ───────────────────────────────────────────────────────
 function navigateTo(hash) {
   const name=hash.replace('#','')||'home';
   document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
@@ -652,7 +868,7 @@ document.querySelectorAll('.nav-item').forEach(el=>{el.addEventListener('click',
 $('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 $('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')$('login-pass').focus();});
 
-// ── Status Bar ────────────────────────────────────────────────
+// ── Status Bar ────────────────────────────────────────────────────
 async function updateStatusBar() {
   try{const h=await api('/health');const d=h.status==='ok'?'ok':(h.status==='degraded'?'warn':'bad');$('sb-dot').className='dot '+d;$('sb-health').textContent=h.status;}
   catch{$('sb-dot').className='dot bad';$('sb-health').textContent='error';}
@@ -663,12 +879,12 @@ async function updateStatusBar() {
   $('sb-time').textContent=new Date().toLocaleTimeString();
 }
 
-// ── Init ──────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────
 function initApp() { updateStatusBar();setInterval(updateStatusBar,30000);navigateTo(location.hash||'#home'); }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // PANEL: HOME
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 async function loadHome() {
   try{const h=await api('/health');const cls=h.status==='ok'?'ok':'warn';
     let html=`<p><span class="dot ${cls}"></span><strong>${esc(h.status.toUpperCase())}</strong></p>`;
@@ -684,60 +900,58 @@ async function loadHome() {
     if(active.length){let html='<table><thead><tr><th>Name</th><th>Status</th><th>Worker</th></tr></thead><tbody>';
       for(const x of active.slice(0,8)){const s=(x.status||'').toLowerCase(),bdg=s.includes('deploy')?'warn':s.includes('fail')?'bad':'info';
         html+=`<tr><td>${esc(x.name||x.id)}</td><td><span class="badge ${bdg}">${esc(x.status)}</span></td><td>${esc(x.assigned_worker||'-')}</td></tr>`;}
-      html+='</tbody></table>';$('home-active-ops').innerHTML=html;}else $('home-active-ops').innerHTML='<span class="empty">No active builds</span>';}
-  catch(e){$('home-active-ops').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+      html+='</tbody></table>';$('home-active-ops').innerHTML=html;}else $('home-active-ops').innerHTML='<p class="empty">No active builds</p>';}
+  catch{$('home-active-ops').innerHTML='<p class="empty">Build data unavailable</p>';}
   try{const gpu=await api('/api/gpu/status');$('home-resources').innerHTML=`<div class="spread"><span>GPU</span><span class="badge ${gpu.available?'ok':'warn'}">${gpu.available?'Available':'Unavail'}</span></div><div style="font-size:0.68rem;color:var(--fg-muted);margin-top:4px">${esc(gpu.summary||'-')}</div>`;}
-  catch{$('home-resources').innerHTML='<span class="empty">Resource data unavailable</span>';}
+  catch{$('home-resources').innerHTML='<p class="empty">Resource data unavailable</p>';}
   try{const ap=await api('/approvals');const pending=ap.filter(a=>a.status==='pending');
     let alerts=[];
     try{const h=await api('/health');const c=(h.findings||[]).filter(f=>f.severity==='critical');if(c.length)alerts.push(`${c.length} critical finding(s)`);}catch{}
     if(pending.length)alerts.push(`${pending.length} pending approval(s)`);
-    $('home-alerts').innerHTML=alerts.length?('<ul style="list-style:none;padding:0">'+alerts.map(a=>`<li style="padding:3px 0;font-size:0.72rem;font-family:var(--font-mono)">&#9888; ${esc(a)}</li>`).join('')+'</ul>'):'<span class="empty">All systems nominal</span>';}
-  catch{$('home-alerts').innerHTML='<span class="empty">Alert data unavailable</span>';}
+    $('home-alerts').innerHTML=alerts.length?('<ul style="list-style:none;padding:0">'+alerts.map(a=>`<li style="padding:3px 0;font-size:0.72rem;font-family:var(--font-mono)">&#9888; ${esc(a)}</li>`).join('')+'</ul>'):'<p class="empty">All systems nominal</p>';}
+  catch{$('home-alerts').innerHTML='<p class="empty">Alert data unavailable</p>';}
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // PANEL: MODULES
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 const LEGAL_MODULES = ['juris-kai','susu','legal-brain','klaus'];
 
 async function loadModules() {
   try{const data=await api('/api/modules');S.modules=data.modules;
-    if(!data.modules.length){$('modules-content').innerHTML='<span class="empty">No modules registered</span>';return;}
+    if(!data.modules.length){$('modules-content').innerHTML='<p class="empty">No modules registered</p>';return;}
     const legal=data.modules.filter(m=>LEGAL_MODULES.includes(m.name));
     const other=data.modules.filter(m=>!LEGAL_MODULES.includes(m.name));
     let html='';
-    if(legal.length){html+=`<div style="margin-bottom:16px"><h2 style="font-family:var(--font-mono);font-size:0.72rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Modules</h2>`+legal.map(m=>renderModuleCard(m)).join('')+'</div>';}
-    if(other.length){html+=`<div><h2 style="font-family:var(--font-mono);font-size:0.72rem;color:var(--fg-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Infrastructure Modules</h2>`+other.map(m=>renderModuleCard(m)).join('')+'</div>';}
+    if(legal.length){html+=`<div style="margin-bottom:16px"><div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Modules</div>`+legal.map(renderModuleCard).join('')+'</div>';}
+    if(other.length){html+=`<div><div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--fg-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Infrastructure Modules</div>`+other.map(renderModuleCard).join('')+'</div>';}
     $('modules-content').innerHTML=html;}
   catch(e){$('modules-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
 function renderModuleCard(m){
-  const extraTabs = (m.name==='juris-kai')?'<button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab(\''+esc(m.name)+'\',\'users\')">Users</button><button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab(\''+esc(m.name)+'\',\'referrals\')">Referrals</button>':'';
+  const tabs=[{n:'overview',l:'Overview'},{n:'settings',l:'Settings'},{n:'ops',l:'Ops'}];
+  if(m.name==='juris-kai'){tabs.push({n:'users',l:'Users'},{n:'referrals',l:'Referrals'});}
+  tabs.push({n:'logs',l:'Logs'});
+  const tabBtns=tabs.map(t=>`<button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','${t.n}')">${t.l}</button>`).join('');
   return `<div class="module-card" id="mod-${esc(m.name)}">
-  <div class="module-card-header" onclick="toggleModule('${esc(m.name)}')">
-    <div><span class="mod-name">${esc(m.name)}</span><span style="font-size:0.65rem;color:var(--fg-muted);margin-left:6px">v${esc(m.version||'0.1.0')}</span></div>
-    <div style="display:flex;align-items:center;gap:8px;font-size:0.65rem;color:var(--fg-muted)">
-      ${(m.capabilities||[]).slice(0,3).map(c=>`<span class="badge info">${esc(c)}</span>`).join('')}
-      <span class="mod-caret">&#9654;</span>
-    </div></div>
-  <div class="module-card-body">
-    <div class="module-tabs">
-      <button class="module-tab-btn active" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','overview')">Overview</button>
-      <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','settings')">Settings</button>
-      <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','ops')">Ops</button>
-      ${extraTabs}
-      <button class="module-tab-btn" onclick="event.stopPropagation();loadModuleTab('${esc(m.name)}','logs')">Logs</button>
-    </div>
-    <div class="module-tab-content" id="mod-tab-${esc(m.name)}">${esc(m.description||'No description')}</div>
-  </div></div>`;}
+    <div class="module-card-header" onclick="toggleModule('${esc(m.name)}')">
+      <div><span class="mod-name">${esc(m.name)}</span><span style="font-size:0.65rem;color:var(--fg-muted);margin-left:6px">v${esc(m.version||'0.1.0')}</span></div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:0.65rem;color:var(--fg-muted)">
+        ${(m.capabilities||[]).slice(0,3).map(c=>`<span class="badge info">${esc(c)}</span>`).join('')}
+        <span class="mod-caret">&#9654;</span>
+      </div></div>
+    <div class="module-card-body">
+      <div class="module-tabs">${tabBtns}</div>
+      <div class="module-tab-content" id="mod-tab-${esc(m.name)}">${esc(m.description||'No description')}</div>
+    </div></div>`;
+}
 
 function toggleModule(name){const c=document.getElementById(`mod-${name}`);if(c)c.classList.toggle('open');}
 function loadModuleTab(mname, tab){
   const card=document.getElementById(`mod-${mname}`);if(!card)return;
   card.querySelectorAll('.module-tab-btn').forEach(b=>b.classList.remove('active'));
-  for(const b of card.querySelectorAll('.module-tab-btn')){if(b.textContent.trim().toLowerCase()===tab)b.classList.add('active');}
+  for(const b of card.querySelectorAll('.module-tab-btn')){if(b.textContent.trim().toLowerCase()===tab.toLowerCase()||(tab==='overview'&&b.textContent.trim().toLowerCase()==='overview'))b.classList.add('active');}
   const content=document.getElementById(`mod-tab-${mname}`);if(!content)return;
   const m=S.modules.find(x=>x.name===mname);
   switch(tab){
@@ -745,20 +959,20 @@ function loadModuleTab(mname, tab){
       if(mname==='juris-kai'){loadJurisKaiOverview(content);return;}
       if(mname==='susu'){loadSusuOverview(content);return;}
       if(mname==='legal-brain'){loadLegalBrainOverview(content);return;}
-      content.innerHTML=m?`<p style="font-size:0.75rem;color:var(--fg-secondary);margin-bottom:6px">${esc(m.description)}</p>
+      content.innerHTML=m?`<p style="font-size:0.75rem;color:var(--fg-secondary);margin-bottom:8px">${esc(m.description)}</p>
         <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">
           <div>Version: ${esc(m.version||'0.1.0')}</div>
           <div>Endpoints: ${(m.endpoints||[]).map(e=>`<code style="background:var(--bg-deep);padding:1px 4px">${esc(e)}</code>`).join(' ')}</div>
           <div>Deps: ${(m.dependencies||[]).join(', ')||'none'}</div>
-        </div>`:'<span class="loading">...</span>';
+        </div>`:'<span class="loading">…</span>';
       break;
     case'users':
       if(mname==='juris-kai'){loadJurisKaiUsers(content);return;}
-      content.innerHTML='<span class="empty">User management not available</span>';
+      content.innerHTML='<p class="empty">User management not available for this module</p>';
       break;
     case'referrals':
       if(mname==='juris-kai'){loadJurisKaiReferrals(content);return;}
-      content.innerHTML='<span class="empty">Referrals not available</span>';
+      content.innerHTML='<p class="empty">Referrals not available for this module</p>';
       break;
     case'settings':
       if(m&&m.settings_schema){let fhtml='';
@@ -767,37 +981,35 @@ function loadModuleTab(mname, tab){
           else fhtml+=`<label for="cfg-${esc(mname)}-${esc(k)}">${esc(cfg.label)}</label><input type="number" id="cfg-${esc(mname)}-${esc(k)}" value="${cfg.default}" min="${cfg.min||''}" max="${cfg.max||''}" onchange="updateModuleSetting('${esc(mname)}','${esc(k)}',this.value,'number')">`;
           fhtml+='</div>';}
         content.innerHTML=fhtml;}
-      else content.innerHTML='<span class="empty">No configurable settings</span>';
+      else content.innerHTML='<p class="empty">No configurable settings</p>';
       break;
     case'ops':
-      if(m&&m.ops_actions){let ohtml=`<div style="font-size:0.72rem;color:var(--fg-muted);margin-bottom:8px;font-family:var(--font-mono)">Actions:</div>`;
+      if(m&&m.ops_actions){let ohtml=`<div style="font-size:0.72rem;color:var(--fg-muted);margin-bottom:8px;font-family:var(--font-mono)">Available actions:</div>`;
         for(const a of m.ops_actions){ohtml+=`<button class="btn btn-sm" style="margin:0 4px 4px 0" onclick="runModuleOp('${esc(mname)}','${esc(a)}')">${esc(a.replace(/_/g,' '))}</button>`;}
         ohtml+='<div id="mod-op-msg-'+esc(mname)+'" style="margin-top:8px;font-size:0.7rem"></div>';
         content.innerHTML=ohtml;}
-      else content.innerHTML='<span class="empty">No operations defined</span>';
+      else content.innerHTML='<p class="empty">No operations defined</p>';
       break;
-    case'logs':
-      loadModuleLogs(mname).then(h=>{content.innerHTML=h;}).catch(e=>{content.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;});
-      break;
+    case'logs':loadModuleLogs(mname).then(h=>{content.innerHTML=h;}).catch(e=>{content.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;});break;
   }
 }
 
-function updateModuleSetting(mname,key,val,type){toast(`[${mname}] ${key} = ${val} (saved locally)`);}
+function updateModuleSetting(mname,key,val,type){toast(`[${mname}] ${key} = ${val} (local)`);}
 async function runModuleOp(mname,action){
   const msg=document.getElementById('mod-op-msg-'+mname);if(!msg)return;
-  msg.innerHTML=`<span style="color:var(--warn)">Running ${action}...</span>`;
-  toast(`[${mname}] ${action} triggered`);
-  setTimeout(()=>{msg.innerHTML=`<span style="color:var(--accent)">Done: ${action}</span>`;},800);
+  msg.innerHTML=`<span style="color:var(--warn)">Running ${action.replace(/_/g,' ')}…</span>`;
+  toast(`[${mname}] ${action.replace(/_/g,' ')} triggered`);
+  setTimeout(()=>{msg.innerHTML=`<span style="color:var(--accent)">Done: ${action.replace(/_/g,' ')}</span>`;},800);
 }
 
 async function loadModuleLogs(mname){
   try{const audit=await api('/self-healing/log');const events=(audit||[]).filter(e=>(e.module||e.source||'').toLowerCase().includes(mname.toLowerCase())).slice(0,30);
-    if(!events.length)return '<span class="empty">No log entries</span>';
+    if(!events.length)return '<p class="empty">No log entries found</p>';
     return '<div class="log-viewer">'+events.map(e=>`<div>[${esc(e.time||e.timestamp||'')}] ${esc(e.event||e.action||'')} ${esc(e.detail||e.message||'')}</div>`).join('')+'</div>';}
-  catch{return '<span class="empty">Log unavailable</span>';}
+  catch{return '<p class="empty">Log data unavailable</p>';}
 }
 
-// ── Juris Kai Overview ────────────────────────────────────────
+// ── Juris Kai Overview ────────────────────────────────────────────
 async function loadJurisKaiOverview(container){
   try{const s=await api('/api/juris-kai/stats');const jk=s.juris_kai||s;
     container.innerHTML=`<div class="metric-row" style="margin-bottom:8px">
@@ -806,68 +1018,76 @@ async function loadJurisKaiOverview(container){
       <div class="metric" style="padding:8px"><span class="val warn" style="font-size:1.2rem">${jk.total_revenue_ghs||0} GHS</span><span class="lbl">Revenue</span></div>
       <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${jk.total_queries||0}</span><span class="lbl">Queries</span></div>
     </div>
-    ${Object.keys(jk.by_tier||{}).length?`<div style="font-size:0.65rem;color:var(--fg-muted);margin-top:6px;font-family:var(--font-mono)">Tiers: ${Object.entries(jk.by_tier||{}).map(([k,v])=>`<span class="badge info" style="margin:1px 2px">${esc(k)}: ${v}</span>`).join(' ')}</div>`:''}
+    ${Object.keys(jk.by_tier||{}).length?`<div style="font-size:0.62rem;color:var(--fg-muted);margin-top:4px;font-family:var(--font-mono)">By tier: ${Object.entries(jk.by_tier||{}).map(([k,v])=>`<span class="badge info" style="margin:1px 2px">${esc(k)}: ${v}</span>`).join(' ')}</div>`:''}
     <div style="margin-top:12px"><button class="btn btn-sm btn-accent" onclick="loadModuleTab('juris-kai','users')">Manage Users</button> <button class="btn btn-sm" onclick="loadModuleTab('juris-kai','referrals')">Referrals</button></div>`;}
   catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
-// ── Juris Kai User Management ─────────────────────────────────
+// ── Juris Kai User Management ─────────────────────────────────────
 async function loadJurisKaiUsers(container){
-  container.innerHTML='<div style="margin-bottom:8px;display:flex;gap:6px">'
-    +'<input type="text" id="jk-search" placeholder="Search users..." style="flex:1;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:6px 10px;font-size:0.72rem;font-family:var(--font-mono)" onkeyup="if(event.key===\'Enter\')doJurisKaiSearch()">'
-    +'<select id="jk-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>'
-    +'<label style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap"><input type="checkbox" id="jk-active-only">Active</label>'
+  container.innerHTML='<div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap">'
+    +'<input type="text" id="jk-search" placeholder="Search by name, phone, telegram ID…" class="search-input" onkeyup="if(event.key===\'Enter\')doJurisKaiSearch()">'
+    +'<select id="jk-tier" class="action-row" style="margin:0"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap"><input type="checkbox" id="jk-active-only">Active only</label>'
     +'<button class="btn btn-sm btn-accent" onclick="doJurisKaiSearch()">Search</button>'
-    +'</div><div id="jk-users-result"><span style="font-size:0.7rem;color:var(--fg-muted)">Type a query or leave empty for all</span></div>';
+    +'</div><div id="jk-users-result"><p style="font-size:0.7rem;color:var(--fg-muted)">Enter a search query or leave empty to list all accounts</p></div>';
 }
 async function doJurisKaiSearch(){
   const q=($('jk-search')||{}).value||'',tier=($('jk-tier')||{}).value||'',
         active=($('jk-active-only')||{}).checked?'&active_only=true':'',
         el=$('jk-users-result');if(!el)return;
-  el.innerHTML='<span class="loading">searching...</span>';
+  el.innerHTML='<span class="loading">searching…</span>';
   try{const d=await api('/api/juris-kai/accounts?q='+encodeURIComponent(q)+'&tier='+tier+active);
-    if(!d.accounts||!d.accounts.length){el.innerHTML='<span class="empty">No accounts found</span>';return;}
-    let h=`<div style="font-size:0.65rem;color:var(--fg-muted);margin-bottom:6px;font-family:var(--font-mono)">${d.total} account(s) &middot; page ${d.page}/${d.total_pages}</div>`;
-    h+='<div style="max-height:500px;overflow-y:auto">';
+    if(!d.accounts||!d.accounts.length){el.innerHTML='<p class="empty">No accounts found</p>';return;}
+    let h=`<div style="font-size:0.63rem;color:var(--fg-muted);margin-bottom:8px;font-family:var(--font-mono)">${d.total} account(s) &middot; page ${d.page}/${d.total_pages}</div>`;
+    h+='<div style="max-height:550px;overflow-y:auto">';
     for(const a of d.accounts){
       const sub=a.subscription||{},tier=sub.tier||a.subscription_tier||'unknown';
-      const bdg=a.is_active?'ok':'bad',tierBdg=tier.includes('pro')?'ok':tier==='monthly_basic'?'info':'warn';
-      h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:8px 10px;margin-bottom:3px;font-size:0.68rem;font-family:var(--font-mono)">
-        <div class="spread" style="margin-bottom:4px">
+      const bdg=a.is_active?'ok':'bad',tierBdg=tier==='annual_pro'?'ok':tier==='monthly_pro'?'info':tier==='monthly_basic'?'warn':'info';
+      h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:10px 12px;margin-bottom:4px;font-size:0.7rem;font-family:var(--font-mono)">
+        <div class="spread" style="margin-bottom:5px">
           <span><strong>${esc(a.full_name||'Unnamed')}</strong> <span style="color:var(--fg-muted)">@${esc(a.telegram_id||a.account_id)}</span></span>
           <span><span class="badge ${bdg}">${a.is_active?'active':'banned'}</span> <span class="badge ${tierBdg}">${esc(tier.replace(/_/g,' '))}</span></span>
         </div>
-        <div style="color:var(--fg-muted);margin-bottom:4px">
-          ${a.email?'<span>'+esc(a.email)+'</span> ':''}${a.phone?'<span>'+esc(a.phone)+'</span> ':''}
+        <div style="color:var(--fg-muted);margin-bottom:6px;font-size:0.64rem">
+          ${a.email?esc(a.email)+' ':''}${a.phone?esc(a.phone)+' ':''}
           End: ${esc((sub.end||a.subscription_end||'').slice(0,10))||'n/a'}
-          &middot; Queries: ${sub.limits?sub.limits.max_queries_per_day+'/d':'?'}
+          &middot; Queries: ${sub.limits?sub.limits.max_queries_per_day+'/d':'-'}
         </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="btn btn-xs btn-accent" onclick="doJurisKaiGrantDays('${esc(a.account_id)}')">Grant Days</button>
-          <button class="btn btn-xs" onclick="doJurisKaiChangeTier('${esc(a.account_id)}')">Change Tier</button>
-          ${a.is_active?`<button class="btn btn-xs btn-warn" onclick="doJurisKaiBan('${esc(a.account_id)}','${esc(a.full_name||'')}')">Ban</button>`:`<button class="btn btn-xs btn-accent" onclick="doJurisKaiUnban('${esc(a.account_id)}')">Unban</button>`}
-          <button class="btn btn-xs" onclick="doJurisKaiGenCode('${esc(a.account_id)}')">Invite Code</button>
+        <div class="action-row">
+          <select id="gd-${esc(a.account_id)}" style="padding:2px 18px 2px 4px;font-size:0.62rem">
+            <option value="">Grant Days…</option><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option>
+          </select>
+          <button class="btn btn-xs btn-accent" onclick="doJurisKaiGrantDaysDropdown('${esc(a.account_id)}')">Apply</button>
+          <select id="ct-${esc(a.account_id)}" style="padding:2px 18px 2px 4px;font-size:0.62rem">
+            <option value="">Change Tier…</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic (50 GHS)</option><option value="monthly_pro">Pro (150 GHS)</option><option value="annual_pro">Annual Pro (1500 GHS)</option>
+          </select>
+          <button class="btn btn-xs" onclick="doJurisKaiChangeTierDropdown('${esc(a.account_id)}')">Apply</button>
+          ${a.is_active?`<button class="btn btn-xs btn-warn" onclick="doJurisKaiBan('${esc(a.account_id)}','${esc(a.full_name||a.account_id)}')">Ban</button>`:`<button class="btn btn-xs btn-accent" onclick="doJurisKaiUnban('${esc(a.account_id)}')">Unban</button>`}
+          <button class="btn btn-xs" onclick="doJurisKaiGenCode('${esc(a.account_id)}')">Invite</button>
         </div>
       </div>`;}
     h+='</div>';el.innerHTML=h;}
   catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
-async function doJurisKaiGrantDays(accountId){
-  const days=prompt('Days to grant:','1');if(!days||isNaN(parseInt(days)))return;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:parseInt(days),reason:'command_center_admin'})});toast('Granted '+days+' days');doJurisKaiSearch();}
+async function doJurisKaiGrantDaysDropdown(accountId){
+  const sel=document.getElementById('gd-'+accountId);if(!sel||!sel.value){toast('Select a number of days first','err');return;}
+  const days=parseInt(sel.value);
+  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:days,reason:'command_center_admin'})});toast('Granted '+days+' days');sel.value='';doJurisKaiSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
-async function doJurisKaiChangeTier(accountId){
-  const tier=prompt('New tier (free_trial, monthly_basic, monthly_pro, annual_pro):','monthly_basic');
-  if(!tier)return;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier:tier})});toast('Tier changed to '+tier);doJurisKaiSearch();}
+async function doJurisKaiChangeTierDropdown(accountId){
+  const sel=document.getElementById('ct-'+accountId);if(!sel||!sel.value){toast('Select a tier first','err');return;}
+  const tier=sel.value;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier:tier})});toast('Tier changed to '+tier.replace(/_/g,' '));sel.value='';doJurisKaiSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function doJurisKaiBan(accountId,name){
-  if(!confirm('Ban '+name+'?'))return;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doJurisKaiSearch();}
-  catch(e){toast('Error: '+e.message,'err');}
+  confirmAction('Ban User',`Are you sure you want to ban ${name}?`,async()=>{
+    try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doJurisKaiSearch();}
+    catch(e){toast('Error: '+e.message,'err');}
+  });
 }
 async function doJurisKaiUnban(accountId){
   try{await api('/api/juris-kai/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doJurisKaiSearch();}
@@ -880,10 +1100,10 @@ async function doJurisKaiGenCode(accountId){
   catch(e){toast('Error: '+e.message,'err');}
 }
 
-// ── Juris Kai Referrals ───────────────────────────────────────
+// ── Juris Kai Referrals ───────────────────────────────────────────
 async function loadJurisKaiReferrals(container){
   try{const d=await api('/api/juris-kai/referrals');
-    if(!d.referrals||!d.referrals.length){container.innerHTML='<span class="empty">No referrals yet</span>';return;}
+    if(!d.referrals||!d.referrals.length){container.innerHTML='<p class="empty">No referrals yet</p>';return;}
     let h='<table><thead><tr><th>Code</th><th>Inviter</th><th>Invitee</th><th>Status</th><th>Reward</th><th>Created</th></tr></thead><tbody>';
     for(const r of d.referrals.slice(0,50)){
       h+=`<tr><td><code style="color:var(--accent)">${esc(r.invite_code)}</code></td><td>${esc(r.inviter_name||r.inviter_account_id)}</td><td>${esc(r.invitee_telegram_id||'—')}</td><td><span class="badge ${r.status==='accepted'?'ok':'info'}">${esc(r.status)}</span></td><td>${r.reward_days||0}d</td><td>${esc((r.created_at||'').slice(0,10))}</td></tr>`;}
@@ -892,7 +1112,7 @@ async function loadJurisKaiReferrals(container){
   catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
-// ── SUSU Overview ─────────────────────────────────────────────
+// ── SUSU ──────────────────────────────────────────────────────────
 async function loadSusuOverview(container){
   try{const s=await api('/api/susu/stats');
     container.innerHTML=`<div class="metric-row" style="margin-bottom:8px">
@@ -901,52 +1121,64 @@ async function loadSusuOverview(container){
       <div class="metric" style="padding:8px"><span class="val warn" style="font-size:1.2rem">${s.total_deposits_ghs||0} GHS</span><span class="lbl">Deposits</span></div>
       <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${s.total_fees_collected_ghs||0} GHS</span><span class="lbl">Fees</span></div>
     </div>
-    <div style="font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono)">Pending: ${s.pending_transactions||0} tx &middot; Outflow: ${s.total_withdrawals_ghs||0} GHS</div>
-    <div style="margin-top:12px"><button class="btn btn-sm btn-accent" onclick="loadSusuGroups(\$('mod-tab-susu'))">View Groups</button></div>`;}
+    <div style="font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:8px">Pending: ${s.pending_transactions||0} tx &middot; Outflow: ${s.total_withdrawals_ghs||0} GHS</div>
+    <button class="btn btn-sm btn-accent" onclick="loadSusuGroups(\$('mod-tab-susu'))">View Groups</button>`;}
   catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 async function loadSusuGroups(container){
   try{const d=await api('/api/susu/groups');
-    if(!d.groups||!d.groups.length){container.innerHTML='<span class="empty">No groups</span>';return;}
+    if(!d.groups||!d.groups.length){container.innerHTML='<p class="empty">No groups</p>';return;}
     let h='<div style="max-height:400px;overflow-y:auto">';
-    for(const g of d.groups){h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:8px 10px;margin-bottom:3px;font-size:0.68rem;font-family:var(--font-mono)">
+    for(const g of d.groups){h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:10px 12px;margin-bottom:4px;font-size:0.7rem;font-family:var(--font-mono)">
       <div class="spread"><strong>${esc(g.name)}</strong> <span class="badge ${g.status==='ACTIVE'?'ok':'warn'}">${esc(g.status)}</span></div>
-      <div style="color:var(--fg-muted)">${esc(g.contribution_amount)} ${esc(g.currency)}/${esc(g.frequency)} &middot; ${g.member_count||0}/${g.max_participants||'?'} members &middot; Fees: ${g.fees_collected||0} GHS</div>
+      <div style="color:var(--fg-muted);font-size:0.64rem">${esc(g.contribution_amount)} ${esc(g.currency)}/${esc(g.frequency)} &middot; ${g.member_count||0}/${g.max_participants||'?'} members &middot; Fees: ${g.fees_collected||0} GHS</div>
     </div>`;}
     h+='</div>';container.innerHTML=h;}
   catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
-// ═══════════════════════════════════════════════════════════════
-// PANEL: LEGAL (Dedicated module management)
-// ═══════════════════════════════════════════════════════════════
+// ── Legal Brain ───────────────────────────────────────────────────
+async function loadLegalBrainOverview(container){
+  try{const s=await api('/api/legal-brain/stats');
+    container.innerHTML=`<div class="metric-row" style="margin-bottom:8px">
+      <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${s.documents||'—'}</span><span class="lbl">Documents</span></div>
+      <div class="metric" style="padding:8px"><span class="val info" style="font-size:1.2rem">${s.sources||'—'}</span><span class="lbl">Sources</span></div>
+      <div class="metric" style="padding:8px"><span class="val warn" style="font-size:1.2rem">${s.sessions||'—'}</span><span class="lbl">Sessions</span></div>
+      <div class="metric" style="padding:8px"><span class="val violet" style="font-size:0.9rem">${Object.keys(s.by_jurisdiction||{}).join(', ')||'ghana'}</span><span class="lbl">Jurisdictions</span></div>
+    </div>`;}
+  catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: LEGAL (Dedicated)
+// ═══════════════════════════════════════════════════════════════════
 async function loadLegal(){
-  const el=$('legal-content');el.innerHTML='<span class="loading">loading...</span>';
+  const el=$('legal-content');el.innerHTML='<span class="loading">loading…</span>';
   try{const data=await api('/api/modules');S.modules=data.modules;
     const legal=data.modules.filter(m=>LEGAL_MODULES.includes(m.name));
-    if(!legal.length){el.innerHTML='<span class="empty">No legal modules registered</span>';return;}
-    let html='<div style="margin-bottom:20px"><h2 style="font-family:var(--font-mono);font-size:0.8rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Legal Applications</h2>';
-    // Juris Kai Management
+    if(!legal.length){el.innerHTML='<p class="empty">No legal modules registered</p>';return;}
+    let html='<div style="margin-bottom:20px"><div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Applications</div>';
+    // Juris Kai
     try{const jk=await api('/api/juris-kai/stats');const d=jk.juris_kai||jk;
-      html+=`<div class="card" style="margin-bottom:12px"><h3>juris-kai &mdash; Account Management  <span class="badge ok">${d.active_accounts||0} active</span> <span class="badge info">${d.total_accounts||0} total</span></h3>
-        <div style="margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap">
-          <input type="text" id="legal-search" placeholder="Search by name, phone, telegram ID..." style="flex:1;min-width:200px;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:6px 10px;font-size:0.72rem;font-family:var(--font-mono)" onkeyup="if(event.key==='Enter')doLegalSearch()">
-          <select id="legal-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>
-          <button class="btn btn-sm btn-accent" onclick="doLegalSearch()">Find</button>
+      html+=`<div class="card" style="margin-bottom:12px"><h3>juris-kai — Account Management  <span class="badge ok">${d.active_accounts||0} active</span> <span class="badge info">${d.total_accounts||0} total</span></h3>
+        <div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap">
+          <input type="text" id="legal-search" placeholder="Search by name, phone, telegram ID…" class="search-input" onkeyup="if(event.key==='Enter')doLegalSearch()">
+          <select id="legal-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono);cursor:pointer"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>
+          <button class="btn btn-sm btn-accent" onclick="doLegalSearch()">Find Users</button>
           <button class="btn btn-sm" onclick="generateReferralCode()">Generate Referral</button>
         </div>
-        <div id="legal-user-results"><span style="font-size:0.7rem;color:var(--fg-muted)">Search for users or browse below</span></div>
+        <div id="legal-user-results"><p style="font-size:0.7rem;color:var(--fg-muted)">Search for accounts or browse below</p></div>
       </div>`;}
     catch(e){html+=`<div class="card"><h3>juris-kai</h3><span class="error-text">${esc(e.message)}</span></div>`;}
-    // SUSU summary
+    // SUSU
     try{const s=await api('/api/susu/stats');
-      html+=`<div class="card" style="margin-bottom:12px"><h3>susu &mdash; Savings Groups  <span class="badge info">${s.total_users||0} users</span> <span class="badge ok">${s.active_groups||0}/${s.total_groups||0} groups</span></h3>
-        <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Deposits: ${s.total_deposits_ghs||0} GHS &middot; Fees: ${s.total_fees_collected_ghs||0} GHS &middot; Pending tx: ${s.pending_transactions||0}</div>
+      html+=`<div class="card" style="margin-bottom:12px"><h3>susu — Savings Groups  <span class="badge info">${s.total_users||0} users</span> <span class="badge ok">${s.active_groups||0}/${s.total_groups||0} groups</span></h3>
+        <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Deposits: ${s.total_deposits_ghs||0} GHS &middot; Fees: ${s.total_fees_collected_ghs||0} GHS &middot; Pending: ${s.pending_transactions||0} tx</div>
       </div>`;}
     catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>susu</h3><span class="error-text">${esc(e.message)}</span></div>`;}
-    // Legal Brain summary
+    // Legal Brain
     try{const lb=await api('/api/legal-brain/stats');
-      html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain &mdash; Knowledge Engine  <span class="badge info">${lb.documents||0} docs</span> <span class="badge ok">${lb.sources||0} sources</span></h3>
+      html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain — Knowledge Engine  <span class="badge info">${lb.documents||0} docs</span> <span class="badge ok">${lb.sources||0} sources</span></h3>
         <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Sessions: ${lb.sessions||0} &middot; Jurisdictions: ${Object.keys(lb.by_jurisdiction||{}).join(', ')||'Ghana'}</div>
       </div>`;}
     catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain</h3><span class="error-text">${esc(e.message)}</span></div>`;}
@@ -956,24 +1188,31 @@ async function loadLegal(){
 async function doLegalSearch(){
   const q=($('legal-search')||{}).value||'',tier=($('legal-tier')||{}).value||'';
   const el=$('legal-user-results');if(!el)return;
-  el.innerHTML='<span class="loading">searching...</span>';
+  el.innerHTML='<span class="loading">searching…</span>';
   try{const d=await api('/api/juris-kai/accounts?q='+encodeURIComponent(q)+'&tier='+tier);
-    if(!d.accounts||!d.accounts.length){el.innerHTML='<span class="empty">No accounts found</span>';return;}
-    let h=`<div style="font-size:0.65rem;color:var(--fg-muted);margin-bottom:6px;font-family:var(--font-mono)">${d.total} account(s)</div><div style="max-height:500px;overflow-y:auto">`;
+    if(!d.accounts||!d.accounts.length){el.innerHTML='<p class="empty">No accounts found</p>';return;}
+    let h=`<div style="font-size:0.63rem;color:var(--fg-muted);margin-bottom:8px;font-family:var(--font-mono)">${d.total} account(s)</div><div style="max-height:550px;overflow-y:auto">`;
     for(const a of d.accounts){
       const sub=a.subscription||{},tier=sub.tier||a.subscription_tier||'unknown';
-      const bdg=a.is_active?'ok':'bad';
-      h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:8px 10px;margin-bottom:3px;font-size:0.68rem;font-family:var(--font-mono)">
-        <div class="spread" style="margin-bottom:4px">
+      const bdg=a.is_active?'ok':'bad',tierBdg=tier==='annual_pro'?'ok':tier==='monthly_pro'?'info':tier==='monthly_basic'?'warn':'info';
+      h+=`<div style="background:var(--bg-surface);border:1px solid var(--border);padding:10px 12px;margin-bottom:4px;font-size:0.7rem;font-family:var(--font-mono)">
+        <div class="spread" style="margin-bottom:5px">
           <span><strong>${esc(a.full_name||'Unnamed')}</strong> <span style="color:var(--fg-muted)">@${esc(a.telegram_id||a.account_id)}</span></span>
-          <span><span class="badge ${bdg}">${a.is_active?'active':'banned'}</span> <span class="badge info">${esc(tier.replace(/_/g,' '))}</span></span>
+          <span><span class="badge ${bdg}">${a.is_active?'active':'banned'}</span> <span class="badge ${tierBdg}">${esc(tier.replace(/_/g,' '))}</span></span>
         </div>
-        <div style="color:var(--fg-muted);margin-bottom:4px">
-          ${a.email?esc(a.email)+' ':''}${a.phone?esc(a.phone)+' ':''}End: ${esc((sub.end||a.subscription_end||'').slice(0,10))||'n/a'}
+        <div style="color:var(--fg-muted);margin-bottom:6px;font-size:0.64rem">
+          ${a.email?esc(a.email)+' ':''}${a.phone?esc(a.phone)+' ':''}
+          End: ${esc((sub.end||a.subscription_end||'').slice(0,10))||'n/a'}
         </div>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">
-          <button class="btn btn-xs btn-accent" onclick="doLegalGrantDays('${esc(a.account_id)}')">Grant Days</button>
-          <button class="btn btn-xs" onclick="doLegalChangeTier('${esc(a.account_id)}')">Change Tier</button>
+        <div class="action-row">
+          <select id="lgd-${esc(a.account_id)}" style="padding:2px 18px 2px 4px;font-size:0.62rem">
+            <option value="">Grant Days…</option><option value="1">1 day</option><option value="3">3 days</option><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option>
+          </select>
+          <button class="btn btn-xs btn-accent" onclick="doLegalGrantDaysDropdown('${esc(a.account_id)}')">Apply</button>
+          <select id="lct-${esc(a.account_id)}" style="padding:2px 18px 2px 4px;font-size:0.62rem">
+            <option value="">Change Tier…</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option>
+          </select>
+          <button class="btn btn-xs" onclick="doLegalChangeTierDropdown('${esc(a.account_id)}')">Apply</button>
           ${a.is_active?`<button class="btn btn-xs btn-warn" onclick="doLegalBan('${esc(a.account_id)}','${esc(a.full_name||a.account_id)}')">Ban</button>`:`<button class="btn btn-xs btn-accent" onclick="doLegalUnban('${esc(a.account_id)}')">Unban</button>`}
         </div>
       </div>`;}
@@ -983,53 +1222,50 @@ async function doLegalSearch(){
 async function generateReferralCode(){
   const acct=prompt('Account ID to generate invite code for:','');if(!acct)return;
   try{const d=await api('/api/juris-kai/referrals/generate',{method:'POST',body:JSON.stringify({account_id:acct})});
-    if(d.success){const code=d.invite_code;navigator.clipboard.writeText(code).catch(()=>{});toast('Referral code: '+code+' (copied! Reward: '+d.reward_days+'d, Invitee trial: '+d.invitee_trial_days+'d)');}
+    if(d.success){navigator.clipboard.writeText(d.invite_code).catch(()=>{});toast('Referral: '+d.invite_code+' (copied, reward: '+d.reward_days+'d, trial: '+d.invitee_trial_days+'d)');}
     else toast('Failed: '+(d.error||'unknown'),'err');}
   catch(e){toast('Error: '+e.message,'err');}
 }
-async function doLegalGrantDays(accountId){
-  const days=prompt('Days to grant:','1');if(!days||isNaN(parseInt(days)))return;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:parseInt(days)})});toast('Granted '+days+' days');doLegalSearch();}
+async function doLegalGrantDaysDropdown(accountId){
+  const sel=document.getElementById('lgd-'+accountId);if(!sel||!sel.value){toast('Select a number of days','err');return;}
+  const days=parseInt(sel.value);
+  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:days})});toast('Granted '+days+' days');sel.value='';doLegalSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
-async function doLegalChangeTier(accountId){
-  const tier=prompt('New tier (free_trial, monthly_basic, monthly_pro, annual_pro):','monthly_basic');
-  if(!tier)return;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier})});toast('Tier changed to '+tier);doLegalSearch();}
+async function doLegalChangeTierDropdown(accountId){
+  const sel=document.getElementById('lct-'+accountId);if(!sel||!sel.value){toast('Select a tier','err');return;}
+  const tier=sel.value;
+  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier})});toast('Tier → '+tier.replace(/_/g,' '));sel.value='';doLegalSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function doLegalBan(accountId,name){
-  if(!confirm('Ban '+name+'?'))return;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doLegalSearch();}
-  catch(e){toast('Error: '+e.message,'err');}
+  confirmAction('Ban User',`Are you sure you want to ban ${name}?`,async()=>{
+    try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doLegalSearch();}
+    catch(e){toast('Error: '+e.message,'err');}
+  });
 }
 async function doLegalUnban(accountId){
   try{await api('/api/juris-kai/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doLegalSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 
-// ── Legal Brain Overview ──────────────────────────────────────
-async function loadLegalBrainOverview(container){
-  try{const s=await api('/api/legal-brain/stats');
-    container.innerHTML=`<div class="metric-row" style="margin-bottom:8px">
-      <div class="metric" style="padding:8px"><span class="val" style="font-size:1.2rem">${s.documents||'?'}</span><span class="lbl">Documents</span></div>
-      <div class="metric" style="padding:8px"><span class="val info" style="font-size:1.2rem">${s.sources||'?'}</span><span class="lbl">Sources</span></div>
-      <div class="metric" style="padding:8px"><span class="val warn" style="font-size:1.2rem">${s.sessions||'?'}</span><span class="lbl">Sessions</span></div>
-      <div class="metric" style="padding:8px"><span class="val" style="font-size:0.9rem">${Object.keys(s.by_jurisdiction||{}).join(', ')||'none'}</span><span class="lbl">Jurisdictions</span></div>
-    </div>
-    ${s.by_tier&&Object.keys(s.by_tier).length?`<div style="font-size:0.62rem;color:var(--fg-muted);margin-top:4px;font-family:var(--font-mono)">Tiers: ${Object.entries(s.by_tier).map(([k,v])=>`T${k}:${v}`).join(' ')}</div>`:''}`;}
-  catch(e){container.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
-}
-
-// ═══════════════════════════════════════════════════════════════
-// PANEL: AI WORKFORCE
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: AI WORKFORCE (fixed toggle, delete, add provider)
+// ═══════════════════════════════════════════════════════════════════
 async function loadWorkforce(){
   try{const data=await api('/api/command-center/summary');const wf=data.workforce||{};
-    let html='<div class="worker-grid">';
+    const providerList = Object.entries(wf);
+    if(!providerList.length){$('ai-workforce-content').innerHTML='<p class="empty">No workforce data</p>';return;}
+    // Cache providers for toggle lookups
+    S._workforceData = wf;
+    let html=`<div style="margin-bottom:12px" class="spread"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">${providerList.length} providers</span>
+      <button class="btn btn-sm btn-accent" onclick="showAddProvider()">+ Add Provider</button></div>
+      <div class="worker-grid">`;
     for(const[name,info]of Object.entries(wf)){const h=info.health||'unknown',bdg=h==='healthy'?'ok':h==='degraded'?'warn':h==='error'?'bad':'info';
       const sr=info.success_rate!=null?Math.round(info.success_rate*100)+'%':'n/a';
-      html+=`<div class="worker-card"><div class="worker-card-header"><span class="worker-card-name">${esc(name)}</span><span class="badge ${bdg}">${esc(h)}</span></div>
+      const isEnabled=info.enabled!==false;
+      html+=`<div class="worker-card">
+        <div class="worker-card-header"><span class="worker-card-name">${esc(name)}</span><span class="badge ${bdg}">${esc(h)}</span></div>
         <div class="worker-card-body">
         <span class="wl">Model</span><span>${esc(info.model||'-')}</span>
         <span class="wl">Kind</span><span>${esc(info.kind||'-')}</span>
@@ -1037,26 +1273,58 @@ async function loadWorkforce(){
         <span class="wl">Priority</span><span>${esc(String(info.routing_priority??'-'))}</span>
         <span class="wl">Success</span><span>${sr}</span>
         <span class="wl">Queue</span><span>${info.queue_depth??'-'}</span>
-        <span class="wl">Current</span><span style="font-size:0.65rem">${esc(info.current_build_name||info.current_build||'-')}</span>
+        <span class="wl">Current</span><span style="font-size:0.64rem">${esc(info.current_build_name||info.current_build||'-')}</span>
         </div>
-        <div style="margin-top:8px">
-          <button class="btn btn-xs btn-accent" onclick="toggleProvider('${esc(name)}')">${info.enabled!==false?'Disable':'Enable'}</button>
+        <div class="worker-card-actions" id="wca-${esc(name)}">
+          ${isEnabled?`<button class="btn btn-xs btn-warn" onclick="toggleProvider('${esc(name)}',false)">Disable</button>`:`<button class="btn btn-xs btn-accent" onclick="toggleProvider('${esc(name)}',true)">Enable</button>`}
+          ${info.total_attempts?`<span style="font-size:0.6rem;color:var(--fg-muted)">${info.total_successes||0}/${info.total_attempts}</span>`:''}
+          <button class="btn btn-xs btn-danger" style="margin-left:auto" onclick="deleteProvider('${esc(name)}')">Remove</button>
         </div></div>`;}
-    html+='</div>';$('ai-workforce-content').innerHTML=html||'<span class="empty">No workforce data</span>';}
+    html+='</div>';$('ai-workforce-content').innerHTML=html;}
   catch(e){$('ai-workforce-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
-async function toggleProvider(name){
-  try{const d=await api(`/providers/${name}/toggle`,{method:'POST'});toast(`[${name}] ${d.enabled?'enabled':'disabled'}`);loadWorkforce();}
-  catch(e){toast(`Error: ${e.message}`,'err');}
+async function toggleProvider(name, enable){
+  try{
+    const d=await api(`/providers/${name}/toggle`,{method:'PUT',body:JSON.stringify({enabled:enable})});
+    toast(`[${name}] ${d.enabled?'enabled':'disabled'}`);
+    loadWorkforce();
+  } catch(e){toast(`Error: ${e.message}`,'err');}
+}
+function deleteProvider(name){
+  confirmAction('Remove Provider',`Permanently delete provider "${name}"? This cannot be undone.`,async()=>{
+    try{const d=await api(`/providers/${name}`,{method:'DELETE'});toast(`[${name}] deleted`);loadWorkforce();}
+    catch(e){toast(`Error: ${e.message}`,'err');}
+  });
+}
+function showAddProvider(){
+  $('ap-name').value='';$('ap-description').value='';$('ap-kind').value='cloud';$('ap-cost').value='free_or_low_cost';
+  $('ap-cap-coding').checked=false;$('ap-cap-text').checked=false;
+  $('ap-error').classList.remove('visible');$('ap-success').classList.remove('visible');
+  $('add-provider-modal').classList.add('visible');$('ap-name').focus();
+}
+function closeAddProvider(){ $('add-provider-modal').classList.remove('visible'); }
+async function doAddProvider(){
+  const name=$('ap-name').value.trim(),desc=$('ap-description').value.trim(),
+        kind=$('ap-kind').value,cost=$('ap-cost').value,
+        err=$('ap-error'),ok=$('ap-success');
+  err.classList.remove('visible');ok.classList.remove('visible');
+  if(!name){err.textContent='Provider name is required.';err.classList.add('visible');return;}
+  const caps=[];
+  if($('ap-cap-coding').checked)caps.push('coding_agent','file_access');
+  if($('ap-cap-text').checked)caps.push('text_task');
+  try{
+    const d=await api('/providers',{method:'POST',body:JSON.stringify({name,kind,description:desc,cost_tier:cost,capabilities:caps})});
+    toast(`Provider "${d.name}" registered`);closeAddProvider();loadWorkforce();
+  } catch(e){err.textContent=e.message;err.classList.add('visible');}
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // PANEL: DOCKER
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 async function loadDocker(){
   try{const data=await api('/api/docker/containers');const cs=data.containers||[];
-    if(!cs.length){$('docker-content').innerHTML='<span class="empty">No containers found</span>';return;}
-    let html='<div class="container-grid">';
+    if(!cs.length){$('docker-content').innerHTML='<p class="empty">No containers found</p>';return;}
+    let html=`<div style="margin-bottom:10px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">${cs.length} container(s)</div><div class="container-grid">`;
     for(const c of cs){const s=c.state||'unknown',bdg=s==='running'?'ok':s==='exited'?'bad':s==='paused'?'warn':'info';
       html+=`<div class="container-card"><div class="container-card-header"><span class="container-card-name">${esc(c.name)}</span><span class="badge ${bdg}">${esc(s)}</span></div>
         <div class="container-card-body">
@@ -1077,41 +1345,40 @@ async function loadDocker(){
   catch(e){$('docker-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 async function dockerAction(name,action){
-  try{const d=await api(`/api/docker/containers/${name}/${action}`,{method:'POST'});
-    toast(`[${name}] ${action} ${d.ok?'ok':'failed'}`,'ok');loadDocker();}
-  catch(e){toast(`Error: ${e.message}`,'err');}
+  try{
+    const d=await api(`/api/docker/containers/${name}/${action}`,{method:'POST'});
+    toast(`[${name}] ${action} ${d.ok?'ok':'failed'}`);loadDocker();
+  } catch(e){toast(`Error: ${e.message}`,'err');}
 }
 async function dockerLogs(name){
   const el=document.getElementById('docker-log-'+name);if(!el)return;
   if(el.style.display!=='none'){el.style.display='none';return;}
   try{const d=await api(`/api/docker/containers/${name}/logs?tail=50`);
-    el.innerHTML=(d.logs||[]).map(l=>esc(l)).join('\n');
-    el.style.display='block';}
+    el.innerHTML=(d.logs||[]).map(l=>esc(l)).join('\n');el.style.display='block';}
   catch(e){toast(`Error: ${e.message}`,'err');}
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // PANEL: AIRDROP
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 async function loadAirdrop(){
   let html='';
-  try{const s=await api('http://192.168.99.11:4201/admin/stats');
-    html+=`<div class="card"><h3>Bot Stats</h3>
-      <div class="worker-card-body" style="font-size:0.72rem">
-      <span class="wl">SLX Events</span><span>${s.stats.slx_events_total}</span>
-      <span class="wl">Configured</span><span><span class="badge ${s.stats.bot_configured?'ok':'bad'}">${s.stats.bot_configured?'yes':'no'}</span></span>
+  try{const s=await fetch('http://192.168.99.11:4201/admin/stats').then(r=>r.json());
+    html+=`<div class="card"><h3>Bot Stats <span class="badge ${s.stats.bot_configured?'ok':'bad'}" style="margin-left:auto">${s.stats.bot_configured?'configured':'unconfigured'}</span></h3>
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:0.7rem;color:var(--fg-secondary);font-family:var(--font-mono)">
+      <span class="wl">SLX Events</span><span style="font-size:1.1rem;font-weight:700;color:var(--accent)">${s.stats.slx_events_total}</span>
       </div>
-      ${(s.stats.recent_events||[]).length?`<div style="margin-top:8px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono)">Recent: ${s.stats.recent_events.map(e=>esc(e.event_type)+' '+esc(e.recorded_at)).join('<br>')}</div>`:''}
+      ${(s.stats.recent_events||[]).length?`<div style="margin-top:8px;font-size:0.64rem;color:var(--fg-muted);font-family:var(--font-mono)">Recent: ${s.stats.recent_events.slice(0,3).map(e=>esc(e.event_type)+' '+esc(e.recorded_at)).join(' &middot; ')}</div>`:''}
     </div>`;}
-  catch{html+='<div class="card"><h3>Bot Stats</h3><span class="error-text">Airdrop Hunter not reachable on :4201</span></div>';}
+  catch{html+='<div class="card"><h3>Bot Stats</h3><span class="error-text">Airdrop Hunter unreachable on :4201</span></div>';}
 
-  html+=`<div class="card" style="margin-top:12px"><h3>Broadcast</h3>
-    <div class="form-group" style="margin-bottom:8px"><textarea id="airdrop-msg" rows="3" style="width:100%;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:8px;font-family:var(--font-mono);font-size:0.72rem" placeholder="Message to send to Telegram subscribers..."></textarea></div>
+  html+=`<div class="card" style="margin-top:12px"><h3>Broadcast Message</h3>
+    <div class="form-group" style="margin-bottom:8px"><textarea id="airdrop-msg" rows="3" placeholder="Message to send to Telegram subscribers…"></textarea></div>
     <button class="btn btn-sm btn-accent" onclick="airdropBroadcast()">Send Broadcast</button>
     <div id="airdrop-send-status" style="font-size:0.68rem;margin-top:6px;font-family:var(--font-mono)"></div>
   </div>`;
 
-  try{const c=await api('http://192.168.99.11:4201/admin/config');
+  try{const c=await fetch('http://192.168.99.11:4201/admin/config').then(r=>r.json());
     html+=`<div class="card" style="margin-top:12px"><h3>Configuration</h3>
       <div style="font-size:0.72rem;font-family:var(--font-mono);color:var(--fg-secondary)">
       <div class="spread" style="margin-bottom:4px"><span>Digest Hour:</span><code style="color:var(--accent)">${esc(c.config.digest_hour||'7')}:00 ET</code></div>
@@ -1119,29 +1386,28 @@ async function loadAirdrop(){
       <div class="spread"><span>Wallet:</span><code style="font-size:0.62rem;color:var(--fg-muted)">${esc(c.config.solana_wallet||'-')}</code></div>
       </div>
     </div>`;}
-  catch{html+='<div class="card" style="margin-top:12px"><h3>Configuration</h3><span class="empty">Config unavailable</span></div>';}
-
+  catch{html+='<div class="card" style="margin-top:12px"><h3>Configuration</h3><p class="empty">Config unavailable</p></div>';}
   $('airdrop-content').innerHTML=html;
 }
 async function airdropBroadcast(){
   const msg=document.getElementById('airdrop-msg'),status=document.getElementById('airdrop-send-status');
   if(!msg||!msg.value.trim()){if(status)status.innerHTML='<span style="color:var(--destructive)">Message required</span>';return;}
-  if(status)status.innerHTML='<span style="color:var(--warn)">Sending...</span>';
+  if(status)status.innerHTML='<span style="color:var(--warn)">Sending…</span>';
   try{const r=await fetch('http://192.168.99.11:4201/admin/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg.value})});
-    const d=await r.json();if(d.ok){if(status)status.innerHTML='<span style="color:var(--accent)">Sent</span>';msg.value='';toast('Broadcast sent');}
-    else{if(status)status.innerHTML=`<span style="color:var(--destructive)">${esc(d.error)}</span>`;}}
-  catch(e){if(status)status.innerHTML=`<span style="color:var(--destructive)">${esc(e.message)}</span>`;}
+    const d=await r.json();if(d.ok){status.innerHTML='<span style="color:var(--accent)">Sent successfully</span>';msg.value='';toast('Broadcast sent');}
+    else{status.innerHTML=`<span style="color:var(--destructive)">${esc(d.error)}</span>`;}}
+  catch(e){status.innerHTML=`<span style="color:var(--destructive)">${esc(e.message)}</span>`;}
 }
 
-// ═══════════════════════════════════════════════════════════════
-// PANEL: INFRASTRUCTURE
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: INFRA
+// ═══════════════════════════════════════════════════════════════════
 async function loadInfra(){
   try{const n=await api('/proxmox/nodes');
     if(n&&n.length){let html='<table><thead><tr><th>Node</th><th>Status</th><th>CPU</th><th>Mem</th></tr></thead><tbody>';
       for(const x of n){const s=x.status==='online'?'ok':'warn';html+=`<tr><td>${esc(x.node||x.name||x.id)}</td><td><span class="badge ${s}">${esc(x.status||'?')}</span></td><td>${esc(String(x.cpu??'-'))}</td><td>${esc(String(x.mem??x.memory??'-'))}</td></tr>`;}
       html+='</tbody></table>';$('infra-proxmox').innerHTML=html;}
-    else $('infra-proxmox').innerHTML='<span class="empty">No nodes</span>';}
+    else $('infra-proxmox').innerHTML='<p class="empty">No nodes</p>';}
   catch(e){$('infra-proxmox').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
   try{const g=await api('/api/gpu/status');$('infra-gpu').innerHTML=`<p><strong>Status:</strong> <span class="badge ${g.available?'ok':'warn'}">${g.available?'Available':'Unavailable'}</span></p><p style="margin-top:4px;font-size:0.72rem;color:var(--fg-secondary)">${esc(g.summary||'-')}</p>`;}
   catch(e){$('infra-gpu').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
@@ -1149,60 +1415,62 @@ async function loadInfra(){
   catch(e){$('infra-vpn').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // PANEL: SECURITY
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 async function loadSecurity(){
   try{const s=await api('/auth/status');$('sec-users').innerHTML=`
     <p><strong>Role:</strong> <span class="badge ${s.role==='operator'?'ok':'info'}">${esc(s.role)}</span></p>
-    <p style="margin-top:4px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Caps: ${(s.capabilities||[]).slice(0,8).map(c=>`<code style="font-size:0.62rem">${esc(c)}</code>`).join(', ')||'none'}</p>
-    <p style="margin-top:8px;font-size:0.68rem;color:var(--fg-muted)">User management via <code>core/accounts.json</code></p>`;}
+    <p style="margin-top:6px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Capabilities: ${(s.capabilities||[]).slice(0,8).map(c=>`<code style="font-size:0.62rem">${esc(c)}</code>`).join(', ')||'none'}</p>
+    <p style="margin-top:8px;font-size:0.65rem;color:var(--fg-muted)">Managed via <code>core/accounts.json</code></p>`;}
   catch(e){$('sec-users').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
-  try{const v=await api('/kai/vault');$('sec-apikeys').innerHTML=v&&v.providers?`<p><strong>Stored Keys:</strong> ${Object.keys(v.providers||{}).length}</p><p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-top:4px">AES-256-GCM encrypted</p>`:'<span class="empty">No API key data</span>';}
-  catch{$('sec-apikeys').innerHTML='<span class="empty">Vault unavailable</span>';}
+  try{const v=await api('/kai/vault');$('sec-apikeys').innerHTML=v&&v.providers?`<p><strong>Stored Keys:</strong> ${Object.keys(v.providers||{}).length}</p><p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-top:4px">AES-256-GCM encrypted</p>`:'<p class="empty">No API key data</p>';}
+  catch{$('sec-apikeys').innerHTML='<p class="empty">Vault unavailable</p>';}
   try{const a=await api('/self-healing/log');const logins=(a||[]).filter(e=>e.event==='login'||e.action==='login').slice(0,5);
     if(logins.length){let html='<table><thead><tr><th>User</th><th>Time</th></tr></thead><tbody>';
       for(const l of logins)html+=`<tr><td>${esc(l.user||l.username||'-')}</td><td>${esc(l.time||l.timestamp||'-')}</td></tr>`;
       html+='</tbody></table>';$('sec-logins').innerHTML=html;}
-    else $('sec-logins').innerHTML='<span class="empty">No recent logins</span>';}
+    else $('sec-logins').innerHTML='<p class="empty">No recent logins</p>';}
   catch(e){$('sec-logins').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // PANEL: SETTINGS
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 async function loadSettings(){
   let html='';
   try{const m=await api('/api/modules');
     for(const x of m.modules){html+=`<div class="card" style="margin-bottom:8px"><h3>${esc(x.name)}</h3>
       <div style="font-size:0.72rem;color:var(--fg-secondary)">${esc(x.description||'')}</div>
-      <div style="font-size:0.65rem;color:var(--fg-muted);margin-top:4px"><span>v${esc(x.version||'0.1.0')} &middot; eps:${(x.endpoints||[]).length} &middot; caps:${(x.capabilities||[]).length}</span></div>
+      <div style="font-size:0.65rem;color:var(--fg-muted);margin-top:4px"><span>v${esc(x.version||'0.1.0')} &middot; ${(x.endpoints||[]).length} eps &middot; ${(x.capabilities||[]).length} caps</span></div>
       </div>`;}}
   catch(e){html+=`<span class="error-text">${esc(e.message)}</span>`;}
-  html+=`<div class="card" style="margin-top:8px"><h3>Autonomy</h3>
+  html+=`<div class="card" style="margin-top:8px"><h3>Autonomy Control</h3>
     <div class="settings-field"><label>Level</label><div style="font-size:0.72rem;font-family:var(--font-mono);color:var(--accent)">Level 5 — Auto Roadmap</div></div>
-    <button class="btn btn-sm btn-accent" onclick="api('/api/admin/pause-scheduler',{method:'POST'}).then(()=>toast('Scheduler paused')).catch(e=>toast(e.message,'err'))">Pause Scheduler</button>
-    <button class="btn btn-sm" style="margin-left:4px" onclick="api('/api/admin/resume-scheduler',{method:'POST'}).then(()=>toast('Scheduler resumed')).catch(e=>toast(e.message,'err'))">Resume</button>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-sm btn-warn" onclick="api('/api/admin/pause-scheduler',{method:'POST'}).then(()=>toast('Scheduler paused')).catch(e=>toast(e.message,'err'))">Pause Scheduler</button>
+      <button class="btn btn-sm btn-accent" onclick="api('/api/admin/resume-scheduler',{method:'POST'}).then(()=>toast('Scheduler resumed')).catch(e=>toast(e.message,'err'))">Resume Scheduler</button>
+    </div>
     </div>`;
   $('settings-content').innerHTML=html;
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // PANEL: LOGS
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 async function loadLogs(){
   try{const log=await api('/self-healing/log');
-    if(!log||!log.length){$('logs-content').innerHTML='<span class="empty">No audit events</span>';return;}
+    if(!log||!log.length){$('logs-content').innerHTML='<p class="empty">No audit events</p>';return;}
     let html='<div style="margin-bottom:8px;display:flex;gap:8px">';
-    html+='<select id="log-filter-module" onchange="filterLogs()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Modules</option>';
+    html+='<select id="log-filter-module" onchange="filterLogs()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 8px;font-size:0.68rem;font-family:var(--font-mono);cursor:pointer"><option value="">All Modules</option>';
     const mods=new Set();for(const e of log)if(e.module||e.source)mods.add(e.module||e.source);
     for(const m of[...mods].sort())html+=`<option value="${esc(m)}">${esc(m)}</option>`;
     html+='</select>';
-    html+='<select id="log-filter-sev" onchange="filterLogs()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="">All Severity</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option></select>';
+    html+='<select id="log-filter-sev" onchange="filterLogs()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 8px;font-size:0.68rem;font-family:var(--font-mono);cursor:pointer"><option value="">All Severity</option><option value="critical">Critical</option><option value="warning">Warning</option><option value="info">Info</option></select>';
     html+='</div><div class="log-viewer" id="log-viewer-container" style="max-height:500px">';
-    for(const e of log.slice(0,100)){
+    for(const e of log.slice(0,150)){
       const sev=(e.severity||'').toLowerCase(),cls=sev==='critical'?'log-err':sev==='warning'?'log-warn':'log-ok';
-      html+=`<div data-module="${esc(e.module||e.source||'')}" data-sev="${esc(e.severity||'')}"><span class="${cls}">[${esc(e.time||e.timestamp||'')}]</span> ${esc(e.event||e.action||'')} ${esc(e.detail||e.message||'')}</div>`;}
+      html+=`<div data-module="${esc(e.module||e.source||'')}" data-sev="${esc(e.severity||'')}"><span class="${cls}">[${esc(e.time||e.timestamp||'')}]</span> ${esc(e.event||e.action||'')} — ${esc(e.detail||e.message||'')}</div>`;}
     html+='</div>';
     $('logs-content').innerHTML=html;}
   catch(e){$('logs-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
@@ -1213,12 +1481,19 @@ function filterLogs(){
   for(const r of rows){const m=r.dataset.module||'',s=r.dataset.sev||'';r.style.display=(!modFilter||m===modFilter)&&(!sevFilter||s===sevFilter)?'':'none';}
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 // BOOT
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
 (function boot(){
   const token=getToken();
-  if(token){fetch('/auth/status',{headers:{'X-Kai-Session':token}}).then(r=>r.json()).then(d=>{if(d.role&&d.role!=='anonymous'){S.token=token;S.role=d.role;S.username='session';$('login-screen').style.display='none';$('app-wrap').classList.add('active');$('user-display').innerHTML=`<span class="user-role">${S.role}</span>`;initApp();}else clearToken();}).catch(()=>clearToken());}
+  if(token){fetch('/auth/status',{headers:{'X-Kai-Session':token}}).then(r=>r.json()).then(d=>{
+    if(d.role&&d.role!=='anonymous'){
+      S.token=token;S.role=d.role;S.username='session';
+      $('login-screen').classList.add('hidden');$('app-wrap').classList.add('active');
+      $('user-display').innerHTML=`<span class="user-role">${S.role}</span>`;
+      initApp();
+    } else clearToken();
+  }).catch(()=>clearToken());}
 })();
 </script>
 </body>

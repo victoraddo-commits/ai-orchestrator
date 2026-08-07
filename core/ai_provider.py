@@ -599,6 +599,36 @@ register_provider(
 
 
 
+# GPU.ai Gemma 4 31B IT — vision-capable, OpenAI-compatible.
+# Hosted on gpu.ai with multimodal support: image understanding, OCR, document
+# analysis, table extraction, UI screenshots, and all visual capabilities of
+# Gemma 4's capability registry.  Uses stored secrets (core.ai.secrets) rather
+# than env vars, same as the other post-17Z providers.
+GPUAI_GEMMA_MODEL = "gpuai/gemma-4-31b-it"
+
+
+def _gpuai_gemma_run_text_task(prompt, timeout=120, project_path=None):
+    return llm_clients.call_gpuai_gemma(prompt, timeout=timeout)
+
+
+def _gpuai_gemma_available():
+    try:
+        from core.ai.secrets import get_api_key
+        return get_api_key("gpuai") is not None
+    except ImportError:
+        return False
+
+
+register_provider(
+    "gpuai_gemma",
+    run_text_task=_gpuai_gemma_run_text_task,
+    available_fn=_gpuai_gemma_available,
+    kind="cloud",
+    description="Gemma 4 31B IT via GPU.ai — vision-capable: OCR, document analysis, image understanding, table extraction, UI screenshots",
+    cost_tier="paid",  # $0.35/hr GPU rental, pay-per-use
+)
+
+
 register_provider(
     "local",
     run_coding_task=_local_not_implemented,

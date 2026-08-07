@@ -261,6 +261,8 @@ LAW_TUTOR_ROLE_PROVIDERS = {
     "law_exam": ["claude"],
     "law_flashcards": ["groq", "claude"],
     "law_chat": ["groq", "claude"],
+    # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
+    "law_document_vision": ["gpuai_gemma", "claude"],
 }
 
 # 2026-08-03: Juris Kai Legal Expert - Phase 17Z
@@ -279,6 +281,8 @@ JURIS_KAI_ROLE_PROVIDERS = {
     "juris_argument_construction": ["deepseek_native_flash", "claude"],
     "juris_flashcards": ["deepseek_native_flash", "groq", "claude"],
     "juris_chat": ["deepseek_native_flash", "groq", "claude"],
+    # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
+    "juris_document_vision": ["gpuai_gemma", "claude"],
 }
 
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
@@ -306,8 +310,10 @@ DEFAULT_TASK_TYPE = "coding"
 FIXED_ORDER_TASK_TYPES = frozenset({
     "architecture", "planning",
     "law_document", "law_case_analysis", "law_teaching", "law_exam", "law_flashcards", "law_chat",
-    "juris_legal_teaching", "juris_case_analysis", "juris_research", 
-    "juris_argument_construction", "juris_flashcards", "juris_chat"
+    "law_document_vision",
+    "juris_legal_teaching", "juris_case_analysis", "juris_research",
+    "juris_argument_construction", "juris_flashcards", "juris_chat",
+    "juris_document_vision",
 })
 
 USAGE_HISTORY_FILE = "ai_usage_history.json"

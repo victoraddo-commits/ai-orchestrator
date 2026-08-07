@@ -320,12 +320,18 @@ LAW_TUTOR_ROLE_PROVIDERS = {
 # Flashcard generation - needs structured output and organization
 # General legal chat - needs quick responses and conversational ability
 JURIS_KAI_ROLE_PROVIDERS = {
-    "juris_legal_teaching": ["qwen4_text", "claude", "deepseek_native_flash"],
-    "juris_case_analysis": ["claude", "deepseek_native_flash", "omniroute_deepseek_flash", "qwen4_text"],
-    "juris_research": ["gemini", "geminix", "deepseek_native_flash", "claude", "qwen4_text"],
-    "juris_argument_construction": ["claude", "qwen4_text"],
-    "juris_flashcards": ["groq", "claude", "qwen4_text"],
-    "juris_chat": ["groq", "claude", "qwen4_text"],
+    # 2026-08-07: Reordered — deepseek_native_flash is the only provider that
+    # works reliably for the bot's environment (secrets store key present,
+    # quota available). qwen4_text needs .env vars (not loaded in bot service),
+    # claude/omniroute_sonnet are out of credit, gemini/geminix/groq need env
+    # vars not available to the bot. deepseek goes first in every role so the
+    # bot responds in < 30s instead of cycling through 2-3 dead providers first.
+    "juris_legal_teaching": ["deepseek_native_flash", "qwen4_text", "claude"],
+    "juris_case_analysis": ["deepseek_native_flash", "omniroute_deepseek_flash", "qwen4_text", "claude"],
+    "juris_research": ["deepseek_native_flash", "gemini", "geminix", "qwen4_text", "claude"],
+    "juris_argument_construction": ["deepseek_native_flash", "qwen4_text", "claude"],
+    "juris_flashcards": ["deepseek_native_flash", "groq", "qwen4_text", "claude"],
+    "juris_chat": ["deepseek_native_flash", "groq", "claude", "qwen4_text"],
 }
 
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)

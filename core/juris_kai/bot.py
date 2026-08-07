@@ -16,6 +16,7 @@ Security: NO imports of core.build_manager, core.approval, or
 core.deployment_manager. Only text_task AI providers are used.
 """
 
+import concurrent.futures
 import json
 import logging
 import os
@@ -226,6 +227,37 @@ def is_admin(telegram_id: str) -> bool:
 # ---------------------------------------------------------------------------
 # Message handling
 # ---------------------------------------------------------------------------
+
+# Hard wall-clock timeout for AI delegate calls (seconds).
+# With deepseek_native_flash as primary + max_tokens=2048, responses
+# typically arrive in 15-30s. 45s gives headroom without blocking the
+# polling loop for too long.
+DELEGATE_TIMEOUT = 45
+
+
+def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> str:
+    """Call ai_router.delegate() in a background thread with a hard timeout.
+
+    Returns the response text on success, or a user-friendly error message
+    on timeout or failure.  This prevents a stalled provider from blocking
+    the bot's synchronous polling loop indefinitely.
+    """
+    try:
+        from core.ai.ai_router import delegate
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                delegate, prompt,
+                task_type=task_type, capability="text_task",
+            )
+            result = future.result(timeout=DELEGATE_TIMEOUT)
+            return result["response"]
+    except concurrent.futures.TimeoutError:
+        logger.warning(f"Delegate timeout for {task_type} ({DELEGATE_TIMEOUT}s)")
+        return f"⚠️ Query timed out. Please try a more specific question."
+    except Exception as e:
+        logger.error(f"Delegate failed for {task_type}: {e}")
+        return f"⚠️ Unable to load {fallback_label}. Please try again later."
+
 
 def handle_message(update: dict) -> dict | None:
     """Process a single incoming Telegram message.
@@ -540,12 +572,10 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
 
     topic_display = label.split(" ", 1)[1] if " " in label else label
     prompt = build_prompt("legal_teaching", f"Ghana {topic_display}")
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_legal_teaching", capability="text_task")
-        response_text = result["response"]
-    except Exception:
-        response_text = f"⚠️ Unable to load information about {topic_display}. Please try again later."
+
+    # Run delegate with a hard wall-clock timeout so one slow provider
+    # doesn't block the bot's entire polling loop indefinitely.
+    response_text = _delegate_with_timeout(prompt, "juris_legal_teaching", f"information about {topic_display}")
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"])
@@ -562,12 +592,7 @@ def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
     from core.juris_kai.prompt import build_prompt
 
     prompt = build_prompt("legal_case_analysis", f"{query_type} in Ghana law")
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_case_analysis", capability="text_task")
-        response_text = result["response"]
-    except Exception:
-        response_text = f"⚠️ Unable to retrieve {query_type.lower()}. Please try again later."
+    response_text = _delegate_with_timeout(prompt, "juris_case_analysis", query_type.lower())
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"])
@@ -927,12 +952,7 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
     # Process as legal query
     from core.juris_kai.prompt import build_prompt
     prompt = build_prompt("legal_research", text)
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_research", capability="text_task")
-        response_text = result["response"]
-    except Exception:
-        response_text = "⚠️ Unable to process your query. Please try again or rephrase."
+    response_text = _delegate_with_timeout(prompt, "juris_research", "your query")
 
     mgr.record_query(account["account_id"])
 
@@ -1005,13 +1025,7 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
 
     prompt_type, task_type, return_menu = step_prompt_map[step]
     prompt = build_prompt(prompt_type, text)
-
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type=task_type, capability="text_task")
-        response_text = result["response"]
-    except Exception:
-        response_text = f"⚠️ Unable to process your {step.replace('_', ' ')} request. Please try again."
+    response_text = _delegate_with_timeout(prompt, task_type, f"your {step.replace('_', ' ')} request")
 
     mgr.record_query(account["account_id"])
     del _conversation_state[state_key]

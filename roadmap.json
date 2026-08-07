@@ -891,27 +891,28 @@
       "id": "19M",
       "name": "Cerebrum: Self Improvement - Kai evaluates itself, generates improvement proposals",
       "description": "Build Self Improvement engine: Kai continuously evaluates itself, generates improvement proposals. Never self-approve. Never bypass architecture/review/deployment/security review. Brain improvements follow governed engineering process.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19A",
         "19B"
       ],
       "priority": 13,
       "assigned_agent": "qwen3",
-      "build_id": "0ad33710"
+      "build_id": "0ad33710",
+      "failure_reason": "Build 0ad33710 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13B",
       "name": "Kai Command Interface",
       "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
       "priority": 14,
       "build_id": "f334ccb8",
       "note": "Superseded by K1 -- core/kai/commands.py already built, tested, and deployed; this build would only duplicate it.",
-      "failure_reason": null
+      "failure_reason": "Build f334ccb8 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13V",
@@ -994,25 +995,25 @@
       "id": "19O",
       "name": "Cerebrum: Command Center - Mission control for brain, memory, knowledge, reasoning",
       "description": "Transform Command Center into mission control: brain, memory, knowledge, reasoning, planning, projects, infrastructure, costs, providers, approvals, roadmap, learning, reflection, predictions, health, logs, skills. Everything observable, configurable, explainable.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 15,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "c6ae102e",
-      "failure_reason": null
+      "failure_reason": "Build c6ae102e missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
       "priority": 16,
       "build_id": "6e8f4f1f",
-      "failure_reason": null
+      "failure_reason": "Build 6e8f4f1f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "16A",
@@ -1060,13 +1061,14 @@
       "id": "19P",
       "name": "Cerebrum: Self Explanation - Kai answers why questions with evidence",
       "description": "Implement Self Explanation: Kai answers Why? Why now? Why not? Why this provider? Why this plan? Why this architecture? Why this confidence? What evidence? What alternatives? What risks? Every important decision explainable with evidence.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19G"
       ],
       "priority": 16,
       "assigned_agent": "qwen3",
-      "build_id": "219ca438"
+      "build_id": "219ca438",
+      "failure_reason": "Build 219ca438 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13E",
@@ -1119,14 +1121,15 @@
       "id": "19Q",
       "name": "Cerebrum: Brain Health - Monitor reasoning quality, memory integrity, hallucination rates",
       "description": "Create Brain Health Monitor: continuously monitor reasoning quality, memory integrity, knowledge integrity, hallucination rates, provider reliability, learning effectiveness, prediction accuracy, decision quality, planning quality, infrastructure awareness. Detect degradation early.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "19A",
         "19B"
       ],
       "priority": 17,
       "assigned_agent": "qwen3",
-      "build_id": "7b6fce2a"
+      "build_id": "7b6fce2a",
+      "failure_reason": "Build 7b6fce2a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13F",
@@ -1165,7 +1168,7 @@
       "id": "14A",
       "name": "Stuck-phase detection, Fable self-answer for judgment calls, auto-filed bug phases",
       "description": "User directive 2026-07-29, following the same incident as 13Y/13Z: 13P silently bounced WAITING_FOR_USER_INPUT <-> PLANNING with no human-visible signal that it was stuck (not merely waiting on a real decision) until this session noticed by reading builds.json history directly. Three related capabilities, all downstream of 13Z's Telegram bridge existing: (1) STUCK DETECTION -- advance_roadmap()/advance_builds() should recognize a phase that revisits the same status (or status pair, e.g. WAITING_FOR_USER_INPUT<->PLANNING) some threshold number of times without net progress, and flag it distinctly from an ordinary in-progress build (e.g. a stuck_count on the build record, or a new incident type) rather than looping forever indistinguishably from healthy back-and-forth. (2) FABLE SELF-ANSWER -- for a WAITING_FOR_USER_INPUT clarification that is a genuine judgment call with no real ambiguity requiring the human specifically (e.g. 'should the interval be 30, 45, or 60 seconds' has no wrong answer within the stated constraint 'well under WatchdogSec') delegate() to opencode_claude/Fable for an answer via submit_answer(), escalating to a human via 13Z's Telegram bridge only when the question is genuinely undecidable without the human (e.g. touches product/business tradeoffs, security posture, or anything in core.kai.policies.PROTECTED_FILES) -- must never let this path call approve_architecture/approve_deploy itself, exactly as core/kai/policies.py + tests/test_kai_identity.py's grep check already enforces for every other module under core/kai/; this capability likely belongs alongside that same enforced boundary, not as a bypass of it. (3) AUTO-FILED BUG PHASES -- when Kai's own code is the actual cause of a stuck/failed state (as with 13P's _plan_needs_clarification false positive, or 13S's original hallucinated-plan-markup incident), draft and queue a new roadmap phase describing the bug with the same evidence-based rigor as every existing 13-series phase (confirmed-live incident description, concrete file/line references, completion criteria) rather than requiring a human to notice, write it up, and add it manually as happened for 13P/13Q/13S/13Y themselves tonight.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "13Z"
       ],
@@ -1179,7 +1182,7 @@
       ],
       "tests_required": true,
       "build_id": "703d6790",
-      "failure_reason": null
+      "failure_reason": "Build 703d6790 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17H",
@@ -1361,7 +1364,7 @@
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
       "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "12J"
       ],
@@ -1375,13 +1378,13 @@
       ],
       "tests_required": true,
       "build_id": "1f82cf96",
-      "failure_reason": null
+      "failure_reason": "Build 1f82cf96 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17I",
       "name": "Application portfolio awareness: Kai learns what each of your other apps is and can propose maintenance for them",
       "description": "User asked live 2026-07-30 (after the immediate EXPECTED_SERVICES fix): at what point will Kai learn about and help maintain the users OTHER existing applications (it-manager, proxdash, portfolio, airdrop-hunter, door-bridge, docker-watcher, code-server, watchtower, etc.), not just monitor their up/down state. Today Kai has two separate, narrow things: (1) core.health.EXPECTED_SERVICES (just fixed to cover the real portfolio) -- presence/crash monitoring only, zero semantic knowledge of what any of these apps ARE or DO; (2) core.kai.planner._gather_signals(), which grounds chat answers in roadmap/health/provider state -- also has no awareness of the application portfolio at all. Kais self-build/deploy pipeline is entirely scoped to the ai-orchestrator project itself; there is no equivalent mechanism for building/updating/fixing the users OTHER applications. This phase: (1) a lightweight per-app registry (name, docker container(s), source repo path if any under /project/src/, one-line purpose -- either user-supplied once or inferred from a README/package.json/pyproject if present, not guessed), reusing the schema_version/records convention; (2) fold this registry into _gather_signals() so chat can actually answer questions about these apps by name (\"whats it-managers status\", \"what does portfolio do\") grounded in real data, not fabrication; (3) a maintenance PROPOSAL path -- Kai can notice something (crash loop, outdated dependency flagged by watchtower, etc.) and propose a fix as a roadmap-style item, but explicitly NOT auto-execute anything against these apps -- every actual change still goes through the exact same human approval gate self-build deploys already use, since these are the users real production applications, higher stakes than ai-orchestrators own sandboxed self-build workspace. Explicitly out of scope for this phase: Kai self-modifying/deploying to these OTHER apps repos directly (that would need its own dedicated, carefully-scoped follow-on, not bundled in here) -- this phase is knowledge and monitoring plus proposals only. Expanded 2026-07-30 per explicit user directive (heavy reliance on Kai for managing existing apps, no artificial capability ceiling): the registry must include each apps real source path (confirmed live -- it-manager, proxdash, hr-app-design, ai-orchestrator-plugin all have real repos under /project/src/), not just a container name, so Kai can actually read the code. The maintenance-proposal capability must go beyond reactive crash/dependency alerts to genuine code-quality/architecture suggestions -- Kai reads the real repo via the AI router (the same coding/planning delegate() mechanism already used for self-build CODE_REVIEW) and can proactively suggest concrete improvements, not just react to failures. Still proposals only in this phase -- see 17L for actually shipping approved changes to these apps.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 22,
       "completion_criteria": [
@@ -1392,8 +1395,8 @@
       ],
       "tests_required": true,
       "note": "Queued 2026-07-30 directly from the users question about it-manager. Deliberately scoped to knowledge + monitoring + proposals, not actual self-modifying deploys to the users other applications -- that would be a much bigger, separate decision given these are real production apps, not ai-orchestrators own sandboxed self-build workspace.",
-      "build_id": null,
-      "failure_reason": null
+      "build_id": "235fc01c",
+      "failure_reason": "Build 235fc01c missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17L",
@@ -1435,14 +1438,14 @@
       "id": "17G",
       "name": "UI/UX polish pass: Proxdash and the Kai Dashboard(s)",
       "description": "User directive 2026-07-30: improve the UI/UX of both Proxdash (the existing proxdash-backend/proxdash-frontend Docker app already running in this container, a Proxmox monitoring dashboard -- see /project/src/proxdash) and Kai's own dashboard(s) (the CloudCLI-embedded Kai Control Center tab, and the standalone dashboard once 17D ships real tabs). Scope deliberately left open for design judgment rather than over-specified here -- reuse the frontend-design conventions already established in this codebase (the plain-TypeScript el()-helper + theme-color-object pattern used throughout ai-orchestrator-plugin, confirmed live 2026-07-30 during 17B). Should be sequenced after 17D (no point polishing the standalone dashboard's current single-scroll layout before it becomes a real tabbed interface).\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "17D"
       ],
       "priority": 24,
       "tests_required": false,
-      "build_id": null,
-      "failure_reason": null
+      "build_id": "e1c752f2",
+      "failure_reason": "Build e1c752f2 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "17W",
@@ -1542,7 +1545,7 @@
       "id": "16D",
       "name": "Cost budget limits and alerts on top of 13W's real cost data",
       "description": "Small, direct follow-on to 13W (completed 2026-07-29): real per-call cost is now captured in ai_usage_history.json and aggregated per-provider via get_provider_dashboard() when a provider's response actually reports a figure. This phase adds the alerting layer on top of data that already exists -- no new cost tracking, purely thresholds and notification. A configurable budget limit (e.g. daily/monthly spend ceiling, overall or per-provider) checked against the existing aggregated totals; crossing it sends a Telegram alert (via 13Z) with the actual figures, not a vague warning. No automatic spend-limiting/provider-disabling behavior in this phase -- alert-only, since automatically cutting off a provider mid-roadmap based on a cost threshold is a judgment call for a human, not something to automate without being asked.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "13W",
         "13Z"
@@ -1556,8 +1559,8 @@
         "gwen3 wrote budget_monitor.py + config/budget.json + tests. 300+ lines."
       ],
       "tests_required": true,
-      "build_id": null,
-      "failure_reason": null
+      "build_id": "5e41e48a",
+      "failure_reason": "Build 5e41e48a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13K",
@@ -1686,10 +1689,10 @@
       "id": "17Z",
       "name": "Wire in self-hosted Qwen3-Coder RunPod provider",
       "description": "Operator set up a RunPod pod 2026-08-02: 1x RTX 5090 (32GB VRAM), 60GB RAM, 15 vCPU (AMD EPYC 9354), running the official RunPod vLLM Serverless template with model QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ (4-bit AWQ, ~16GB weights), quantization=awq, max_model_len=65536 as a starting point. Intended role: an additional fallback text/coding provider in Kai's rotation, not a primary -- billed per-request via RunPod Serverless (on-demand, not always-on), no hard budget ceiling set by the operator.\n\nRUNPOD_API_KEY stored in .env 2026-08-02. NOT YET VERIFIED -- returned 401 on every standard RunPod auth pattern tried live (REST API Bearer token against rest.runpod.io/v1/pods, GraphQL api_key query param and Bearer header against api.runpod.io/graphql, plain non-Bearer Authorization header). Key is 64 characters, doesn't look truncated. Before any code is written for this phase: (1) confirm with the operator that this key shows as active in the RunPod dashboard (Settings > API Keys), regenerate if not; (2) once a working key is confirmed, get the actual pod endpoint URL (RunPod Serverless exposes this as https://api.runpod.io/v2/<endpoint-id>/openai/v1 or similar -- confirm the exact live URL from the RunPod console's 'Connect' tab rather than assuming the pattern) and confirm the vLLM worker actually finished loading the model (watch pod logs for 'Uvicorn running on...' with no AWQ kernel/compute-capability errors -- RTX 5090 is very new Blackwell silicon, flagged live as a real risk, not yet confirmed either way).\n\nOnce both are confirmed: register as a new provider via core.ai_provider.register_provider() (run_text_task only, no coding_agent -- this is a plain OpenAI-compatible chat-completions endpoint, not an agentic tool-use loop, same category as call_deepseek_native_flash), available_fn checking RUNPOD_API_KEY and the pod endpoint responding, cost_tier='paid' (real per-request GPU billing, unlike the free-tier/native-key providers). Add into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- slots in after existing top-priority providers, never ahead of or displacing them; this is capacity, not a replacement for anything currently working.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nUPDATE 2026-08-02: RUNPOD_API_KEY confirmed working (200 from rest.runpod.io/v1/pods, correct key was rpa_Q8XL0NLBHLYVNSK4EYRBCD0MH1ERKZBBDNFJCFIG...qpl8al, operator's paste had it run together with the pod ID). Pod cp937mgptqc1kp confirmed live: 1x GPU, 125GB RAM, 21 vCPU, image runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404 (bare PyTorch/Jupyter template, not the vLLM Serverless template originally discussed), $0.99/hr always-on billing (not the Serverless on-demand option originally chosen). Operator confirmed they set this pod up themselves/manually rather than via the vLLM Hub template.\n\nConfirmed live: pod is reachable (Jupyter on 8888 responds normally via https://cp937mgptqc1kp-8888.proxy.runpod.net/), but port 8000 (where vLLM would serve) returns 404 through RunPod's proxy -- that port was never declared as exposed on this pod (only 8888/http and 22/tcp are), so even if vLLM is running inside the container, nothing outside can reach it yet. This needs the operator to add the actual serving port to the pod's exposed ports in the RunPod console (Edit Pod) and restart it before this phase can proceed to real provider registration.\n\nUPDATE 2026-08-02 (live debugging session): first real vLLM start attempt confirmed the model itself loads fine on this RTX 5090 (AWQ/Marlin kernel, FlashAttention v2, torch.compile all succeeded, 15.74 GiB into VRAM) -- the actual crash was narrower than initially feared: FlashInfer (vLLM's optional sampling-kernel library, separate from AWQ/quantization) doesn't yet recognize this GPU's Blackwell compute capability ('FlashInfer requires GPUs with sm75 or higher' -- a misleading message; the real issue is an unrecognized-architecture check, not insufficient hardware). Trying VLLM_USE_FLASHINFER_SAMPLER=0 (falls back to vLLM's default sampler) and/or upgrading flashinfer-python as the fix -- not yet confirmed working as of this note.\n\nAlso confirmed live: this pod's root filesystem is EPHEMERAL -- only /workspace (the attached network volume) persists across a pod restart. A pip-installed vllm vanished after one restart (container ID changed 89754eaa8f69 -> 86d104907baa mid-session), requiring a full reinstall. Whatever this phase eventually builds must account for this: either install into a venv under /workspace, or bake a custom pod image with vllm/flashinfer pre-installed, or provision via RunPod Serverless (ephemeral by design, expects a proper image) rather than a hand-configured persistent pod. Do not assume a manual pip install survives a restart.\n\nCONFIRMED WORKING 2026-08-02: full stack verified live end-to-end -- vLLM 0.26.0 serving QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ on RunPod pod cp937mgptqc1kp (RTX 5090), started with VLLM_USE_FLASHINFER_SAMPLER=0 (bypasses the FlashInfer/Blackwell sampling-kernel incompatibility). Real chat completion request returned a correct response through https://cp937mgptqc1kp-8000.proxy.runpod.net/v1/chat/completions (OpenAI-compatible). Port 8000 is reachable via RunPod's proxy despite not appearing in the pod's declared 'ports' list via the REST API -- the proxy evidently doesn't require explicit port declaration the way earlier testing assumed.\n\nSECURITY GAP, must be fixed before real provider registration: this endpoint currently has NO AUTHENTICATION -- anyone with the URL can submit inference requests and consume GPU time at the operator's expense. vLLM supports an --api-key flag (or VLLM_API_KEY env var) requiring a bearer token on every request -- this must be set before core.ai_provider.register_provider() wires this in, and the key stored in .env the same way every other provider credential is.\n\nOperational risk carried over from the earlier note: pod restarts wipe the root filesystem, so vllm/flashinfer need reinstalling and the server needs restarting (with --api-key once that's added) after every restart until this is made durable (venv under /workspace, or a custom image).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 45,
-      "build_id": null,
+      "build_id": "0ace498f",
       "completion_criteria": [
         "qwen3_coder_text provider registered via core.ai_provider.register_provider() with run_text_task only",
         "call_qwen3_coder_text() in llm_clients.py uses the same VLLM_QWEN3_CODER_* env vars as the existing call_openai hijack but under its own provider key",
@@ -1727,7 +1730,7 @@
       "id": "15A",
       "name": "Kai platform auth foundation: local accounts + capability-based permissions",
       "description": "Foundation for the 'Kai Enterprise Platform' initiative (user proposal 2026-07-29, trimmed after review). Scope, deliberately narrow: local username/password accounts (no external OAuth) plus a capability-based permission check -- capabilities like deploy.build, approve.architecture, chat.use, roadmap.create, provider.configure, each independently checkable in code -- mapped to exactly two initial roles: 'operator' (every capability, i.e. what the single existing bridge-token operator already has today) and 'viewer' (read-only: dashboard/chat reads, no write capabilities). Capability checks must live in one shared module (e.g. core/authz.py) that every write endpoint in core/api.py calls, not duplicated per-endpoint logic. Explicitly deferred from the original proposal, and why: full OAuth (Google/Microsoft/GitHub) + MFA + service accounts was scoped for a system with exactly one real user today -- add a second auth provider only when a real second person needs one, not speculatively. A 6-role taxonomy (Owner/Architect/Developer/Analyst/Customer/Guest) was cut to 2 roles for the same reason -- the capability model means adding a narrower role later is a mapping change, not a redesign, so there is no lock-in cost to starting minimal. The 'Customer' role scoped to assigned projects implied a multi-tenant customer-facing product pivot that was never a stated goal -- if that direction is wanted later it needs its own explicit decision, not a permissions bullet. Multi-organization support (isolated users/projects/learning/providers per org) was cut entirely: there is one organization. None of these are permanently ruled out, just not built until a real need exists -- a future roadmap phase should re-propose them with a concrete driving need, not reintroduce them speculatively. Explicitly low priority and deferred (user directive 2026-07-30): multi-user work should not be picked up ahead of any single-user-focused work still pending.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13H"
       ],
@@ -1742,7 +1745,7 @@
       ],
       "tests_required": true,
       "note": "Deferred 2026-07-30 per user directive: multi-user/enterprise features (15A-15H) are explicitly out of scope until the single-user Kai chat experience (13X, 16A) is complete and proven. Kai has exactly one operator for now. Revisit this whole phase group after 13X/16A/13H ship -- do not spend build effort preparing for multiple users before then.",
-      "build_id": null,
+      "build_id": "5276508f",
       "failure_reason": null
     },
     {

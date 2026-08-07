@@ -494,12 +494,12 @@
       "id": "19W",
       "name": "Kai Software Factory: Templates - Reusable templates (CRM, ERP, HR, Inventory, POS, etc.)",
       "description": "Create reusable templates: CRM, ERP, HR, Inventory, POS, Helpdesk, Knowledge Base, Customer Portal, Website, API, Mobile App, AI Agent, Dashboard, Microservice, Legal Platform. Include best practices.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "assigned_agent": "qwen3",
       "build_id": "fe98c22d",
-      "failure_reason": null
+      "failure_reason": "Build fe98c22d missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12G",
@@ -543,12 +543,12 @@
       "id": "19X",
       "name": "Kai Software Factory: Lifecycle Management - Complete history for every application",
       "description": "Implement lifecycle management: creation history, design decisions, deployment history, rollback history, AI conversations, lessons learned, incidents, monitoring, roadmap, ownership, documentation. Kai never loses context.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 7,
       "assigned_agent": "qwen3",
       "build_id": "5de830eb",
-      "failure_reason": null
+      "failure_reason": "Build 5de830eb missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12H",
@@ -568,7 +568,7 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
@@ -581,19 +581,19 @@
       "id": "19H",
       "name": "Cerebrum: Reflection Cortex - Automatic reflection after every completed task",
       "description": "Create Reflection Cortex: every completed task triggers reflection. Questions: What happened? Why? Could this be improved? Was confidence accurate? Should memory/planning/reasoning/routing/documentation change? Store reflections permanently.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
       "build_id": "a59deed6",
-      "failure_reason": null
+      "failure_reason": "Build a59deed6 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19Y",
       "name": "Kai Software Factory: AI Workforce Integration - Auto-assign AI workers to applications",
       "description": "Build AI workforce integration: Chief Architect \u2192 Planner \u2192 Backend Engineer \u2192 Frontend Engineer \u2192 Infrastructure Engineer \u2192 Security Engineer \u2192 QA \u2192 Deployment \u2192 Documentation \u2192 Monitoring. Auto-assign based on task type.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "assigned_agent": "qwen3",
@@ -618,7 +618,7 @@
       "id": "13Y",
       "name": "Fix _plan_needs_clarification false-positives on rhetorical sign-off questions",
       "description": "DONE (2026-07-29, direct live fix, not built by Kai -- commit 1d4f8d8) -- 13Y's own build (73e6724b) kept re-triggering the exact bug it existed to fix (any plan discussing '?' detection logic inevitably quotes '?' as example text), making the reprompt-workaround used for 13P unworkable for this specific phase, so it was fixed directly instead. _plan_needs_clarification now only inspects the plan's tail (last heading-demarcated Questions/Clarifications/Decision-Points section, or last paragraph if none) and excludes sentences matching a known rhetorical sign-off phrase list; a genuine open question still routes to WAITING_FOR_USER_INPUT and now populates a new pending_question field on the build record. Regression fixtures use the actual incident text from 13P's two false-positive plans and 13Y's own self-referential one. approval_queue.json untouched -- free-text clarification stays on its own path. 575 tests pass. Build 73e6724b rejected as redundant (its workspace clone predates the fix).",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 9,
       "completion_criteria": [
@@ -629,13 +629,13 @@
       ],
       "tests_required": true,
       "build_id": "16c9f44f",
-      "failure_reason": null
+      "failure_reason": "Build 16c9f44f missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19I",
       "name": "Cerebrum: Learning Cortex - Continuously learn from failures, successes, feedback",
       "description": "Implement Learning Cortex: continuously learn from failures, successes, human approvals/rejections/edits, provider performance, costs, roadmap progress, infrastructure incidents. Never overwrite history; improve future behavior.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 9,
       "assigned_provider": null,
@@ -673,7 +673,7 @@
       "id": "13S",
       "name": "Validate plan text before presenting it for architecture approval",
       "description": "DONE (2026-07-29, direct live fix, not deployed by Kai -- commit 4c69637) -- build db7d5562 generated the correct fix (_looks_like_tool_call_leak: rejects empty/near-empty plan text and tool-call markup leaking into prose, 3-strike retry cap, existing ? check preserved) but its own self-build test run failed on one unrelated pre-existing test (test_orchestrator_cycle_integration.py used a 5-char \"Plan.\" mock, under this change's new 10-char minimum) -- applied the build's commit directly plus the one-line test fix instead of re-running the pipeline for an already-correct change. 595 tests pass. Build db7d5562 left FAILED as the record of the self-test rejection; its workspace clone reproduces the same fix and was not reused further.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 10,
       "completion_criteria": [
@@ -685,7 +685,7 @@
       ],
       "tests_required": true,
       "build_id": "47f2d93a",
-      "failure_reason": null
+      "failure_reason": "Build 47f2d93a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "19J",
@@ -703,12 +703,12 @@
       "id": "19AA",
       "name": "Kai Software Factory: Security Model - Project isolation, RBAC, tenant isolation",
       "description": "Implement security model for applications: RBAC, project isolation, tenant isolation, secrets isolation, repository isolation. Users with access to one app do not automatically gain access to another.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 10,
       "assigned_agent": "qwen3",
-      "build_id": null,
-      "failure_reason": null
+      "build_id": "b7292d59",
+      "failure_reason": "Build b7292d59 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "12K",
@@ -791,11 +791,11 @@
       "id": "19BB",
       "name": "Kai Software Factory: Integration - Reuse and extend existing modules (roadmap, build, deployment, workspace managers)",
       "description": "Integrate Software Factory with existing modules: reuse roadmap manager, build manager, deployment manager, workspace manager, repository management, monitoring, dashboards, memory, knowledge base. Merge functionality where appropriate.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 11,
       "assigned_agent": "qwen3",
-      "build_id": null,
+      "build_id": "df5df26f",
       "failure_reason": null
     },
     {
@@ -836,13 +836,13 @@
       "id": "19L",
       "name": "Cerebrum: Trust Engine - Calculate trust for providers, knowledge, memory, tools",
       "description": "Implement Trust Engine: continuously calculate trust. Trust: providers, knowledge, memory, tools, predictions, plans, external APIs, users. Trust influences decisions.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 12,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": null,
-      "failure_reason": null
+      "build_id": "89370b8c",
+      "failure_reason": "Build 89370b8c missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "13A",
@@ -856,7 +856,7 @@
       "id": "13U",
       "name": "Register DeepSeek as a real provider",
       "description": "PARTIALLY DONE ALREADY (2026-07-29, direct live fix, not built by Kai) -- coding capability is done: core.opencode_bridge.OPENCODE_DEFAULT_MODEL now points at opencode/deepseek-v4-pro (was opencode/minimax-m2.7), using the dedicated DEEPSEEK_OPENCODE_ZEN_API_KEY credential (confirmed live to have full OpenCode Zen account access, not narrowly scoped -- also authenticates for opencode/claude-fable-5, so swapping it into the shared 'opencode' auth.json slot didn't risk opencode_claude), and ai_router.ROLE_PROVIDERS['coding'] is back to [claude, opencode_claude, opencode], 3 options again. Remaining scope for this phase: text-task capability only (planning/documentation/review, matching 'Planning: YES, Documentation: YES, Review: YES'). New provider 'deepseek' (or similar name distinct from the existing coding-only 'opencode' route), following the existing llm_clients.py + ai_provider.py pattern (NOT a separate per-provider file -- rejected as inconsistent with how every other provider here is structured). New llm_clients.call_deepseek(prompt, model='deepseek/deepseek-v4-pro') posting directly to https://openrouter.ai/api/v1/chat/completions using DEEPSEEK_OPENROUTER_API_KEY (already in .env, confirmed live -- its own dedicated key, not the shared OPENROUTER_API_KEY the existing 'openrouter' provider uses), registered with run_text_task, added to ROLE_PROVIDERS for planning/documentation/review. Mark cost_tier='free_or_low_cost' wherever the registry gains a cost_tier field (see 13W). DEEPSEEK_OPENCODE_ZEN_API_KEY is now in active use (see above) -- no longer an unresolved credential.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 13,
       "completion_criteria": [
@@ -866,9 +866,9 @@
         "Tests cover: availability reflects DEEPSEEK_OPENROUTER_API_KEY presence, text_task call uses the dedicated key not the shared OPENROUTER_API_KEY, coding-agent path uses the correct model string"
       ],
       "tests_required": true,
-      "build_id": null,
+      "build_id": "662a8e82",
       "note": "Deploy failed the self-build test gate on one unrelated pre-existing test (tests/test_api.py::test_delegate_endpoint_returns_502_when_all_providers_fail, which enumerated providers to disable but predated this build legitimately adding deepseek to the planning role -- fixed alongside the merge). Generated code (deepseek text-task provider + opencode_deepseek coding-agent route, 6 files, dedicated DEEPSEEK_OPENROUTER_API_KEY) was correct. Branch merged directly (commit 1bb2e76) after resolving real content conflicts against 13T's concurrently-merged changes to the same ROLE_PROVIDERS/provider-registry regions -- both additions preserved. 697 tests pass. Build object 194fbf49 shows FAILED -- reflects the failed self-test gate run, not the code quality.",
-      "failure_reason": null
+      "failure_reason": "Build 662a8e82 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "14B",
@@ -891,24 +891,25 @@
       "id": "19M",
       "name": "Cerebrum: Self Improvement - Kai evaluates itself, generates improvement proposals",
       "description": "Build Self Improvement engine: Kai continuously evaluates itself, generates improvement proposals. Never self-approve. Never bypass architecture/review/deployment/security review. Brain improvements follow governed engineering process.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "19A",
         "19B"
       ],
       "priority": 13,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "0ad33710"
     },
     {
       "id": "13B",
       "name": "Kai Command Interface",
       "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13A"
       ],
       "priority": 14,
-      "build_id": null,
+      "build_id": "f334ccb8",
       "note": "Superseded by K1 -- core/kai/commands.py already built, tested, and deployed; this build would only duplicate it.",
       "failure_reason": null
     },
@@ -993,24 +994,24 @@
       "id": "19O",
       "name": "Cerebrum: Command Center - Mission control for brain, memory, knowledge, reasoning",
       "description": "Transform Command Center into mission control: brain, memory, knowledge, reasoning, planning, projects, infrastructure, costs, providers, approvals, roadmap, learning, reflection, predictions, health, logs, skills. Everything observable, configurable, explainable.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 15,
       "assigned_provider": null,
       "assigned_agent": "qwen3",
-      "build_id": null,
+      "build_id": "c6ae102e",
       "failure_reason": null
     },
     {
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13A"
       ],
       "priority": 16,
-      "build_id": null,
+      "build_id": "6e8f4f1f",
       "failure_reason": null
     },
     {
@@ -1059,12 +1060,13 @@
       "id": "19P",
       "name": "Cerebrum: Self Explanation - Kai answers why questions with evidence",
       "description": "Implement Self Explanation: Kai answers Why? Why now? Why not? Why this provider? Why this plan? Why this architecture? Why this confidence? What evidence? What alternatives? What risks? Every important decision explainable with evidence.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "19G"
       ],
       "priority": 16,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "219ca438"
     },
     {
       "id": "13E",
@@ -1117,13 +1119,14 @@
       "id": "19Q",
       "name": "Cerebrum: Brain Health - Monitor reasoning quality, memory integrity, hallucination rates",
       "description": "Create Brain Health Monitor: continuously monitor reasoning quality, memory integrity, knowledge integrity, hallucination rates, provider reliability, learning effectiveness, prediction accuracy, decision quality, planning quality, infrastructure awareness. Detect degradation early.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "19A",
         "19B"
       ],
       "priority": 17,
-      "assigned_agent": "qwen3"
+      "assigned_agent": "qwen3",
+      "build_id": "7b6fce2a"
     },
     {
       "id": "13F",
@@ -1162,7 +1165,7 @@
       "id": "14A",
       "name": "Stuck-phase detection, Fable self-answer for judgment calls, auto-filed bug phases",
       "description": "User directive 2026-07-29, following the same incident as 13Y/13Z: 13P silently bounced WAITING_FOR_USER_INPUT <-> PLANNING with no human-visible signal that it was stuck (not merely waiting on a real decision) until this session noticed by reading builds.json history directly. Three related capabilities, all downstream of 13Z's Telegram bridge existing: (1) STUCK DETECTION -- advance_roadmap()/advance_builds() should recognize a phase that revisits the same status (or status pair, e.g. WAITING_FOR_USER_INPUT<->PLANNING) some threshold number of times without net progress, and flag it distinctly from an ordinary in-progress build (e.g. a stuck_count on the build record, or a new incident type) rather than looping forever indistinguishably from healthy back-and-forth. (2) FABLE SELF-ANSWER -- for a WAITING_FOR_USER_INPUT clarification that is a genuine judgment call with no real ambiguity requiring the human specifically (e.g. 'should the interval be 30, 45, or 60 seconds' has no wrong answer within the stated constraint 'well under WatchdogSec') delegate() to opencode_claude/Fable for an answer via submit_answer(), escalating to a human via 13Z's Telegram bridge only when the question is genuinely undecidable without the human (e.g. touches product/business tradeoffs, security posture, or anything in core.kai.policies.PROTECTED_FILES) -- must never let this path call approve_architecture/approve_deploy itself, exactly as core/kai/policies.py + tests/test_kai_identity.py's grep check already enforces for every other module under core/kai/; this capability likely belongs alongside that same enforced boundary, not as a bypass of it. (3) AUTO-FILED BUG PHASES -- when Kai's own code is the actual cause of a stuck/failed state (as with 13P's _plan_needs_clarification false positive, or 13S's original hallucinated-plan-markup incident), draft and queue a new roadmap phase describing the bug with the same evidence-based rigor as every existing 13-series phase (confirmed-live incident description, concrete file/line references, completion criteria) rather than requiring a human to notice, write it up, and add it manually as happened for 13P/13Q/13S/13Y themselves tonight.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "13Z"
       ],
@@ -1175,7 +1178,7 @@
         "New tests cover: stuck detection triggers past the threshold and not before it, a judgment-call question is auto-answered while a PROTECTED_FILES-adjacent question is escalated instead, and an auto-filed phase has the required fields populated"
       ],
       "tests_required": true,
-      "build_id": null,
+      "build_id": "703d6790",
       "failure_reason": null
     },
     {
@@ -1358,7 +1361,7 @@
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
       "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "12J"
       ],
@@ -1371,7 +1374,7 @@
         "Ambiguous catch-all task_types (law_chat/general_reasoning) get a zero-network-call complexity heuristic that can adjust candidate ordering; task_types that already carry an explicit classification are left untouched"
       ],
       "tests_required": true,
-      "build_id": null,
+      "build_id": "1f82cf96",
       "failure_reason": null
     },
     {

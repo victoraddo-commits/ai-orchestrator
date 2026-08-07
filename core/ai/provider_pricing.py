@@ -8,20 +8,7 @@ efficiency never penalizes a provider just because its pricing is unknown.
 """
 
 PRICING = {
-    "qwen4_text": {
-        "Qwen/Qwen3-32B-FP8": {
-            "description": "Self-hosted RunPod RTX PRO 6000, $0.99/hr GPU",
-            "input_per_million": 0.05,
-            "output_per_million": 0.05,
-        },
-    },
-    "qwen4_pod_b": {
-        "Qwen/Qwen3-32B-FP8": {
-            "description": "Self-hosted RunPod RTX PRO 6000, $0.99/hr GPU",
-            "input_per_million": 0.05,
-            "output_per_million": 0.05,
-        },
-    },
+    # 2026-08-07: qwen4_text/qwen4_pod_b removed — RunPod pods decommissioned.
     "gemini": {
         "gemini-flash-lite-latest": {
             "input_per_million": 0.00,
@@ -56,12 +43,6 @@ PRICING = {
         "deepseek/deepseek-v4-pro": {
             "input_per_million": 0.42,
             "output_per_million": 0.84,
-        },
-    },
-    "openai": {
-        "gpt-4o-mini": {
-            "input_per_million": 0.15,
-            "output_per_million": 0.60,
         },
     },
     "claude": {

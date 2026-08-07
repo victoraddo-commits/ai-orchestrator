@@ -215,7 +215,7 @@ async def chat_completions(
 ):
     """OpenAI-compatible chat completions.
 
-    ``model``: provider key (e.g. "qwen4_text") or "auto" for auto-routing.
+    ``model``: provider key (e.g. "deepseek_native_flash") or "auto" for auto-routing.
     """
     # Rate limit
     _check_rate_limit(api_key["key_id"], is_stream=False)

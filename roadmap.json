@@ -2714,7 +2714,7 @@
       "name": "Juris Kai Analytics",
       "description": "User engagement metrics: queries per day, topic popularity, retention rates, conversion rates (trial\u2192paid). Cost per user tracking. AI response quality sampling. Export for business intelligence.",
       "priority": 25,
-      "status": "in_progress",
+      "status": "failed",
       "depends_on": [
         "JK-1",
         "JK-3"
@@ -2724,14 +2724,15 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "build_id": "1791086a"
+      "build_id": "1791086a",
+      "failure_reason": "Build 1791086a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "JK-6",
       "name": "Juris Kai Monetization Readiness",
       "description": "Live Hubtel API integration (currently test mode). Payment webhook handling. Automatic subscription activation on payment confirmation. Receipt generation. Payment dispute handling flows.",
       "priority": 30,
-      "status": "in_progress",
+      "status": "failed",
       "depends_on": [
         "JK-1",
         "JK-2"
@@ -2741,7 +2742,8 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "build_id": "92e1c42f"
+      "build_id": "92e1c42f",
+      "failure_reason": "Build 92e1c42f missing from builds.json (deleted or stale reference)"
     }
   ],
   "_audit": {

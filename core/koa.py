@@ -66,23 +66,22 @@ def get_appliance_status():
         "disk_free_gb": round(psutil.disk_usage("/").free / (1024**3), 1),
     }
 
-    # gwen3 GPU status
-    gwen3 = {"status": "unknown"}
+    # Deepseek Flash API status (native api.deepseek.com)
+    deepseek_flash = {"status": "unknown"}
     try:
         import requests
-        api_key = os.environ.get("VLLM_QWEN3_CODER_API_KEY", "")
-        base_url = os.environ.get("VLLM_QWEN3_CODER_BASE_URL", "")
-        if api_key and base_url:
+        api_key = os.environ.get("DEEPSEEK_NATIVE_FLASH_API_KEY", "")
+        if api_key:
             resp = requests.get(
-                f"{base_url.rstrip('/')}/models",
+                "https://api.deepseek.com/v1/models",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=5,
             )
-            gwen3["status"] = "online" if resp.status_code == 200 else f"error({resp.status_code})"
+            deepseek_flash["status"] = "online" if resp.status_code == 200 else f"error({resp.status_code})"
             if resp.status_code == 200:
-                gwen3["models"] = [m.get("id") for m in resp.json().get("data", [])]
+                deepseek_flash["models"] = [m.get("id") for m in resp.json().get("data", [])]
     except Exception:
-        gwen3["status"] = "unreachable"
+        deepseek_flash["status"] = "unreachable"
 
     return {
         "appliance": {
@@ -93,7 +92,7 @@ def get_appliance_status():
         "resources": resources,
         "services": services,
         "docker": docker_containers,
-        "gwen3": gwen3,
+        "deepseek_flash": deepseek_flash,
         "proxmox": proxmox,
         "health": health,
     }

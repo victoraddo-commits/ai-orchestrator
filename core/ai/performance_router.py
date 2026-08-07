@@ -313,9 +313,7 @@ class RoutingDecision:
             "deepseek_native_pro": "DEEPSEEK_NATIVE_PRO_MODEL",
             "deepseek_native_flash": "DEEPSEEK_NATIVE_FLASH_MODEL",
             "deepseek": "DEEPSEEK_DEFAULT_MODEL",
-            "openai": "OPENAI_DEFAULT_MODEL",
-            "qwen4_text": "QWEN3_CODER_MODEL",
-            "qwen4_pod_b": "QWEN3_POD_B_MODEL",
+            # 2026-08-07: qwen4_text/qwen4_pod_b removed — RunPod pods decommissioned.
         }
 
         if provider_name in model_attr_map:

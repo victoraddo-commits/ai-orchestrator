@@ -11,7 +11,7 @@ from core.approval_watchdog import check_stale_approvals, check_stale_failures
 from core.logger import info
 import core.telegram_bridge as telegram_bridge
 from core.monitoring.budget_monitor import check_budgets
-import core.gpu_lifecycle as gpu_lifecycle
+# 2026-08-07: gpu_lifecycle removed — RunPod pods decommissioned.
 import core.vpn_failover as vpn_failover
 
 
@@ -52,32 +52,8 @@ def run_cycle():
 
     info("=== orchestrator cycle started ===")
 
-    # V3: GPU lifecycle heartbeat — verify pod health and update activity
-    try:
-        gpu_lifecycle.heartbeat()
-    except Exception as error:
-        info(f"gpu heartbeat failed: {type(error).__name__}")
-
-    # TK-41173c52: Auto-recover offline pods detected by heartbeat
-    try:
-        recovery_events = gpu_lifecycle.auto_recover_pods()
-        for evt in recovery_events:
-            info(
-                f"pod recovery: {evt['pod_id']} ({evt['role']}) "
-                f"attempt={evt['attempt']} success={evt['success']} "
-                f"— {evt.get('note', '')}"
-            )
-            # Alert on exhaustion
-            pod_config = gpu_lifecycle.POD_BY_ID.get(evt["pod_id"])
-            if pod_config and gpu_lifecycle.notify_restart_exhausted(pod_config):
-                info(
-                    f"RESTART EXHAUSTED: pod {evt['pod_id']} ({evt['role']}) "
-                    f"failed {gpu_lifecycle.MAX_RESTART_ATTEMPTS} restart attempts "
-                    f"— manual intervention required"
-                )
-                gpu_lifecycle.mark_restart_exhaustion_notified(pod_config)
-    except Exception as error:
-        info(f"pod auto-recovery failed: {type(error).__name__}")
+    # 2026-08-07: GPU lifecycle/heartbeat/auto-recovery removed —
+    # RunPod pods decommissioned.
 
     # TK-176d6efe: VPN failover — check WireGuard tunnel to Proxmox B and
     # attempt recovery if the tunnel is down.
@@ -229,20 +205,7 @@ def run_cycle():
                 info(f"telegram message->build record failed: {type(error).__name__}")
 
 
-    # V3: GPU lifecycle events
-    gpu_events = []
-    try:
-        gpu_events = gpu_lifecycle.manage_gpu_lifecycle()
-    except Exception as error:
-        info(f"gpu lifecycle failed: {type(error).__name__}")
-
-    # V3: GPU metrics for dashboard
-    gpu_metrics = {}
-    try:
-        gpu_metrics = gpu_lifecycle.get_gpu_dashboard()
-    except Exception as error:
-        info(f"gpu metrics failed: {type(error).__name__}")
-
+    # 2026-08-07: GPU lifecycle/mgmt/dashboard removed — RunPod pods decommissioned.
 
     result = {
 
@@ -263,8 +226,7 @@ def run_cycle():
         "verification": verification,
 
         # V3 additions
-        "gpu_events": gpu_events,
-        "gpu_metrics": gpu_metrics,
+        # 2026-08-07: gpu_events/gpu_metrics removed — RunPod pods decommissioned.
 
         # TK-176d6efe: VPN failover
         "vpn_events": vpn_events,

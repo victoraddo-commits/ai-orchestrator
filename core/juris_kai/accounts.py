@@ -86,7 +86,11 @@ DISCLAIMER_TEXT = (
 def _get_db() -> sqlite3.Connection:
     """Get or create the accounts database."""
     os.makedirs(DB_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    # check_same_thread=False is required because the AccountManager
+    # singleton is shared between the scheduler thread and the FastAPI
+    # worker threads. WAL mode + busy_timeout make this safe for our
+    # read-heavy, low-contention workload.
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

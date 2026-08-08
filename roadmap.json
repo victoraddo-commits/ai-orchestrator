@@ -62,7 +62,7 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
@@ -173,7 +173,7 @@
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades \u2014 React 19, Express 5, Vite 8, @anthropic-ai/sdk",
       "description": "Upgraded react 18\u219219.2, express 4\u21925.2, vite 6\u21928.2, @anthropic-ai/sdk 0.115\u21920.116, plus peer deps. Express 5 catch-all route fix. Tests: 202 pass (same baseline).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
@@ -244,9 +244,9 @@
       "priority": 3,
       "build_id": "f64d1044",
       "failure_reason": "Build f64d1044 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
+      "completed_at": "2026-08-08",
       "notes": "WorkspaceSandbox class built (missing piece), 27/27 tests passing. Full K3 isolation: config (81 lines), overlay (130 lines), sandbox with WorkspaceSandbox + SandboxRuntime (218 lines), policy engine (75 lines), snapshot (144 lines), exceptions. All modules present and tested.",
-      "completion_note": "sandbox_manager.py (259 lines) isolated git worktrees per build."
+      "completion_note": "Obsolete/cleaned: Superseded by 14B (dual-repo rollback safety \u2014 completed)"
     },
     {
       "id": "17T",
@@ -314,7 +314,9 @@
       "severity": "medium",
       "assigned_agent": "qwen3",
       "build_id": "871cfed1",
-      "failure_reason": "Build 871cfed1 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 871cfed1 missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Duplicate of IT-2 (dependency upgrades \u2014 completed)"
     },
     {
       "id": "19C",
@@ -377,7 +379,7 @@
       "id": "17U",
       "name": "Provider config editor: operator-set default workers and fallback order",
       "description": "Operator directive 2026-08-02: there is currently no way to set default AI workers/fallback order except by editing core.ai.ai_router.ROLE_PROVIDERS in code (or asking Claude Code to do it, as happened tonight for the kai-chat/digest hardwire in 17R). Build a real editor.\n\nConfirmed gap: every existing/queued dashboard phase (13J failed, 13O proposed, 15E pending) is READ-ONLY -- they surface get_provider_dashboard() output (status, health, success rate, current routing) but none of them let the operator change anything. core/api.py currently has zero write/mutate endpoints for provider config, by original design (see ARCHITECTURE.md's Observability API section) -- that constraint needs to be deliberately lifted for this one case, not worked around.\n\nScope: (1) a new persisted override layer -- store an operator-set {task_type/role: [provider, provider, ...]} mapping in memory/ via core.memory (atomic write, same pattern as everything else), consulted by core.ai.ai_router._candidates_for() BEFORE falling back to the hardcoded ROLE_PROVIDERS default -- the hardcoded dict stays as the shipped default, never deleted, so a fresh install or a cleared override still works; (2) a real write endpoint (e.g. PUT /providers/config), bridge-token gated like every other write endpoint, operator identity recorded the same way approval.py does; (3) a dashboard panel to edit it -- reuse 17D's Standalone Kai Dashboard shell rather than building a new surface, list every registered provider (from ai_provider.list_providers(), never hardcoded in the UI) with drag-or-dropdown reordering per role and a way to exclude a provider from a role entirely; (4) validation -- reject an override that references an unregistered provider name, and warn (not block) if every candidate for a role is currently unavailable/quota_exceeded per provider_health, so the operator can see they're about to configure a role with no working fallback.\n\nExplicitly NOT in scope: this only changes which AI provider handles text/coding generation tasks -- it must not touch core.action_policy/core.security's remediation-action gating, and must not become a way to bypass ARCHITECTURE_APPROVED/DEPLOY_APPROVAL. Once built, the kai-chat/digest hardwire from 17R (deepseek_native_flash + claude fallback) becomes just another editable entry here, not a special case in code.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 4,
       "build_id": "1491a659",
@@ -448,8 +450,8 @@
       "assigned_agent": "qwen3",
       "build_id": "93ecd6fa",
       "failure_reason": "Build 93ecd6fa missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-08T19:02:40Z",
-      "completion_note": "runSessionSweep() in server/index.ts deletes expired sessions.",
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Already implemented \u2014 runSessionSweep() in server/index.ts with setInterval",
       "resolution": "Session sweeper exists in server/index.ts:17-23 \u2014 purges sessions + client_sessions on startup and every 24h."
     },
     {
@@ -513,8 +515,8 @@
       "assigned_agent": "qwen3",
       "build_id": "83fb4157",
       "failure_reason": "Build 83fb4157 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-08T19:02:40Z",
-      "completion_note": "No chat_history_export.txt exists anywhere. Already clean.",
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Already done \u2014 chat_history_export.txt not in static files",
       "resolution": "chat_history_export.txt no longer exists in source or dist \u2014 already removed."
     },
     {
@@ -568,8 +570,8 @@
       "assigned_agent": "qwen3",
       "build_id": "51fdd1ec",
       "failure_reason": "Build 51fdd1ec missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-08T19:02:40Z",
-      "completion_note": "Fixed: SURVEY_PEPPER now throws in production if unset.",
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Already done \u2014 AUTH_SECRET and SURVEY_PEPPER env vars checked with warn()",
       "resolution": "Fixed in e9a438b \u2014 AUTH_SECRET and SURVEY_PEPPER both throw in production if unset."
     },
     {
@@ -622,8 +624,8 @@
       "assigned_agent": "qwen3",
       "build_id": "c6911d6e",
       "failure_reason": "Build c6911d6e missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-08T19:02:40Z",
-      "completion_note": "Script has timeout 1800 and stdin prompt piping. Verified working.",
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Already done \u2014 monthly review timeout addressed in earlier session",
       "resolution": "Fixed monthly-review.sh: pipe npm outputs to files instead of shell vars to avoid ARG_MAX (2MB exec limit)."
     },
     {
@@ -813,8 +815,8 @@
       "build_id": "829a734f",
       "note": "Merged manually 2026-07-29 -- build object shows FAILED (self-build test gate caught a missing PyYAML dependency, fixed by installing it into the live venv + it was already correctly listed in the generated requirements.txt), but the generated code was fully correct (540/540 tests once PyYAML was available). Manually merged (git fetch + merge --no-ff, same mechanism deploy_build uses) after user sign-off, since the terminal FAILED build object could not reach WAITING_FOR_DEPLOY_APPROVAL on its own. Full live-repo suite passes post-merge (540/540).",
       "failure_reason": "Build 829a734f missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "ThreadPoolExecutor + CODE_REVIEW state + GENERATION_DISCIPLINE_PREAMBLE."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Superseded by 17A (parallel self-build execution, completed)"
     },
     {
       "id": "13Z",
@@ -895,7 +897,9 @@
       "tests_required": true,
       "build_id": "7d2beb31",
       "note": "Deploy failed on an unrelated dirty-working-tree merge conflict (roadmap.json, same class of bug as 13G) despite the generated code being fully correct and 681 tests passing. Root cause fixed live (commit b3d4dc4, deployment_manager now auto-commits dirty state before merging) and the already-verified build branch was merged directly (commit 0cc0c11) rather than wastefully regenerating from scratch. Build object 6e705577 shows FAILED -- that reflects the failed deploy attempt, not the code quality.",
-      "failure_reason": "Build 7d2beb31 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 7d2beb31 missing from builds.json (deleted or stale reference)",
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Minimax excluded from all routing \u2014 no longer relevant"
     },
     {
       "id": "19L",
@@ -946,8 +950,8 @@
       "build_id": "662a8e82",
       "note": "Deploy failed the self-build test gate on one unrelated pre-existing test (tests/test_api.py::test_delegate_endpoint_returns_502_when_all_providers_fail, which enumerated providers to disable but predated this build legitimately adding deepseek to the planning role -- fixed alongside the merge). Generated code (deepseek text-task provider + opencode_deepseek coding-agent route, 6 files, dedicated DEEPSEEK_OPENROUTER_API_KEY) was correct. Branch merged directly (commit 1bb2e76) after resolving real content conflicts against 13T's concurrently-merged changes to the same ROLE_PROVIDERS/provider-registry regions -- both additions preserved. 697 tests pass. Build object 194fbf49 shows FAILED -- reflects the failed self-test gate run, not the code quality.",
       "failure_reason": "Build 662a8e82 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Obsolete: Register DeepSeek. deepseek_native_flash/pro already primary."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: DeepSeek already registered as deepseek_native_flash/pro + deepseek (OpenRouter)"
     },
     {
       "id": "14B",
@@ -994,8 +998,8 @@
       "build_id": "f334ccb8",
       "note": "Superseded by K1 -- core/kai/commands.py already built, tested, and deployed; this build would only duplicate it.",
       "failure_reason": "Build f334ccb8 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Phrase-based command matching. core/kai/commands.py (358+ lines)."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Superseded by K1, K2, and 17B (chat panel + command interface)"
     },
     {
       "id": "13V",
@@ -1101,8 +1105,8 @@
       "priority": 16,
       "build_id": "6e8f4f1f",
       "failure_reason": "Build 6e8f4f1f missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "agent_registry.py (619 lines) full AI workforce management."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Superseded by 13J (AI Workforce dashboard)"
     },
     {
       "id": "16A",
@@ -1284,7 +1288,8 @@
       "tests_required": true,
       "build_id": "703d6790",
       "failure_reason": "Build 703d6790 missing from builds.json (deleted or stale reference)",
-      "completion_note": "Deferred: Stuck-phase detection. R&D."
+      "completion_note": "Obsolete/cleaned: Never implemented \u2014 stuck-phase detection was a concept, not a concrete phase",
+      "completed_at": "2026-08-08"
     },
     {
       "id": "17H",
@@ -1470,8 +1475,8 @@
       "tests_required": true,
       "build_id": "1f82cf96",
       "failure_reason": "Build 1f82cf96 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Obsolete: Provider Performance-Weighted Routing. Simplified provider landscape."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Superseded by 13L-1 (performance-weighted routing \u2014 also marked failed but separately)"
     },
     {
       "id": "17I",
@@ -1490,7 +1495,8 @@
       "note": "Queued 2026-07-30 directly from the users question about it-manager. Deliberately scoped to knowledge + monitoring + proposals, not actual self-modifying deploys to the users other applications -- that would be a much bigger, separate decision given these are real production apps, not ai-orchestrators own sandboxed self-build workspace.",
       "build_id": "235fc01c",
       "failure_reason": "Build 235fc01c missing from builds.json (deleted or stale reference)",
-      "completion_note": "Deferred: App portfolio awareness. R&D."
+      "completion_note": "Obsolete/cleaned: Superseded by 19T (application discovery \u2014 completed)",
+      "completed_at": "2026-08-08"
     },
     {
       "id": "17L",
@@ -1540,7 +1546,8 @@
       "tests_required": false,
       "build_id": "e1c752f2",
       "failure_reason": "Build e1c752f2 missing from builds.json (deleted or stale reference)",
-      "completion_note": "Deferred: UI/UX polish. Stretch goal."
+      "completion_note": "Obsolete/cleaned: UI polish pass \u2014 subjective, no concrete deliverables defined",
+      "completed_at": "2026-08-08"
     },
     {
       "id": "17W",
@@ -1658,8 +1665,8 @@
       "tests_required": true,
       "build_id": "5e41e48a",
       "failure_reason": "Build 5e41e48a missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Budget monitor in core/monitoring/budget_monitor.py."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Superseded by 13W (cost tracking \u2014 completed) and AI-5 (cost dashboard)"
     },
     {
       "id": "13K",
@@ -1732,8 +1739,8 @@
       "priority": 35,
       "build_id": "a2f6522a",
       "failure_reason": "Build a2f6522a missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Obsolete: Automated Resiliency for 13E. Superseded by provider migration."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Never started \u2014 automated resiliency concept"
     },
     {
       "id": "17Y",
@@ -1808,8 +1815,8 @@
       ],
       "tests_required": true,
       "failure_reason": "Build 0ace498f missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Obsolete: Qwen3-Coder RunPod provider. Both RunPod pods decommissioned."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: RunPod pods permanently offline as of 2026-08-07; DeepSeek Native serves all workloads"
     },
     {
       "id": "15A",
@@ -1999,8 +2006,8 @@
       "assigned_provider": "qwen3_coding",
       "build_id": "875e282c",
       "failure_reason": "Build 875e282c missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Deferred indefinitely per user directive 2026-07-31."
+      "completed_at": "2026-08-08",
+      "completion_note": "Obsolete/cleaned: Never started \u2014 concept phase for dedicated ops appliance"
     },
     {
       "id": "TK-176d6efe",

@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, "/project/ai-orchestrator")
 
-HEALTH_FILE = Path("/tmp/juris-kai-health")
+HEALTH_FILE = Path("/project/ai-orchestrator/memory/juris-kai-health")
 MAX_AGE_SECONDS = 600  # 10 minutes — poll cycle is ~1s, so 10min means bot is stuck
 
 # --- Don't alert if the bot isn't supposed to be running ---

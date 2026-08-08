@@ -18,7 +18,7 @@ from pathlib import Path
 
 import bcrypt
 
-from core.jwt_auth import create_jwt, verify_jwt
+from core.jwt_auth import create_jwt, verify_jwt, blocklist_token
 from core.rate_limiter import get_brute_force_protector
 
 # ---------------------------------------------------------------------------
@@ -241,8 +241,10 @@ def check_capability(operator: str, capability: str) -> bool:
 
 
 def invalidate_session(token: str) -> None:
-    """Remove a session token.  No-op for unknown tokens."""
+    """Remove a session token.  Also blocklists the JWT so it can't be
+    replayed — stateless JWTs are otherwise not revocable mid-lifetime."""
     _sessions.pop(token, None)
+    blocklist_token(token)
 
 
 def resolve_role(token: str) -> str | None:

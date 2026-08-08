@@ -666,7 +666,11 @@ def module_config_get(name: str):
 
 
 @app.put("/api/modules/{name}/config")
-def module_config_put(name: str, body: dict = Body(...)):
+def module_config_put(
+    name: str,
+    body: dict = Body(...),
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """Persist runtime config for a specific module."""
     try:
         from core.memory import load_memory, save_memory
@@ -1269,7 +1273,10 @@ async def docker_containers():
 
 
 @app.post("/api/docker/containers/{name}/start")
-async def docker_container_start(name: str):
+async def docker_container_start(
+    name: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """Start a stopped container by name."""
     try:
         client = _get_docker_client()
@@ -1282,7 +1289,10 @@ async def docker_container_start(name: str):
 
 
 @app.post("/api/docker/containers/{name}/stop")
-async def docker_container_stop(name: str):
+async def docker_container_stop(
+    name: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """Stop a running container by name."""
     try:
         client = _get_docker_client()
@@ -1295,7 +1305,10 @@ async def docker_container_stop(name: str):
 
 
 @app.post("/api/docker/containers/{name}/restart")
-async def docker_container_restart(name: str):
+async def docker_container_restart(
+    name: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """Restart a container by name."""
     try:
         client = _get_docker_client()
@@ -1721,6 +1734,7 @@ def agents_disable_endpoint(
 def agents_test_endpoint(
     agent_id: str,
     body: AgentTestRequest | None = None,
+    operator: str = Depends(_require_write_capability("delegate.use")),
 ):
     """Run a quick health test against the agent's provider."""
     timeout = body.timeout if body else 30
@@ -3296,21 +3310,29 @@ def api_admin_status():
 
 
 @app.post("/api/admin/pause-scheduler")
-def api_pause_scheduler(body: AdminAction):
+def api_pause_scheduler(
+    body: AdminAction,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """TK-b7614289: Pause the scheduler loop. Safe — current cycle completes."""
     _set_pause_state(True, reason=body.reason, operator="dashboard")
     return {"ok": True, "scheduler": _get_pause_state()}
 
 
 @app.post("/api/admin/resume-scheduler")
-def api_resume_scheduler():
+def api_resume_scheduler(
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """TK-b7614289: Resume the scheduler loop."""
     _set_pause_state(False)
     return {"ok": True, "scheduler": _get_pause_state()}
 
 
 @app.post("/api/admin/retry-build")
-def api_retry_build(body: AdminAction):
+def api_retry_build(
+    body: AdminAction,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """TK-b7614289: Reset a failed build to PENDING for retry."""
     if not body.build_id:
         raise HTTPException(400, "build_id is required")
@@ -3335,7 +3357,10 @@ def api_retry_build(body: AdminAction):
 
 
 @app.post("/api/admin/cancel-build")
-def api_cancel_build(body: AdminAction):
+def api_cancel_build(
+    body: AdminAction,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """TK-b7614289: Cancel an active build (mark as FAILED)."""
     if not body.build_id:
         raise HTTPException(400, "build_id is required")
@@ -3361,7 +3386,10 @@ def api_cancel_build(body: AdminAction):
 
 
 @app.post("/api/admin/disable-provider")
-def api_disable_provider(body: AdminAction):
+def api_disable_provider(
+    body: AdminAction,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """TK-b7614289: Temporarily disable an AI provider."""
     if not body.provider_name:
         raise HTTPException(400, "provider_name is required")
@@ -3384,7 +3412,10 @@ def api_disable_provider(body: AdminAction):
 
 
 @app.post("/api/admin/enable-provider")
-def api_enable_provider(body: AdminAction):
+def api_enable_provider(
+    body: AdminAction,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
     """TK-b7614289: Re-enable a disabled AI provider."""
     if not body.provider_name:
         raise HTTPException(400, "provider_name is required")

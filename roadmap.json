@@ -1822,7 +1822,7 @@
       "id": "15A",
       "name": "Kai platform auth foundation: local accounts + capability-based permissions",
       "description": "Foundation for the 'Kai Enterprise Platform' initiative (user proposal 2026-07-29, trimmed after review). Scope, deliberately narrow: local username/password accounts (no external OAuth) plus a capability-based permission check -- capabilities like deploy.build, approve.architecture, chat.use, roadmap.create, provider.configure, each independently checkable in code -- mapped to exactly two initial roles: 'operator' (every capability, i.e. what the single existing bridge-token operator already has today) and 'viewer' (read-only: dashboard/chat reads, no write capabilities). Capability checks must live in one shared module (e.g. core/authz.py) that every write endpoint in core/api.py calls, not duplicated per-endpoint logic. Explicitly deferred from the original proposal, and why: full OAuth (Google/Microsoft/GitHub) + MFA + service accounts was scoped for a system with exactly one real user today -- add a second auth provider only when a real second person needs one, not speculatively. A 6-role taxonomy (Owner/Architect/Developer/Analyst/Customer/Guest) was cut to 2 roles for the same reason -- the capability model means adding a narrower role later is a mapping change, not a redesign, so there is no lock-in cost to starting minimal. The 'Customer' role scoped to assigned projects implied a multi-tenant customer-facing product pivot that was never a stated goal -- if that direction is wanted later it needs its own explicit decision, not a permissions bullet. Multi-organization support (isolated users/projects/learning/providers per org) was cut entirely: there is one organization. None of these are permanently ruled out, just not built until a real need exists -- a future roadmap phase should re-propose them with a concrete driving need, not reintroduce them speculatively. Explicitly low priority and deferred (user directive 2026-07-30): multi-user work should not be picked up ahead of any single-user-focused work still pending.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [
         "13H"
       ],
@@ -1839,7 +1839,7 @@
       "note": "Deferred 2026-07-30 per user directive: multi-user/enterprise features (15A-15H) are explicitly out of scope until the single-user Kai chat experience (13X, 16A) is complete and proven. Kai has exactly one operator for now. Revisit this whole phase group after 13X/16A/13H ship -- do not spend build effort preparing for multiple users before then.",
       "build_id": "5276508f",
       "failure_reason": "Build 5276508f missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
+      "completed_at": "2026-08-08",
       "completion_note": "BCrypt+JWT auth, operator/viewer roles, brute-force protection. core/authz.py."
     },
     {

@@ -241,19 +241,40 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> 
     Returns the response text on success, or a user-friendly error message
     on timeout or failure.  This prevents a stalled provider from blocking
     the bot's synchronous polling loop indefinitely.
+
+    Detects empty (blank) AI responses and retries once with a simplified
+    prompt before giving up, because some providers (e.g. deepseek_native_flash)
+    occasionally return empty strings for valid queries.
     """
-    try:
+    def _call(p: str) -> str:
         from core.ai.ai_router import delegate
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
-                delegate, prompt,
+                delegate, p,
                 task_type=task_type, capability="text_task",
             )
-            result = future.result(timeout=DELEGATE_TIMEOUT)
-            return result["response"]
+            res = future.result(timeout=DELEGATE_TIMEOUT)
+            return (res.get("response") or "").strip()
+
+    try:
+        text = _call(prompt)
+        # If the AI returned nothing, retry once with a simpler bare prompt
+        # (no jurisdiction gate — the AI already saw the gate on the first attempt).
+        if not text:
+            logger.warning(f"Empty AI response for {task_type}, retrying with simple prompt")
+            text = _call(f"Answer this Ghana law question concisely: {fallback_label}")
+        if not text:
+            logger.error(f"Empty AI response after retry for {task_type}")
+            return (
+                "⚠️ I couldn't generate a response for that query. "
+                "The AI provider returned an empty reply — this can happen with "
+                "certain legal article references. Please try rephrasing your question "
+                "or ask about a specific legal topic."
+            )
+        return text
     except concurrent.futures.TimeoutError:
         logger.warning(f"Delegate timeout for {task_type} ({DELEGATE_TIMEOUT}s)")
-        return f"⚠️ Query timed out. Please try a more specific question."
+        return "⚠️ Query timed out. Please try a more specific question."
     except Exception as e:
         logger.error(f"Delegate failed for {task_type}: {e}")
         return f"⚠️ Unable to load {fallback_label}. Please try again later."
@@ -952,7 +973,11 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
     # Process as legal query
     from core.juris_kai.prompt import build_prompt
     prompt = build_prompt("legal_research", text)
-    response_text = _delegate_with_timeout(prompt, "juris_research", "your query")
+    response_text = _delegate_with_timeout(prompt, "juris_research", text)
+
+    if not response_text or not response_text.strip():
+        logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
+        response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
 
     mgr.record_query(account["account_id"])
 

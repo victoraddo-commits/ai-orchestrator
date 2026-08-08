@@ -1304,10 +1304,16 @@ def run_forever():
     mgr = get_account_manager()
     print(f"Database ready at: {mgr.db}")
 
+    # Health check file — touched after each successful poll cycle.
+    # Monitor with: find /tmp/juris-kai-health -mmin +5  (stale if >5 min)
+    HEALTH_FILE = Path("/tmp/juris-kai-health")
+    HEALTH_FILE.touch()
+
     offset = None
     while True:
         try:
             offset = poll_updates(offset)
+            HEALTH_FILE.touch()  # Successful cycle — bot is alive
         except Exception as e:
             logger.error(f"Poll error: {e}")
             time.sleep(ERROR_BACKOFF)

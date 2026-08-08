@@ -687,7 +687,11 @@ def juris_kai_account_detail(account_id: str):
 
 
 @app.post("/api/juris-kai/accounts/{account_id}/subscription")
-def juris_kai_set_subscription(account_id: str, body: dict = Body(...)):
+def juris_kai_set_subscription(
+    account_id: str,
+    body: dict = Body(...),
+    operator: str = Depends(_require_write_capability("juris.admin")),
+):
     """Change an account's subscription tier."""
     try:
         from core.juris_kai.dashboard import update_subscription
@@ -697,7 +701,11 @@ def juris_kai_set_subscription(account_id: str, body: dict = Body(...)):
 
 
 @app.post("/api/juris-kai/accounts/{account_id}/deactivate")
-def juris_kai_deactivate(account_id: str, body: dict = Body(...)):
+def juris_kai_deactivate(
+    account_id: str,
+    body: dict = Body(...),
+    operator: str = Depends(_require_write_capability("juris.admin")),
+):
     """Ban/deactivate an account."""
     try:
         from core.juris_kai.accounts import get_account_manager
@@ -708,7 +716,10 @@ def juris_kai_deactivate(account_id: str, body: dict = Body(...)):
 
 
 @app.post("/api/juris-kai/accounts/{account_id}/activate")
-def juris_kai_activate(account_id: str):
+def juris_kai_activate(
+    account_id: str,
+    operator: str = Depends(_require_write_capability("juris.admin")),
+):
     """Reactivate/unban an account."""
     try:
         from core.juris_kai.accounts import get_account_manager
@@ -719,7 +730,11 @@ def juris_kai_activate(account_id: str):
 
 
 @app.post("/api/juris-kai/accounts/{account_id}/grant-days")
-def juris_kai_grant_days(account_id: str, body: dict = Body(...)):
+def juris_kai_grant_days(
+    account_id: str,
+    body: dict = Body(...),
+    operator: str = Depends(_require_write_capability("juris.admin")),
+):
     """Grant N free days to an account."""
     try:
         from core.juris_kai.accounts import get_account_manager
@@ -742,7 +757,10 @@ def juris_kai_referrals():
 
 
 @app.post("/api/juris-kai/referrals/generate")
-def juris_kai_referral_generate(body: dict = Body(...)):
+def juris_kai_referral_generate(
+    body: dict = Body(...),
+    operator: str = Depends(_require_write_capability("juris.admin")),
+):
     """Generate a new invite code for an account."""
     try:
         from core.juris_kai.accounts import get_account_manager

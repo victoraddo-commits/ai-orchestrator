@@ -660,14 +660,14 @@ GHANA_LEGAL_SOURCES: List[GhanaLegalSource] = [
     GhanaLegalSource(
         key="water_resources_commission",
         name="Water Resources Commission",
-        domain="wrc-gh.org",
+        domain="wrc.gov.gh",
         tier=3,
         acquisition_status="UNVERIFIED",
         rights_classification="pending",
-        base_url="https://www.wrc-gh.org",
+        base_url="https://wrc.gov.gh",
         discovery_urls=[
-            "https://www.wrc-gh.org/legislation/",
-            "https://www.wrc-gh.org/regulations/",
+            "https://wrc.gov.gh/legislation/",
+            "https://wrc.gov.gh/regulations/",
         ],
         document_types=["water_act", "regulation", "instrument"],
         monitoring_frequency="weekly",

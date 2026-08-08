@@ -148,7 +148,8 @@
       "build_id": "d47e5ec7",
       "failure_reason": "Build d47e5ec7 missing from builds.json (deleted or stale reference)",
       "completed_at": "2026-08-08",
-      "completion_note": "OpenCode Zen keys: CLAUDE_FABLE5 + GEMINI_3_1_PRO keys in .env, wired via opencode_bridge"
+      "completion_note": "Dedicated per-model OpenCode Zen keys wired: opencode_fable5 + opencode_gemini_pro with isolated XDG_DATA_HOME auth. Highest priority in all ROLE_PROVIDERS per operator directive.",
+      "completed": "2026-08-08"
     },
     {
       "id": "18B",
@@ -2515,7 +2516,7 @@
         "18A-a"
       ],
       "assigned_agent": "qwen3",
-      "status": "completed",
+      "status": "failed",
       "description": "Multi-user chat: per-user conversation history, authentication-based access, user isolation (users cannot see other users conversations).",
       "completion_criteria": [
         "Per-user conversation history",

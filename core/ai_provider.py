@@ -317,6 +317,59 @@ def _opencode_minimax_run_coding_task(project_path, instruction, **kwargs):
     return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
+# 17S: Dedicated per-model OpenCode Zen keys (2026-08-08).
+# Each key is scoped to exactly one model on the platform side, with its own
+# isolated XDG_DATA_HOME/auth.json so the shared 'opencode' credential's other
+# models are never reachable through these routes (operator directive).
+OPENCODE_FABLE5_MODEL = "opencode/claude-fable-5"
+OPENCODE_GEMINI_PRO_MODEL = "opencode/gemini-3.1-pro"
+
+
+def _opencode_fable5_run_coding_task(project_path, instruction, **kwargs):
+    """Dedicated CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY — isolated auth."""
+    return opencode_bridge.run_opencode_fable5(project_path, instruction, **kwargs)
+
+
+def _opencode_fable5_run_text_task(prompt, timeout=60, project_path=None):
+    """Fable 5 text-task route via dedicated key. Same 'text only' wrapper as
+    _opencode_claude_run_text_task but with isolated auth."""
+    from core.build_manager import create_local_repo
+    if project_path is None:
+        create_local_repo(_SCRATCH_WORKSPACE)
+        project_path = _SCRATCH_WORKSPACE
+    instruction = (
+        "Answer the following as text only. Do NOT write, edit, or modify "
+        "any files, and do not run commands that change anything.\n\n"
+        f"{prompt}"
+    )
+    result = _opencode_fable5_run_coding_task(project_path, instruction, timeout=timeout)
+    if not result.get("success"):
+        errors = result.get("tool_errors") or []
+        detail = "; ".join(e.get("content", "") for e in errors) or "opencode run did not succeed"
+        raise RuntimeError(f"opencode_fable5 text task failed: {detail}")
+    return result.get("response_text", "")
+
+
+def _opencode_gemini_pro_run_text_task(prompt, timeout=60, project_path=None):
+    """Dedicated GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY — isolated auth.
+    Text-only route: Gemini 3.1 Pro is a reasoning model, not a coding agent."""
+    from core.build_manager import create_local_repo
+    if project_path is None:
+        create_local_repo(_SCRATCH_WORKSPACE)
+        project_path = _SCRATCH_WORKSPACE
+    instruction = (
+        "Answer the following as text only. Do NOT write, edit, or modify "
+        "any files, and do not run commands that change anything.\n\n"
+        f"{prompt}"
+    )
+    result = opencode_bridge.run_opencode_gemini_pro(project_path, instruction, timeout=timeout)
+    if not result.get("success"):
+        errors = result.get("tool_errors") or []
+        detail = "; ".join(e.get("content", "") for e in errors) or "opencode run did not succeed"
+        raise RuntimeError(f"opencode_gemini_pro text task failed: {detail}")
+    return result.get("response_text", "")
+
+
 # 2026-08-03 operator directive: OmniRoute (localhost:20128) as Kai's
 # always-on fallback provider. The gateway exposes OpenAI-compatible /v1
 # endpoints with auto/ routes that pick the best upstream per request, so
@@ -571,6 +624,28 @@ register_provider(
     cost_tier="free_or_low_cost",
 )
 
+# 17S: Dedicated per-model OpenCode Zen providers (2026-08-08).
+# Each has its own isolated auth.json via XDG_DATA_HOME, cleanly separating
+# the shared 'opencode' credential's multi-model slot from these single-model
+# keys. Per operator directive: highest priority for eligible roles.
+register_provider(
+    "opencode_fable5",
+    run_coding_task=_opencode_fable5_run_coding_task,
+    run_text_task=_opencode_fable5_run_text_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="Claude Fable 5 via dedicated OpenCode Zen key (CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY) -- isolated from shared 'opencode' credential, highest priority per operator directive 2026-08-02",
+    cost_tier="paid",
+)
+
+register_provider(
+    "opencode_gemini_pro",
+    run_text_task=_opencode_gemini_pro_run_text_task,
+    available_fn=_opencode_available,
+    kind="cloud",
+    description="Gemini 3.1 Pro via dedicated OpenCode Zen key (GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY) -- isolated from shared 'opencode' credential, text-only route per operator directive, highest priority for text roles",
+    cost_tier="paid",
+)
 
 
 register_provider(

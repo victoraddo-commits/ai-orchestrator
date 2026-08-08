@@ -55,6 +55,145 @@ DEFAULT_GRACE_KILL_SECONDS = int(os.environ.get(
     "GENERATION_SUBPROCESS_GRACE_KILL_SECONDS", "5"
 ))
 
+# Per-model isolated auth directories for dedicated API keys (17S).
+# Each key is scoped to exactly one model on the platform side, so we give
+# each its own XDG_DATA_HOME with an independent auth.json.
+OPENCODE_FABLE5_DATA_HOME = Path.home() / ".local" / "share" / "opencode-fable5"
+OPENCODE_GEMINI_PRO_DATA_HOME = Path.home() / ".local" / "share" / "opencode-gemini-pro"
+
+
+def _ensure_isolated_auth(data_home: Path, provider_name: str, api_key: str) -> None:
+    """Create/update an isolated auth.json for a dedicated API key.
+
+    Each invocation of opencode can be pointed at a different XDG_DATA_HOME
+    via SubprocessWatchdog's env= parameter, so two differently-scoped keys
+    never share the same credential slot.
+    """
+    auth_dir = data_home / "opencode"
+    auth_dir.mkdir(parents=True, exist_ok=True)
+    auth_file = auth_dir / "auth.json"
+    auth: dict = {}
+    if auth_file.exists():
+        try:
+            auth = json.loads(auth_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    auth[provider_name] = {"type": "api", "key": api_key}
+    auth_file.write_text(json.dumps(auth))
+
+
+def _run_opencode_with_home(
+    project_path: str,
+    instruction: str,
+    model: str,
+    timeout: int,
+    data_home: Path,
+) -> subprocess.CompletedProcess:
+    """Run opencode with a custom XDG_DATA_HOME for isolated auth."""
+    opencode_path = shutil.which("opencode") or "opencode"
+    wd = SubprocessWatchdog(
+        [opencode_path, "run", instruction, "--dir", project_path,
+         "--model", model, "--format", "json", "--auto"],
+        wall_timeout_seconds=timeout,
+        idle_cpu_seconds=DEFAULT_IDLE_CPU_TIMEOUT,
+        grace_kill_seconds=DEFAULT_GRACE_KILL_SECONDS,
+        env={**os.environ, "XDG_DATA_HOME": str(data_home)},
+    )
+    return wd.run()
+
+
+def run_opencode_fable5(
+    project_path: str,
+    instruction: str,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> dict:
+    """Run opencode with the dedicated CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY.
+
+    Isolated from the shared 'opencode' credential in ~/.local/share/opencode/ --
+    this key is scoped exclusively to opencode/claude-fable-5.
+    """
+    api_key = os.environ.get("CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY", "")
+    if not api_key:
+        return {
+            "success": False,
+            "response_text": "",
+            "files_changed": [],
+            "commits": [],
+            "tool_errors": [{"tool": None, "content": "CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY not set in environment"}],
+            "cost": None,
+        }
+    _ensure_isolated_auth(OPENCODE_FABLE5_DATA_HOME, "opencode", api_key)
+    try:
+        result = _run_opencode_with_home(
+            project_path, instruction, "opencode/claude-fable-5", timeout,
+            OPENCODE_FABLE5_DATA_HOME,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "response_text": "",
+            "files_changed": [],
+            "commits": [],
+            "tool_errors": [{"tool": None, "content": f"opencode fable5 exceeded {timeout}s timeout"}],
+            "cost": None,
+        }
+    return _parse_opencode_result(result)
+
+
+def run_opencode_gemini_pro(
+    project_path: str,
+    instruction: str,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> dict:
+    """Run opencode with the dedicated GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY.
+
+    Isolated from the shared 'opencode' credential -- this key is scoped
+    exclusively to opencode/gemini-3.1-pro.
+    """
+    api_key = os.environ.get("GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY", "")
+    if not api_key:
+        return {
+            "success": False,
+            "response_text": "",
+            "files_changed": [],
+            "commits": [],
+            "tool_errors": [{"tool": None, "content": "GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY not set in environment"}],
+            "cost": None,
+        }
+    _ensure_isolated_auth(OPENCODE_GEMINI_PRO_DATA_HOME, "opencode", api_key)
+    try:
+        result = _run_opencode_with_home(
+            project_path, instruction, "opencode/gemini-3.1-pro", timeout,
+            OPENCODE_GEMINI_PRO_DATA_HOME,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "response_text": "",
+            "files_changed": [],
+            "commits": [],
+            "tool_errors": [{"tool": None, "content": f"opencode gemini-pro exceeded {timeout}s timeout"}],
+            "cost": None,
+        }
+    return _parse_opencode_result(result)
+
+
+
+def run_coding_task(project_path, instruction, model=None, timeout=DEFAULT_TIMEOUT):
+    """Run opencode with the shared credential (backward-compatible wrapper)."""
+    try:
+        result = _run_opencode_process(project_path, instruction, model or OPENCODE_DEFAULT_MODEL, timeout)
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "response_text": "",
+            "files_changed": [],
+            "commits": [],
+            "tool_errors": [{"tool": None, "content": f"opencode run exceeded {timeout}s wall-clock timeout"}],
+            "cost": None,
+        }
+    return _parse_opencode_result(result)
+
 
 def credential_exists(key):
     """True when the opencode CLI is on PATH and its credential store holds an
@@ -96,19 +235,8 @@ def _parse_events(stdout):
     return events
 
 
-def run_coding_task(project_path, instruction, model=None, timeout=DEFAULT_TIMEOUT):
-    try:
-        result = _run_opencode_process(project_path, instruction, model or OPENCODE_DEFAULT_MODEL, timeout)
-    except subprocess.TimeoutExpired:
-        return {
-            "success": False,
-            "response_text": "",
-            "files_changed": [],
-            "commits": [],
-            "tool_errors": [{"tool": None, "content": f"opencode run exceeded {timeout}s wall-clock timeout"}],
-            "cost": None,
-        }
-
+def _parse_opencode_result(result):
+    """Parse opencode JSON-line output into the standard coding-task result dict."""
     events = _parse_events(result.stdout)
 
     response_text_parts = []

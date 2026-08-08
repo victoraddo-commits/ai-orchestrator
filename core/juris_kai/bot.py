@@ -235,16 +235,27 @@ def is_admin(telegram_id: str) -> bool:
 DELEGATE_TIMEOUT = 45
 
 # Per-user response cache — each user gets their own cache shard to
-# prevent cross-user response leakage. Keys are now (account_id, query_hash)
-# so User A's cached legal answer never reaches User B, even for identical
+# CACHE ISOLATION — per-account_id shards with threading lock.
+# User A's cached legal answer must NEVER reach User B, even for identical
 # queries. Max 200 entries per user, ~1 hour TTL.
 from functools import lru_cache
 import hashlib
+import threading
 import time as _time
 
 _CACHE: dict[str, dict] = {}  # account_id → {key → (response_text, model, cached_at)}
+_CACHE_LOCK = threading.Lock()
 _CACHE_MAX_PER_USER = 200
 _CACHE_TTL = 3600  # 1 hour
+
+
+def _flush_all_caches():
+    """Wipe ALL cached AI responses. Called on startup for clean slate."""
+    with _CACHE_LOCK:
+        count = sum(len(v) for v in _CACHE.values())
+        _CACHE.clear()
+        if count > 0:
+            logger.info(f"Flushed {count} cached responses across {len(_CACHE)} users")
 
 
 def _cache_key(text: str, context_type: str, account_id: str) -> str:
@@ -255,22 +266,28 @@ def _cache_key(text: str, context_type: str, account_id: str) -> str:
 
 def _cache_get(text: str, context_type: str, account_id: str) -> tuple[str, str] | None:
     """Return (response, model) if cached and fresh, else None. Per-user isolation."""
-    user_cache = _CACHE.get(account_id, {})
-    key = _cache_key(text, context_type, account_id)
-    entry = user_cache.get(key)
-    if entry and (_time.time() - entry[2]) < _CACHE_TTL:
-        return (entry[0], entry[1])
-    return None
+    if not account_id:  # defense-in-depth: never serve cache without an account
+        return None
+    with _CACHE_LOCK:
+        user_cache = _CACHE.get(account_id, {})
+        key = _cache_key(text, context_type, account_id)
+        entry = user_cache.get(key)
+        if entry and (_time.time() - entry[2]) < _CACHE_TTL:
+            return (entry[0], entry[1])
+        return None
 
 
 def _cache_set(text: str, context_type: str, account_id: str, response: str, model: str):
     """Store response in per-user cache. Evicts oldest entry if at capacity."""
-    user_cache = _CACHE.setdefault(account_id, {})
-    key = _cache_key(text, context_type, account_id)
-    if len(user_cache) >= _CACHE_MAX_PER_USER:
-        oldest = min(user_cache.items(), key=lambda kv: kv[1][2])
-        del user_cache[oldest[0]]
-    user_cache[key] = (response, model, _time.time())
+    if not account_id:  # defense-in-depth: never cache without an account
+        return
+    with _CACHE_LOCK:
+        user_cache = _CACHE.setdefault(account_id, {})
+        key = _cache_key(text, context_type, account_id)
+        if len(user_cache) >= _CACHE_MAX_PER_USER:
+            oldest = min(user_cache.items(), key=lambda kv: kv[1][2])
+            del user_cache[oldest[0]]
+        user_cache[key] = (response, model, _time.time())
 
 
 def _estimate_tokens(text: str) -> int:
@@ -1383,6 +1400,9 @@ def run_forever():
     # Ensure DB is initialized
     mgr = get_account_manager()
     print(f"Database ready at: {mgr.db}")
+
+    # Wipe any cached AI responses from a previous run — clean slate.
+    _flush_all_caches()
 
     # Health check file — touched after each successful poll cycle.
     # Uses /project/ memory dir (NOT /tmp — PrivateTmp=yes isolates /tmp).

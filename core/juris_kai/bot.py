@@ -234,60 +234,62 @@ def is_admin(telegram_id: str) -> bool:
 # polling loop for too long.
 DELEGATE_TIMEOUT = 45
 
-# Per-user response cache — each user gets their own cache shard to
-# CACHE ISOLATION — per-account_id shards with threading lock.
-# User A's cached legal answer must NEVER reach User B, even for identical
-# queries. Max 200 entries per user, ~1 hour TTL.
-from functools import lru_cache
-import hashlib
-import threading
-import time as _time
+# ---------------------------------------------------------------------------
+# Request isolation — no shared mutable state across users
+# ---------------------------------------------------------------------------
+# The bot processes messages from multiple users in a single process.
+# Every AI response is generated fresh per request — nothing is cached.
+# The send_response() gateway validates chat_id before every message send.
+#
+# ARCHITECTURE RULE: No module-level dict/list/set that stores per-user data.
+# All per-request state lives in the immutable RequestContext, created fresh
+# for every incoming message and never shared between users.
+# ---------------------------------------------------------------------------
 
-_CACHE: dict[str, dict] = {}  # account_id → {key → (response_text, model, cached_at)}
-_CACHE_LOCK = threading.Lock()
-_CACHE_MAX_PER_USER = 200
-_CACHE_TTL = 3600  # 1 hour
-
-
-def _flush_all_caches():
-    """Wipe ALL cached AI responses. Called on startup for clean slate."""
-    with _CACHE_LOCK:
-        count = sum(len(v) for v in _CACHE.values())
-        _CACHE.clear()
-        if count > 0:
-            logger.info(f"Flushed {count} cached responses across {len(_CACHE)} users")
+import uuid
+from dataclasses import dataclass
 
 
-def _cache_key(text: str, context_type: str, account_id: str) -> str:
-    """Cache key scoped to (account, context_type, query) — no cross-user sharing."""
-    normalized = " ".join(text.lower().split())[:200]
-    return hashlib.sha256(f"{account_id}:{context_type}:{normalized}".encode()).hexdigest()
+@dataclass(frozen=True)
+class RequestContext:
+    """Immutable per-message context — created fresh for every incoming message.
+
+    No handler ever mutates shared module-level state. Each message gets its
+    own context object, and every response is bound to the requesting chat_id.
+    """
+    chat_id: int
+    telegram_id: str
+    account: dict
+    request_id: str
+    is_admin: bool
 
 
-def _cache_get(text: str, context_type: str, account_id: str) -> tuple[str, str] | None:
-    """Return (response, model) if cached and fresh, else None. Per-user isolation."""
-    if not account_id:  # defense-in-depth: never serve cache without an account
-        return None
-    with _CACHE_LOCK:
-        user_cache = _CACHE.get(account_id, {})
-        key = _cache_key(text, context_type, account_id)
-        entry = user_cache.get(key)
-        if entry and (_time.time() - entry[2]) < _CACHE_TTL:
-            return (entry[0], entry[1])
-        return None
+def _send_guarded(expected_chat_id, result: dict | None):
+    """Send a response ONLY if it targets the expected chat_id.
 
-
-def _cache_set(text: str, context_type: str, account_id: str, response: str, model: str):
-    """Store response in per-user cache. Evicts oldest entry if at capacity."""
-    if not account_id:  # defense-in-depth: never cache without an account
+    This is the single bottleneck for ALL outbound messages in the bot.
+    Every send_message() call MUST go through here or send_response().
+    """
+    if not result or not result.get("text"):
         return
-    with _CACHE_LOCK:
-        user_cache = _CACHE.setdefault(account_id, {})
-        key = _cache_key(text, context_type, account_id)
-        if len(user_cache) >= _CACHE_MAX_PER_USER:
-            oldest = min(user_cache.items(), key=lambda kv: kv[1][2])
-            del user_cache[oldest[0]]
-        user_cache[key] = (response, model, _time.time())
+    result_chat_id = result.get("chat_id")
+    if result_chat_id is not None and str(result_chat_id) != str(expected_chat_id):
+        logger.error(
+            f"CROSS-USER LEAK BLOCKED — response chat_id={result_chat_id} "
+            f"!= expected chat_id={expected_chat_id}. Response DROPPED."
+        )
+        return
+    send_message(
+        result["chat_id"],
+        result["text"],
+        reply_markup=result.get("reply_markup"),
+        parse_mode=result.get("parse_mode", "Markdown"),
+    )
+
+
+def send_response(ctx: RequestContext, result: dict | None):
+    """Send via RequestContext — validates chat_id match before sending."""
+    _send_guarded(ctx.chat_id, result)
 
 
 def _estimate_tokens(text: str) -> int:
@@ -317,12 +319,6 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str, acc
             model = (res.get("provider") or "").strip() if isinstance(res, dict) else ""
             return ((res.get("response") or "").strip(), model)
 
-    # Check per-user response cache before making an AI call
-    cached = _cache_get(prompt, task_type, account_id)
-    if cached:
-        logger.info(f"Cache hit for {task_type} (user {account_id[:8]})")
-        return cached
-
     try:
         text, model = _call(prompt)
         # If the AI returned nothing, retry once with a simpler bare prompt
@@ -338,8 +334,6 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str, acc
                 "certain legal article references. Please try rephrasing your question "
                 "or ask about a specific legal topic."
             ), ""
-        # Cache successful response (per-user isolation)
-        _cache_set(prompt, task_type, account_id, text, model)
         return text, model
     except concurrent.futures.TimeoutError:
         logger.warning(f"Delegate timeout for {task_type} ({DELEGATE_TIMEOUT}s)")
@@ -397,6 +391,16 @@ def handle_message(update: dict) -> dict | None:
         from_user.get("first_name", ""),
     )
 
+    # Create immutable per-request context — every response is bound to this chat_id
+    admin = is_admin(telegram_id)
+    ctx = RequestContext(
+        chat_id=chat_id,
+        telegram_id=telegram_id,
+        account=account,
+        request_id=str(uuid.uuid4()),
+        is_admin=admin,
+    )
+
     # New user onboarding
     if account.get("is_new"):
         return {
@@ -428,7 +432,6 @@ def handle_message(update: dict) -> dict | None:
         }
 
     # Route based on message content
-    admin = is_admin(telegram_id)
 
     # /start
     if message_text.startswith("/start"):
@@ -1321,22 +1324,8 @@ def poll_updates(offset: int | None = None) -> int | None:
                     original_msg_id = msg.get("message_id")
                     if original_chat_id and original_msg_id:
                         edit_reply_markup(original_chat_id, original_msg_id)
-                    # Send reply if needed
-                    if result.get("text"):
-                        # Defense-in-depth: never send to a different user
-                        result_chat_id = result.get("chat_id")
-                        if result_chat_id and original_chat_id and str(result_chat_id) != str(original_chat_id):
-                            logger.error(
-                                f"chat_id MISMATCH (callback) — handler returned {result_chat_id}, "
-                                f"expected {original_chat_id}. Dropping response to prevent cross-user leak."
-                            )
-                        else:
-                            send_message(
-                                result["chat_id"],
-                                result["text"],
-                                reply_markup=result.get("reply_markup"),
-                                parse_mode=result.get("parse_mode", "Markdown"),
-                            )
+                    # Send reply if needed (guarded against cross-user leaks)
+                    _send_guarded(original_chat_id, result)
             except Exception as e:
                 logger.error(f"Callback error: {e}")
             offset = update_id + 1
@@ -1367,20 +1356,8 @@ def poll_updates(offset: int | None = None) -> int | None:
                 }
 
             if result and result.get("text"):
-                # Defense-in-depth: never send a response to a different user
-                result_chat_id = result.get("chat_id")
-                if result_chat_id and str(result_chat_id) != str(chat_id):
-                    logger.error(
-                        f"chat_id MISMATCH — handler returned {result_chat_id}, "
-                        f"expected {chat_id}. Dropping response to prevent cross-user leak."
-                    )
-                else:
-                    send_message(
-                        result["chat_id"],
-                        result["text"],
-                        reply_markup=result.get("reply_markup"),
-                        parse_mode=result.get("parse_mode", "Markdown"),
-                    )
+                # All sends go through the guarded gateway
+                _send_guarded(chat_id, result)
 
         offset = update_id + 1
 
@@ -1400,9 +1377,6 @@ def run_forever():
     # Ensure DB is initialized
     mgr = get_account_manager()
     print(f"Database ready at: {mgr.db}")
-
-    # Wipe any cached AI responses from a previous run — clean slate.
-    _flush_all_caches()
 
     # Health check file — touched after each successful poll cycle.
     # Uses /project/ memory dir (NOT /tmp — PrivateTmp=yes isolates /tmp).

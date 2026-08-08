@@ -451,7 +451,91 @@ def _candidates_for(task_type):
         front = [name for name in CODING_ROTATING_FRONT if name in candidates]
         tail = [name for name in candidates if name not in CODING_ROTATING_FRONT]
         return _rotate_candidates(task_type, front) + tail
-    return get_effective_providers(task_type)
+    candidates = get_effective_providers(task_type)
+    # 13L-1: for non-fixed-order task types, sort by performance score
+    # so the best-performing provider is tried first.  Fixed-order roles
+    # (architecture, planning, law_*, juris_*) keep their deliberate
+    # ordering — those are task-fit judgments, not performance rankings.
+    if task_type not in FIXED_ORDER_TASK_TYPES and len(candidates) > 1:
+        candidates = _sort_by_performance(candidates, task_type)
+    return candidates
+
+
+# --- Performance-weighted routing (Phase 13L-1) ---
+# Composite score (0-100) per (provider, task_type) based on:
+#   success rate (from provider_evidence / usage history)
+#   latency degradation (from provider_latency's EMA tracking)
+#   cost tier (from ai_provider — cheaper = bonus)
+# Used to reorder candidates in _candidates_for() for non-fixed-order roles.
+
+def _provider_score(provider_name: str, task_type: str) -> float:
+    """Return a 0-100 composite score for a provider in a given task_type.
+    Higher = better candidate for first-try routing.  Unknown providers
+    default to 50 (neutral)."""
+    score = 50.0
+
+    # --- Success rate (0 to +30) ---
+    try:
+        from core.ai.provider_evidence import evaluate_provider_role
+        stats = evaluate_provider_role(provider_name, task_type)
+        if stats["attempts"] > 0:
+            rate_bonus = (stats["success_rate"] / 100.0) * 30.0
+            if not stats["sufficient_sample"]:
+                rate_bonus = min(rate_bonus, 15.0)  # cap with low sample
+            score += rate_bonus
+    except Exception:
+        pass  # no history → neutral
+
+    # --- Latency degradation (-20 to 0) ---
+    try:
+        from core.ai.provider_latency import is_latency_degraded, get_latency_snapshot
+        snap = get_latency_snapshot(provider_name)
+        if snap and snap.get("count", 0) >= 3:
+            ema = snap.get("ema_ms", 0)
+            if is_latency_degraded(provider_name):
+                # Scale penalty: minor (1.5x baseline) → -3, severe (5x+) → -20
+                ratio = max(1.0, snap.get("last_duration_ms", ema) / max(ema, 1))
+                penalty = min(20.0, (ratio - 1.0) / 0.2 * 1.0)  # ~1pt per 0.2x over
+                score -= penalty
+    except Exception:
+        pass
+
+    # --- Cost tier (0 to +10) ---
+    try:
+        import core.ai_provider as _ap
+        info = _ap.list_providers().get(provider_name, {})
+        tier = info.get("cost_tier", "paid")
+        if tier == "free":
+            score += 10.0
+        elif tier in ("free_or_low_cost",):
+            score += 5.0
+    except Exception:
+        pass
+
+    return max(0.0, min(100.0, score))
+
+
+def _sort_by_performance(candidates: list[str], task_type: str) -> list[str]:
+    """Sort candidates by composite performance score (descending).
+    Providers with an 'avoid' recommendation drop to the end regardless of
+    score.  Stable sort — ties keep original order."""
+    scored = []
+    for name in candidates:
+        s = _provider_score(name, task_type)
+        # Check for 'avoid' recommendation
+        avoid = False
+        try:
+            from core.ai.provider_evidence import evaluate_provider_role
+            stats = evaluate_provider_role(name, task_type)
+            if stats.get("recommendation") == "avoid":
+                avoid = True
+        except Exception:
+            pass
+        scored.append((name, s, avoid))
+
+    # Sort: non-avoid first (by score desc), avoid last (by score desc)
+    scored.sort(key=lambda x: (x[2], -x[1]))
+    return [name for name, _score, _avoid in scored]
 
 
 ROTATION_STATE_FILE = "provider_rotation.json"

@@ -234,41 +234,43 @@ def is_admin(telegram_id: str) -> bool:
 # polling loop for too long.
 DELEGATE_TIMEOUT = 45
 
-# Response cache — LRU of (normalized_query, (response, model, timestamp)).
-# Prevents redundant AI calls when users ask the same legal question.
-# Max 200 entries, ~1 hour TTL per entry.
+# Per-user response cache — each user gets their own cache shard to
+# prevent cross-user response leakage. Keys are now (account_id, query_hash)
+# so User A's cached legal answer never reaches User B, even for identical
+# queries. Max 200 entries per user, ~1 hour TTL.
 from functools import lru_cache
 import hashlib
 import time as _time
 
-_CACHE = {}  # key → (response_text, model, cached_at)
-_CACHE_MAX = 200
+_CACHE: dict[str, dict] = {}  # account_id → {key → (response_text, model, cached_at)}
+_CACHE_MAX_PER_USER = 200
 _CACHE_TTL = 3600  # 1 hour
 
 
-def _cache_key(text: str, context_type: str) -> str:
-    """Normalized cache key — case-insensitive, whitespace-collapsed hash."""
+def _cache_key(text: str, context_type: str, account_id: str) -> str:
+    """Cache key scoped to (account, context_type, query) — no cross-user sharing."""
     normalized = " ".join(text.lower().split())[:200]
-    return hashlib.sha256(f"{context_type}:{normalized}".encode()).hexdigest()
+    return hashlib.sha256(f"{account_id}:{context_type}:{normalized}".encode()).hexdigest()
 
 
-def _cache_get(text: str, context_type: str) -> tuple[str, str] | None:
-    """Return (response, model) if cached and fresh, else None."""
-    key = _cache_key(text, context_type)
-    entry = _CACHE.get(key)
+def _cache_get(text: str, context_type: str, account_id: str) -> tuple[str, str] | None:
+    """Return (response, model) if cached and fresh, else None. Per-user isolation."""
+    user_cache = _CACHE.get(account_id, {})
+    key = _cache_key(text, context_type, account_id)
+    entry = user_cache.get(key)
     if entry and (_time.time() - entry[2]) < _CACHE_TTL:
         return (entry[0], entry[1])
     return None
 
 
-def _cache_set(text: str, context_type: str, response: str, model: str):
-    """Store response in cache. Evicts oldest entry if at capacity."""
-    key = _cache_key(text, context_type)
-    if len(_CACHE) >= _CACHE_MAX:
-        # Evict oldest
-        oldest = min(_CACHE.items(), key=lambda kv: kv[1][2])
-        del _CACHE[oldest[0]]
-    _CACHE[key] = (response, model, _time.time())
+def _cache_set(text: str, context_type: str, account_id: str, response: str, model: str):
+    """Store response in per-user cache. Evicts oldest entry if at capacity."""
+    user_cache = _CACHE.setdefault(account_id, {})
+    key = _cache_key(text, context_type, account_id)
+    if len(user_cache) >= _CACHE_MAX_PER_USER:
+        oldest = min(user_cache.items(), key=lambda kv: kv[1][2])
+        del user_cache[oldest[0]]
+    user_cache[key] = (response, model, _time.time())
 
 
 def _estimate_tokens(text: str) -> int:
@@ -276,7 +278,7 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text or "") // 4)
 
 
-def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> tuple[str, str]:
+def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str, account_id: str = "") -> tuple[str, str]:
     """Call ai_router.delegate() in a background thread with a hard timeout.
 
     Returns (response_text, model_name) on success, or (error_message, "") on failure.
@@ -298,10 +300,10 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> 
             model = (res.get("provider") or "").strip() if isinstance(res, dict) else ""
             return ((res.get("response") or "").strip(), model)
 
-    # Check response cache before making an AI call
-    cached = _cache_get(prompt, task_type)
+    # Check per-user response cache before making an AI call
+    cached = _cache_get(prompt, task_type, account_id)
     if cached:
-        logger.info(f"Cache hit for {task_type}")
+        logger.info(f"Cache hit for {task_type} (user {account_id[:8]})")
         return cached
 
     try:
@@ -319,8 +321,8 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> 
                 "certain legal article references. Please try rephrasing your question "
                 "or ask about a specific legal topic."
             ), ""
-        # Cache successful response
-        _cache_set(prompt, task_type, text, model)
+        # Cache successful response (per-user isolation)
+        _cache_set(prompt, task_type, account_id, text, model)
         return text, model
     except concurrent.futures.TimeoutError:
         logger.warning(f"Delegate timeout for {task_type} ({DELEGATE_TIMEOUT}s)")
@@ -653,7 +655,7 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
 
     # Run delegate with a hard wall-clock timeout so one slow provider
     # doesn't block the bot's entire polling loop indefinitely.
-    response_text, model = _delegate_with_timeout(prompt, "juris_legal_teaching", f"information about {topic_display}")
+    response_text, model = _delegate_with_timeout(prompt, "juris_legal_teaching", f"information about {topic_display}", account["account_id"])
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"],
@@ -678,7 +680,7 @@ def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
 
     base_prompt = build_prompt("legal_case_analysis", f"{query_type} in Ghana law")
     prompt = base_prompt + context_preamble
-    response_text, model = _delegate_with_timeout(prompt, "juris_case_analysis", query_type.lower())
+    response_text, model = _delegate_with_timeout(prompt, "juris_case_analysis", query_type.lower(), account["account_id"])
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"],
@@ -1047,7 +1049,7 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
     from core.juris_kai.prompt import build_prompt
     base_prompt = build_prompt("legal_research", text)
     prompt = base_prompt + context_preamble
-    response_text, model = _delegate_with_timeout(prompt, "juris_research", text)
+    response_text, model = _delegate_with_timeout(prompt, "juris_research", text, account["account_id"])
 
     if not response_text or not response_text.strip():
         logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
@@ -1135,7 +1137,7 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     context_preamble = build_context_preamble(legal_docs)
 
     prompt = build_prompt(prompt_type, text) + context_preamble
-    response_text, model = _delegate_with_timeout(prompt, task_type, f"your {step.replace('_', ' ')} request")
+    response_text, model = _delegate_with_timeout(prompt, task_type, f"your {step.replace('_', ' ')} request", account["account_id"])
 
     mgr.record_query(account["account_id"],
                      input_tokens=_estimate_tokens(prompt),
@@ -1304,12 +1306,20 @@ def poll_updates(offset: int | None = None) -> int | None:
                         edit_reply_markup(original_chat_id, original_msg_id)
                     # Send reply if needed
                     if result.get("text"):
-                        send_message(
-                            result["chat_id"],
-                            result["text"],
-                            reply_markup=result.get("reply_markup"),
-                            parse_mode=result.get("parse_mode", "Markdown"),
-                        )
+                        # Defense-in-depth: never send to a different user
+                        result_chat_id = result.get("chat_id")
+                        if result_chat_id and original_chat_id and str(result_chat_id) != str(original_chat_id):
+                            logger.error(
+                                f"chat_id MISMATCH (callback) — handler returned {result_chat_id}, "
+                                f"expected {original_chat_id}. Dropping response to prevent cross-user leak."
+                            )
+                        else:
+                            send_message(
+                                result["chat_id"],
+                                result["text"],
+                                reply_markup=result.get("reply_markup"),
+                                parse_mode=result.get("parse_mode", "Markdown"),
+                            )
             except Exception as e:
                 logger.error(f"Callback error: {e}")
             offset = update_id + 1
@@ -1340,12 +1350,20 @@ def poll_updates(offset: int | None = None) -> int | None:
                 }
 
             if result and result.get("text"):
-                send_message(
-                    result["chat_id"],
-                    result["text"],
-                    reply_markup=result.get("reply_markup"),
-                    parse_mode=result.get("parse_mode", "Markdown"),
-                )
+                # Defense-in-depth: never send a response to a different user
+                result_chat_id = result.get("chat_id")
+                if result_chat_id and str(result_chat_id) != str(chat_id):
+                    logger.error(
+                        f"chat_id MISMATCH — handler returned {result_chat_id}, "
+                        f"expected {chat_id}. Dropping response to prevent cross-user leak."
+                    )
+                else:
+                    send_message(
+                        result["chat_id"],
+                        result["text"],
+                        reply_markup=result.get("reply_markup"),
+                        parse_mode=result.get("parse_mode", "Markdown"),
+                    )
 
         offset = update_id + 1
 

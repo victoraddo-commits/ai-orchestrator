@@ -473,13 +473,44 @@ def _discover_ghanapublishing_gh(source_url: str, source_domain: str) -> List[Di
     return documents
 
 
-# Per-domain discovery handlers
+# Per-domain discovery handlers — dedicated handlers for known sources
 _DOMAIN_HANDLERS = {
     "parliament.gh": _discover_parliament_repository,
     "ghalii.org": _discover_ghalii,
     "judicial.gov.gh": _discover_ejudgment_gh,
     "ghanapublishing.gov.gh": _discover_ghanapublishing_gh,
 }
+
+
+def _build_generic_handlers() -> dict:
+    """Register generic multi-strategy handlers for all non-dedicated sources.
+
+    Called at module load time. Dedicated handlers always take precedence
+    over generic ones — if a domain already has a handler in _DOMAIN_HANDLERS,
+    the generic handler is NOT registered for that domain.
+    """
+    from core.klaus.source_registry import GHANA_LEGAL_SOURCES
+    from core.klaus.generic_connector import create_generic_domain_handler
+
+    generic = {}
+    for src in GHANA_LEGAL_SOURCES:
+        if src.domain in _DOMAIN_HANDLERS:
+            continue  # dedicated handler exists, skip generic
+        if not src.base_url:
+            continue  # no URL to discover from
+
+        generic[src.domain] = create_generic_domain_handler(
+            source_key=src.key,
+            source_domain=src.domain,
+            discovery_urls=src.discovery_urls,
+            acquisition_status=src.acquisition_status,
+        )
+    return generic
+
+
+# Extend domain handlers with generic multi-strategy handlers
+_GENERIC_HANDLERS = _build_generic_handlers()
+_DOMAIN_HANDLERS.update(_GENERIC_HANDLERS)
 
 
 def discover_source_content(source_url: str, source_domain: str) -> List[Dict]:
@@ -716,15 +747,32 @@ def run_discovery_worker():
 
                     # Find documents
                     discovered_docs = discover_source_content(source["url"], source["domain"])
-                    logger.info(f"Found {len(discovered_docs)} documents from {source['domain']}")
 
-                    if discovered_docs:
+                    # Filter: separate rights-blocked from acquirable
+                    blocked_docs = [d for d in discovered_docs if d.get("_acquisition_blocked")]
+                    acquirable_docs = [d for d in discovered_docs if not d.get("_acquisition_blocked")]
+
+                    if blocked_docs:
+                        logger.info(
+                            f"{source['domain']}: {len(blocked_docs)} documents blocked by rights gate "
+                            f"(metadata only, not acquired)"
+                        )
+                        log_audit_event(
+                            "discovery", "info",
+                            f"Rights gate: {len(blocked_docs)} documents from {source['domain']} "
+                            f"blocked — metadata discovery only",
+                            None,
+                        )
+
+                    logger.info(f"Found {len(discovered_docs)} total ({len(acquirable_docs)} acquirable) from {source['domain']}")
+
+                    if acquirable_docs:
                         # Process discovered documents
                         processed = process_discovered_documents(
                             source_id=source["id"],
                             source_url=source["url"],
                             source_domain=source["domain"],
-                            documents=discovered_docs,
+                            documents=acquirable_docs,
                         )
 
                         logger.info(f"Processed {processed} documents from {source['domain']}")
@@ -732,7 +780,7 @@ def run_discovery_worker():
                         # Log discovery event
                         log_audit_event(
                             "discovery", "info",
-                            f"Discovered {len(discovered_docs)} documents, processed {processed} successfully",
+                            f"Discovered {len(acquirable_docs)} acquirable documents, processed {processed} successfully",
                             None
                         )
                     else:

@@ -126,7 +126,7 @@ def test_reachability(source: GhanaLegalSource) -> dict:
 
 # Sources known to be hijacked or serving unrelated content
 HIJACKED_DOMAINS = {
-    "wrc-gh.org": "SURGA11 gambling site — domain hijacked",
+    # wrc-gh.org was hijacked → corrected to wrc.gov.gh 2026-08-07
 }
 
 

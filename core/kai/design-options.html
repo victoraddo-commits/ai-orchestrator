@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IT Manager — Glass Morphism Ultra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   IT MANAGER — GLASS MORPHISM ULTRA
+   Premium HR & Workforce Intelligence Platform
+   "Nothing is overkill"
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  --deep: #06050a;
+  --void: #0a0812;
+  --surface-glass: rgba(255,255,255,0.025);
+  --surface-glass-hi: rgba(255,255,255,0.05);
+  --surface-glass-md: rgba(255,255,255,0.035);
+  --border-glass: rgba(255,255,255,0.06);
+  --border-glass-hi: rgba(255,255,255,0.12);
+  --border-glass-gold: rgba(250,204,21,0.15);
+  --border-glass-violet: rgba(168,85,247,0.15);
+  --border-glass-cyan: rgba(34,211,238,0.15);
+  --border-glass-emerald: rgba(52,211,153,0.15);
+  --fg: #fafaf9;
+  --fg-dim: rgba(250,250,249,0.65);
+  --fg-muted: rgba(250,250,249,0.35);
+  --fg-faint: rgba(250,250,249,0.18);
+  --gold: #facc15;
+  --gold-dim: rgba(250,204,21,0.6);
+  --gold-glow: rgba(250,204,21,0.12);
+  --violet: #a78bfa;
+  --violet-glow: rgba(168,85,247,0.10);
+  --cyan: #22d3ee;
+  --cyan-glow: rgba(34,211,238,0.08);
+  --emerald: #34d399;
+  --emerald-glow: rgba(52,211,153,0.08);
+  --rose: #fb7185;
+  --rose-glow: rgba(251,113,133,0.08);
+  --blur-sm: 8px;
+  --blur-md: 20px;
+  --blur-lg: 40px;
+  --blur-xl: 80px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: var(--deep);
+  color: var(--fg);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AMBIENT BACKGROUND — Aurora + Floating Orbs
+   ═══════════════════════════════════════════════════════════════════ */
+
+.aurora-stage {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(250,204,21,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 20%, rgba(168,85,247,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 60% at 50% 80%, rgba(34,211,238,0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 90% 70%, rgba(52,211,153,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 40% at 30% 90%, rgba(251,113,133,0.03) 0%, transparent 60%),
+    linear-gradient(180deg, #0a0812 0%, #0d0b1a 30%, #0f0d1e 60%, #0a0812 100%);
+}
+
+/* Floating light orbs */
+.orb {
+  position: fixed; border-radius: 50%; pointer-events: none; z-index: 0;
+  filter: blur(var(--blur-xl));
+  animation: orbFloat 20s ease-in-out infinite;
+}
+.orb-1 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(250,204,21,0.08) 0%, transparent 70%);
+  top: -10%; right: -10%;
+  animation-delay: 0s; animation-duration: 22s;
+}
+.orb-2 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(168,85,247,0.08) 0%, transparent 70%);
+  bottom: -15%; left: -8%;
+  animation-delay: -7s; animation-duration: 18s;
+}
+.orb-3 {
+  width: 350px; height: 350px;
+  background: radial-gradient(circle, rgba(34,211,238,0.06) 0%, transparent 70%);
+  top: 30%; left: 50%;
+  animation-delay: -13s; animation-duration: 25s;
+}
+.orb-4 {
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(52,211,153,0.05) 0%, transparent 70%);
+  top: 50%; right: 20%;
+  animation-delay: -5s; animation-duration: 20s;
+}
+
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(40px, -30px) scale(1.08); }
+  50% { transform: translate(-20px, 20px) scale(0.95); }
+  75% { transform: translate(-30px, -15px) scale(1.05); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PAGE WRAPPER — Above aurora
+   ═══════════════════════════════════════════════════════════════════ */
+
+.page { position: relative; z-index: 1; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SECTION TITLES
+   ═══════════════════════════════════════════════════════════════════ */
+
+.section-head {
+  text-align: center; padding: 60px 20px 8px;
+}
+.section-head h2 {
+  font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #facc15 0%, #f59e0b 40%, #a78bfa 70%, #22d3ee 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.section-head p {
+  color: var(--fg-dim); font-size: 0.9rem; margin-top: 6px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GLASS CARD — The foundational glass surface
+   ═══════════════════════════════════════════════════════════════════ */
+
+.glass {
+  background: var(--surface-glass);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+}
+/* Inner edge highlight — gives the card a premium 3D glass edge */
+.glass::before {
+  content: ''; position: absolute; inset: 1px; border-radius: calc(var(--radius-lg) - 1px);
+  background: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.2) 100%);
+  pointer-events: none; z-index: 2;
+}
+/* Subtle top-edge shimmer line */
+.glass::after {
+  content: ''; position: absolute; top: 0; left: 20px; right: 20px; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  pointer-events: none; z-index: 3;
+}
+
+.glass-hover { transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease; }
+.glass-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-glass-hi);
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.3),
+    0 0 0 1px rgba(255,255,255,0.04),
+    inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+/* Color-tinted glass variants */
+.glass-gold   { border-color: var(--border-glass-gold); }
+.glass-violet { border-color: var(--border-glass-violet); }
+.glass-cyan   { border-color: var(--border-glass-cyan); }
+.glass-emerald { border-color: var(--border-glass-emerald); }
+
+/* High-emphasis glass — more opaque, less blur */
+.glass-solid {
+  background: rgba(20,18,30,0.55);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TYPOGRAPHY UTILITIES
+   ═══════════════════════════════════════════════════════════════════ */
+
+.text-gradient-gold {
+  background: linear-gradient(135deg, #facc15 0%, #eab308 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.text-gradient-violet {
+  background: linear-gradient(135deg, #c4b5fd 0%, #a78bfa 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.text-gradient-cyan {
+  background: linear-gradient(135deg, #67e8f9 0%, #22d3ee 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.text-gradient-emerald {
+  background: linear-gradient(135deg, #6ee7b7 0%, #34d399 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   HEADER / NAV BAR
+   ═══════════════════════════════════════════════════════════════════ */
+
+.top-nav {
+  position: sticky; top: 12px; z-index: 50; margin: 12px auto 0;
+  max-width: 1300px; padding: 0 20px;
+}
+.nav-glass {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 24px;
+  background: rgba(12,10,20,0.65);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: var(--radius-lg);
+}
+.nav-logo { display: flex; align-items: center; gap: 10px; }
+.nav-logo .icon {
+  width: 34px; height: 34px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(250,204,21,0.2), rgba(168,85,247,0.2));
+  border: 1px solid rgba(250,204,21,0.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+}
+.nav-logo .name { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; }
+.nav-links { display: flex; gap: 4px; }
+.nav-link {
+  padding: 7px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 500;
+  color: var(--fg-dim); cursor: pointer; transition: all 0.2s; border: 1px solid transparent;
+}
+.nav-link:hover { background: rgba(255,255,255,0.04); color: var(--fg); }
+.nav-link.active {
+  background: rgba(250,204,21,0.08); color: var(--gold);
+  border-color: rgba(250,204,21,0.15);
+}
+.nav-user {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 12px 5px 5px; border-radius: 100px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.78rem; color: var(--fg-dim);
+}
+.nav-avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(135deg, #facc15, #a78bfa);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 700; color: #0a0812;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LOGIN PAGE — Premium Aurora Split
+   ═══════════════════════════════════════════════════════════════════ */
+
+.login-section {
+  max-width: 1100px; margin: 40px auto 0; padding: 0 20px;
+}
+.login-container {
+  display: flex; border-radius: var(--radius-lg); overflow: hidden;
+  background: rgba(10,8,18,0.5);
+  backdrop-filter: blur(var(--blur-lg));
+  -webkit-backdrop-filter: blur(var(--blur-lg));
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+.login-brand {
+  flex: 1; padding: 60px 48px; display: flex; flex-direction: column; justify-content: space-between;
+  position: relative; overflow: hidden;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(250,204,21,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse at 70% 60%, rgba(168,85,247,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 80%, rgba(34,211,238,0.04) 0%, transparent 60%);
+}
+.login-brand::before {
+  content: ''; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+}
+.login-brand-content { position: relative; z-index: 1; }
+.login-brand .logo-text {
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.2em;
+  color: var(--gold-dim); margin-bottom: 24px;
+}
+.login-brand h1 {
+  font-size: 2.6rem; font-weight: 800; line-height: 1.1; letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #facc15 0%, #f59e0b 35%, #fcd34d 65%, #d97706 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text; margin-bottom: 16px;
+}
+.login-brand .tagline {
+  color: var(--fg-dim); font-size: 0.9rem; line-height: 1.6; max-width: 360px;
+}
+.login-brand .features {
+  position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; margin-top: auto;
+}
+.login-feat {
+  display: flex; align-items: center; gap: 10px; font-size: 0.72rem; color: var(--fg-muted);
+}
+.login-feat .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 8px rgba(250,204,21,0.4);
+}
+
+.login-form-panel {
+  width: 420px; padding: 60px 48px; display: flex; align-items: center;
+  background: rgba(0,0,0,0.15);
+}
+.login-form-card {
+  width: 100%;
+}
+.login-form-card h2 {
+  font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.02em;
+}
+.login-form-card .sub {
+  color: var(--fg-muted); font-size: 0.78rem; margin-bottom: 28px;
+}
+.field { margin-bottom: 14px; }
+.field label {
+  display: block; font-size: 0.65rem; font-weight: 600; color: var(--fg-dim);
+  text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
+}
+.field input {
+  width: 100%; padding: 11px 14px;
+  background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm); color: var(--fg); font-size: 0.85rem;
+  font-family: 'DM Sans', system-ui, sans-serif; transition: all 0.2s;
+}
+.field input:focus {
+  outline: none; border-color: rgba(250,204,21,0.35);
+  box-shadow: 0 0 0 3px rgba(250,204,21,0.06);
+  background: rgba(255,255,255,0.06);
+}
+.field input::placeholder { color: var(--fg-faint); }
+
+.btn-row { display: flex; gap: 8px; align-items: center; margin-top: 4px; margin-bottom: 16px; }
+.btn-row label { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--fg-dim); cursor: pointer; }
+.btn-row input[type="checkbox"] { accent-color: var(--gold); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 20px; border-radius: var(--radius-sm); font-weight: 600;
+  font-size: 0.82rem; cursor: pointer; transition: all 0.2s; border: 1px solid transparent;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+.btn-primary {
+  width: 100%; background: linear-gradient(135deg, rgba(250,204,21,0.2), rgba(245,158,11,0.25));
+  border-color: rgba(250,204,21,0.3); color: var(--gold);
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, rgba(250,204,21,0.3), rgba(245,158,11,0.35));
+  border-color: rgba(250,204,21,0.45);
+  box-shadow: 0 4px 20px rgba(250,204,21,0.1);
+  transform: translateY(-1px);
+}
+.btn-ghost {
+  background: transparent; color: var(--fg-dim); font-weight: 500; font-size: 0.75rem;
+}
+.btn-ghost:hover { color: var(--fg); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   DASHBOARD PAGE
+   ═══════════════════════════════════════════════════════════════════ */
+
+.dash-section {
+  max-width: 1300px; margin: 40px auto 80px; padding: 0 20px;
+}
+
+/* Metric row */
+.metrics-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  margin-bottom: 16px;
+}
+@media (max-width: 900px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+
+.metric-card {
+  padding: 20px 18px;
+}
+.metric-card .icon-row {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+}
+.metric-card .icon-box {
+  width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  font-size: 1rem;
+}
+.metric-card .trend {
+  font-size: 0.62rem; font-weight: 600; padding: 2px 8px; border-radius: 100px;
+}
+.metric-card .value {
+  font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 2px;
+}
+.metric-card .label {
+  font-size: 0.65rem; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+.metric-gold .icon-box { background: rgba(250,204,21,0.1); border: 1px solid rgba(250,204,21,0.2); }
+.metric-violet .icon-box { background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.2); }
+.metric-cyan .icon-box { background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.2); }
+.metric-emerald .icon-box { background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2); }
+.trend-up { background: rgba(52,211,153,0.1); color: var(--emerald); }
+.trend-down { background: rgba(251,113,133,0.1); color: var(--rose); }
+.trend-neutral { background: rgba(255,255,255,0.05); color: var(--fg-dim); }
+
+/* Charts row */
+.charts-row {
+  display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 16px;
+}
+@media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+.chart-card { padding: 20px; }
+.chart-card .chart-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;
+}
+.chart-card .chart-title {
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+
+/* Fake chart — bars */
+.bar-chart { display: flex; align-items: flex-end; gap: 10px; height: 140px; padding-top: 8px; }
+.bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bar {
+  width: 100%; border-radius: 6px 6px 0 0; position: relative; overflow: hidden;
+  transition: height 0.6s ease;
+}
+.bar::after {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 40%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.15) 0%, transparent 100%);
+}
+.bar-gold { background: linear-gradient(180deg, rgba(250,204,21,0.6), rgba(250,204,21,0.15)); }
+.bar-violet { background: linear-gradient(180deg, rgba(168,85,247,0.6), rgba(168,85,247,0.15)); }
+.bar-cyan { background: linear-gradient(180deg, rgba(34,211,238,0.5), rgba(34,211,238,0.12)); }
+.bar-emerald { background: linear-gradient(180deg, rgba(52,211,153,0.5), rgba(52,211,153,0.12)); }
+.bar-label { font-size: 0.58rem; color: var(--fg-muted); font-weight: 500; }
+
+/* Side panel — recent activity */
+.activity-list { display: flex; flex-direction: column; gap: 1px; }
+.activity-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: 8px; transition: background 0.2s; cursor: default;
+}
+.activity-item:hover { background: rgba(255,255,255,0.03); }
+.activity-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.activity-dot.gold { background: var(--gold); box-shadow: 0 0 6px var(--gold-glow); }
+.activity-dot.violet { background: var(--violet); box-shadow: 0 0 6px var(--violet-glow); }
+.activity-dot.cyan { background: var(--cyan); box-shadow: 0 0 6px var(--cyan-glow); }
+.activity-info { flex: 1; min-width: 0; }
+.activity-info .name { font-size: 0.75rem; font-weight: 500; }
+.activity-info .action { font-size: 0.65rem; color: var(--fg-muted); }
+.activity-time { font-size: 0.6rem; color: var(--fg-muted); white-space: nowrap; }
+
+/* Table row */
+.table-card { padding: 0; overflow: hidden; margin-bottom: 16px; }
+.table-card .table-header {
+  padding: 14px 20px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.table-card .table-title {
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+.glass-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.glass-table th {
+  text-align: left; padding: 10px 20px; font-size: 0.62rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.glass-table td { padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.03); color: var(--fg-dim); }
+.glass-table tr { transition: background 0.15s; }
+.glass-table tbody tr:hover { background: rgba(255,255,255,0.025); }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 0.68rem; font-weight: 500;
+  padding: 3px 10px; border-radius: 100px;
+}
+.status-pill .pulse { width: 6px; height: 6px; border-radius: 50%; }
+.status-active { background: rgba(52,211,153,0.1); color: var(--emerald); }
+.status-active .pulse { background: var(--emerald); box-shadow: 0 0 6px rgba(52,211,153,0.4); animation: pulse-dot 2s ease-in-out infinite; }
+.status-away { background: rgba(250,204,21,0.08); color: var(--gold-dim); }
+.status-away .pulse { background: var(--gold); }
+.status-ooo { background: rgba(168,85,247,0.08); color: var(--violet); }
+.status-ooo .pulse { background: var(--violet); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* Quick actions row */
+.quick-actions {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 40px;
+}
+@media (max-width: 900px) { .quick-actions { grid-template-columns: repeat(2, 1fr); } }
+.action-card {
+  padding: 18px; display: flex; align-items: center; gap: 14px; cursor: pointer;
+}
+.action-card .ac-icon {
+  width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center;
+  justify-content: center; font-size: 1.2rem; flex-shrink: 0;
+}
+.action-card .ac-info .ac-name { font-size: 0.8rem; font-weight: 600; }
+.action-card .ac-info .ac-desc { font-size: 0.65rem; color: var(--fg-muted); margin-top: 2px; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   COLOR PALETTE SHOWCASE
+   ═══════════════════════════════════════════════════════════════════ */
+
+.palette-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;
+}
+.color-card { padding: 20px; text-align: center; }
+.color-swatch {
+  width: 64px; height: 64px; border-radius: 16px; margin: 0 auto 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.color-name { font-size: 0.8rem; font-weight: 600; margin-bottom: 2px; }
+.color-hex { font-size: 0.65rem; color: var(--fg-muted); font-family: 'DM Mono', monospace; }
+.color-role { font-size: 0.6rem; color: var(--fg-muted); margin-top: 4px; opacity: 0.6; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ANIMATION FLAGS — subtle ongoing life
+   ═══════════════════════════════════════════════════════════════════ */
+
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+.shimmer { animation: shimmer 3s ease-in-out infinite; }
+
+@keyframes glow-breathe {
+  0%, 100% { box-shadow: 0 0 12px rgba(250,204,21,0.1); }
+  50% { box-shadow: 0 0 24px rgba(250,204,21,0.2); }
+}
+.glow-breathe { animation: glow-breathe 4s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════════════════════ */
+
+.footer-note {
+  text-align: center; padding: 40px 20px 60px; color: var(--fg-muted); font-size: 0.7rem;
+}
+.footer-note span { color: var(--gold-dim); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  .login-container { flex-direction: column; }
+  .login-form-panel { width: 100%; padding: 40px 24px; }
+  .login-brand { padding: 40px 24px; }
+  .login-brand h1 { font-size: 1.8rem; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .charts-row { grid-template-columns: 1fr; }
+  .quick-actions { grid-template-columns: 1fr 1fr; }
+  .nav-links { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Ambient aurora background -->
+<div class="aurora-stage"></div>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="orb orb-4"></div>
+
+<div class="page">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       TOP NAVIGATION
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="top-nav">
+    <div class="nav-glass">
+      <div class="nav-logo">
+        <div class="icon">&#9889;</div>
+        <span class="name">IT Manager</span>
+      </div>
+      <div class="nav-links">
+        <span class="nav-link active">Dashboard</span>
+        <span class="nav-link">Directory</span>
+        <span class="nav-link">Timecards</span>
+        <span class="nav-link">Reports</span>
+        <span class="nav-link">Settings</span>
+      </div>
+      <div class="nav-user">
+        <div class="nav-avatar">VA</div>
+        Victor Addotey
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION: LOGIN PAGE
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="section-head">
+    <h2>Login Experience</h2>
+    <p>Premium aurora split-screen with frosted glass form</p>
+  </div>
+
+  <div class="login-section">
+    <div class="login-container">
+      <div class="login-brand">
+        <div class="login-brand-content">
+          <div class="logo-text">&#9674; Premium</div>
+          <h1>Time, people, and<br>knowledge — in one<br>trusted system.</h1>
+          <p class="tagline">Built for HR, supervisors, and IT operations. Claude-powered attendance insights with audit-grade time tracking and a searchable knowledge center.</p>
+        </div>
+        <div class="features">
+          <div class="login-feat"><span class="dot"></span> AI-powered workforce analytics</div>
+          <div class="login-feat"><span class="dot"></span> Real-time attendance tracking</div>
+          <div class="login-feat"><span class="dot"></span> Enterprise-grade security</div>
+          <div class="login-feat"><span class="dot"></span> Seamless mobile experience</div>
+        </div>
+      </div>
+      <div class="login-form-panel">
+        <div class="login-form-card">
+          <h2>Welcome back</h2>
+          <p class="sub">Sign in to your workspace</p>
+          <div class="field">
+            <label>Email</label>
+            <input type="email" value="admin@itmanager.local" placeholder="you@company.com">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <input type="password" value="········" placeholder="········">
+          </div>
+          <div class="btn-row">
+            <label><input type="checkbox" checked> Remember me</label>
+            <span style="margin-left:auto;font-size:0.72rem;color:var(--gold-dim);cursor:pointer">Forgot?</span>
+          </div>
+          <button class="btn btn-primary">Sign in &nbsp;&rarr;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION: DASHBOARD
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="section-head">
+    <h2>Dashboard Experience</h2>
+    <p>Layered glass cards, gradient metrics, and luminous data visualization</p>
+  </div>
+
+  <div class="dash-section">
+
+    <!-- Metric cards -->
+    <div class="metrics-grid">
+      <div class="glass glass-hover glass-gold metric-card metric-gold glow-breathe">
+        <div class="icon-row">
+          <div class="icon-box">&#128101;</div>
+          <span class="trend trend-up">&uarr; 12%</span>
+        </div>
+        <div class="value text-gradient-gold">48</div>
+        <div class="label">Total Employees</div>
+      </div>
+
+      <div class="glass glass-hover glass-violet metric-card metric-violet">
+        <div class="icon-row">
+          <div class="icon-box">&#128200;</div>
+          <span class="trend trend-up">&uarr; 8%</span>
+        </div>
+        <div class="value text-gradient-violet">94.2%</div>
+        <div class="label">Attendance Rate</div>
+      </div>
+
+      <div class="glass glass-hover glass-cyan metric-card metric-cyan">
+        <div class="icon-row">
+          <div class="icon-box">&#127891;</div>
+          <span class="trend trend-neutral">stable</span>
+        </div>
+        <div class="value text-gradient-cyan">12</div>
+        <div class="label">On Leave</div>
+      </div>
+
+      <div class="glass glass-hover glass-emerald metric-card metric-emerald">
+        <div class="icon-row">
+          <div class="icon-box">&#127919;</div>
+          <span class="trend trend-up">&uarr; 23%</span>
+        </div>
+        <div class="value text-gradient-emerald">8</div>
+        <div class="label">Open Roles</div>
+      </div>
+    </div>
+
+    <!-- Charts + activity row -->
+    <div class="charts-row">
+      <div class="glass chart-card">
+        <div class="chart-header">
+          <span class="chart-title">Attendance Trend &mdash; Last 7 Days</span>
+          <span style="font-size:0.62rem;color:var(--fg-muted);font-family:'DM Mono',monospace">Mon&ndash;Sun</span>
+        </div>
+        <div class="bar-chart">
+          <div class="bar-col"><div class="bar bar-gold" style="height:85%"></div><span class="bar-label">Mon</span></div>
+          <div class="bar-col"><div class="bar bar-gold" style="height:92%"></div><span class="bar-label">Tue</span></div>
+          <div class="bar-col"><div class="bar bar-gold" style="height:78%"></div><span class="bar-label">Wed</span></div>
+          <div class="bar-col"><div class="bar bar-gold" style="height:95%"></div><span class="bar-label">Thu</span></div>
+          <div class="bar-col"><div class="bar bar-gold" style="height:88%"></div><span class="bar-label">Fri</span></div>
+          <div class="bar-col"><div class="bar bar-emerald" style="height:60%"></div><span class="bar-label">Sat</span></div>
+          <div class="bar-col"><div class="bar bar-emerald" style="height:35%"></div><span class="bar-label">Sun</span></div>
+        </div>
+      </div>
+
+      <div class="glass chart-card">
+        <div class="chart-header"><span class="chart-title">Recent Activity</span></div>
+        <div class="activity-list">
+          <div class="activity-item">
+            <div class="activity-dot gold"></div>
+            <div class="activity-info"><div class="name">Kofi Mensah</div><div class="action">Clocked in &middot; Main Office</div></div>
+            <div class="activity-time">2m ago</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot violet"></div>
+            <div class="activity-info"><div class="name">Ama Serwaa</div><div class="action">Submitted leave request</div></div>
+            <div class="activity-time">18m ago</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot cyan"></div>
+            <div class="activity-info"><div class="name">Yaw Boateng</div><div class="action">Completed knowledge article</div></div>
+            <div class="activity-time">42m ago</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot gold"></div>
+            <div class="activity-info"><div class="name">Akua Donkor</div><div class="action">Approved timesheet</div></div>
+            <div class="activity-time">1h ago</div>
+          </div>
+          <div class="activity-item">
+            <div class="activity-dot violet"></div>
+            <div class="activity-info"><div class="name">Kwame Asante</div><div class="action">Received kudos &middot; 3 new</div></div>
+            <div class="activity-time">2h ago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- People table -->
+    <div class="glass table-card">
+      <div class="table-header">
+        <span class="table-title">Workforce Directory</span>
+        <span style="font-size:0.62rem;color:var(--fg-muted);font-family:'DM Mono',monospace">48 members &middot; 5 departments</span>
+      </div>
+      <table class="glass-table">
+        <thead>
+          <tr><th>Name</th><th>Department</th><th>Role</th><th>Status</th><th>Attendance</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="font-weight:600;color:var(--fg)">Kofi Mensah</td>
+            <td>Engineering</td>
+            <td>Senior Developer</td>
+            <td><span class="status-pill status-active"><span class="pulse"></span>Active</span></td>
+            <td style="color:var(--emerald)">98%</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;color:var(--fg)">Ama Serwaa</td>
+            <td>Design</td>
+            <td>UX Lead</td>
+            <td><span class="status-pill status-away"><span class="pulse"></span>Away</span></td>
+            <td style="color:var(--gold-dim)">87%</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;color:var(--fg)">Yaw Boateng</td>
+            <td>Operations</td>
+            <td>Ops Manager</td>
+            <td><span class="status-pill status-active"><span class="pulse"></span>Active</span></td>
+            <td style="color:var(--emerald)">100%</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;color:var(--fg)">Akua Donkor</td>
+            <td>HR</td>
+            <td>HR Director</td>
+            <td><span class="status-pill status-ooo"><span class="pulse"></span>OOO</span></td>
+            <td style="color:var(--violet)">—</td>
+          </tr>
+          <tr>
+            <td style="font-weight:600;color:var(--fg)">Kwame Asante</td>
+            <td>Finance</td>
+            <td>Accountant</td>
+            <td><span class="status-pill status-active"><span class="pulse"></span>Active</span></td>
+            <td style="color:var(--emerald)">95%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="quick-actions">
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.15)">&#128197;</div>
+        <div class="ac-info"><div class="ac-name">Approve Leave</div><div class="ac-desc">3 pending requests</div></div>
+      </div>
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.15)">&#128221;</div>
+        <div class="ac-info"><div class="ac-name">Review Timesheets</div><div class="ac-desc">8 awaiting approval</div></div>
+      </div>
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.15)">&#128172;</div>
+        <div class="ac-info"><div class="ac-name">Send Announcement</div><div class="ac-desc">Company-wide broadcast</div></div>
+      </div>
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.15)">&#128202;</div>
+        <div class="ac-info"><div class="ac-name">View Reports</div><div class="ac-desc">Monthly HR analytics</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       COLOR PALETTE + DESIGN TOKENS
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="section-head">
+    <h2>Design Tokens</h2>
+    <p>Semantic color system with glass-morphism foundations</p>
+  </div>
+
+  <div class="dash-section">
+    <div class="palette-grid">
+      <div class="glass color-card">
+        <div class="color-swatch" style="background:linear-gradient(135deg,#facc15,#eab308)"></div>
+        <div class="color-name text-gradient-gold">Gold</div>
+        <div class="color-hex">#FACC15 / #EAB308</div>
+        <div class="color-role">Primary accent, highlights, CTAs</div>
+      </div>
+      <div class="glass color-card">
+        <div class="color-swatch" style="background:linear-gradient(135deg,#a78bfa,#8b5cf6)"></div>
+        <div class="color-name text-gradient-violet">Violet</div>
+        <div class="color-hex">#A78BFA / #8B5CF6</div>
+        <div class="color-role">Secondary metric, insights, data</div>
+      </div>
+      <div class="glass color-card">
+        <div class="color-swatch" style="background:linear-gradient(135deg,#22d3ee,#06b6d4)"></div>
+        <div class="color-name text-gradient-cyan">Cyan</div>
+        <div class="color-hex">#22D3EE / #06B6D4</div>
+        <div class="color-role">Info, links, system notifications</div>
+      </div>
+      <div class="glass color-card">
+        <div class="color-swatch" style="background:linear-gradient(135deg,#34d399,#10b981)"></div>
+        <div class="color-name text-gradient-emerald">Emerald</div>
+        <div class="color-hex">#34D399 / #10B981</div>
+        <div class="color-role">Success states, positive trends</div>
+      </div>
+      <div class="glass color-card">
+        <div class="color-swatch" style="background:#0a0812"></div>
+        <div class="color-name">Deep Void</div>
+        <div class="color-hex">#0A0812</div>
+        <div class="color-role">Page background, depth layer</div>
+      </div>
+      <div class="glass color-card">
+        <div class="color-swatch" style="background:rgba(255,255,255,0.025)"></div>
+        <div class="color-name">Frosted Glass</div>
+        <div class="color-hex">rgba(255,255,255,0.025)</div>
+        <div class="color-role">Card surfaces with backdrop-blur</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       GLASS VOCABULARY
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="section-head">
+    <h2>Glass Vocabulary</h2>
+    <p>Every surface, border, and glow has a semantic purpose</p>
+  </div>
+
+  <div class="dash-section">
+    <div class="quick-actions">
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(255,255,255,0.04)">&#128230;</div>
+        <div class="ac-info"><div class="ac-name">backdrop-blur</div><div class="ac-desc" style="font-family:'DM Mono',monospace">20px default &middot; 40px nav &middot; 80px hero</div></div>
+      </div>
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(255,255,255,0.04)">&#10024;</div>
+        <div class="ac-info"><div class="ac-name">Inner highlight</div><div class="ac-desc" style="font-family:'DM Mono',monospace">::before gradient edge on every card</div></div>
+      </div>
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(255,255,255,0.04)">&#127752;</div>
+        <div class="ac-info"><div class="ac-name">Aurora orbs</div><div class="ac-desc" style="font-family:'DM Mono',monospace">4 floating radial gradients &middot; 18&ndash;25s</div></div>
+      </div>
+      <div class="glass glass-hover action-card">
+        <div class="ac-icon" style="background:rgba(255,255,255,0.04)">&#128160;</div>
+        <div class="ac-info"><div class="ac-name">Luminous glow</div><div class="ac-desc" style="font-family:'DM Mono',monospace">Colored box-shadows &middot; pulse animations</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    IT Manager &mdash; Glass Morphism Ultra &nbsp;&middot;&nbsp; <span>Nothing is overkill</span> &nbsp;&middot;&nbsp; DM Sans &middot; backdrop-blur &middot; Aurora &middot; Gradient text
+  </div>
+
+</div>
+
+</body>
+</html>

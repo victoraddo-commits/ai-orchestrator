@@ -112,20 +112,32 @@ def _discover_parliament_gh(source_url: str, source_domain: str) -> List[Dict]:
 
 
 def _discover_ghalii(source_url: str, source_domain: str) -> List[Dict]:
-    """Ghana-specific: scrape GhaLII (PeachJam platform) for judgments and legislation.
+    """Ghana-specific: scrape GhaLII (PeachJam/LII platform) for judgments and legislation.
 
-    GhaLII uses a JS SPA, but has semi-structured browse pages.
-    Focus on their sitemap-like endpoints and search result feeds.
+    GhaLII blocks direct browse paths (/judgments/) with 403 but search works.
+    Uses keyword searches across Ghana legal topics to discover documents.
     """
+    import urllib.parse
+
     documents = []
-    browse_paths = [
-        "/judgments/", "/legislation/", "/judgments/recent/",
+    seen_urls = set()
+
+    # Ghana legal search terms — broad coverage of legal areas
+    search_terms = [
+        "ghana supreme court", "ghana court of appeal", "ghana high court",
+        "ghana constitution", "act of parliament ghana", "criminal ghana",
+        "commercial ghana", "land ghana", "employment ghana",
+        "tax ghana", "family law ghana", "contract ghana",
+        "property ghana", "banking ghana", "human rights ghana",
     ]
-    for path in browse_paths:
+
+    for term in search_terms:
         try:
-            url = f"https://ghalii.org{path}"
+            q = urllib.parse.quote(term)
+            url = f"https://ghalii.org/search/?q={q}"
             response = requests.get(url, headers=HEADERS, timeout=30)
-            response.raise_for_status()
+            if response.status_code != 200:
+                continue
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -134,15 +146,50 @@ def _discover_ghalii(source_url: str, source_domain: str) -> List[Dict]:
                 title = link.get_text().strip()
                 if not title or len(title) < 10:
                     continue
-                if any(href.lower().endswith(ext) for ext in (".pdf",)):
-                    documents.append({
-                        "title": title,
-                        "url": _resolve_url(href, url),
-                        "type": "pdf",
-                        "source_domain": source_domain,
-                    })
+                if any(skip in href.lower() for skip in ("/search", "/about", "/contact", "#")):
+                    continue
+
+                is_content = any(p in href.lower() for p in (
+                    "/judgment/", "/akn/", "/legislation/", "/node/"
+                ))
+                is_pdf = href.lower().endswith(".pdf")
+
+                if is_content or is_pdf:
+                    full_url = _resolve_url(href, "https://ghalii.org")
+                    if full_url in seen_urls:
+                        continue
+                    seen_urls.add(full_url)
+
+                    if is_pdf:
+                        documents.append({
+                            "title": title,
+                            "url": full_url,
+                            "type": "pdf",
+                            "source_domain": source_domain,
+                        })
+                    else:
+                        # Follow judgment page for PDF download links
+                        try:
+                            inner_r = requests.get(full_url, headers=HEADERS, timeout=15)
+                            if inner_r.status_code == 200:
+                                inner_soup = BeautifulSoup(inner_r.text, "html.parser")
+                                for inner_link in inner_soup.find_all("a", href=True):
+                                    ihref = inner_link.get("href", "")
+                                    if ihref.lower().endswith(".pdf"):
+                                        doc_title = inner_link.get_text().strip() or title
+                                        pdf_url = _resolve_url(ihref, full_url)
+                                        if pdf_url not in seen_urls:
+                                            seen_urls.add(pdf_url)
+                                            documents.append({
+                                                "title": doc_title,
+                                                "url": pdf_url,
+                                                "type": "pdf",
+                                                "source_domain": source_domain,
+                                            })
+                        except Exception:
+                            pass
         except Exception as e:
-            logger.warning(f"GhaLII {path} scan failed: {e}")
+            logger.warning(f"GhaLII search '{term}' failed: {e}")
 
     return documents
 
@@ -184,11 +231,254 @@ def _discover_judicial_gh(source_url: str, source_domain: str) -> List[Dict]:
     return documents
 
 
+def _discover_ejudgment_gh(source_url: str, source_domain: str) -> List[Dict]:
+    """Ghana e-Judgment Portal scraper — https://www.ejudgment.judicial.gov.gh/
+
+    NOTE: The eJudgment portal is primarily login-walled (requires judge/lawyer
+    credentials). This handler:
+    1. Attempts public pages and alternative access paths
+    2. Tries the parent judicial.gov.gh domain for public judgments
+    3. Returns what's publicly accessible; login-walled content must be acquired
+       via credentialed access (manual or API key).
+
+    SSL verification is disabled because the eJudgment cert has hostname mismatch.
+    """
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    documents = []
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    session.verify = False  # SSL cert has hostname mismatch
+
+    # Strategy 1: Try main eJudgment portal pages (limited — login-walled)
+    ejudgment_paths = ["/", "/index.php", "/about", "/contact"]
+    for path in ejudgment_paths:
+        try:
+            url = f"https://ejudgment.judicial.gov.gh{path}"
+            response = session.get(url, timeout=15)
+            if response.status_code != 200:
+                continue
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, "html.parser")
+            for link in soup.find_all("a", href=True):
+                href = link.get("href", "")
+                title = link.get_text().strip()
+                if not title or len(title) < 5:
+                    continue
+                if any(href.lower().endswith(ext) for ext in (".pdf", ".doc", ".docx")):
+                    documents.append({
+                        "title": title,
+                        "url": _resolve_url(href, url),
+                        "type": "pdf",
+                        "source_domain": source_domain,
+                    })
+        except Exception as e:
+            logger.debug(f"eJudgment {path}: {e}")
+
+    # Strategy 2: Try judicial.gov.gh (parent domain) for public judgments
+    try:
+        response = session.get("https://judicial.gov.gh", timeout=15)
+        if response.status_code == 200:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # Follow links to publications, judgments, media sections
+            for link in soup.find_all("a", href=True):
+                href = link.get("href", "")
+                text = link.get_text().strip().lower()
+                if any(kw in text for kw in ("publication", "judgment", "ruling", "media", "download")):
+                    try:
+                        sub_url = _resolve_url(href, "https://judicial.gov.gh")
+                        sub_r = session.get(sub_url, timeout=15)
+                        if sub_r.status_code == 200:
+                            sub_soup = BeautifulSoup(sub_r.text, "html.parser")
+                            for sub_link in sub_soup.find_all("a", href=True):
+                                sub_href = sub_link.get("href", "")
+                                sub_title = sub_link.get_text().strip()
+                                if sub_title and len(sub_title) > 5:
+                                    if any(sub_href.lower().endswith(ext) for ext in (".pdf", ".doc", ".docx")):
+                                        documents.append({
+                                            "title": sub_title,
+                                            "url": _resolve_url(sub_href, sub_url),
+                                            "type": "pdf",
+                                            "source_domain": source_domain,
+                                        })
+                    except Exception:
+                        pass
+    except Exception as e:
+        logger.debug(f"Judicial.gov.gh fallback: {e}")
+
+    if not documents:
+        logger.info(
+            "eJudgment: No publicly accessible documents found. "
+            "The portal requires authentication (login-walled). "
+            "Consider obtaining API credentials or manual bulk export."
+        )
+
+    return documents
+
+
+def _discover_parliament_repository(source_url: str, source_domain: str) -> List[Dict]:
+    """Ghana Parliament Repository scraper — https://repository.parliament.gh/
+
+    The Parliament repository runs on DSpace, which exposes a REST API.
+    Strategy:
+    1. REST API: /rest/collections → enumerate collections → /rest/items
+    2. Fallback: HTML scrape of the repository home page for links
+    3. Also try the showPDF pattern (legacy parliament.gh)
+    """
+    documents = []
+    session = requests.Session()
+    session.headers.update({**HEADERS, "Accept": "application/json, text/html,*/*"})
+
+    # Strategy 1: DSpace REST API discovery
+    try:
+        # Get collections
+        collections_url = "https://repository.parliament.gh/rest/collections"
+        resp = session.get(collections_url, timeout=30)
+        if resp.status_code == 200:
+            try:
+                collections = resp.json()
+                for coll in collections[:20]:  # Limit to first 20 collections
+                    coll_id = coll.get("id") or coll.get("uuid")
+                    if not coll_id:
+                        continue
+                    # Get items in this collection
+                    items_url = f"https://repository.parliament.gh/rest/collections/{coll_id}/items"
+                    items_resp = session.get(items_url, timeout=30)
+                    if items_resp.status_code != 200:
+                        continue
+                    items = items_resp.json()
+                    for item in items[:50]:  # Limit per collection
+                        item_name = item.get("name", "")
+                        item_id = item.get("id") or item.get("uuid")
+                        if not item_name or not item_id:
+                            continue
+                        # Get bitstreams (PDFs) for this item
+                        try:
+                            bs_url = f"https://repository.parliament.gh/rest/items/{item_id}/bitstreams"
+                            bs_resp = session.get(bs_url, timeout=30)
+                            if bs_resp.status_code == 200:
+                                for bs in bs_resp.json():
+                                    bs_name = bs.get("name", "")
+                                    if bs_name.lower().endswith(".pdf"):
+                                        bs_id = bs.get("id") or bs.get("uuid")
+                                        documents.append({
+                                            "title": f"[Parliament] {item_name}",
+                                            "url": f"https://repository.parliament.gh/rest/bitstreams/{bs_id}/retrieve",
+                                            "type": "pdf",
+                                            "source_domain": source_domain,
+                                        })
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+    except Exception as e:
+        logger.info(f"Parliament REST API discovery: {e}")
+
+    # Strategy 2: Fall back to HTML scraping of the repository home page
+    if len(documents) < 5:
+        try:
+            response = session.get("https://repository.parliament.gh/home", timeout=30,
+                                   headers={**HEADERS, "Accept": "text/html"})
+            if response.status_code == 200:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(response.text, "html.parser")
+                for link in soup.find_all("a", href=True):
+                    href = link.get("href", "")
+                    title = link.get_text().strip()
+                    if title and len(title) > 5 and href.lower().endswith(".pdf"):
+                        documents.append({
+                            "title": title,
+                            "url": _resolve_url(href, "https://repository.parliament.gh"),
+                            "type": "pdf",
+                            "source_domain": source_domain,
+                        })
+        except Exception as e:
+            logger.debug(f"Parliament HTML fallback: {e}")
+
+    # Strategy 3: Also try legacy parliament.gh showPDF pattern
+    legacy_docs = _discover_parliament_gh("https://www.parliament.gh", source_domain)
+    documents.extend(legacy_docs)
+
+    return documents
+
+
+def _discover_ghanapublishing_gh(source_url: str, source_domain: str) -> List[Dict]:
+    """Ghana Publishing Company scraper — https://ghanapublishing.gov.gh/
+
+    The Ghana Publishing Company publishes the Ghana Gazette (official government
+    notices, statutory instruments, acts as passed), consolidated statutes, and
+    other official publications.
+
+    Strategy:
+    1. Scrape known publication paths (gazette, acts, regulations)
+    2. Generic PDF link discovery across the site
+    """
+    documents = []
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    browse_paths = [
+        "/", "/publications", "/gazette", "/gazettes",
+        "/acts", "/regulations", "/statutes",
+        "/publications/gazette", "/downloads",
+        "/index.php", "/index.php/publications",
+        "/categories", "/shop",  # Some publishing sites use e-commerce patterns
+    ]
+
+    for path in browse_paths:
+        try:
+            url = f"https://ghanapublishing.gov.gh{path}"
+            response = session.get(url, timeout=30)
+            if response.status_code != 200:
+                continue
+            from bs4 import BeautifulSoup
+            import re
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            # Find PDF links with Ghana Gazette naming patterns
+            for link in soup.find_all("a", href=True):
+                href = link.get("href", "")
+                title = link.get_text().strip()
+                if not title and link.get("title"):
+                    title = link.get("title", "").strip()
+
+                # Must have a title
+                if not title or len(title) < 5:
+                    # Check if the href itself is descriptive
+                    href_base = href.rsplit("/", 1)[-1].replace("%20", " ").replace("_", " ")
+                    if len(href_base) > 5:
+                        title = href_base
+
+                if not title or len(title) < 5:
+                    continue
+
+                # Accept PDFs and other document formats
+                if any(href.lower().endswith(ext) for ext in (".pdf", ".doc", ".docx")):
+                    # Tag Ghana Gazette publications
+                    is_gazette = any(kw in title.lower() or kw in href.lower()
+                                     for kw in ("gazette", "gazetted", "notice"))
+                    prefix = "[Gazette] " if is_gazette else "[Pub] "
+                    documents.append({
+                        "title": f"{prefix}{title}",
+                        "url": _resolve_url(href, url),
+                        "type": "pdf" if href.lower().endswith(".pdf") else "doc",
+                        "source_domain": source_domain,
+                    })
+        except Exception as e:
+            logger.debug(f"Ghana Publishing {path}: {e}")
+
+    return documents
+
+
 # Per-domain discovery handlers
 _DOMAIN_HANDLERS = {
-    "parliament.gh": _discover_parliament_gh,
+    "parliament.gh": _discover_parliament_repository,
     "ghalii.org": _discover_ghalii,
-    "judicial.gov.gh": _discover_judicial_gh,
+    "judicial.gov.gh": _discover_ejudgment_gh,
+    "ghanapublishing.gov.gh": _discover_ghanapublishing_gh,
 }
 
 

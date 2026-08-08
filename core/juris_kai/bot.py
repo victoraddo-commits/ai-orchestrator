@@ -1029,6 +1029,7 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
         }
 
     from core.juris_kai.prompt import build_prompt
+    from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
 
     # Map conversation steps to prompt types
     step_prompt_map = {
@@ -1067,7 +1068,14 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
         return _handle_free_text(text, chat_id, account, False)
 
     prompt_type, task_type, return_menu = step_prompt_map[step]
-    prompt = build_prompt(prompt_type, text)
+
+    # Query the Legal Brain knowledge base for relevant Ghana legal context
+    # (previously conversation flows skipped this step — now they match
+    #  _handle_free_text() and _handle_learn_topic())
+    legal_docs = query_knowledge_base(text)
+    context_preamble = build_context_preamble(legal_docs)
+
+    prompt = build_prompt(prompt_type, text) + context_preamble
     response_text = _delegate_with_timeout(prompt, task_type, f"your {step.replace('_', ' ')} request")
 
     mgr.record_query(account["account_id"])

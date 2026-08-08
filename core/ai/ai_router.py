@@ -400,16 +400,58 @@ except Exception:
     pass  # never let a bad state file break imports
 
 
+# --- Provider config overrides (Phase 17U) ---
+# Operator-set {task_type: [provider, ...]} mapping loaded on import from
+# memory/provider_config_overrides.json.  Consulted before the hardcoded
+# ROLE_PROVIDERS default -- the operator can reorder or exclude providers
+# per role without editing Python source.  An empty or missing override
+# for a role means "use the hardcoded default as-is."
+
+PROVIDER_CONFIG_OVERRIDES_FILE = "provider_config_overrides.json"
+
+PROVIDER_CONFIG_OVERRIDES: dict[str, list[str]] = {}
+
+
+def _load_provider_overrides() -> dict[str, list[str]]:
+    """Load operator-set provider role overrides from memory/.
+    Returns {} if no overrides exist (fresh install or cleared)."""
+    raw = load(PROVIDER_CONFIG_OVERRIDES_FILE)
+    if raw and isinstance(raw, dict):
+        return {
+            k: v for k, v in raw.items()
+            if isinstance(v, list) and len(v) > 0
+        }
+    return {}
+
+
+def reload_provider_overrides() -> None:
+    """Reload overrides from disk (called after PUT /providers/config saves)."""
+    global PROVIDER_CONFIG_OVERRIDES
+    PROVIDER_CONFIG_OVERRIDES = _load_provider_overrides()
+
+
+# Load overrides at import time
+PROVIDER_CONFIG_OVERRIDES = _load_provider_overrides()
+
+
+def get_effective_providers(task_type: str) -> list[str]:
+    """Return the effective provider list for a task_type:
+    operator overrides first, falling back to ROLE_PROVIDERS default."""
+    if task_type in PROVIDER_CONFIG_OVERRIDES:
+        return PROVIDER_CONFIG_OVERRIDES[task_type]
+    return ROLE_PROVIDERS.get(task_type, ["claude"])
+
+
 def _candidates_for(task_type):
     if task_type == "coding":
-        # Derived from ROLE_PROVIDERS["coding"] (not hardcoded) so tests and
-        # callers that override the role list keep working: only the members
-        # of CODING_ROTATING_FRONT actually present in the list rotate.
-        candidates = ROLE_PROVIDERS.get("coding", ["claude"])
+        # Derived from get_effective_providers("coding") (not hardcoded) so
+        # tests and callers that override the role list keep working: only the
+        # members of CODING_ROTATING_FRONT actually present in the list rotate.
+        candidates = get_effective_providers("coding")
         front = [name for name in CODING_ROTATING_FRONT if name in candidates]
         tail = [name for name in candidates if name not in CODING_ROTATING_FRONT]
         return _rotate_candidates(task_type, front) + tail
-    return ROLE_PROVIDERS.get(task_type, ["claude"])
+    return get_effective_providers(task_type)
 
 
 ROTATION_STATE_FILE = "provider_rotation.json"

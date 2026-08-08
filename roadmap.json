@@ -62,7 +62,7 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
@@ -173,7 +173,7 @@
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades \u2014 React 19, Express 5, Vite 8, @anthropic-ai/sdk",
       "description": "Upgraded react 18\u219219.2, express 4\u21925.2, vite 6\u21928.2, @anthropic-ai/sdk 0.115\u21920.116, plus peer deps. Express 5 catch-all route fix. Tests: 202 pass (same baseline).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
@@ -382,7 +382,7 @@
       "priority": 4,
       "build_id": "1491a659",
       "failure_reason": "Build 1491a659 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
+      "completed_at": "2026-08-08",
       "completion_note": "Obsolete: Provider config editor. Landscape simplified after RunPod decommissioning."
     },
     {

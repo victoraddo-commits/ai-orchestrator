@@ -60,7 +60,7 @@ from core.ai.agent_registry import (
     record_benchmark, bootstrap_default_agents,
 )
 from core.ai import circuit_breaker
-from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles
+from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles, PROVIDER_CONFIG_OVERRIDES, PROVIDER_CONFIG_OVERRIDES_FILE, ROLE_PROVIDERS, reload_provider_overrides
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
 import core.kai.identity as kai_identity
@@ -1139,6 +1139,66 @@ def providers_endpoint():
 @app.get("/providers/dashboard")
 def providers_dashboard_endpoint():
     return get_provider_dashboard()
+
+
+@app.get("/providers/config")
+def get_provider_config():
+    """Return operator overrides + effective config for every role,
+    plus all registered providers for the UI to build dropdowns from."""
+    effective = {}
+    for role in ROLE_PROVIDERS:
+        effective[role] = PROVIDER_CONFIG_OVERRIDES.get(role) or ROLE_PROVIDERS[role]
+    return {
+        "overrides": PROVIDER_CONFIG_OVERRIDES,
+        "effective": effective,
+        "defaults": ROLE_PROVIDERS,
+        "providers": list_providers(),
+    }
+
+
+@app.put("/providers/config")
+def update_provider_config(
+    body: dict,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Save provider role overrides. Body: {role: [provider_name, ...]}.
+    Validates every provider name against registered providers and rejects
+    unknown names.  Provider list order is the fallback priority for that
+    role — first = primary, last = last resort.
+
+    Omitted roles keep their hardcoded ROLE_PROVIDERS default; pass an
+    empty list [] to temporarily clear a role.  Passing a list that
+    exactly matches the default is a no-op (not stored as an override).
+    """
+    all_providers = list_providers()
+
+    overrides: dict[str, list[str]] = {}
+    for role, providers in body.items():
+        if not isinstance(providers, list):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Role '{role}': expected a list of provider names, got {type(providers).__name__}",
+            )
+        for name in providers:
+            if name not in all_providers:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unknown provider '{name}' in role '{role}'. "
+                    f"Registered providers: {', '.join(sorted(all_providers.keys()))}",
+                )
+        # Don't store overrides that match the default — a cleared override
+        # file means "use defaults for everything", not "persist copies".
+        defaults = ROLE_PROVIDERS.get(role)
+        if defaults and providers == defaults:
+            continue
+        overrides[role] = providers
+
+    from core.memory import save as mem_save
+
+    mem_save(PROVIDER_CONFIG_OVERRIDES_FILE, overrides)
+    reload_provider_overrides()
+
+    return {"saved": True, "overrides": overrides}
 
 
 # ---- V3: GPU & Pipeline endpoints ----

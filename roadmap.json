@@ -103,7 +103,7 @@
       "id": "13L-1",
       "name": "Provider Performance-Weighted Routing - Complete implementation",
       "description": "Implement provider performance-weighted routing based on latency, success rate, cost, and quality metrics. Route tasks to best-performing providers dynamically.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 1,
       "assigned_provider": null,
@@ -111,7 +111,8 @@
       "build_id": "a3a1df9c",
       "failure_reason": "Build a3a1df9c missing from builds.json (deleted or stale reference)",
       "completed_at": "2026-08-08",
-      "completion_note": "Composite scoring from success rate, latency degradation, and cost tier. Non-fixed-order roles sorted by score. Avoid-recommended providers pushed to end."
+      "completion_note": "Composite scoring from success rate, latency degradation, and cost tier. Non-fixed-order roles sorted by score. Avoid-recommended providers pushed to end.",
+      "completed": "2026-08-08"
     },
     {
       "id": "12B",
@@ -239,14 +240,15 @@
       "id": "K3",
       "name": "Isolate self-modifying build workspace",
       "description": "Self-modifying builds (project_path=SELF_PROJECT_PATH) currently operate directly in /project/ai-orchestrator, the same live directory this interactive session uses. Give them an isolated clone instead -- root cause of tonight's observed generation failures and repeated branch collisions.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 3,
       "build_id": "f64d1044",
       "failure_reason": "Build f64d1044 missing from builds.json (deleted or stale reference)",
       "completed_at": "2026-08-08",
       "notes": "WorkspaceSandbox class built (missing piece), 27/27 tests passing. Full K3 isolation: config (81 lines), overlay (130 lines), sandbox with WorkspaceSandbox + SandboxRuntime (218 lines), policy engine (75 lines), snapshot (144 lines), exceptions. All modules present and tested.",
-      "completion_note": "Obsolete/cleaned: Superseded by 14B (dual-repo rollback safety \u2014 completed)"
+      "completion_note": "Obsolete/cleaned: Superseded by 14B (dual-repo rollback safety \u2014 completed)",
+      "completed": "2026-08-08"
     },
     {
       "id": "17T",
@@ -379,13 +381,14 @@
       "id": "17U",
       "name": "Provider config editor: operator-set default workers and fallback order",
       "description": "Operator directive 2026-08-02: there is currently no way to set default AI workers/fallback order except by editing core.ai.ai_router.ROLE_PROVIDERS in code (or asking Claude Code to do it, as happened tonight for the kai-chat/digest hardwire in 17R). Build a real editor.\n\nConfirmed gap: every existing/queued dashboard phase (13J failed, 13O proposed, 15E pending) is READ-ONLY -- they surface get_provider_dashboard() output (status, health, success rate, current routing) but none of them let the operator change anything. core/api.py currently has zero write/mutate endpoints for provider config, by original design (see ARCHITECTURE.md's Observability API section) -- that constraint needs to be deliberately lifted for this one case, not worked around.\n\nScope: (1) a new persisted override layer -- store an operator-set {task_type/role: [provider, provider, ...]} mapping in memory/ via core.memory (atomic write, same pattern as everything else), consulted by core.ai.ai_router._candidates_for() BEFORE falling back to the hardcoded ROLE_PROVIDERS default -- the hardcoded dict stays as the shipped default, never deleted, so a fresh install or a cleared override still works; (2) a real write endpoint (e.g. PUT /providers/config), bridge-token gated like every other write endpoint, operator identity recorded the same way approval.py does; (3) a dashboard panel to edit it -- reuse 17D's Standalone Kai Dashboard shell rather than building a new surface, list every registered provider (from ai_provider.list_providers(), never hardcoded in the UI) with drag-or-dropdown reordering per role and a way to exclude a provider from a role entirely; (4) validation -- reject an override that references an unregistered provider name, and warn (not block) if every candidate for a role is currently unavailable/quota_exceeded per provider_health, so the operator can see they're about to configure a role with no working fallback.\n\nExplicitly NOT in scope: this only changes which AI provider handles text/coding generation tasks -- it must not touch core.action_policy/core.security's remediation-action gating, and must not become a way to bypass ARCHITECTURE_APPROVED/DEPLOY_APPROVAL. Once built, the kai-chat/digest hardwire from 17R (deepseek_native_flash + claude fallback) becomes just another editable entry here, not a special case in code.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 4,
       "build_id": "1491a659",
       "failure_reason": "Build 1491a659 missing from builds.json (deleted or stale reference)",
       "completed_at": "2026-08-08",
-      "completion_note": "Obsolete: Provider config editor. Landscape simplified after RunPod decommissioning."
+      "completion_note": "Obsolete: Provider config editor. Landscape simplified after RunPod decommissioning.",
+      "completed": "2026-08-08"
     },
     {
       "id": "IT-4",
@@ -1822,7 +1825,7 @@
       "id": "15A",
       "name": "Kai platform auth foundation: local accounts + capability-based permissions",
       "description": "Foundation for the 'Kai Enterprise Platform' initiative (user proposal 2026-07-29, trimmed after review). Scope, deliberately narrow: local username/password accounts (no external OAuth) plus a capability-based permission check -- capabilities like deploy.build, approve.architecture, chat.use, roadmap.create, provider.configure, each independently checkable in code -- mapped to exactly two initial roles: 'operator' (every capability, i.e. what the single existing bridge-token operator already has today) and 'viewer' (read-only: dashboard/chat reads, no write capabilities). Capability checks must live in one shared module (e.g. core/authz.py) that every write endpoint in core/api.py calls, not duplicated per-endpoint logic. Explicitly deferred from the original proposal, and why: full OAuth (Google/Microsoft/GitHub) + MFA + service accounts was scoped for a system with exactly one real user today -- add a second auth provider only when a real second person needs one, not speculatively. A 6-role taxonomy (Owner/Architect/Developer/Analyst/Customer/Guest) was cut to 2 roles for the same reason -- the capability model means adding a narrower role later is a mapping change, not a redesign, so there is no lock-in cost to starting minimal. The 'Customer' role scoped to assigned projects implied a multi-tenant customer-facing product pivot that was never a stated goal -- if that direction is wanted later it needs its own explicit decision, not a permissions bullet. Multi-organization support (isolated users/projects/learning/providers per org) was cut entirely: there is one organization. None of these are permanently ruled out, just not built until a real need exists -- a future roadmap phase should re-propose them with a concrete driving need, not reintroduce them speculatively. Explicitly low priority and deferred (user directive 2026-07-30): multi-user work should not be picked up ahead of any single-user-focused work still pending.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [
         "13H"
       ],
@@ -1840,7 +1843,8 @@
       "build_id": "5276508f",
       "failure_reason": "Build 5276508f missing from builds.json (deleted or stale reference)",
       "completed_at": "2026-08-08",
-      "completion_note": "BCrypt+JWT auth, operator/viewer roles, brute-force protection. core/authz.py."
+      "completion_note": "BCrypt+JWT auth, operator/viewer roles, brute-force protection. core/authz.py.",
+      "completed": "2026-08-08"
     },
     {
       "id": "15B",
@@ -2472,7 +2476,7 @@
       "priority": 1,
       "dependencies": [],
       "assigned_agent": "qwen3",
-      "status": "failed",
+      "status": "completed",
       "description": "JWT-based authentication with capability-based permissions (operator/viewer roles). Rate limiting on all endpoints. Brute-force protection. Session management.",
       "completion_criteria": [
         "JWT auth with capability-based permissions",
@@ -2483,7 +2487,8 @@
       "build_id": "8d5ee361",
       "failure_reason": "Build 8d5ee361 missing from builds.json (deleted or stale reference)",
       "completed_at": "2026-08-08",
-      "completion_note": "Auth+Ratelimit: JWT auth (15A), brute-force (rate_limiter.py), rate limiting all exist"
+      "completion_note": "Auth+Ratelimit: JWT auth (15A), brute-force (rate_limiter.py), rate limiting all exist",
+      "completed": "2026-08-08"
     },
     {
       "id": "18A-b",

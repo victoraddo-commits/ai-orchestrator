@@ -686,6 +686,27 @@ def juris_kai_account_detail(account_id: str):
         return {"error": str(e)}
 
 
+def _log_juris_admin(operator: str, account_id: str, action: str, meta: dict = None):
+    """Record an admin action in the Juris Kai security log. Fire-and-forget."""
+    try:
+        import json as _json
+        from core.juris_kai.accounts import get_account_manager as _gam
+        _mgr = _gam()
+        _mgr.db.execute(
+            """INSERT INTO juris_security_log
+               (telegram_id, event_type, details, ip_address)
+               VALUES (?, 'admin_action', ?, ?)""",
+            (operator, _json.dumps({
+                "account_id": account_id,
+                "action": action,
+                **({"meta": meta} if meta else {}),
+            }), "api"),
+        )
+        _mgr.db.commit()
+    except Exception:
+        pass  # auditing must not break the endpoint
+
+
 @app.post("/api/juris-kai/accounts/{account_id}/subscription")
 def juris_kai_set_subscription(
     account_id: str,
@@ -695,7 +716,11 @@ def juris_kai_set_subscription(
     """Change an account's subscription tier."""
     try:
         from core.juris_kai.dashboard import update_subscription
-        return update_subscription(account_id, body.get("tier", ""))
+        new_tier = body.get("tier", "")
+        result = update_subscription(account_id, new_tier)
+        if result.get("success"):
+            _log_juris_admin(operator, account_id, "set_subscription", {"tier": new_tier})
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -710,7 +735,11 @@ def juris_kai_deactivate(
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()
-        return mgr.ban_account(account_id, body.get("reason", "admin_action"))
+        reason = body.get("reason", "admin_action")
+        result = mgr.ban_account(account_id, reason)
+        if result.get("success"):
+            _log_juris_admin(operator, account_id, "deactivate", {"reason": reason})
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -724,7 +753,10 @@ def juris_kai_activate(
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()
-        return mgr.unban_account(account_id)
+        result = mgr.unban_account(account_id)
+        if result.get("success"):
+            _log_juris_admin(operator, account_id, "activate")
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -739,8 +771,12 @@ def juris_kai_grant_days(
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()
-        return mgr.grant_free_days(account_id, body.get("days", 1),
-                                   body.get("reason", "admin_grant"))
+        days = body.get("days", 1)
+        reason = body.get("reason", "admin_grant")
+        result = mgr.grant_free_days(account_id, days, reason)
+        if result.get("success"):
+            _log_juris_admin(operator, account_id, "grant_days", {"days": days, "reason": reason})
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -765,7 +801,12 @@ def juris_kai_referral_generate(
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()
-        return mgr.generate_invite_code(body.get("account_id", ""))
+        inviter_id = body.get("account_id", "")
+        result = mgr.generate_invite_code(inviter_id)
+        if result.get("success"):
+            _log_juris_admin(operator, inviter_id, "generate_referral",
+                             {"invite_code": result.get("invite_code")})
+        return result
     except Exception as e:
         return {"success": False, "error": str(e)}
 

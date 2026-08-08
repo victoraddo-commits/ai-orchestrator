@@ -1882,7 +1882,8 @@
       "failure_reason": "Build 4325f333 missing from builds.json (deleted or stale reference)",
       "assigned_provider": "omniroute",
       "completed_at": "2026-08-07",
-      "completion_note": "core/audit_logger.py (290 lines) JSONL audit with HMAC-SHA256 integrity."
+      "completion_note": "core/audit_logger.py (290 lines) JSONL audit with HMAC-SHA256 integrity.",
+      "completed": "2026-08-08"
     },
     {
       "id": "15D",

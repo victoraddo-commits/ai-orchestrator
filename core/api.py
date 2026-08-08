@@ -616,6 +616,173 @@ def auth_status(
     return {"role": "anonymous", "auth_method": "none", "capabilities": []}
 
 
+# ── Phase 15C: Audit log ─────────────────────────────────────────────────
+
+AUDIT_SOURCES = {
+    "build_history": "build_history.json",
+    "approval_queue": "approval_queue.json",
+    "decisions": "decisions.json",
+    "incidents": "incidents.json",
+}
+
+
+def _normalize_build(entry: dict) -> dict | None:
+    if not entry.get("build_id"):
+        return None
+    return {
+        "timestamp": entry.get("timestamp", entry.get("created", "")),
+        "source": "build",
+        "action": f"build.{entry.get('status', 'unknown').lower()}",
+        "actor": entry.get("generated_by", entry.get("operator", "system")),
+        "summary": entry.get("name", entry.get("build_id", "")),
+        "status": entry.get("status", "unknown"),
+        "detail": _trim_detail(entry),
+    }
+
+
+def _normalize_approval(entry: dict) -> dict | None:
+    if not entry.get("id"):
+        return None
+    return {
+        "timestamp": entry.get("created", ""),
+        "source": "approval",
+        "action": f"approval.{entry.get('status', 'pending').lower()}",
+        "actor": _last_actor(entry.get("history", [])),
+        "summary": entry.get("action", entry.get("reason", "")),
+        "status": entry.get("status", "pending"),
+        "detail": {"id": entry["id"], "trace_id": entry.get("trace_id", ""), "service": entry.get("service", "")},
+    }
+
+
+def _normalize_decision(entry: dict) -> dict | None:
+    if not entry.get("id"):
+        return None
+    return {
+        "timestamp": entry.get("created", ""),
+        "source": "decision",
+        "action": f"decision.{entry.get('status', 'pending').lower()}",
+        "actor": _last_actor(entry.get("history", [])),
+        "summary": entry.get("recommended_action", entry.get("problem", "")),
+        "status": entry.get("status", "pending"),
+        "detail": {"id": entry["id"], "cause_probability": entry.get("cause_probability")},
+    }
+
+
+def _normalize_incident(entry: dict) -> dict | None:
+    if not entry.get("id"):
+        return None
+    return {
+        "timestamp": entry.get("created", ""),
+        "source": "incident",
+        "action": f"incident.{entry.get('status', 'open').lower()}",
+        "actor": _last_actor(entry.get("history", [])),
+        "summary": entry.get("issue", entry.get("id", "")),
+        "status": entry.get("status", "open"),
+        "detail": {"id": entry["id"], "severity": entry.get("severity"), "service": entry.get("service", "")},
+    }
+
+
+def _last_actor(history: list) -> str:
+    """Extract the last human actor from a status-change history."""
+    if not history:
+        return "system"
+    for entry in reversed(history):
+        actor = entry.get("operator") or entry.get("approved_by") or entry.get("actor", "")
+        if actor and actor not in ("system", "kai", "auto"):
+            return actor
+    return history[-1].get("operator", "system") if history else "system"
+
+
+def _trim_detail(entry: dict) -> dict:
+    """Return a subset of entry fields safe for the audit detail column."""
+    skip = {"timestamp", "source", "action", "actor", "summary", "status", "history"}
+    return {k: v for k, v in entry.items() if k not in skip and not isinstance(v, (list, dict))}
+
+
+def _load_audit_source(filename: str) -> list[dict]:
+    try:
+        data = load(filename)
+        if isinstance(data, dict):
+            return data.get("records", []) or data.get("history", []) or []
+        if isinstance(data, list):
+            return data
+        return []
+    except Exception:
+        return []
+
+
+_NORMALIZERS = {
+    "build_history": _normalize_build,
+    "approval_queue": _normalize_approval,
+    "decisions": _normalize_decision,
+    "incidents": _normalize_incident,
+}
+
+
+@app.get("/audit")
+def get_audit_log(
+    actor: str | None = None,
+    source: str | None = None,
+    action: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 200,
+    format: str = "json",
+):
+    """Merged chronological audit log from all Kai data sources.
+
+    Query params:
+      actor      — filter by operator/username
+      source     — filter by source: build, approval, decision, incident
+      action     — filter by action prefix (e.g. 'build.failed')
+      date_from  — ISO date string, inclusive
+      date_to    — ISO date string, inclusive
+      limit      — max entries (default 200, max 1000)
+      format     — 'json' (default) or 'csv'
+    """
+    limit = min(limit, 1000)
+    entries: list[dict] = []
+
+    for source_key, filename in AUDIT_SOURCES.items():
+        if source and source_key != source:
+            continue
+        normalizer = _NORMALIZERS.get(source_key)
+        if normalizer is None:
+            continue
+        for raw in _load_audit_source(filename):
+            entry = normalizer(raw)
+            if entry is None:
+                continue
+            entries.append(entry)
+
+    # Filter
+    if actor:
+        entries = [e for e in entries if actor.lower() in e.get("actor", "").lower()]
+    if action:
+        entries = [e for e in entries if e.get("action", "").startswith(action)]
+    if date_from:
+        entries = [e for e in entries if e.get("timestamp", "") >= date_from]
+    if date_to:
+        entries = [e for e in entries if e.get("timestamp", "") <= date_to]
+
+    # Sort newest first
+    entries.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
+    total = len(entries)
+    entries = entries[:limit]
+
+    if format == "csv":
+        import io, csv as _csv
+        output = io.StringIO()
+        writer = _csv.DictWriter(output, fieldnames=["timestamp", "source", "action", "actor", "summary", "status"])
+        writer.writeheader()
+        for e in entries:
+            writer.writerow({k: e.get(k, "") for k in ["timestamp", "source", "action", "actor", "summary", "status"]})
+        return Response(content=output.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=kai_audit.csv"})
+
+    return {"total": total, "returned": len(entries), "entries": entries}
+
+
 # ── Phase 15D: SSE endpoint ──────────────────────────────────────────────
 
 

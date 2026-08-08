@@ -148,6 +148,9 @@ def _init_schema(conn: sqlite3.Connection):
             account_id TEXT NOT NULL,
             action_type TEXT NOT NULL,
             details TEXT DEFAULT '',
+            input_tokens INTEGER DEFAULT 0,
+            output_tokens INTEGER DEFAULT 0,
+            model TEXT DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (account_id) REFERENCES juris_accounts(account_id)
         );
@@ -200,6 +203,17 @@ def _init_schema(conn: sqlite3.Connection):
         CREATE INDEX IF NOT EXISTS idx_juris_referrals_code
             ON juris_referrals(invite_code);
     """)
+    # Add token-tracking columns to existing usage_log tables (WI-14).
+    # Safe to run on every init — ignores duplicates.
+    for col, coldef in [
+        ("input_tokens", "INTEGER DEFAULT 0"),
+        ("output_tokens", "INTEGER DEFAULT 0"),
+        ("model", "TEXT DEFAULT ''"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE juris_usage_log ADD COLUMN {col} {coldef}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 class AccountManager:
@@ -385,7 +399,8 @@ class AccountManager:
         remaining = max(0, limit - used)
         return {"allowed": remaining > 0, "remaining": remaining, "limit": limit}
 
-    def record_query(self, account_id: str) -> bool:
+    def record_query(self, account_id: str, input_tokens: int = 0,
+                      output_tokens: int = 0, model: str = "") -> bool:
         """Record a query usage. Call after successful AI response."""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         self.db.execute(
@@ -396,8 +411,9 @@ class AccountManager:
             (today, account_id),
         )
         self.db.execute(
-            "INSERT INTO juris_usage_log (account_id, action_type) VALUES (?, 'query')",
-            (account_id,),
+            "INSERT INTO juris_usage_log (account_id, action_type, input_tokens,"
+            " output_tokens, model) VALUES (?, 'query', ?, ?, ?)",
+            (account_id, input_tokens, output_tokens, model),
         )
         self.db.commit()
         return True

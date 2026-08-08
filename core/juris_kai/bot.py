@@ -234,19 +234,60 @@ def is_admin(telegram_id: str) -> bool:
 # polling loop for too long.
 DELEGATE_TIMEOUT = 45
 
+# Response cache — LRU of (normalized_query, (response, model, timestamp)).
+# Prevents redundant AI calls when users ask the same legal question.
+# Max 200 entries, ~1 hour TTL per entry.
+from functools import lru_cache
+import hashlib
+import time as _time
 
-def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> str:
+_CACHE = {}  # key → (response_text, model, cached_at)
+_CACHE_MAX = 200
+_CACHE_TTL = 3600  # 1 hour
+
+
+def _cache_key(text: str, context_type: str) -> str:
+    """Normalized cache key — case-insensitive, whitespace-collapsed hash."""
+    normalized = " ".join(text.lower().split())[:200]
+    return hashlib.sha256(f"{context_type}:{normalized}".encode()).hexdigest()
+
+
+def _cache_get(text: str, context_type: str) -> tuple[str, str] | None:
+    """Return (response, model) if cached and fresh, else None."""
+    key = _cache_key(text, context_type)
+    entry = _CACHE.get(key)
+    if entry and (_time.time() - entry[2]) < _CACHE_TTL:
+        return (entry[0], entry[1])
+    return None
+
+
+def _cache_set(text: str, context_type: str, response: str, model: str):
+    """Store response in cache. Evicts oldest entry if at capacity."""
+    key = _cache_key(text, context_type)
+    if len(_CACHE) >= _CACHE_MAX:
+        # Evict oldest
+        oldest = min(_CACHE.items(), key=lambda kv: kv[1][2])
+        del _CACHE[oldest[0]]
+    _CACHE[key] = (response, model, _time.time())
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token count for English text (~4 chars/token)."""
+    return max(1, len(text or "") // 4)
+
+
+def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> tuple[str, str]:
     """Call ai_router.delegate() in a background thread with a hard timeout.
 
-    Returns the response text on success, or a user-friendly error message
-    on timeout or failure.  This prevents a stalled provider from blocking
-    the bot's synchronous polling loop indefinitely.
+    Returns (response_text, model_name) on success, or (error_message, "") on failure.
+    This prevents a stalled provider from blocking the bot's synchronous polling
+    loop indefinitely.
 
     Detects empty (blank) AI responses and retries once with a simplified
     prompt before giving up, because some providers (e.g. deepseek_native_flash)
     occasionally return empty strings for valid queries.
     """
-    def _call(p: str) -> str:
+    def _call(p: str) -> tuple[str, str]:
         from core.ai.ai_router import delegate
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
@@ -254,15 +295,22 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> 
                 task_type=task_type, capability="text_task",
             )
             res = future.result(timeout=DELEGATE_TIMEOUT)
-            return (res.get("response") or "").strip()
+            model = (res.get("provider") or "").strip() if isinstance(res, dict) else ""
+            return ((res.get("response") or "").strip(), model)
+
+    # Check response cache before making an AI call
+    cached = _cache_get(prompt, task_type)
+    if cached:
+        logger.info(f"Cache hit for {task_type}")
+        return cached
 
     try:
-        text = _call(prompt)
+        text, model = _call(prompt)
         # If the AI returned nothing, retry once with a simpler bare prompt
         # (no jurisdiction gate — the AI already saw the gate on the first attempt).
         if not text:
             logger.warning(f"Empty AI response for {task_type}, retrying with simple prompt")
-            text = _call(f"Answer this Ghana law question concisely: {fallback_label}")
+            text, model = _call(f"Answer this Ghana law question concisely: {fallback_label}")
         if not text:
             logger.error(f"Empty AI response after retry for {task_type}")
             return (
@@ -270,14 +318,16 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str) -> 
                 "The AI provider returned an empty reply — this can happen with "
                 "certain legal article references. Please try rephrasing your question "
                 "or ask about a specific legal topic."
-            )
-        return text
+            ), ""
+        # Cache successful response
+        _cache_set(prompt, task_type, text, model)
+        return text, model
     except concurrent.futures.TimeoutError:
         logger.warning(f"Delegate timeout for {task_type} ({DELEGATE_TIMEOUT}s)")
-        return "⚠️ Query timed out. Please try a more specific question."
+        return "⚠️ Query timed out. Please try a more specific question.", ""
     except Exception as e:
         logger.error(f"Delegate failed for {task_type}: {e}")
-        return f"⚠️ Unable to load {fallback_label}. Please try again later."
+        return f"⚠️ Unable to load {fallback_label}. Please try again later.", ""
 
 
 def handle_message(update: dict) -> dict | None:
@@ -603,10 +653,13 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
 
     # Run delegate with a hard wall-clock timeout so one slow provider
     # doesn't block the bot's entire polling loop indefinitely.
-    response_text = _delegate_with_timeout(prompt, "juris_legal_teaching", f"information about {topic_display}")
+    response_text, model = _delegate_with_timeout(prompt, "juris_legal_teaching", f"information about {topic_display}")
 
     mgr = get_account_manager()
-    mgr.record_query(account["account_id"])
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(prompt),
+                     output_tokens=_estimate_tokens(response_text),
+                     model=model)
 
     return {
         "chat_id": chat_id,
@@ -625,10 +678,13 @@ def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
 
     base_prompt = build_prompt("legal_case_analysis", f"{query_type} in Ghana law")
     prompt = base_prompt + context_preamble
-    response_text = _delegate_with_timeout(prompt, "juris_case_analysis", query_type.lower())
+    response_text, model = _delegate_with_timeout(prompt, "juris_case_analysis", query_type.lower())
 
     mgr = get_account_manager()
-    mgr.record_query(account["account_id"])
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(prompt),
+                     output_tokens=_estimate_tokens(response_text),
+                     model=model)
 
     return {
         "chat_id": chat_id,
@@ -991,13 +1047,16 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
     from core.juris_kai.prompt import build_prompt
     base_prompt = build_prompt("legal_research", text)
     prompt = base_prompt + context_preamble
-    response_text = _delegate_with_timeout(prompt, "juris_research", text)
+    response_text, model = _delegate_with_timeout(prompt, "juris_research", text)
 
     if not response_text or not response_text.strip():
         logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
         response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
 
-    mgr.record_query(account["account_id"])
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(prompt),
+                     output_tokens=_estimate_tokens(response_text),
+                     model=model)
 
     return {
         "chat_id": chat_id,
@@ -1076,9 +1135,12 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     context_preamble = build_context_preamble(legal_docs)
 
     prompt = build_prompt(prompt_type, text) + context_preamble
-    response_text = _delegate_with_timeout(prompt, task_type, f"your {step.replace('_', ' ')} request")
+    response_text, model = _delegate_with_timeout(prompt, task_type, f"your {step.replace('_', ' ')} request")
 
-    mgr.record_query(account["account_id"])
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(prompt),
+                     output_tokens=_estimate_tokens(response_text),
+                     model=model)
     del _conversation_state[state_key]
 
     # Route back to appropriate menu

@@ -95,14 +95,18 @@ def weekly_judgments_scan():
 
 def monthly_full_refresh():
     """
-    Monthly refresh: full Tier 1 + Tier 2 crawler sweep. All active
-    sources across tiers 1 and 2 are rescanned.
+    Monthly refresh: full Tier 1 + Tier 2 crawler sweep + government source
+    auto-discovery. All active sources across tiers 1 and 2 are rescanned,
+    and new Ghana government legal repositories are discovered.
     """
     logger.info("KLAUS: Starting monthly full refresh")
     sources = list_sources(tier=None, status="active")
 
     for source in sources:
         log_audit_event("discovery", "info", f"Monthly refresh: {source['domain']}")
+
+    # ── Government source auto-discovery ──────────────────────────────
+    _run_government_source_discovery()
 
     broken = get_failed_sources()
     for b in broken:
@@ -169,6 +173,123 @@ def verify_existing_documents():
                 )
     except Exception:
         logger.warning("KLAUS: Could not re-verify approved documents")
+
+
+# ── Government Source Auto-Discovery ──────────────────────────────────────
+
+_GOV_DISCOVERY_URLS = [
+    "/legislation", "/legislations", "/laws", "/law",
+    "/acts", "/bills", "/regulations", "/rules",
+    "/directives", "/guidelines", "/notices",
+    "/judgments", "/judgements", "/decisions", "/cases",
+    "/court", "/gazette",
+    "/documents", "/downloads", "/publications", "/resources",
+    "/instruments", "/legal-framework", "/legal",
+]
+
+# Known gov.gh/org.gh domains to check for undiscovered legal repositories.
+# This list should be periodically expanded.
+_GOV_DOMAINS_TO_CHECK = [
+    # Statutory bodies not yet in the source registry
+    "audit.gov.gh",           # Auditor-General
+    "psc.gov.gh",             # Public Services Commission
+    "ncc.gov.gh",             # National Commission for Civic Education
+    "rti.gov.gh",             # Right to Information Commission
+    "fwa.gov.gh",             # Fair Wages and Salaries Commission
+    "nib.gov.gh",             # National Investment Bank (regulatory)
+    "moti.gov.gh",            # Ministry of Trade and Industry
+    "mwh.gov.gh",             # Ministry of Works and Housing
+    "moi.gov.gh",             # Ministry of Interior
+    "moc.gov.gh",             # Ministry of Communications
+    "mes.gov.gh",             # Ministry of Environment and Science
+    "mfa.gov.gh",             # Ministry of Foreign Affairs
+    "moys.gov.gh",            # Ministry of Youth and Sports
+    "moe.gov.gh",             # Ministry of Education
+    "mogcsp.gov.gh",          # Ministry of Gender, Children and Social Protection
+    "moh.gov.gh",             # Ministry of Health
+    "motac.gov.gh",           # Ministry of Tourism, Arts and Culture
+    "mida.gov.gh",            # Millennium Development Authority
+    "gogig.gov.gh",           # Ghana Oil and Gas Inclusive Growth
+    "gifec.gov.gh",           # Ghana Infrastructure Fund
+    "nib.gov.gh",             # National Investment Bank
+    "bogs.gov.gh",            # Bank of Ghana (alt domain)
+    "stategov.ghana.gov.gh",  # State protocol
+    "mint.gov.gh",            # Ministry of Interior (alt)
+    "nacoc.gov.gh",           # Narcotics Control Commission
+]
+
+
+def _run_government_source_discovery():
+    """Auto-discover new Ghana government legal repositories.
+
+    Scans known government domains for legal document patterns.
+    Registers newly discovered legal repositories as KLAUS sources.
+    Runs as part of the monthly refresh cycle (directive section 31).
+    """
+    import requests
+    from core.klaus.source_registry import is_ghana_government_domain, generate_discovery_urls
+    from core.klaus.generic_connector import HEADERS
+
+    logger.info("KLAUS: Starting government source auto-discovery")
+
+    from core.klaus.db_manager import list_sources, add_source
+    existing_sources = list_sources(status=None)
+    existing_domains = {s["domain"] for s in existing_sources}
+
+    discovered = 0
+    for domain in _GOV_DOMAINS_TO_CHECK:
+        if domain in existing_domains:
+            continue
+
+        base_url = f"https://{domain}"
+        try:
+            resp = requests.get(base_url, headers=HEADERS, timeout=15)
+            if resp.status_code >= 400:
+                continue
+
+            # Check for legal content indicators
+            html = resp.text.lower()
+            legal_indicators = [
+                "legislation", "legislations", "acts of parliament",
+                "regulations", "directives", "guidelines", "legal framework",
+                "laws of ghana", "legal notices", "gazette",
+            ]
+            has_legal = any(ind in html for ind in legal_indicators)
+
+            discovery_urls = generate_discovery_urls(f"https://{domain}")
+            found_doc_urls = 0
+            for disc_url in discovery_urls[:5]:  # Check first 5 paths
+                try:
+                    sub_resp = requests.get(disc_url, headers=HEADERS, timeout=10)
+                    if sub_resp.status_code == 200 and len(sub_resp.text) > 500:
+                        found_doc_urls += 1
+                except Exception:
+                    pass
+
+            if has_legal and found_doc_urls > 0:
+                try:
+                    add_source(
+                        url=f"https://{domain}",
+                        domain=domain,
+                        tier=3,
+                        jurisdiction="Ghana",
+                    )
+                    logger.info(f"  Discovered: {domain} ({found_doc_urls} legal paths found)")
+                    log_audit_event(
+                        "discovery", "info",
+                        f"Auto-discovered government source: {domain} "
+                        f"({found_doc_urls} legal paths)",
+                    )
+                    discovered += 1
+                except Exception:
+                    pass
+        except Exception:
+            continue
+
+    if discovered:
+        logger.info(f"KLAUS: Government discovery found {discovered} new sources")
+    else:
+        logger.info("KLAUS: Government discovery — no new sources found")
 
 
 def start_scheduler():

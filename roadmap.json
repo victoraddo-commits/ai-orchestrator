@@ -439,7 +439,7 @@
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 5,
       "severity": "medium",
@@ -447,8 +447,9 @@
       "assigned_agent": "qwen3",
       "build_id": "93ecd6fa",
       "failure_reason": "Build 93ecd6fa missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "runSessionSweep() in server/index.ts deletes expired sessions."
+      "completed_at": "2026-08-08T19:02:40Z",
+      "completion_note": "runSessionSweep() in server/index.ts deletes expired sessions.",
+      "resolution": "Session sweeper exists in server/index.ts:17-23 \u2014 purges sessions + client_sessions on startup and every 24h."
     },
     {
       "id": "19E",
@@ -503,7 +504,7 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
@@ -511,8 +512,9 @@
       "assigned_agent": "qwen3",
       "build_id": "83fb4157",
       "failure_reason": "Build 83fb4157 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "No chat_history_export.txt exists anywhere. Already clean."
+      "completed_at": "2026-08-08T19:02:40Z",
+      "completion_note": "No chat_history_export.txt exists anywhere. Already clean.",
+      "resolution": "chat_history_export.txt no longer exists in source or dist \u2014 already removed."
     },
     {
       "id": "19F",
@@ -556,7 +558,7 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [
         "IT-1"
       ],
@@ -565,8 +567,9 @@
       "assigned_agent": "qwen3",
       "build_id": "51fdd1ec",
       "failure_reason": "Build 51fdd1ec missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Fixed: SURVEY_PEPPER now throws in production if unset."
+      "completed_at": "2026-08-08T19:02:40Z",
+      "completion_note": "Fixed: SURVEY_PEPPER now throws in production if unset.",
+      "resolution": "Fixed in e9a438b \u2014 AUTH_SECRET and SURVEY_PEPPER both throw in production if unset."
     },
     {
       "id": "19G",
@@ -610,7 +613,7 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
@@ -618,8 +621,9 @@
       "assigned_agent": "qwen3",
       "build_id": "c6911d6e",
       "failure_reason": "Build c6911d6e missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Script has timeout 1800 and stdin prompt piping. Verified working."
+      "completed_at": "2026-08-08T19:02:40Z",
+      "completion_note": "Script has timeout 1800 and stdin prompt piping. Verified working.",
+      "resolution": "Fixed monthly-review.sh: pipe npm outputs to files instead of shell vars to avoid ARG_MAX (2MB exec limit)."
     },
     {
       "id": "19H",

@@ -60,6 +60,7 @@ CAPABILITIES = {
     "kai.chat.send": "Send chat messages to Kai",
     "law.manage": "Manage law documents (add/delete)",
     "dashboard.password": "Change dashboard login password",
+    "juris.admin": "Manage Juris Kai accounts (subscription, deactivate, grant days, referrals)",
 }
 
 # Exactly two roles — operator (everything) and viewer (read-only GETs).

@@ -55,6 +55,10 @@ def migrate(dry_run: bool = False) -> dict:
     sl.row_factory = sqlite3.Row
     sl.execute("PRAGMA journal_mode=WAL")
     sl.execute("PRAGMA foreign_keys=ON")
+    sl.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts "
+        "USING fts5(chunk_id, content, tokenize='porter unicode61')"
+    )
 
     summary = {
         "started": started,
@@ -254,6 +258,11 @@ def migrate(dry_run: bool = False) -> dict:
                        VALUES (?, ?, ?, ?, ?)""",
                     (chunk_id, doc_id, chunk["chunk_index"], content, content_hash),
                 )
+                # Also index into FTS5 for full-text search
+                sl.execute(
+                    "INSERT OR REPLACE INTO chunks_fts(chunk_id, content) VALUES (?, ?)",
+                    (chunk_id, content),
+                )
                 summary["chunks"]["inserted"] += 1
             except Exception as e:
                 summary["errors"].append(f"chunk {chunk_id}: {e}")
@@ -293,6 +302,13 @@ def migrate(dry_run: bool = False) -> dict:
                 ),
             )
             sl.commit()
+
+            # Rebuild FTS5 index to pick up any existing chunks
+            # that were skipped (already present) but missing from FTS
+            sl.execute("INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild')")
+            sl.commit()
+            fts_count = sl.execute("SELECT COUNT(*) as c FROM chunks_fts").fetchone()
+            summary["fts_doc_count"] = fts_count["c"] if fts_count else 0
 
     except Exception as e:
         logger.error("Migration failed: %s", e)

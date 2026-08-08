@@ -44,17 +44,27 @@ def _get_connection() -> sqlite3.Connection | None:
     try:
         conn = sqlite3.connect(f"file:{LEGAL_BRAIN_DB}?mode=ro", uri=True)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
     except Exception as e:
         logger.error(f"Failed to connect to Legal Brain DB: {e}")
         return None
 
 
+def _check_fts5_available(conn: sqlite3.Connection) -> bool:
+    """Check if the FTS5 virtual table exists in the database."""
+    try:
+        conn.execute("SELECT COUNT(*) FROM chunks_fts LIMIT 0")
+        return True
+    except sqlite3.OperationalError:
+        return False
+
+
 def query_knowledge_base(query: str) -> list[dict]:
     """Search the Ghana legal corpus for documents relevant to the query.
 
-    Searches document titles and chunk content. Returns up to MAX_CONTEXT_CHUNKS
-    matching chunks with their source document metadata.
+    Uses FTS5 full-text search when available (with BM25 ranking),
+    falling back to LIKE-based keyword search otherwise.
 
     Args:
         query: The user's legal query text
@@ -70,47 +80,85 @@ def query_knowledge_base(query: str) -> list[dict]:
     try:
         # Search strategy: keyword match across document titles and chunk content
         # Use LIKE with keywords extracted from the query
-        keywords = [w.strip().lower() for w in query.split() if len(w.strip()) > 2]
+        # Extract meaningful keywords (filter short words and common stopwords)
+        STOPWORDS = {
+            "the", "a", "an", "of", "in", "on", "at", "to", "for", "is", "are",
+            "was", "were", "be", "been", "and", "or", "not", "with", "that",
+            "this", "it", "its", "by", "from", "as", "but", "if", "so",
+            "all", "any", "can", "has", "had", "have", "do", "does", "did",
+            "will", "would", "shall", "should", "may", "might", "i", "you",
+            "he", "she", "we", "they", "me", "my", "what", "which", "who",
+            "whom", "how", "when", "where", "about", "into", "over", "after",
+        }
+        keywords = [
+            w.strip().lower() for w in query.split()
+            if len(w.strip()) > 1 and w.strip().lower() not in STOPWORDS
+        ]
         if not keywords:
             return []
 
-        # Build a search that matches document titles OR chunk content.
-        # Parameter ordering: all title LIKE params first, then all chunk LIKE
-        # params, then LIMIT. The ORDER BY repeats title params to sort title
-        # matches first — each repetition adds the same params again.
-        title_clauses = ["d.title LIKE ?" for _ in keywords]
-        chunk_clauses = ["c.content LIKE ?" for _ in keywords]
-        title_conditions = " OR ".join(title_clauses)
-        chunk_conditions = " OR ".join(chunk_clauses)
+        use_fts5 = _check_fts5_available(conn)
+        rows = []
 
-        like_values = [f"%{kw}%" for kw in keywords]
+        if use_fts5:
+            # FTS5 full-text search with BM25 ranking.
+            # OR between keywords ensures any matching chunk is returned,
+            # ranked by BM25 relevance (more keyword hits = higher rank).
+            fts_query = " OR ".join(keywords)
+            try:
+                fts_sql = """
+                    SELECT d.title, d.category, d.court, d.year,
+                           d.citation_text, d.jurisdiction,
+                           c.content as chunk_content, c.chunk_index,
+                           rank
+                    FROM chunks_fts fts
+                    JOIN chunks c ON fts.chunk_id = c.id
+                    JOIN documents d ON c.document_id = d.id
+                    WHERE d.jurisdiction = 'Ghana'
+                      AND d.review_status = 'approved'
+                      AND chunks_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT ?
+                """
+                rows = conn.execute(fts_sql, (fts_query, MAX_CONTEXT_CHUNKS)).fetchall()
+                if rows:
+                    logger.info(
+                        f"Legal Brain FTS5: {len(rows)} results for '{query[:80]}'"
+                    )
+            except sqlite3.OperationalError as e:
+                logger.warning(f"FTS5 query failed, falling back to LIKE: {e}")
+                use_fts5 = False  # Fall through to LIKE
 
-        # Params: title_likes + chunk_likes + title_likes (ORDER BY) + LIMIT
-        params = like_values + like_values + like_values + [MAX_CONTEXT_CHUNKS]
+        if not use_fts5 or not rows:
+            # LIKE-based keyword fallback
+            title_clauses = ["d.title LIKE ?" for _ in keywords]
+            chunk_clauses = ["c.content LIKE ?" for _ in keywords]
+            title_conditions = " OR ".join(title_clauses)
+            chunk_conditions = " OR ".join(chunk_clauses)
+            like_values = [f"%{kw}%" for kw in keywords]
+            params = like_values + like_values + like_values + [MAX_CONTEXT_CHUNKS]
 
-        sql = f"""
-            SELECT DISTINCT
-                d.title,
-                d.category,
-                d.court,
-                d.year,
-                d.citation_text,
-                d.jurisdiction,
-                c.content as chunk_content,
-                c.chunk_index
-            FROM documents d
-            JOIN chunks c ON c.document_id = d.id
-            WHERE d.jurisdiction = 'Ghana'
-              AND d.review_status = 'approved'
-              AND ({title_conditions} OR {chunk_conditions})
-            ORDER BY
-                CASE WHEN ({title_conditions}) THEN 0 ELSE 1 END,
-                d.year DESC,
-                c.chunk_index ASC
-            LIMIT ?
-        """
-
-        rows = conn.execute(sql, params).fetchall()
+            like_sql = f"""
+                SELECT DISTINCT
+                    d.title, d.category, d.court, d.year,
+                    d.citation_text, d.jurisdiction,
+                    c.content as chunk_content, c.chunk_index
+                FROM documents d
+                JOIN chunks c ON c.document_id = d.id
+                WHERE d.jurisdiction = 'Ghana'
+                  AND d.review_status = 'approved'
+                  AND ({title_conditions} OR {chunk_conditions})
+                ORDER BY
+                    CASE WHEN ({title_conditions}) THEN 0 ELSE 1 END,
+                    d.year DESC,
+                    c.chunk_index ASC
+                LIMIT ?
+            """
+            rows = conn.execute(like_sql, params).fetchall()
+            if rows:
+                logger.info(
+                    f"Legal Brain LIKE: {len(rows)} results for '{query[:80]}'"
+                )
 
         results = []
         for row in rows:
@@ -127,11 +175,7 @@ def query_knowledge_base(query: str) -> list[dict]:
                 "chunk_content": chunk,
             })
 
-        if results:
-            logger.info(
-                f"Legal Brain search: {len(results)} chunks found for '{query[:80]}'"
-            )
-        else:
+        if not results:
             logger.info(f"Legal Brain search: no results for '{query[:80]}'")
 
         return results

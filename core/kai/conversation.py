@@ -22,6 +22,7 @@ from typing import List, Dict, Optional, Any
 CHAT_HISTORY_FILE = "kai_chat_history.json"
 OPERATOR_LONG_TERM_FILE = "operator_long_term.json"
 COMPRESSION_THRESHOLD = 10
+KEEP_RECENT_TURNS = 5  # Number of most-recent turns to keep verbatim during compression
 
 # ---------------------------------------------------------------------------
 # Conversation Persistence Implementation

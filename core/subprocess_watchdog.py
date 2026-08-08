@@ -67,12 +67,14 @@ class SubprocessWatchdog:
         idle_cpu_seconds=None,
         grace_kill_seconds=5,
         check_interval_seconds=1.0,
+        env=None,
     ):
         self.args = [str(a) for a in args]
         self.wall_timeout_seconds = wall_timeout_seconds
         self.idle_cpu_seconds = idle_cpu_seconds
         self.grace_kill_seconds = grace_kill_seconds
         self.check_interval_seconds = max(check_interval_seconds, 0.1)
+        self.env = env  # optional env override dict for Popen
 
     def run(self):
         """Start the subprocess, monitor, and wait.
@@ -89,6 +91,7 @@ class SubprocessWatchdog:
             stderr=subprocess.PIPE,
             text=True,
             start_new_session=True,
+            env=self.env,
         )
 
         start_time = time.monotonic()

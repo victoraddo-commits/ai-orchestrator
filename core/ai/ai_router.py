@@ -151,7 +151,10 @@ ROLE_PROVIDERS = {
     # 2026-08-07: qwen4_coding/qwen4Z removed — both RunPod pods OFFLINE.
     # opencode_claude (Fable 5 via OpenCode Zen) is now the primary coding
     # agent — separate billing from CloudCLI/Anthropic subscription.
+    # 17S: opencode_fable5 (dedicated key) is highest priority for coding
+    # per operator directive 2026-08-02.
     "coding": [
+        "opencode_fable5",
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
@@ -230,17 +233,14 @@ ROLE_PROVIDERS = {
     # generation queue. Each pod is a physically separate RTX PRO 6000 GPU.
     # 2026-08-07: qwen4_text/qwen4_pod_b removed — RunPod pods OFFLINE.
     # deepseek_native_flash is now primary — 100% reliable, ~$20/month.
-    "planning": ["deepseek_native_flash", "deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash", "opencode_claude", "claude"],
-    # 2026-08-07: deepseek_native_pro primary for architecture — strongest
-    # reasoning available, ~$5-10/month for sparing use.
-    "architecture": ["deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
-    "log_analysis": ["deepseek_native_flash", "groq", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["deepseek_native_flash", "omniroute_deepseek_flash", "groq", "claude"],
-    # 2026-08-07: qwen4_pod_b removed — deepseek_native_flash takes primary.
-    "review": ["deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
-    # 2026-08-07: groq stays primary for classification (fast/cheap, suited for
-    # small structured calls). deepseek_native_flash is next fallback.
-    "classification": ["groq", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    # 17S: opencode_gemini_pro + opencode_fable5 (dedicated keys) are highest
+    # priority for every text role per operator directive 2026-08-02.
+    "planning": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash", "opencode_claude", "claude"],
+    "architecture": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "log_analysis": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "groq", "omniroute_deepseek_flash", "claude"],
+    "documentation": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "omniroute_deepseek_flash", "groq", "claude"],
+    "review": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "classification": ["opencode_gemini_pro", "opencode_fable5", "groq", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product

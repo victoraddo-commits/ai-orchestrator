@@ -62,7 +62,7 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "failed",
+      "status": "completed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
@@ -70,8 +70,9 @@
       "assigned_agent": "qwen3",
       "build_id": "7291b68d",
       "failure_reason": "Build 7291b68d missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "login-throttle.ts with in-memory brute-force (10 fails/15-min/15-min block)."
+      "completed_at": "2026-08-08T19:13:32Z",
+      "completion_note": "login-throttle.ts with in-memory brute-force (10 fails/15-min/15-min block).",
+      "resolution": "Brute-force throttle already existed (login-throttle.ts wired into login/MFA/client-auth). Added trust proxy so req.ip reflects real client IPs behind Docker."
     },
     {
       "id": "19A",
@@ -439,7 +440,7 @@
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 5,
       "severity": "medium",
@@ -504,7 +505,7 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
@@ -558,7 +559,7 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "IT-1"
       ],
@@ -613,7 +614,7 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",

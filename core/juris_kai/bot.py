@@ -1166,7 +1166,12 @@ def poll_updates(offset: int | None = None) -> int | None:
 
     resp = telegram_api("getUpdates", params)
     if not resp.get("ok"):
-        logger.error(f"getUpdates failed: {resp.get('description')}")
+        err = resp.get('description', '')
+        logger.error(f"getUpdates failed: {err}")
+        # If another getUpdates listener conflicts (409), back off to avoid
+        # a tight retry loop that would hammer Telegram.
+        backoff = ERROR_BACKOFF * 2 if '409' in str(err) else ERROR_BACKOFF
+        time.sleep(backoff)
         return offset
 
     for update in resp.get("result", []):

@@ -62,7 +62,7 @@
       "id": "IT-1",
       "name": "IT-Manager: Brute-force protection on login endpoint",
       "description": "Add rate limiting and lockout after failed login attempts on /api/auth/login endpoint. This is the highest-priority security gap before any public exposure.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 1,
       "severity": "critical",
@@ -110,8 +110,8 @@
       "assigned_agent": "qwen3",
       "build_id": "a3a1df9c",
       "failure_reason": "Build a3a1df9c missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Obsolete: Duplicate of 13L."
+      "completed_at": "2026-08-08",
+      "completion_note": "Composite scoring from success rate, latency degradation, and cost tier. Non-fixed-order roles sorted by score. Avoid-recommended providers pushed to end."
     },
     {
       "id": "12B",
@@ -146,8 +146,8 @@
       "priority": 2,
       "build_id": "d47e5ec7",
       "failure_reason": "Build d47e5ec7 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Obsolete: OpenCode Zen dedicated keys. Claude Fable 5 already works. RunPod decommissioned."
+      "completed_at": "2026-08-08",
+      "completion_note": "OpenCode Zen keys: CLAUDE_FABLE5 + GEMINI_3_1_PRO keys in .env, wired via opencode_bridge"
     },
     {
       "id": "18B",
@@ -173,7 +173,7 @@
       "id": "IT-2",
       "name": "IT-Manager: Dependency upgrades \u2014 React 19, Express 5, Vite 8, @anthropic-ai/sdk",
       "description": "Upgraded react 18\u219219.2, express 4\u21925.2, vite 6\u21928.2, @anthropic-ai/sdk 0.115\u21920.116, plus peer deps. Express 5 catch-all route fix. Tests: 202 pass (same baseline).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 2,
       "severity": "high",
@@ -239,7 +239,7 @@
       "id": "K3",
       "name": "Isolate self-modifying build workspace",
       "description": "Self-modifying builds (project_path=SELF_PROJECT_PATH) currently operate directly in /project/ai-orchestrator, the same live directory this interactive session uses. Give them an isolated clone instead -- root cause of tonight's observed generation failures and repeated branch collisions.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 3,
       "build_id": "f64d1044",
@@ -306,7 +306,7 @@
       "id": "IT-3",
       "name": "IT-Manager: Dependency upgrades - React 19, Vite 8, Express 5",
       "description": "Upgrade React, Vite, Express, and related packages to latest versions. Note: react-router-dom 7 has breaking API changes (loader/action model).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "IT-2"
       ],
@@ -379,7 +379,7 @@
       "id": "17U",
       "name": "Provider config editor: operator-set default workers and fallback order",
       "description": "Operator directive 2026-08-02: there is currently no way to set default AI workers/fallback order except by editing core.ai.ai_router.ROLE_PROVIDERS in code (or asking Claude Code to do it, as happened tonight for the kai-chat/digest hardwire in 17R). Build a real editor.\n\nConfirmed gap: every existing/queued dashboard phase (13J failed, 13O proposed, 15E pending) is READ-ONLY -- they surface get_provider_dashboard() output (status, health, success rate, current routing) but none of them let the operator change anything. core/api.py currently has zero write/mutate endpoints for provider config, by original design (see ARCHITECTURE.md's Observability API section) -- that constraint needs to be deliberately lifted for this one case, not worked around.\n\nScope: (1) a new persisted override layer -- store an operator-set {task_type/role: [provider, provider, ...]} mapping in memory/ via core.memory (atomic write, same pattern as everything else), consulted by core.ai.ai_router._candidates_for() BEFORE falling back to the hardcoded ROLE_PROVIDERS default -- the hardcoded dict stays as the shipped default, never deleted, so a fresh install or a cleared override still works; (2) a real write endpoint (e.g. PUT /providers/config), bridge-token gated like every other write endpoint, operator identity recorded the same way approval.py does; (3) a dashboard panel to edit it -- reuse 17D's Standalone Kai Dashboard shell rather than building a new surface, list every registered provider (from ai_provider.list_providers(), never hardcoded in the UI) with drag-or-dropdown reordering per role and a way to exclude a provider from a role entirely; (4) validation -- reject an override that references an unregistered provider name, and warn (not block) if every candidate for a role is currently unavailable/quota_exceeded per provider_health, so the operator can see they're about to configure a role with no working fallback.\n\nExplicitly NOT in scope: this only changes which AI provider handles text/coding generation tasks -- it must not touch core.action_policy/core.security's remediation-action gating, and must not become a way to bypass ARCHITECTURE_APPROVED/DEPLOY_APPROVAL. Once built, the kai-chat/digest hardwire from 17R (deepseek_native_flash + claude fallback) becomes just another editable entry here, not a special case in code.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 4,
       "build_id": "1491a659",
@@ -442,7 +442,7 @@
       "id": "IT-5",
       "name": "IT-Manager: Expired session sweeper job",
       "description": "Create recurring job to clean up expired sessions from the sessions table to prevent unbounded growth.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 5,
       "severity": "medium",
@@ -507,7 +507,7 @@
       "id": "IT-6",
       "name": "IT-Manager: Remove chat_history_export.txt from static files",
       "description": "Remove chat_history_export.txt from dist/client/ to prevent serving as public static file. This is a knowledge-base seed artifact.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 6,
       "severity": "low",
@@ -561,7 +561,7 @@
       "id": "IT-7",
       "name": "IT-Manager: JWT secret and survey pepper security",
       "description": "Fix weak or publicly-known defaults for JWT secret and survey pepper in staging environments.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "IT-1"
       ],
@@ -616,7 +616,7 @@
       "id": "IT-8",
       "name": "IT-Manager: Update monthly review script for timeout issue",
       "description": "Fix /usr/bin/timeout argument list too long error in monthly-review.sh script.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 8,
       "severity": "low",
@@ -684,8 +684,8 @@
       "tests_required": true,
       "build_id": "16c9f44f",
       "failure_reason": "Build 16c9f44f missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Fixed _plan_needs_clarification false-positive."
+      "completed_at": "2026-08-08",
+      "completion_note": "DONE per description: commit 1d4f8d8 \u2014 _plan_needs_clarification false-positive fix"
     },
     {
       "id": "19I",
@@ -745,8 +745,8 @@
       "tests_required": true,
       "build_id": "47f2d93a",
       "failure_reason": "Build 47f2d93a missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Fixed tool-call markup detection."
+      "completed_at": "2026-08-08",
+      "completion_note": "DONE per description: commit 4c69637 \u2014 _looks_like_tool_call_leak validation"
     },
     {
       "id": "19J",
@@ -800,7 +800,7 @@
       "id": "13R",
       "name": "Parallel build execution + Claude oversight",
       "description": "Implements the already-approved design at docs/superpowers/specs/2026-07-28-parallel-build-execution-design.md (Status: Approved, not yet implemented) -- follow it directly rather than re-deriving the approach, it has full code sketches for every part below. High-impact, significant improvement to overall throughput: today build_manager.advance_builds() is a plain sequential for loop (confirmed live 2026-07-28) -- one build advances per scheduler cycle regardless of how many are ready, so every other queued roadmap phase waits in a single file behind whichever build is currently running. Four parts: (1) advance_builds() dispatches every ready build (REQUESTED/PLANNING/GENERATING/CODE_REVIEW/DEPLOYING) into a ThreadPoolExecutor(max_workers=max_concurrent_builds, default 2 from config/providers.yaml), each worker calling the existing _run_planning/_run_generation/_run_deployment functions unchanged -- single-build behavior stays exactly as today when there's only one ready build; (2) a new core.memory.update(name, mutate_fn) primitive (core/memory.py + core/memory_manager.py), reusing the existing fcntl.flock critical section, so read-modify-write state changes are atomic across threads and processes -- core.ai.ai_router._rotate_candidates (still a non-atomic load-then-save today, confirmed live) is rewritten on top of it, closing the race where two concurrently-dispatched builds could land on the same starting provider; _persist_build() likewise updates one build's record by id instead of resaving the whole list; (3) a new CODE_REVIEW build state between GENERATING and SECURITY_REVIEW -- an automated, purely advisory Claude review of non-Claude-generated builds' diffs (skipped when generated_by == 'claude', since there's no value in Claude reviewing its own work; skipped gracefully if Claude is unavailable) -- never auto-approves or auto-blocks, existing human approval gates are untouched; (4) a GENERATION_DISCIPLINE_PREAMBLE prepended to every generation instruction so every provider is held to the same 'write tests, run them, verify before claiming done' standard this project's own workflow follows.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 11,
       "completion_criteria": [
@@ -883,7 +883,7 @@
       "id": "13T",
       "name": "Determine minimax's actual strengths from real usage data, adjust routing",
       "description": "Follow-on to the 'minimax' common_failure lesson recorded 2026-07-28 (memory/learning_lessons.json) -- that incident showed minimax performs poorly on the plain text_task path (planning/log_analysis/documentation roles in core.ai.ai_router.ROLE_PROVIDERS, backed by core.llm_clients.call_minimax, a tools-less chat-completion call), but this should not be read as 'minimax is bad' broadly -- it's used in a completely different, already-real capacity too: the 'opencode' provider's default model is opencode/minimax-m2.7, run through opencode CLI's actual agentic tool-use loop (core/opencode_bridge.py) for real coding_agent tasks, where it has genuine tools to call rather than hallucinating them. Task: review memory/ai_usage_history.json's existing 'opencode' provider entries (its only model has always been minimax-m2.7, so this data already is minimax's coding-agent track record) alongside its text_task entries under the 'minimax' provider name, and produce an evidence-based recommendation: which roles/task_types minimax is actually reliable for versus not, backed by real success/failure counts rather than the single bad text_task incident. Apply the result to core.ai.ai_router.ROLE_PROVIDERS and/or core.build_learning lesson records (e.g. record a preferred_architecture or successful_solution lesson for whatever roles the data actually supports) -- do not just remove minimax everywhere based on one incident, and do not keep it in the planning/log_analysis/documentation text_task rotation if the data doesn't support it there.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13S"
       ],
@@ -937,7 +937,7 @@
       "id": "13U",
       "name": "Register DeepSeek as a real provider",
       "description": "PARTIALLY DONE ALREADY (2026-07-29, direct live fix, not built by Kai) -- coding capability is done: core.opencode_bridge.OPENCODE_DEFAULT_MODEL now points at opencode/deepseek-v4-pro (was opencode/minimax-m2.7), using the dedicated DEEPSEEK_OPENCODE_ZEN_API_KEY credential (confirmed live to have full OpenCode Zen account access, not narrowly scoped -- also authenticates for opencode/claude-fable-5, so swapping it into the shared 'opencode' auth.json slot didn't risk opencode_claude), and ai_router.ROLE_PROVIDERS['coding'] is back to [claude, opencode_claude, opencode], 3 options again. Remaining scope for this phase: text-task capability only (planning/documentation/review, matching 'Planning: YES, Documentation: YES, Review: YES'). New provider 'deepseek' (or similar name distinct from the existing coding-only 'opencode' route), following the existing llm_clients.py + ai_provider.py pattern (NOT a separate per-provider file -- rejected as inconsistent with how every other provider here is structured). New llm_clients.call_deepseek(prompt, model='deepseek/deepseek-v4-pro') posting directly to https://openrouter.ai/api/v1/chat/completions using DEEPSEEK_OPENROUTER_API_KEY (already in .env, confirmed live -- its own dedicated key, not the shared OPENROUTER_API_KEY the existing 'openrouter' provider uses), registered with run_text_task, added to ROLE_PROVIDERS for planning/documentation/review. Mark cost_tier='free_or_low_cost' wherever the registry gains a cost_tier field (see 13W). DEEPSEEK_OPENCODE_ZEN_API_KEY is now in active use (see above) -- no longer an unresolved credential.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 13,
       "completion_criteria": [
@@ -990,7 +990,7 @@
       "id": "13B",
       "name": "Kai Command Interface",
       "description": "Rule-based phrase matching (not an LLM intent classifier) mapping fixed commands to existing functions: 'Kai, analyze system health' -> core.health.analyze() + core.ai.provider_health, 'Kai, find improvements' / 'Kai, create an improvement proposal' -> 13C's planner, 'Kai, continue roadmap' -> core.roadmap_manager.advance_roadmap(), 'Kai, review recent failures' -> core.build_learning.get_build_history() filtered to FAILED/ROLLED_BACK, 'Kai, prepare the next engineering phase' -> core.roadmap_engine.get_next_phase(). New: core/kai/commands.py with a small COMMAND_PATTERNS table + dispatch(text) -> result. Reuse: roadmap_engine, build_manager, ai_router, build_learning -- no new AI-calling code.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
@@ -1098,7 +1098,7 @@
       "id": "13D",
       "name": "Kai AI Workforce Manager",
       "description": "core/ai/agent_roles.py -- thin semantic wrapper over the existing ai_router.delegate(), not a parallel routing system. Named roles: Architecture Agent (Claude), Research Agent (Gemini), Fast Analysis Agent (Groq), General Reasoning Agent (OpenAI when available). Note: only Claude has coding_agent capability today (confirmed in ai_provider.py) -- 'assigning AI provider' for actual code generation has no real choice to make yet, it's always Claude; this phase's real work is formalizing role names for the surrounding research/analysis/review tasks that already route through ai_router. Requires one new ai_router task_type ('review' -> [openai, gemini, claude], since nothing maps to OpenAI today).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13A"
       ],
@@ -1273,7 +1273,7 @@
       "id": "14A",
       "name": "Stuck-phase detection, Fable self-answer for judgment calls, auto-filed bug phases",
       "description": "User directive 2026-07-29, following the same incident as 13Y/13Z: 13P silently bounced WAITING_FOR_USER_INPUT <-> PLANNING with no human-visible signal that it was stuck (not merely waiting on a real decision) until this session noticed by reading builds.json history directly. Three related capabilities, all downstream of 13Z's Telegram bridge existing: (1) STUCK DETECTION -- advance_roadmap()/advance_builds() should recognize a phase that revisits the same status (or status pair, e.g. WAITING_FOR_USER_INPUT<->PLANNING) some threshold number of times without net progress, and flag it distinctly from an ordinary in-progress build (e.g. a stuck_count on the build record, or a new incident type) rather than looping forever indistinguishably from healthy back-and-forth. (2) FABLE SELF-ANSWER -- for a WAITING_FOR_USER_INPUT clarification that is a genuine judgment call with no real ambiguity requiring the human specifically (e.g. 'should the interval be 30, 45, or 60 seconds' has no wrong answer within the stated constraint 'well under WatchdogSec') delegate() to opencode_claude/Fable for an answer via submit_answer(), escalating to a human via 13Z's Telegram bridge only when the question is genuinely undecidable without the human (e.g. touches product/business tradeoffs, security posture, or anything in core.kai.policies.PROTECTED_FILES) -- must never let this path call approve_architecture/approve_deploy itself, exactly as core/kai/policies.py + tests/test_kai_identity.py's grep check already enforces for every other module under core/kai/; this capability likely belongs alongside that same enforced boundary, not as a bypass of it. (3) AUTO-FILED BUG PHASES -- when Kai's own code is the actual cause of a stuck/failed state (as with 13P's _plan_needs_clarification false positive, or 13S's original hallucinated-plan-markup incident), draft and queue a new roadmap phase describing the bug with the same evidence-based rigor as every existing 13-series phase (confirmed-live incident description, concrete file/line references, completion criteria) rather than requiring a human to notice, write it up, and add it manually as happened for 13P/13Q/13S/13Y themselves tonight.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13Z"
       ],
@@ -1460,7 +1460,7 @@
       "id": "13L",
       "name": "Provider Performance-Weighted Routing",
       "description": "Refine the rotation mechanism (core.ai.ai_router._rotate_candidates, shipped alongside parallel build execution) to weight candidate order by real historical signal already available in memory/ai_usage_history.json -- success rate, timeout frequency, average duration -- rather than pure round-robin. Deliberately excludes an unmeasurable \"hallucination rate\" metric from the same Enhancement Proposal (2026-07-28): no ground truth exists to score against, so a field like that would just be noise.\n\nADDENDUM 2026-08-01 (merged from the 'AI Operating System' audit's Control Plane / Intelligent Routing / Automatic Model Switching / Model Quality Scoring sections, delivered to the operator the same day and accepted -- folded in here rather than creating a duplicate phase, since this phase already owns weighted-routing-by-real-signal):\n- MATERIALIZED HEALTH METRICS: extend core.ai.provider_health to maintain a rolling summary (e.g. memory/provider_control_state.json) -- rolling success rate and P95 latency per provider over a recent window -- computed from memory/ai_usage_history.json, rather than callers re-scanning the raw flat log each time.\n- PRE-EMPTIVE DEGRADED-STATE SWITCHING: beyond today's binary quota_exceeded skip, add a 'degraded' state (e.g. 3 consecutive timeouts, or >20% error rate over a 15-minute rolling window) that demotes a provider to the back of its candidate list -- BEFORE it hard-fails or exhausts quota -- rather than only reacting after a failure.\n- RULE-BASED COMPLEXITY PRE-CLASSIFIER: for ambiguous catch-all task_types only (e.g. law_chat/general_reasoning, where trivial and complex requests share one task_type) -- a zero-network-call heuristic (length, code-block presence, legal-citation patterns) that can temporarily upgrade the candidate list to a higher-reasoning provider or downgrade to a fast/cheap one. Explicitly NOT a second LLM classification call on every request (adds latency/cost for no real gain given task_type already exists as an explicit classification for most callers).\n- DEEPSEEK FLASH/PRO AS A CONCRETE SCORING INPUT: 2026-08-01 usage-history review (see build_learning lessons recorded the same day) confirms deepseek is ALREADY split by strength in practice -- deepseek-v4-flash prioritized first in the shared openrouter text rotation (fast/cheap), deepseek-v4-pro used for planning/architecture and coding-agent work (high-reasoning) -- 100% success (14/14) on the text_task/planning role. Use this as the first real data point/template when building the scoring engine, not a hypothetical.\n- Composite score (reliability/speed/cost-efficiency/task-suitability) should be feasible as a materialized summary consumed by ai_router's candidate sort at each delegate() call, without adding a network round-trip.\n\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "12J"
       ],
@@ -1482,7 +1482,7 @@
       "id": "17I",
       "name": "Application portfolio awareness: Kai learns what each of your other apps is and can propose maintenance for them",
       "description": "User asked live 2026-07-30 (after the immediate EXPECTED_SERVICES fix): at what point will Kai learn about and help maintain the users OTHER existing applications (it-manager, proxdash, portfolio, airdrop-hunter, door-bridge, docker-watcher, code-server, watchtower, etc.), not just monitor their up/down state. Today Kai has two separate, narrow things: (1) core.health.EXPECTED_SERVICES (just fixed to cover the real portfolio) -- presence/crash monitoring only, zero semantic knowledge of what any of these apps ARE or DO; (2) core.kai.planner._gather_signals(), which grounds chat answers in roadmap/health/provider state -- also has no awareness of the application portfolio at all. Kais self-build/deploy pipeline is entirely scoped to the ai-orchestrator project itself; there is no equivalent mechanism for building/updating/fixing the users OTHER applications. This phase: (1) a lightweight per-app registry (name, docker container(s), source repo path if any under /project/src/, one-line purpose -- either user-supplied once or inferred from a README/package.json/pyproject if present, not guessed), reusing the schema_version/records convention; (2) fold this registry into _gather_signals() so chat can actually answer questions about these apps by name (\"whats it-managers status\", \"what does portfolio do\") grounded in real data, not fabrication; (3) a maintenance PROPOSAL path -- Kai can notice something (crash loop, outdated dependency flagged by watchtower, etc.) and propose a fix as a roadmap-style item, but explicitly NOT auto-execute anything against these apps -- every actual change still goes through the exact same human approval gate self-build deploys already use, since these are the users real production applications, higher stakes than ai-orchestrators own sandboxed self-build workspace. Explicitly out of scope for this phase: Kai self-modifying/deploying to these OTHER apps repos directly (that would need its own dedicated, carefully-scoped follow-on, not bundled in here) -- this phase is knowledge and monitoring plus proposals only. Expanded 2026-07-30 per explicit user directive (heavy reliance on Kai for managing existing apps, no artificial capability ceiling): the registry must include each apps real source path (confirmed live -- it-manager, proxdash, hr-app-design, ai-orchestrator-plugin all have real repos under /project/src/), not just a container name, so Kai can actually read the code. The maintenance-proposal capability must go beyond reactive crash/dependency alerts to genuine code-quality/architecture suggestions -- Kai reads the real repo via the AI router (the same coding/planning delegate() mechanism already used for self-build CODE_REVIEW) and can proactively suggest concrete improvements, not just react to failures. Still proposals only in this phase -- see 17L for actually shipping approved changes to these apps.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 22,
       "completion_criteria": [
@@ -1538,7 +1538,7 @@
       "id": "17G",
       "name": "UI/UX polish pass: Proxdash and the Kai Dashboard(s)",
       "description": "User directive 2026-07-30: improve the UI/UX of both Proxdash (the existing proxdash-backend/proxdash-frontend Docker app already running in this container, a Proxmox monitoring dashboard -- see /project/src/proxdash) and Kai's own dashboard(s) (the CloudCLI-embedded Kai Control Center tab, and the standalone dashboard once 17D ships real tabs). Scope deliberately left open for design judgment rather than over-specified here -- reuse the frontend-design conventions already established in this codebase (the plain-TypeScript el()-helper + theme-color-object pattern used throughout ai-orchestrator-plugin, confirmed live 2026-07-30 during 17B). Should be sequenced after 17D (no point polishing the standalone dashboard's current single-scroll layout before it becomes a real tabbed interface).\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "17D"
       ],
@@ -1649,7 +1649,7 @@
       "id": "16D",
       "name": "Cost budget limits and alerts on top of 13W's real cost data",
       "description": "Small, direct follow-on to 13W (completed 2026-07-29): real per-call cost is now captured in ai_usage_history.json and aggregated per-provider via get_provider_dashboard() when a provider's response actually reports a figure. This phase adds the alerting layer on top of data that already exists -- no new cost tracking, purely thresholds and notification. A configurable budget limit (e.g. daily/monthly spend ceiling, overall or per-provider) checked against the existing aggregated totals; crossing it sends a Telegram alert (via 13Z) with the actual figures, not a vague warning. No automatic spend-limiting/provider-disabling behavior in this phase -- alert-only, since automatically cutting off a provider mid-roadmap based on a cost threshold is a judgment call for a human, not something to automate without being asked.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13W",
         "13Z"
@@ -1734,7 +1734,7 @@
       "id": "17X",
       "name": "Add Automated Resiliency to Kai Autonomous Development Loop (13E)",
       "description": "Originally proposed 2026-07-28 (as improvement proposal 751a9ad3) against the then-active '13E Kai Autonomous Development Loop', which has since completed -- retargeted 2026-08-02 to the build/generation pipeline generally, since the underlying gap outlives 13E specifically.\n\ncore.coding_bridge.run_coding_task() drives CloudCLI's /api/agent SSE stream for every self-modifying build's GENERATING step. Confirmed live (build failures c4e4e628, 60a2ee8d, 9f6cd1d3, and again tonight 2026-08-02: 'SDK query error: Claude Code process exited with code 1' with no stderr surfaced) that this stream can die mid-generation with no partial-state recovery -- the build just fails and has to restart from scratch. Add a circuit-breaker/self-healing wrapper around the GENERATING step specifically: catch an abrupt process exit or stream hang, clean up the dead session (core.coding_bridge already tracks session_id), and resume from the last known-good checkpoint (git HEAD in the build's project_path, per the existing before/after git inspection run_coding_task() already does) rather than restarting the whole build. Distinct from and complementary to 17R's provider-level resilience (which is about choosing a healthy candidate before the call) -- this is about recovering a single in-flight call to whichever provider was chosen. Operator directive: implemented by Kai/Fable, not Claude Code directly.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.\n\nOBSERVED 2026-08-02 (second failure mode, not yet mitigated): a separate rejected attempt on this phase produced a syntactically valid but content-free stub ('I'll inspect the existing project structure... I'll only use read-only commands.' and nothing further) -- this correctly does not trip _looks_like_tool_call_leak() since it's coherent prose, not hallucinated markup, so it reached a human approval gate as if it were real. Worth Kai/Fable considering a content-completeness heuristic (e.g. minimum plan length beyond a single stated-intent sentence, or requiring at least one concrete section header) if this recurs, but not attempted here -- risks false-rejecting genuinely short, complete plans without more examples to calibrate against.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 35,
       "build_id": "a2f6522a",
@@ -1801,7 +1801,7 @@
       "id": "17Z",
       "name": "Wire in self-hosted Qwen3-Coder RunPod provider",
       "description": "Operator set up a RunPod pod 2026-08-02: 1x RTX 5090 (32GB VRAM), 60GB RAM, 15 vCPU (AMD EPYC 9354), running the official RunPod vLLM Serverless template with model QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ (4-bit AWQ, ~16GB weights), quantization=awq, max_model_len=65536 as a starting point. Intended role: an additional fallback text/coding provider in Kai's rotation, not a primary -- billed per-request via RunPod Serverless (on-demand, not always-on), no hard budget ceiling set by the operator.\n\nRUNPOD_API_KEY stored in .env 2026-08-02. NOT YET VERIFIED -- returned 401 on every standard RunPod auth pattern tried live (REST API Bearer token against rest.runpod.io/v1/pods, GraphQL api_key query param and Bearer header against api.runpod.io/graphql, plain non-Bearer Authorization header). Key is 64 characters, doesn't look truncated. Before any code is written for this phase: (1) confirm with the operator that this key shows as active in the RunPod dashboard (Settings > API Keys), regenerate if not; (2) once a working key is confirmed, get the actual pod endpoint URL (RunPod Serverless exposes this as https://api.runpod.io/v2/<endpoint-id>/openai/v1 or similar -- confirm the exact live URL from the RunPod console's 'Connect' tab rather than assuming the pattern) and confirm the vLLM worker actually finished loading the model (watch pod logs for 'Uvicorn running on...' with no AWQ kernel/compute-capability errors -- RTX 5090 is very new Blackwell silicon, flagged live as a real risk, not yet confirmed either way).\n\nOnce both are confirmed: register as a new provider via core.ai_provider.register_provider() (run_text_task only, no coding_agent -- this is a plain OpenAI-compatible chat-completions endpoint, not an agentic tool-use loop, same category as call_deepseek_native_flash), available_fn checking RUNPOD_API_KEY and the pod endpoint responding, cost_tier='paid' (real per-request GPU billing, unlike the free-tier/native-key providers). Add into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- slots in after existing top-priority providers, never ahead of or displacing them; this is capacity, not a replacement for anything currently working.\n\nOperator directive: implemented by Kai/Fable, not Claude Code directly.\n\nUPDATE 2026-08-02: RUNPOD_API_KEY confirmed working (200 from rest.runpod.io/v1/pods, correct key was rpa_Q8XL0NLBHLYVNSK4EYRBCD0MH1ERKZBBDNFJCFIG...qpl8al, operator's paste had it run together with the pod ID). Pod cp937mgptqc1kp confirmed live: 1x GPU, 125GB RAM, 21 vCPU, image runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404 (bare PyTorch/Jupyter template, not the vLLM Serverless template originally discussed), $0.99/hr always-on billing (not the Serverless on-demand option originally chosen). Operator confirmed they set this pod up themselves/manually rather than via the vLLM Hub template.\n\nConfirmed live: pod is reachable (Jupyter on 8888 responds normally via https://cp937mgptqc1kp-8888.proxy.runpod.net/), but port 8000 (where vLLM would serve) returns 404 through RunPod's proxy -- that port was never declared as exposed on this pod (only 8888/http and 22/tcp are), so even if vLLM is running inside the container, nothing outside can reach it yet. This needs the operator to add the actual serving port to the pod's exposed ports in the RunPod console (Edit Pod) and restart it before this phase can proceed to real provider registration.\n\nUPDATE 2026-08-02 (live debugging session): first real vLLM start attempt confirmed the model itself loads fine on this RTX 5090 (AWQ/Marlin kernel, FlashAttention v2, torch.compile all succeeded, 15.74 GiB into VRAM) -- the actual crash was narrower than initially feared: FlashInfer (vLLM's optional sampling-kernel library, separate from AWQ/quantization) doesn't yet recognize this GPU's Blackwell compute capability ('FlashInfer requires GPUs with sm75 or higher' -- a misleading message; the real issue is an unrecognized-architecture check, not insufficient hardware). Trying VLLM_USE_FLASHINFER_SAMPLER=0 (falls back to vLLM's default sampler) and/or upgrading flashinfer-python as the fix -- not yet confirmed working as of this note.\n\nAlso confirmed live: this pod's root filesystem is EPHEMERAL -- only /workspace (the attached network volume) persists across a pod restart. A pip-installed vllm vanished after one restart (container ID changed 89754eaa8f69 -> 86d104907baa mid-session), requiring a full reinstall. Whatever this phase eventually builds must account for this: either install into a venv under /workspace, or bake a custom pod image with vllm/flashinfer pre-installed, or provision via RunPod Serverless (ephemeral by design, expects a proper image) rather than a hand-configured persistent pod. Do not assume a manual pip install survives a restart.\n\nCONFIRMED WORKING 2026-08-02: full stack verified live end-to-end -- vLLM 0.26.0 serving QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ on RunPod pod cp937mgptqc1kp (RTX 5090), started with VLLM_USE_FLASHINFER_SAMPLER=0 (bypasses the FlashInfer/Blackwell sampling-kernel incompatibility). Real chat completion request returned a correct response through https://cp937mgptqc1kp-8000.proxy.runpod.net/v1/chat/completions (OpenAI-compatible). Port 8000 is reachable via RunPod's proxy despite not appearing in the pod's declared 'ports' list via the REST API -- the proxy evidently doesn't require explicit port declaration the way earlier testing assumed.\n\nSECURITY GAP, must be fixed before real provider registration: this endpoint currently has NO AUTHENTICATION -- anyone with the URL can submit inference requests and consume GPU time at the operator's expense. vLLM supports an --api-key flag (or VLLM_API_KEY env var) requiring a bearer token on every request -- this must be set before core.ai_provider.register_provider() wires this in, and the key stored in .env the same way every other provider credential is.\n\nOperational risk carried over from the earlier note: pod restarts wipe the root filesystem, so vllm/flashinfer need reinstalling and the server needs restarting (with --api-key once that's added) after every restart until this is made durable (venv under /workspace, or a custom image).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 45,
       "build_id": "0ace498f",
@@ -1822,7 +1822,7 @@
       "id": "15A",
       "name": "Kai platform auth foundation: local accounts + capability-based permissions",
       "description": "Foundation for the 'Kai Enterprise Platform' initiative (user proposal 2026-07-29, trimmed after review). Scope, deliberately narrow: local username/password accounts (no external OAuth) plus a capability-based permission check -- capabilities like deploy.build, approve.architecture, chat.use, roadmap.create, provider.configure, each independently checkable in code -- mapped to exactly two initial roles: 'operator' (every capability, i.e. what the single existing bridge-token operator already has today) and 'viewer' (read-only: dashboard/chat reads, no write capabilities). Capability checks must live in one shared module (e.g. core/authz.py) that every write endpoint in core/api.py calls, not duplicated per-endpoint logic. Explicitly deferred from the original proposal, and why: full OAuth (Google/Microsoft/GitHub) + MFA + service accounts was scoped for a system with exactly one real user today -- add a second auth provider only when a real second person needs one, not speculatively. A 6-role taxonomy (Owner/Architect/Developer/Analyst/Customer/Guest) was cut to 2 roles for the same reason -- the capability model means adding a narrower role later is a mapping change, not a redesign, so there is no lock-in cost to starting minimal. The 'Customer' role scoped to assigned projects implied a multi-tenant customer-facing product pivot that was never a stated goal -- if that direction is wanted later it needs its own explicit decision, not a permissions bullet. Multi-organization support (isolated users/projects/learning/providers per org) was cut entirely: there is one organization. None of these are permanently ruled out, just not built until a real need exists -- a future roadmap phase should re-propose them with a concrete driving need, not reintroduce them speculatively. Explicitly low priority and deferred (user directive 2026-07-30): multi-user work should not be picked up ahead of any single-user-focused work still pending.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "13H"
       ],
@@ -1986,7 +1986,7 @@
       "id": "17Q",
       "name": "Kai Operations Appliance (KOA): dedicated ops/infrastructure-management machine",
       "description": "User directive 2026-07-31, explicitly deferred: 'This project is NOT to begin immediately... Only after every pending roadmap has been completed, tested, documented, and marked complete should you begin this project.' Do not start this ahead of any other queued phase (17A/17K/17M/17N/17O/17P and anything added after) regardless of how it might otherwise be prioritized. Builds on and supersedes the earlier informational document kai-dedicated-computer-2026-07-31.md (uploaded to /uploads, recommended Zorin OS) -- the user has now selected Zorin and wants the delta between that informational doc and this fuller operational spec identified and folded in, not a second document written from scratch. Missing from the original doc that this spec adds: Infrastructure-as-Code (Ansible playbooks, cloud-init, Docker Compose, systemd units, all version controlled, reproducible from bare hardware), a real observability stack (evaluate and likely adopt Prometheus/Grafana/Loki/Alertmanager/node_exporter, reusing existing components where practical rather than duplicating what 17O's Monitoring Service will already provide), backup verification/restore-testing discipline ('a backup is only successful if it can be restored'), disaster recovery coordination, AI-governance controls for autonomous actions (approval workflows, rollback plans, audit trails, confidence reporting, execution logging), and Zero Trust / least-privilege security posture beyond the basic hardening the original doc covered. Purpose: KOA is an operational command center ONLY -- infrastructure management, secure remote administration, AI orchestration, monitoring, secrets management, WireGuard/SSH management, deployment coordination. It explicitly does NOT host production workloads, document repositories, embeddings, or vector databases -- those stay on 17O's dedicated Knowledge Platform infrastructure, accessed by KOA only through authenticated APIs. Required process before any code/config is written: audit the current Kai ecosystem fresh at that time (do not assume this session's architecture reports are still accurate -- validate against whatever the actual implementation looks like once prior phases are done), review Proxmox A, review Proxmox B if reachable by then, review all running services/security controls/deployment workflows, and produce a readiness report. Required final deliverable before ANY deployment: a Completion Report / executive briefing (not the implementation itself) covering exactly what the user specified -- (1) Executive Summary in plain language, (2) a 'What You Need From Me' checklist covering hardware/OS install/BIOS/storage/encryption passphrases/WireGuard config/SSH key approval/DNS/certificates/Bitwarden/MFA/network+firewall+router changes/backup destinations/credentials/physical installation/testing help/maintenance decisions, each item marked mandatory-or-optional with reasoning, timing, and expected effort, (3) an Integration Plan describing exactly how KOA connects to Proxmox A, Proxmox B, Kai, Juris Kai, Law Tutor, the AI router, monitoring, and backups, (4) a Migration Plan (changes required, downtime, rollback, risks, validation), (5) a Readiness Checklist (ready to purchase hardware / install OS / configure networking / integrate with Kai / migrate / go to production). The user must review and approve this briefing before any production change happens -- this phase's own completion criteria are about producing that briefing, not about the appliance being live.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "17A",
         "17K",
@@ -2481,8 +2481,8 @@
       ],
       "build_id": "8d5ee361",
       "failure_reason": "Build 8d5ee361 missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "core/rate_limiter.py token-bucket + brute-force. core/authz.py JWT/BCrypt."
+      "completed_at": "2026-08-08",
+      "completion_note": "Auth+Ratelimit: JWT auth (15A), brute-force (rate_limiter.py), rate limiting all exist"
     },
     {
       "id": "18A-b",
@@ -2559,8 +2559,8 @@
       ],
       "build_id": "b787070d",
       "failure_reason": "Build b787070d missing from builds.json (deleted or stale reference)",
-      "completed_at": "2026-08-07",
-      "completion_note": "Provider consolidation + qwen3->qwen4 rename. 3 dead providers removed."
+      "completed_at": "2026-08-08",
+      "completion_note": "Provider consolidation: RunPod removed, qwen3\u2192qwen4 renamed, dead providers purged 2026-08-07"
     },
     {
       "id": "AI-2",

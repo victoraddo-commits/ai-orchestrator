@@ -733,6 +733,24 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
   </div>
 </div>
 
+<!-- Edit Routing (17U: Provider Config Editor) -->
+<div class="modal-overlay" id="routing-modal">
+  <div class="modal-box" style="max-width:640px">
+    <h2>Edit Provider Routing</h2>
+    <p style="font-size:0.68rem;color:var(--fg-muted);margin-bottom:12px;font-family:var(--font-mono)">
+      Set fallback order per role. First provider = primary. Changes take effect immediately.
+    </p>
+    <div id="routing-roles"></div>
+    <div class="err-msg" id="routing-error" style="margin-top:8px"></div>
+    <div class="modal-success" id="routing-success">Routing saved. Effective immediately.</div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-sm" onclick="closeRouting()">Cancel</button>
+      <button class="btn btn-sm btn-warn" onclick="resetRouting()">Reset to Defaults</button>
+      <button class="btn btn-sm btn-accent" onclick="saveRouting()">Save Routing</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirm Delete -->
 <div class="modal-overlay" id="confirm-modal">
   <div class="modal-box">
@@ -1261,7 +1279,10 @@ async function loadWorkforce(){
     // Cache providers for toggle lookups
     S._workforceData = wf;
     let html=`<div style="margin-bottom:12px" class="spread"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">${providerList.length} providers</span>
-      <button class="btn btn-sm btn-accent" onclick="showAddProvider()">+ Add Provider</button></div>
+      <span style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="showRouting()">Edit Routing</button>
+        <button class="btn btn-sm btn-accent" onclick="showAddProvider()">+ Add Provider</button>
+      </span></div>
       <div class="worker-grid">`;
     for(const[name,info]of Object.entries(wf)){const h=info.health||'unknown',bdg=h==='healthy'?'ok':h==='degraded'?'warn':h==='error'?'bad':'info';
       const sr=info.success_rate!=null?Math.round(info.success_rate*100)+'%':'n/a';
@@ -1319,6 +1340,112 @@ async function doAddProvider(){
     toast(`Provider "${d.name}" registered`);closeAddProvider();loadWorkforce();
   } catch(e){err.textContent=e.message;err.classList.add('visible');}
 }
+
+// ── Routing Editor (17U) ───────────────────────────────────────────
+let _routingData = null;
+
+async function showRouting(){
+  $('routing-error').classList.remove('visible');
+  $('routing-success').classList.remove('visible');
+  try{
+    const d = await api('/providers/config');
+    _routingData = d;
+    renderRoutingRoles(d);
+    $('routing-modal').classList.add('visible');
+  } catch(e){ toast(`Error: ${e.message}`, 'err'); }
+}
+
+function renderRoutingRoles(data){
+  const {overrides, effective, defaults, providers} = data;
+  const pnames = Object.keys(providers).sort();
+  let html = '';
+  for(const [role, list] of Object.entries(effective)){
+    const isOverride = overrides.hasOwnProperty(role);
+    html += `<div class="routing-role" style="margin-bottom:12px;border:1px solid var(--border-color);border-radius:6px;padding:10px">
+      <div class="spread" style="margin-bottom:6px">
+        <span style="font-family:var(--font-mono);font-size:0.7rem;font-weight:600">${esc(role)}</span>
+        ${isOverride ? '<span class="badge warn" style="font-size:0.6rem">custom</span>' : '<span class="badge info" style="font-size:0.6rem">default</span>'}
+      </div>
+      <div class="routing-slots" id="slots-${esc(role)}">`;
+    for(let i=0; i<list.length; i++){
+      const sel = `<select class="routing-select" data-role="${esc(role)}" data-idx="${i}" style="font-size:0.65rem;font-family:var(--font-mono);padding:2px 4px;background:var(--bg-input);color:var(--fg-primary);border:1px solid var(--border-color);border-radius:4px;max-width:200px">${pnames.map(n=>`<option value="${esc(n)}"${n===list[i]?' selected':''}>${esc(n)}</option>`).join('')}</select>`;
+      html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="font-size:0.6rem;color:var(--fg-muted);width:16px;font-family:var(--font-mono);text-align:right">${i+1}.</span>${sel}
+        <button class="btn btn-xs btn-danger" onclick="removeSlot('${esc(role)}',${i})" title="Remove">×</button>
+      </div>`;
+    }
+    html += `<button class="btn btn-xs" style="margin-top:4px" onclick="addSlot('${esc(role)}')">+ Add Fallback</button>
+      </div></div>`;
+  }
+  $('routing-roles').innerHTML = html;
+}
+
+function getRoutingOverrides(){
+  const overrides = {};
+  for(const el of document.querySelectorAll('.routing-select')){
+    const role = el.dataset.role;
+    if(!overrides[role]) overrides[role] = [];
+    overrides[role][parseInt(el.dataset.idx)] = el.value;
+  }
+  for(const role of Object.keys(overrides)){
+    overrides[role] = overrides[role].filter(Boolean);
+  }
+  return overrides;
+}
+
+function addSlot(role){
+  if(!_routingData) return;
+  const pnames = Object.keys(_routingData.providers).sort();
+  const slots = document.getElementById('slots-'+role);
+  const idx = slots.querySelectorAll('.routing-select').length;
+  const sel = `<select class="routing-select" data-role="${esc(role)}" data-idx="${idx}" style="font-size:0.65rem;font-family:var(--font-mono);padding:2px 4px;background:var(--bg-input);color:var(--fg-primary);border:1px solid var(--border-color);border-radius:4px;max-width:200px">${pnames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>`;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px';
+  div.innerHTML = `<span style="font-size:0.6rem;color:var(--fg-muted);width:16px;font-family:var(--font-mono);text-align:right">${idx+1}.</span>${sel}<button class="btn btn-xs btn-danger" onclick="removeSlot('${esc(role)}',${idx})" title="Remove">×</button>`;
+  const addBtn = slots.querySelector('button');
+  slots.insertBefore(div, addBtn);
+}
+
+function removeSlot(role, idx){
+  const slots = document.getElementById('slots-'+role);
+  const selects = slots.querySelectorAll('.routing-select');
+  if(selects.length <= 1) return; // keep at least one
+  const div = selects[idx].closest('div[style]');
+  if(div) div.remove();
+  // Re-index
+  const remaining = slots.querySelectorAll('.routing-select');
+  remaining.forEach((s,i)=>{ s.dataset.idx = i; });
+  // Update numbers
+  const labels = slots.querySelectorAll('span[style*="width:16px"]');
+  labels.forEach((l,i)=>{ l.textContent = (i+1)+'.'; });
+}
+
+async function saveRouting(){
+  $('routing-error').classList.remove('visible');
+  $('routing-success').classList.remove('visible');
+  try{
+    const overrides = getRoutingOverrides();
+    const d = await api('/providers/config', {method:'PUT', body:JSON.stringify(overrides)});
+    _routingData.overrides = d.overrides;
+    renderRoutingRoles(_routingData);
+    $('routing-success').classList.add('visible');
+    toast('Routing saved — effective immediately');
+  } catch(e){ $('routing-error').textContent = e.message; $('routing-error').classList.add('visible'); }
+}
+
+async function resetRouting(){
+  $('routing-error').classList.remove('visible');
+  $('routing-success').classList.remove('visible');
+  try{
+    const d = await api('/providers/config', {method:'PUT', body:JSON.stringify({})});
+    _routingData.overrides = d.overrides;
+    renderRoutingRoles(_routingData);
+    $('routing-success').classList.add('visible');
+    toast('Routing reset to defaults');
+  } catch(e){ $('routing-error').textContent = e.message; $('routing-error').classList.add('visible'); }
+}
+
+function closeRouting(){ $('routing-modal').classList.remove('visible'); }
 
 // ═══════════════════════════════════════════════════════════════════
 // PANEL: DOCKER

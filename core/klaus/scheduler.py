@@ -27,10 +27,11 @@ logger = logging.getLogger(__name__)
 
 
 TIER_1_SEEDS = [
+    # Only publicly accessible, non-paywalled, non-login-walled sources
     {"url": "https://repository.parliament.gh/home", "domain": "parliament.gh", "tier": 1, "jurisdiction": "Ghana"},
-    {"url": "https://www.ejudgment.judicial.gov.gh/", "domain": "judicial.gov.gh", "tier": 1, "jurisdiction": "Ghana"},
     {"url": "https://ghalii.org/", "domain": "ghalii.org", "tier": 2, "jurisdiction": "Ghana"},
-    {"url": "https://ghanapublishing.gov.gh/", "domain": "ghanapublishing.gov.gh", "tier": 1, "jurisdiction": "Ghana"},
+    # REMOVED: judicial.gov.gh (eJudgment) — login-walled, requires judge credentials
+    # REMOVED: ghanapublishing.gov.gh — paywalled, redirects to gpclonline.com login-walled store
 ]
 
 

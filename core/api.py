@@ -125,6 +125,10 @@ app.include_router(klaus_api_router)
 from core.ai_gateway.gateway import router as gateway_router
 app.include_router(gateway_router)
 
+# Telegram Manager — user management, activity tracking, config dashboard
+from core.telegram_manager.api import telegram_router
+app.include_router(telegram_router)
+
 # Create default API key on first startup if none exists
 try:
     from core.ai_gateway.keys import ensure_default_key

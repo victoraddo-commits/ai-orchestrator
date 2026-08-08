@@ -1,0 +1,13 @@
+{
+  "name": "telegram-manager",
+  "version": "1.0.0",
+  "description": "Telegram bot user management and activity dashboard — manage allowlists, groups, policies, and view message activity",
+  "endpoints": ["/api/telegram/stats", "/api/telegram/users", "/api/telegram/config", "/api/telegram/activity"],
+  "capabilities": ["telegram-management", "user-management", "activity-tracking", "access-control"],
+  "dependencies": [],
+  "settings_schema": {
+    "auto_log_messages": {"type": "boolean", "default": true, "label": "Auto-log inbound/outbound messages"},
+    "activity_retention_days": {"type": "number", "default": 90, "label": "Activity log retention (days)", "min": 7, "max": 365}
+  },
+  "ops_actions": ["clear_activity_logs", "reload_access_config", "export_users_csv"]
+}

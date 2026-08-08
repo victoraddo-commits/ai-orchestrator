@@ -595,6 +595,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
       <div class="sidebar-section-label">Infrastructure</div>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
+      <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
       <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span><span class="label">Airdrop</span></a>
       <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span class="label">Infra</span></a>
       <div class="sidebar-section-label">System</div>
@@ -646,6 +647,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 
       <!-- DOCKER -->
       <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-telegram"><div id="telegram-content"><span class="loading">loading…</span></div></section>
 
       <!-- AIRDROP -->
       <section class="panel" id="panel-airdrop"><div id="airdrop-content"><span class="loading">loading…</span></div></section>
@@ -759,7 +761,7 @@ const SK = 'kai_command_session_v3';
 const PANEL_TITLES = {
   home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
-  security:'security', settings:'settings', logs:'logs'
+  security:'security', settings:'settings', logs:'logs', telegram:'Telegram'
 };
 
 const $=id=>document.getElementById(id);
@@ -860,7 +862,7 @@ function navigateTo(hash) {
   if(!S.loadedPanels.has(name)){S.loadedPanels.add(name);loadPanel(name);}
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,docker:loadDocker,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -1357,6 +1359,312 @@ async function dockerLogs(name){
     el.innerHTML=(d.logs||[]).map(l=>esc(l)).join('\n');el.style.display='block';}
   catch(e){toast(`Error: ${e.message}`,'err');}
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: TELEGRAM
+// ═══════════════════════════════════════════════════════════════════
+async function loadTelegram(){
+  const container = $('telegram-content');
+
+  // ── Stats bar ──────────────────────────────────────────────────
+  async function refreshStats() {
+    try {
+      const s = await api('/api/telegram/stats');
+      let html = '<div class="metric-row" style="margin-bottom:12px">';
+      html += `<div class="metric"><span class="val" style="font-size:1.1rem">${s.total_users||0}</span><span class="lbl">Users</span></div>`;
+      html += `<div class="metric"><span class="val info" style="font-size:1.1rem">${s.messages_today||0}</span><span class="lbl">Today</span></div>`;
+      html += `<div class="metric"><span class="val" style="font-size:1.1rem">${s.allowed_users||0}</span><span class="lbl">Allowed</span></div>`;
+      html += `<div class="metric"><span><span class="badge ${s.dm_policy==='disabled'?'bad':(s.dm_policy==='allowlist'?'ok':'warn')}">${esc(s.dm_policy||'?')}</span></span><span class="lbl">Policy</span></div>`;
+      html += `<div class="metric"><span class="val" style="font-size:1.1rem">${s.active_chats_today||0}</span><span class="lbl">Chats</span></div>`;
+      html += '</div>';
+      html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
+      html += '<button class="btn btn-sm btn-accent" onclick="loadTelegramTab(\'users\')">Users</button>';
+      html += '<button class="btn btn-sm" onclick="loadTelegramTab(\'activity\')">Activity</button>';
+      html += '<button class="btn btn-sm" onclick="loadTelegramTab(\'config\')">Config</button>';
+      html += '<button class="btn btn-sm" onclick="loadTelegramTab(\'groups\')">Groups</button>';
+      html += '</div>';
+      html += '<div id="telegram-tab-content" style="margin-top:12px"></div>';
+      container.innerHTML = html;
+      loadTelegramTab('users');
+    } catch(e) {
+      container.innerHTML = `<span class="error-text">${esc(e.message)}</span>`;
+    }
+  }
+  refreshStats();
+}
+
+window.loadTelegramTab = async function(tab) {
+  const tc = document.getElementById('telegram-tab-content');
+  if (!tc) return;
+  switch(tab) {
+    case 'users': await loadTelegramUsers(tc); break;
+    case 'activity': await loadTelegramActivity(tc); break;
+    case 'config': await loadTelegramConfig(tc); break;
+    case 'groups': await loadTelegramGroups(tc); break;
+  }
+};
+
+// ── Users tab ─────────────────────────────────────────────────────
+async function loadTelegramUsers(container) {
+  try {
+    const d = await api('/api/telegram/users?per_page=100');
+    const users = d.users || [];
+    if (!users.length) {
+      container.innerHTML = '<p class="empty">No users tracked yet. Users appear when they send a message.</p>';
+      return;
+    }
+    let html = '<div style="margin-bottom:8px;display:flex;gap:6px"><input type="text" id="tg-user-search" placeholder="Search user ID or name…" class="search-input" style="flex:1" onkeyup="filterTelegramUsers()"><button class="btn btn-sm btn-accent" onclick="showAddTelegramUser()">Add User</button></div>';
+    html += '<div id="telegram-user-list" style="max-height:500px;overflow:auto">';
+    html += '<table><thead><tr><th>User</th><th>Messages</th><th>Last Seen</th><th>Allowed</th><th></th></tr></thead><tbody>';
+    for (const u of users) {
+      const name = u.display_name || u.user_id;
+      const lastSeen = u.last_seen ? new Date(u.last_seen).toLocaleDateString() : '-';
+      const inCount = u.message_count_in || 0;
+      const outCount = u.message_count_out || 0;
+      html += `<tr data-user-id="${esc(u.user_id)}" data-name="${esc(name.toLowerCase())}">
+        <td><strong>${esc(name)}</strong><br><span style="font-size:0.65rem;color:var(--fg-muted)">${esc(u.user_id)}</span></td>
+        <td style="font-size:0.68rem">in:${inCount} out:${outCount}</td>
+        <td style="font-size:0.68rem">${lastSeen}</td>
+        <td><span class="badge ${u.is_allowed?'ok':'bad'}">${u.is_allowed?'Allowed':'Blocked'}</span></td>
+        <td>${u.is_allowed
+          ? `<button class="btn btn-sm" onclick="removeTelegramUser('${esc(u.user_id)}')">Remove</button>`
+          : `<button class="btn btn-sm btn-accent" onclick="addTelegramUser('${esc(u.user_id)}')">Allow</button>`
+        }</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = `<span class="error-text">${esc(e.message)}</span>`;
+  }
+}
+
+window.filterTelegramUsers = function() {
+  const q = (document.getElementById('tg-user-search')?.value || '').toLowerCase();
+  const rows = document.querySelectorAll('#telegram-user-list tbody tr');
+  rows.forEach(r => {
+    const uid = (r.dataset.userId || '').toLowerCase();
+    const name = (r.dataset.name || '').toLowerCase();
+    r.style.display = (!q || uid.includes(q) || name.includes(q)) ? '' : 'none';
+  });
+};
+
+window.showAddTelegramUser = function() {
+  const id = prompt('Enter Telegram user ID:');
+  if (!id) return;
+  const name = prompt('Display name (optional):');
+  addTelegramUser(id, name);
+};
+
+window.addTelegramUser = async function(userId, displayName) {
+  try {
+    const body = { display_name: displayName || '' };
+    const r = await api(`/api/telegram/users/${userId}/allow`, { method: 'POST', body: JSON.stringify(body) });
+    toast(r.success ? `User ${userId} added to allowlist` : (r.already_allowed ? `${userId} already allowed` : (r.error||'Failed')), r.success ? 'ok' : 'err');
+    loadTelegram();
+  } catch(e) { toast(e.message, 'err'); }
+};
+
+window.removeTelegramUser = async function(userId) {
+  confirmAction('Remove User', `Remove ${userId} from the Telegram allowlist? They will no longer be able to DM the bot.`, async () => {
+    try {
+      const r = await api(`/api/telegram/users/${userId}/remove`, { method: 'POST' });
+      toast(r.success ? `User ${userId} removed` : (r.error||'Failed'), r.success ? 'ok' : 'err');
+      loadTelegram();
+    } catch(e) { toast(e.message, 'err'); }
+  });
+};
+
+// ── Activity tab ───────────────────────────────────────────────────
+async function loadTelegramActivity(container) {
+  try {
+    const [act, stats] = await Promise.all([
+      api('/api/telegram/activity?limit=200'),
+      api('/api/telegram/activity/stats?days=14')
+    ]);
+    const entries = act.activity || [];
+    const daily = stats.daily_stats || [];
+    let html = '';
+    // Daily chart
+    if (daily.length) {
+      html += '<div class="card" style="margin-bottom:12px"><h3 style="font-size:0.75rem;margin-bottom:8px">14-Day Activity</h3>';
+      html += '<div style="display:flex;gap:2px;align-items:flex-end;height:60px">';
+      const maxVal = Math.max(1, ...daily.map(d => (d.inbound||0)+(d.outbound||0)));
+      for (const d of daily) {
+        const total = (d.inbound||0)+(d.outbound||0);
+        const h = Math.max(2, Math.round((total/maxVal)*56));
+        html += `<div title="${d.date}: ${total} msgs" style="flex:1;background:var(--accent);height:${h}px;border-radius:1px;opacity:${0.3+(total/maxVal)*0.7}"></div>`;
+      }
+      html += '</div></div>';
+    }
+    // Message feed
+    if (!entries.length) {
+      html += '<p class="empty">No activity logged yet. Messages appear when the assistant logs them.</p>';
+    } else {
+      html += '<div style="max-height:500px;overflow:auto;font-family:var(--font-mono);font-size:0.65rem;line-height:1.7">';
+      for (const e of entries) {
+        const dir = e.direction === 'in' ? '←' : '→';
+        const dirColor = e.direction === 'in' ? 'var(--info)' : 'var(--accent)';
+        const tm = e.timestamp ? new Date(e.timestamp).toLocaleString() : '-';
+        html += `<div style="padding:2px 0;border-bottom:1px solid var(--border-subtle)">
+          <span style="color:${dirColor};margin-right:4px">${dir}</span>
+          <span style="color:var(--fg-muted)">[${tm}]</span>
+          <span style="margin-left:6px">${esc(e.from_user_id||'?')}</span>
+          <span style="margin-left:2px;color:var(--fg-muted)">${esc(e.chat_type||'dm')}</span>
+          <span style="margin-left:6px;color:var(--fg-secondary)">${esc((e.content_preview||'').substring(0,80))}</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = `<span class="error-text">${esc(e.message)}</span>`;
+  }
+}
+
+// ── Config tab ─────────────────────────────────────────────────────
+async function loadTelegramConfig(container) {
+  try {
+    const c = await api('/api/telegram/config');
+    const cfg = c.config || {};
+    const policy = cfg.dmPolicy || 'allowlist';
+    const ackReaction = cfg.ackReaction || '';
+    const replyMode = cfg.replyToMode || 'first';
+    const chunkLimit = cfg.textChunkLimit || 4096;
+    const chunkMode = cfg.chunkMode || 'newline';
+    const allowedCount = (cfg.allowFrom || []).length;
+    const groupCount = Object.keys(cfg.groups || {}).length;
+
+    let html = '<div class="card" style="margin-bottom:12px"><h3 style="font-size:0.75rem;margin-bottom:8px">Access Configuration</h3>';
+
+    // DM Policy
+    html += '<div class="settings-field"><label>DM Policy</label>';
+    html += '<select id="cfg-dm-policy" style="padding:4px 8px;background:var(--bg-deep);color:var(--fg);border:1px solid var(--border);border-radius:0;font-family:var(--font-mono);font-size:0.72rem;margin-top:4px">';
+    for (const p of ['pairing','allowlist','disabled']) {
+      html += `<option value="${p}" ${policy===p?'selected':''}>${p}</option>`;
+    }
+    html += '</select>';
+    html += `<button class="btn btn-sm" onclick="setTelegramPolicy()" style="margin-left:8px">Apply</button></div>`;
+
+    // Ack Reaction
+    html += '<div class="settings-field"><label>Acknowledgement Reaction</label>';
+    html += `<input type="text" id="cfg-ack-emoji" value="${esc(ackReaction)}" placeholder="Emoji or empty" style="padding:4px 8px;background:var(--bg-deep);color:var(--fg);border:1px solid var(--border);font-family:var(--font-mono);font-size:0.72rem;width:200px;margin-top:4px;display:block">`;
+    html += `<button class="btn btn-sm" onclick="setTelegramAckReaction()" style="margin-top:4px">Apply</button></div>`;
+
+    // Reply Mode
+    html += '<div class="settings-field"><label>Reply-To Mode</label>';
+    html += '<select id="cfg-reply-mode" style="padding:4px 8px;background:var(--bg-deep);color:var(--fg);border:1px solid var(--border);border-radius:0;font-family:var(--font-mono);font-size:0.72rem;margin-top:4px">';
+    for (const m of ['first','all','off']) {
+      html += `<option value="${m}" ${replyMode===m?'selected':''}>${m}</option>`;
+    }
+    html += '</select>';
+    html += `<button class="btn btn-sm" onclick="setTelegramReplyMode()" style="margin-left:8px">Apply</button></div>`;
+
+    // Stats
+    html += '</div><div class="card"><h3 style="font-size:0.75rem;margin-bottom:8px">Stats</h3>';
+    html += `<div style="font-size:0.68rem;font-family:var(--font-mono);color:var(--fg-muted)">
+      <div>Allowed users: ${allowedCount}</div>
+      <div>Groups: ${groupCount}</div>
+      <div>Chunk limit: ${chunkLimit}</div>
+      <div>Chunk mode: ${chunkMode}</div>
+    </div>`;
+
+    html += `<div style="margin-top:12px"><button class="btn btn-sm" onclick="clearTelegramLogs()">Clear Old Logs</button></div></div>`;
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = `<span class="error-text">${esc(e.message)}</span>`;
+  }
+}
+
+window.setTelegramPolicy = async function() {
+  const p = document.getElementById('cfg-dm-policy')?.value;
+  if (!p) return;
+  try {
+    const r = await api('/api/telegram/config/policy', { method: 'PUT', body: JSON.stringify({policy:p}) });
+    toast(r.success ? `Policy set to ${p}` : (r.error||'Failed'), r.success ? 'ok' : 'err');
+    if (r.success) loadTelegram();
+  } catch(e) { toast(e.message, 'err'); }
+};
+
+window.setTelegramAckReaction = async function() {
+  const e = document.getElementById('cfg-ack-emoji')?.value;
+  try {
+    const r = await api('/api/telegram/config/ack-reaction', { method: 'PUT', body: JSON.stringify({emoji:e||''}) });
+    toast(r.success ? `Reaction set` : (r.error||'Failed'), r.success ? 'ok' : 'err');
+  } catch(e) { toast(e.message, 'err'); }
+};
+
+window.setTelegramReplyMode = async function() {
+  const m = document.getElementById('cfg-reply-mode')?.value;
+  if (!m) return;
+  try {
+    const r = await api('/api/telegram/config/reply-mode', { method: 'PUT', body: JSON.stringify({mode:m}) });
+    toast(r.success ? `Reply mode set to ${m}` : (r.error||'Failed'), r.success ? 'ok' : 'err');
+  } catch(e) { toast(e.message, 'err'); }
+};
+
+window.clearTelegramLogs = function() {
+  confirmAction('Clear Old Logs', 'Delete activity logs older than 90 days?', async () => {
+    try {
+      const r = await api('/api/telegram/ops/clear-logs', { method: 'POST', body: JSON.stringify({retention_days:90}) });
+      toast(`Cleared ${r.deleted||0} old log entries`, 'ok');
+      loadTelegram();
+    } catch(e) { toast(e.message, 'err'); }
+  });
+};
+
+// ── Groups tab ─────────────────────────────────────────────────────
+async function loadTelegramGroups(container) {
+  try {
+    const c = await api('/api/telegram/config');
+    const groups = c.config?.groups || {};
+    const gids = Object.keys(groups);
+    let html = '<div style="margin-bottom:8px"><button class="btn btn-sm btn-accent" onclick="showAddTelegramGroup()">Add Group</button></div>';
+    if (!gids.length) {
+      html += '<p class="empty">No groups configured.</p>';
+    } else {
+      html += '<table><thead><tr><th>Group ID</th><th>Require Mention</th><th>Allow From</th><th></th></tr></thead><tbody>';
+      for (const gid of gids) {
+        const g = groups[gid];
+        html += `<tr>
+          <td style="font-family:var(--font-mono);font-size:0.7rem">${esc(gid)}</td>
+          <td><span class="badge ${g.requireMention?'ok':'warn'}">${g.requireMention?'Yes':'No'}</span></td>
+          <td style="font-size:0.65rem;color:var(--fg-muted)">${(g.allowFrom||[]).join(', ')||'any'}</td>
+          <td><button class="btn btn-sm" onclick="removeTelegramGroup('${esc(gid)}')">Remove</button></td>
+        </tr>`;
+      }
+      html += '</tbody></table>';
+    }
+    container.innerHTML = html;
+  } catch(e) {
+    container.innerHTML = `<span class="error-text">${esc(e.message)}</span>`;
+  }
+}
+
+window.showAddTelegramGroup = function() {
+  const gid = prompt('Enter group chat ID (e.g. -1001234567890):');
+  if (!gid) return;
+  const mention = confirm('Require @mention to trigger the bot? (OK=Yes, Cancel=No)');
+  addTelegramGroup(gid, mention);
+};
+
+window.addTelegramGroup = async function(groupId, requireMention) {
+  try {
+    const r = await api('/api/telegram/config/groups', { method: 'POST', body: JSON.stringify({action:'add', group_id:groupId, require_mention:requireMention}) });
+    toast(r.success ? `Group ${groupId} added` : (r.error||'Failed'), r.success ? 'ok' : 'err');
+    if (r.success) loadTelegram();
+  } catch(e) { toast(e.message, 'err'); }
+};
+
+window.removeTelegramGroup = function(groupId) {
+  confirmAction('Remove Group', `Remove group ${groupId} from Telegram config?`, async () => {
+    try {
+      const r = await api('/api/telegram/config/groups', { method: 'POST', body: JSON.stringify({action:'remove', group_id:groupId}) });
+      toast(r.success ? `Group ${groupId} removed` : (r.error||'Failed'), r.success ? 'ok' : 'err');
+      if (r.success) loadTelegram();
+    } catch(e) { toast(e.message, 'err'); }
+  });
+};
 
 // ═══════════════════════════════════════════════════════════════════
 // PANEL: AIRDROP

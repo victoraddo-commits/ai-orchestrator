@@ -1305,8 +1305,9 @@ def run_forever():
     print(f"Database ready at: {mgr.db}")
 
     # Health check file — touched after each successful poll cycle.
-    # Monitor with: find /tmp/juris-kai-health -mmin +5  (stale if >5 min)
-    HEALTH_FILE = Path("/tmp/juris-kai-health")
+    # Uses /project/ memory dir (NOT /tmp — PrivateTmp=yes isolates /tmp).
+    # Monitor with: find /project/ai-orchestrator/memory/juris-kai-health -mmin +10
+    HEALTH_FILE = Path("/project/ai-orchestrator/memory/juris-kai-health")
     HEALTH_FILE.touch()
 
     offset = None

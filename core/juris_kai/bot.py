@@ -590,9 +590,16 @@ def _handle_menu_action(
 def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict) -> dict:
     """Generate a legal teaching response for a topic button."""
     from core.juris_kai.prompt import build_prompt
+    from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
 
     topic_display = label.split(" ", 1)[1] if " " in label else label
-    prompt = build_prompt("legal_teaching", f"Ghana {topic_display}")
+
+    # Query the Legal Brain knowledge base for this topic
+    legal_docs = query_knowledge_base(f"Ghana {topic_display}")
+    context_preamble = build_context_preamble(legal_docs)
+
+    base_prompt = build_prompt("legal_teaching", f"Ghana {topic_display}")
+    prompt = base_prompt + context_preamble
 
     # Run delegate with a hard wall-clock timeout so one slow provider
     # doesn't block the bot's entire polling loop indefinitely.
@@ -611,8 +618,13 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
 def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
     """Handle case law queries."""
     from core.juris_kai.prompt import build_prompt
+    from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
 
-    prompt = build_prompt("legal_case_analysis", f"{query_type} in Ghana law")
+    legal_docs = query_knowledge_base(f"{query_type} Ghana law")
+    context_preamble = build_context_preamble(legal_docs)
+
+    base_prompt = build_prompt("legal_case_analysis", f"{query_type} in Ghana law")
+    prompt = base_prompt + context_preamble
     response_text = _delegate_with_timeout(prompt, "juris_case_analysis", query_type.lower())
 
     mgr = get_account_manager()
@@ -970,9 +982,15 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
             "reply_markup": main_menu(),
         }
 
-    # Process as legal query
+    # Query the Legal Brain knowledge base for relevant Ghana legal documents
+    from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
+    legal_docs = query_knowledge_base(text)
+    context_preamble = build_context_preamble(legal_docs)
+
+    # Process as legal query with database context
     from core.juris_kai.prompt import build_prompt
-    prompt = build_prompt("legal_research", text)
+    base_prompt = build_prompt("legal_research", text)
+    prompt = base_prompt + context_preamble
     response_text = _delegate_with_timeout(prompt, "juris_research", text)
 
     if not response_text or not response_text.strip():

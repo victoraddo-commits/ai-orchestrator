@@ -273,16 +273,26 @@ LAW_TUTOR_ROLE_PROVIDERS = {
 # Flashcard generation - needs structured output and organization
 # General legal chat - needs quick responses and conversational ability
 JURIS_KAI_ROLE_PROVIDERS = {
-    # 2026-08-07: qwen4_text removed — RunPod pods OFFLINE.
-    # deepseek_native_flash primary for all legal roles — 100% reliable, <12s.
-    "juris_legal_teaching": ["deepseek_native_flash", "claude"],
-    "juris_case_analysis": ["deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "juris_research": ["deepseek_native_flash", "gemini", "geminix", "claude"],
-    "juris_argument_construction": ["deepseek_native_flash", "claude"],
-    "juris_flashcards": ["deepseek_native_flash", "groq", "claude"],
-    "juris_chat": ["deepseek_native_flash", "groq", "claude"],
+    # 2026-08-07 (late): deepseek_native_pro is now primary for ALL juris_* roles.
+    # deepseek_native_flash was returning empty responses for legal article queries
+    # (e.g. "Article 161") because it's a small/flash model that either content-filters
+    # or simply cannot handle specific legal statute references.
+    # deepseek_native_pro (DeepSeek-V4 Pro) is the full-size model with proper legal
+    # reasoning — its architecture primary status already proves it handles complex
+    # structured queries. No other task types share this chain — juris-kai has its
+    # OWN dedicated routing, never sharing a bridge with general-purpose tasks.
+    #
+    # Fallback chain: deepseek_native_pro → gemini → omniroute_deepseek_flash → groq
+    # (claude removed from juris fallbacks — Anthropic subscription out of credit
+    #  as of 2026-08-07 and cannot serve as a viable fallback for legal queries).
+    "juris_legal_teaching": ["deepseek_native_pro", "gemini", "groq"],
+    "juris_case_analysis": ["deepseek_native_pro", "gemini", "omniroute_deepseek_flash"],
+    "juris_research": ["deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash"],
+    "juris_argument_construction": ["deepseek_native_pro", "gemini", "groq"],
+    "juris_flashcards": ["deepseek_native_pro", "groq"],
+    "juris_chat": ["deepseek_native_pro", "groq", "gemini"],
     # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
-    "juris_document_vision": ["gpuai_gemma", "claude"],
+    "juris_document_vision": ["gpuai_gemma"],
 }
 
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)

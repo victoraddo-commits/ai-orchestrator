@@ -182,8 +182,25 @@ def run_discovery(source: GhanaLegalSource, reachability: dict) -> dict:
         if docs and not result["blocked"]:
             try:
                 from core.klaus.background_workers import process_discovered_documents
-                process_discovered_documents(docs, source.domain)
-                result["processed"] = True
+                # Look up the source's integer DB id by domain
+                source_id = None
+                from core.klaus.db_manager import get_cursor
+                with get_cursor() as cur:
+                    cur.execute(
+                        "SELECT id FROM klaus_sources WHERE domain = %s",
+                        (source.domain,),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        source_id = row["id"]
+                if not source_id:
+                    result["errors"].append(
+                        f"process: source '{source.domain}' not found in DB — add it first"
+                    )
+                    result["processed"] = False
+                else:
+                    process_discovered_documents(source_id, source.base_url, source.domain, docs)
+                    result["processed"] = True
             except Exception as e:
                 result["errors"].append(f"process: {e}")
                 result["processed"] = False

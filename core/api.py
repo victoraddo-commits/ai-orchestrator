@@ -506,6 +506,39 @@ def _require_write_capability(capability: str):
     return checker
 
 
+# ── Admin rate limiting (WI-03) ────────────────────────────────────────────
+# In-memory sliding window: max ADMIN_RATE_LIMIT requests per ADMIN_RATE_WINDOW
+# per client IP.  Lost on restart (acceptable for human-driven admin actions).
+
+import time as _time_admin
+from collections import defaultdict as _defaultdict
+
+ADMIN_RATE_LIMIT = 10       # max requests per window
+ADMIN_RATE_WINDOW = 60      # window size in seconds
+_admin_rate_state: dict[str, list[float]] = _defaultdict(list)
+
+
+def _check_admin_rate_limit(request: Request, operator: str = ""):
+    """Raise HTTP 429 if the caller exceeds the admin rate limit.
+
+    Called from juris admin endpoints AFTER the capability check passes,
+    so we only count requests from authenticated operators.
+    """
+    client = request.client.host if request.client else "unknown"
+    key = f"{client}:{operator}" if operator else client
+    now = _time_admin.monotonic()
+    window = ADMIN_RATE_WINDOW
+
+    # Clean expired entries
+    timestamps = _admin_rate_state[key]
+    _admin_rate_state[key] = [t for t in timestamps if now - t < window]
+
+    if len(_admin_rate_state[key]) >= ADMIN_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many admin requests")
+
+    _admin_rate_state[key].append(now)
+
+
 @app.post("/auth/login")
 def auth_login(body: LoginRequest, response: Response):
     """Authenticate with username/password, return a session token.
@@ -712,8 +745,10 @@ def juris_kai_set_subscription(
     account_id: str,
     body: dict = Body(...),
     operator: str = Depends(_require_write_capability("juris.admin")),
+    request: Request = None,
 ):
     """Change an account's subscription tier."""
+    _check_admin_rate_limit(request, operator)
     try:
         from core.juris_kai.dashboard import update_subscription
         new_tier = body.get("tier", "")
@@ -730,8 +765,10 @@ def juris_kai_deactivate(
     account_id: str,
     body: dict = Body(...),
     operator: str = Depends(_require_write_capability("juris.admin")),
+    request: Request = None,
 ):
     """Ban/deactivate an account."""
+    _check_admin_rate_limit(request, operator)
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()
@@ -748,8 +785,10 @@ def juris_kai_deactivate(
 def juris_kai_activate(
     account_id: str,
     operator: str = Depends(_require_write_capability("juris.admin")),
+    request: Request = None,
 ):
     """Reactivate/unban an account."""
+    _check_admin_rate_limit(request, operator)
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()
@@ -766,8 +805,10 @@ def juris_kai_grant_days(
     account_id: str,
     body: dict = Body(...),
     operator: str = Depends(_require_write_capability("juris.admin")),
+    request: Request = None,
 ):
     """Grant N free days to an account."""
+    _check_admin_rate_limit(request, operator)
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()
@@ -796,8 +837,10 @@ def juris_kai_referrals():
 def juris_kai_referral_generate(
     body: dict = Body(...),
     operator: str = Depends(_require_write_capability("juris.admin")),
+    request: Request = None,
 ):
     """Generate a new invite code for an account."""
+    _check_admin_rate_limit(request, operator)
     try:
         from core.juris_kai.accounts import get_account_manager
         mgr = get_account_manager()

@@ -134,6 +134,7 @@ async def api_register_device(
             vpn_ip=body.vpn_ip,
             capabilities=body.capabilities,
             assigned_worker=body.assigned_worker,
+            registered_by=_operator,
         )
     except DuplicateDeviceError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -174,6 +175,13 @@ async def api_device_heartbeat(
 
     _verify_device_owns_path(authenticated_device, device_id)
 
+    # Process acknowledgements BEFORE building heartbeat response so
+    # the pending_commands list reflects what's actually pending.
+    if body.ack_ids:
+        acked = ack_commands(device_id, body.ack_ids)
+        if acked > 0:
+            logger.debug("Device %s acknowledged %d commands", device_id, acked)
+
     try:
         result = update_heartbeat(device_id, heartbeat_data={
             "battery_pct": body.battery_pct,
@@ -185,12 +193,6 @@ async def api_device_heartbeat(
         })
     except DeviceNotFoundError:
         raise HTTPException(status_code=404, detail=f"Device {device_id!r} not found")
-
-    # Process acknowledgements
-    if body.ack_ids:
-        acked = ack_commands(device_id, body.ack_ids)
-        if acked > 0:
-            logger.debug("Device %s acknowledged %d commands", device_id, acked)
 
     return result
 

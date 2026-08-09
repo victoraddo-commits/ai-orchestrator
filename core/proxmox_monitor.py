@@ -58,17 +58,23 @@ def _build_headers(node):
 
 
 def _do_request(host, headers, path, timeout=_REQUEST_TIMEOUT):
-    """Single request attempt.  Returns data dict or None."""
+    """Single request attempt.  Returns (data_dict | None, error_type | None).
+
+    error_type is one of: "connection" (network unreachable), "auth" (401/403),
+    or None (success).
+    """
     try:
         resp = requests.get(
             f"https://{host}:8006/api2/json/{path}",
             headers=headers, timeout=timeout, verify=False,
         )
         if resp.status_code == 200:
-            return resp.json().get("data", {})
+            return resp.json().get("data", {}), None
+        if resp.status_code in (401, 403):
+            return None, "auth"
+        return None, "connection"
     except Exception:
-        pass
-    return None
+        return None, "connection"
 
 
 def _api_get(node, path):
@@ -87,10 +93,11 @@ def _api_get(node, path):
         hosts_to_try.append(fallback)
 
     last_error = None
+    last_error_type = None
 
     for host in hosts_to_try:
         for attempt in range(1, _MAX_RETRIES + 1):
-            result = _do_request(host, headers, path)
+            result, error_type = _do_request(host, headers, path)
             if result is not None:
                 # Update VPN status cache for this node
                 _vpn_status_cache[node["name"]] = {
@@ -101,19 +108,22 @@ def _api_get(node, path):
                 }
                 return result
 
-            last_error = f"no response from {host} after {attempt} attempt(s)"
+            last_error_type = error_type
+            last_error = f"{error_type or 'no response'} from {host} after {attempt} attempt(s)"
             if attempt < _MAX_RETRIES:
                 delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
                 time.sleep(delay)
 
-        # Mark this host as failed in cache before trying fallback
-        _vpn_status_cache[node["name"]] = {
+        # Mark this host as failed in cache before trying fallback.
+        # Distinguish auth failures (host is reachable) from connection failures.
+        cache_entry: dict = {
             "host_used": host,
-            "reachable": False,
+            "reachable": last_error_type == "auth",  # auth failure = host IS reachable
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "attempts": _MAX_RETRIES,
-            "error": "unreachable",
+            "error": f"{last_error_type or 'connection'}_failure",
         }
+        _vpn_status_cache[node["name"]] = cache_entry
 
     return None
 
@@ -139,7 +149,9 @@ def collect_node_health(node):
 
     node_info = _api_get(node, "nodes")
     if not node_info:
-        h["error"] = "unreachable"
+        vpn = _vpn_status_cache.get(node["name"])
+        error_kind = vpn.get("error", "unreachable") if vpn else "unreachable"
+        h["error"] = error_kind
         # TK-176d6efe: merge VPN/tunnel status into health record
         vpn = _vpn_status_cache.get(node["name"])
         if vpn:
@@ -191,8 +203,12 @@ def check_alerts(health_data):
     alerts = []
     for name, h in health_data.items():
         if not h.get("reachable"):
-            alerts.append({"node": name, "severity": "critical", "component": "proxmox",
-                           "message": f"Proxmox {name} ({h.get('host','?')}) unreachable"})
+            error_msg = h.get("error", "unreachable")
+            # Auth failures mean the host IS reachable — don't report as
+            # VPN/critical alert; it's an auth config issue.
+            severity = "warning" if "auth" in str(error_msg) else "critical"
+            alerts.append({"node": name, "severity": severity, "component": "proxmox",
+                           "message": f"Proxmox {name} ({h.get('host','?')}): {error_msg}"})
             continue
         for s in h.get("storage", []):
             if s.get("used_pct", 0) > 90:

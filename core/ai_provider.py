@@ -704,6 +704,29 @@ register_provider(
 )
 
 
+# 2026-08-09: Dedicated DeepSeek coding agent via OmniRoute gateway.
+# Per operator directive: "use deepseek" — routes through OmniRoute's
+# auto/best-coding slot which prefers DeepSeek models. This is Kai's
+# PRIMARY coding agent, backed by the same opencode CLI sandbox all
+# coding agents use, so DeepSeek powers the build/roadmap pipeline.
+OMNIROUTE_DEEPSEEK_CODING_MODEL = "auto/best-coding"
+
+
+def _omniroute_deepseek_coding_run_task(project_path, instruction, **kwargs):
+    kwargs.setdefault("model", f"omniroute/{OMNIROUTE_DEEPSEEK_CODING_MODEL}")
+    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
+register_provider(
+    "omniroute_deepseek_coding",
+    run_coding_task=_omniroute_deepseek_coding_run_task,
+    available_fn=_omniroute_available,
+    kind="cloud",
+    description="DeepSeek via OmniRoute gateway (auto/best-coding) — PRIMARY coding agent per operator directive 2026-08-09, routes through self-hosted AI gateway",
+    cost_tier="free_or_low_cost",
+)
+
+
 register_provider(
     "local",
     run_coding_task=_local_not_implemented,

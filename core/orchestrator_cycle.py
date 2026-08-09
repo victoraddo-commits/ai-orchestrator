@@ -13,6 +13,8 @@ import core.telegram_bridge as telegram_bridge
 from core.monitoring.budget_monitor import check_budgets
 # 2026-08-07: gpu_lifecycle removed — RunPod pods decommissioned.
 import core.vpn_failover as vpn_failover
+# 2026-08-09: Notification Service — Kai Mobile Command Node sub-project 3
+import core.notifications as notifications
 
 
 def _safe_send(message_text):
@@ -74,6 +76,14 @@ def run_cycle():
     except Exception as error:
         info(f"vpn failover check failed: {type(error).__name__}")
 
+    # 2026-08-09: Enqueue VPN events as notifications (safe — non-fatal)
+    if vpn_events:
+        try:
+            vpn_count = notifications.enqueue_from_vpn_events(vpn_events)
+            if vpn_count:
+                info(f"notifications: {vpn_count} VPN event(s) enqueued")
+        except Exception as error:
+            info(f"notifications: VPN event enqueue failed: {type(error).__name__}")
 
     state = refresh_state()
 
@@ -96,6 +106,16 @@ def run_cycle():
                 finding.get("severity", "warning")
             )
         )
+
+    # 2026-08-09: Enqueue health findings as notifications (safe — non-fatal)
+    # Critical findings → Telegram push; warnings → heartbeat queue
+    if findings:
+        try:
+            health_count = notifications.enqueue_from_findings(findings)
+            if health_count:
+                info(f"notifications: {health_count} health finding(s) enqueued")
+        except Exception as error:
+            info(f"notifications: health findings enqueue failed: {type(error).__name__}")
 
 
     decisions = evaluate_incidents()
@@ -207,6 +227,25 @@ def run_cycle():
                 telegram_bridge.record_sent_build_message(message_id, build_id)
             except Exception as error:
                 info(f"telegram message->build record failed: {type(error).__name__}")
+
+    # 2026-08-09: Enqueue build failure notifications (safe — non-fatal)
+    # Detect builds that just transitioned to FAILED in this cycle
+    try:
+        builds_after_map = {b.get("id"): b for b in builds if b.get("id")}
+        for b_before in builds_before:
+            bid = b_before.get("id")
+            if not bid:
+                continue
+            b_after = builds_after_map.get(bid)
+            if b_after is None:
+                continue
+            if b_before.get("status") != "FAILED" and b_after.get("status") == "FAILED":
+                name = b_after.get("name", bid)
+                reason = b_after.get("failure_reason", "no reason recorded")
+                notifications.enqueue_build_failure(name, bid, reason)
+                info(f"notifications: build failure enqueued for {name}")
+    except Exception as error:
+        info(f"notifications: build failure enqueue failed: {type(error).__name__}")
 
 
     # 2026-08-07: GPU lifecycle/mgmt/dashboard removed — RunPod pods decommissioned.

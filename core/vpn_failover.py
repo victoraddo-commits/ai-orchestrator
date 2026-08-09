@@ -49,10 +49,41 @@ MAX_RECOVERY_ATTEMPTS = int(os.environ.get("VPN_FAILOVER_MAX_ATTEMPTS", "2"))
 # ---------------------------------------------------------------------------
 
 def _proxmox_b_is_reachable() -> bool:
-    """Check if Proxmox B's API port is reachable via any path."""
+    """Check if Proxmox B's API port is reachable via any path.
+
+    First checks the cached VPN status (populated by collect_node_health).
+    If the cache is empty (e.g. first cycle after restart), falls back to
+    a quick TCP check of the probe host.
+    """
     vpn = get_vpn_status("pve-b")
     status = vpn.get("pve-b", {})
-    return status.get("reachable", False)
+    if status:
+        return status.get("reachable", False)
+
+    # Cache empty — do a quick TCP reachability probe (no auth needed).
+    import socket
+    try:
+        sock = socket.create_connection((PROBE_HOST, PROBE_PORT), timeout=5)
+        sock.close()
+        # Populate the cache so subsequent calls don't probe again.
+        _cache_set_reachable(True)
+        return True
+    except OSError:
+        _cache_set_reachable(False)
+        return False
+
+
+def _cache_set_reachable(reachable: bool) -> None:
+    """Set the VPN status cache entry for pve-b."""
+    from core.proxmox_monitor import _vpn_status_cache
+    from datetime import datetime, timezone
+    _vpn_status_cache["pve-b"] = {
+        "host_used": PROBE_HOST,
+        "reachable": reachable,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "attempts": 1,
+        "error": None if reachable else "connection_failure",
+    }
 
 
 def _wg_interface_exists() -> bool:

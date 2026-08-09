@@ -255,8 +255,8 @@ class TestProxmoxMonitorFailover:
         def fake_request(host, headers, path, timeout=15):
             attempts.append(host)
             if host == "10.8.0.102":
-                return None  # primary fails
-            return {"status": "ok"}  # fallback succeeds
+                return None, "connection"  # primary fails
+            return {"status": "ok"}, None  # fallback succeeds
 
         monkeypatch.setattr(pm, "_do_request", fake_request)
         monkeypatch.setattr(pm, "_MAX_RETRIES", 1)
@@ -280,7 +280,7 @@ class TestProxmoxMonitorFailover:
 
         def fake_request(host, headers, path, timeout=15):
             attempts.append(host)
-            return None
+            return None, "connection"
 
         monkeypatch.setattr(pm, "_do_request", fake_request)
         monkeypatch.setattr(pm, "_MAX_RETRIES", 2)
@@ -309,7 +309,7 @@ class TestProxmoxMonitorFailover:
 
         def fake_request(host, headers, path, timeout=15):
             attempts.append(host)
-            return {"data": "ok"}
+            return {"data": "ok"}, None
 
         monkeypatch.setattr(pm, "_do_request", fake_request)
         monkeypatch.setattr(pm, "_MAX_RETRIES", 5)
@@ -323,7 +323,7 @@ class TestProxmoxMonitorFailover:
     def test_vpn_status_cache_updated(self, monkeypatch):
         from core import proxmox_monitor as pm
 
-        monkeypatch.setattr(pm, "_do_request", lambda h, hdrs, p, timeout=15: {"ok": True})
+        monkeypatch.setattr(pm, "_do_request", lambda h, hdrs, p, timeout=15: ({"ok": True}, None))
         monkeypatch.setattr(pm, "_MAX_RETRIES", 1)
 
         node = {"name": "pve", "host": "192.168.99.2", "token": "root@pam!kai"}

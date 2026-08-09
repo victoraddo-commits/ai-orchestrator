@@ -27,6 +27,7 @@ from .action_schema import (
     get_schema, list_action_types,
     actions_for_domain, new_action, validate_action, ACTION_SCHEMAS,
 )
+from .command_center import CommandCenter, get_command_center
 
 __all__ = [
     "ActionProposal", "WorldState", "Scenario", "SimulationConfig",
@@ -39,4 +40,5 @@ __all__ = [
     "actions_for_domain", "new_action", "validate_action", "ACTION_SCHEMAS",
     "run_simulation", "simulate_before_action", "record_actual_outcome",
     "list_simulations", "get_simulation",
+    "CommandCenter", "get_command_center",
 ]

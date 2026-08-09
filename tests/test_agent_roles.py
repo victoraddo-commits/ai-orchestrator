@@ -44,7 +44,14 @@ def test_research_agent_routes_to_claude_fallback(monkeypatch):
     # api.deepseek.com call).
     import core.ai_provider as ai_provider
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "planning".
-    for name in ("deepseek_native_flash", "omniroute_deepseek_flash", "openrouter", "deepseek", "opencode_claude", "deepseek_native_pro", "gemini", "geminix", "qwen4_text", "qwen4_pod_b"):
+    # Only disable providers that are actually registered (qwen may be absent
+    # when RunPod env vars aren't set).
+    to_disable = [n for n in ("deepseek_native_flash", "omniroute_deepseek_flash",
+                    "openrouter", "deepseek", "opencode_claude",
+                    "deepseek_native_pro", "gemini", "geminix",
+                    "qwen4_text", "qwen4_pod_b")
+                  if ai_provider.get_provider(n) is not None]
+    for name in to_disable:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     _ensure_in_role_providers(monkeypatch, "claude", "planning")
@@ -58,10 +65,12 @@ def test_research_agent_routes_to_claude_fallback(monkeypatch):
 
 def test_fast_analysis_agent_routes_to_groq(monkeypatch):
     import core.ai_provider as ai_provider
-    # qwen3_coder_text leads "classification" and is now available
-    # (reasoning-model fallback fix deployed) — disable it so groq
-    # is the next candidate this test expects.
-    monkeypatch.setitem(ai_provider.get_provider("qwen3_coder_text"), "available_fn", lambda: False)
+    # qwen4_text (was qwen3_coder_text) leads "classification" — disable
+    # it so groq is the next candidate this test expects. Guard against
+    # the provider not being registered (RunPod env vars not set).
+    qwen = ai_provider.get_provider("qwen4_text") or ai_provider.get_provider("qwen3_coder_text")
+    if qwen is not None:
+        monkeypatch.setitem(qwen, "available_fn", lambda: False)
     # groq is disabled in persisted provider state — re-enable for this test.
     monkeypatch.setitem(ai_provider.get_provider("groq"), "enabled", True)
     _stub_provider(monkeypatch, "groq", "groq answered")
@@ -72,22 +81,33 @@ def test_fast_analysis_agent_routes_to_groq(monkeypatch):
     assert result["task_type"] == "log_analysis"
 
 
-def test_general_reasoning_agent_routes_to_openai(monkeypatch):
-    _stub_provider(monkeypatch, "qwen4_text", "openai answered")
+def test_general_reasoning_agent_routes_to_qwen4_text(monkeypatch):
+    import core.ai_provider as ai_provider
+    # qwen4_text (was openai) leads "review" — but only when RunPod is configured.
+    # Fall back to the actual primary provider when qwen4_text isn't registered.
+    provider_name = "qwen4_text" if ai_provider.get_provider("qwen4_text") else "qwen4_pod_b"
+    if ai_provider.get_provider(provider_name) is None:
+        import pytest
+        pytest.skip("qwen4_text and qwen4_pod_b not registered (RunPod env vars not set)")
+    _stub_provider(monkeypatch, provider_name, "qwen4 answered")
 
     result = agent_roles.general_reasoning_agent("Critique this proposal")
 
-    assert result["provider"] == "qwen4_text"
+    assert result["provider"] == provider_name
     assert result["task_type"] == "review"
 
 
-def test_general_reasoning_agent_falls_back_to_claude_when_openai_unavailable(monkeypatch):
+def test_general_reasoning_agent_falls_back_to_claude_when_primary_unavailable(monkeypatch):
     # gemini removed from "review" entirely 2026-08-02 -- claude (now last)
     # demonstrates the fallback instead.
     import core.ai_provider as ai_provider
 
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "review".
-    for name in ("deepseek_native_flash", "omniroute_deepseek_flash", "deepseek", "gemini", "geminix", "qwen4_text", "qwen4_pod_b"):
+    # Only disable providers that are actually registered.
+    to_disable = [n for n in ("deepseek_native_flash", "omniroute_deepseek_flash",
+                    "deepseek", "gemini", "geminix", "qwen4_text", "qwen4_pod_b")
+                  if ai_provider.get_provider(n) is not None]
+    for name in to_disable:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
     _ensure_in_role_providers(monkeypatch, "claude", "review")

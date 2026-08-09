@@ -171,59 +171,16 @@ def root_redirect():
     return RedirectResponse(url="/command-center")
 
 
-API_TOKEN_PATH = Path(
-    os.environ.get("AI_ORCHESTRATOR_API_TOKEN_PATH", str(Path.home() / ".ai-orchestrator" / "api_token"))
+from core.bridge_auth import (
+    API_TOKEN_PATH,
+    BRIDGE_OPERATOR,
+    _load_api_token,
+    require_bridge_token,
 )
 
-BRIDGE_OPERATOR = "cloudcli-plugin"
-
-
-def _load_api_token():
-    """Shared secret between core/api.py and the trusted caller (the CloudCLI
-    plugin's server-side bridge, the only thing that should ever call the
-    write endpoints below). Generated on first use; never derived from or
-    trusted from client-supplied request data."""
-
-    if not API_TOKEN_PATH.exists():
-        API_TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        API_TOKEN_PATH.parent.chmod(0o700)  # mkdir's mode is umask-affected; force it
-
-        # Create with the final 0600 mode from the very first syscall -- no
-        # window where the file exists with looser (e.g. default 0644)
-        # permissions. O_EXCL also means this raises rather than silently
-        # overwriting if another process won the race to create it first --
-        # in that case just fall through and read what it wrote.
-        try:
-            fd = os.open(API_TOKEN_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            pass
-        else:
-            try:
-                os.write(fd, secrets.token_urlsafe(32).encode())
-            finally:
-                os.close(fd)
-
-    return API_TOKEN_PATH.read_text().strip()
-
-
 _load_api_token()  # ensure the token file exists as soon as the API starts,
-# not lazily on the first write request -- the plugin bridge needs to be
-# able to read it before it ever makes that first call.
-
-
-def require_bridge_token(authorization: str | None = Header(default=None)) -> str:
-    """Verifies the caller presented the shared secret and returns the
-    identity to record as the operator -- this is the ONLY source of
-    operator identity for write endpoints; it is never read from the
-    request body, so a caller cannot forge who performed an action."""
-
-    expected = f"Bearer {_load_api_token()}"
-    presented = authorization or ""
-
-    if not hmac.compare_digest(presented.encode(), expected.encode()):
-        raise HTTPException(status_code=401, detail="Missing or invalid API token")
-
-    return BRIDGE_OPERATOR
+# not lazily on the first write request -- the plugin bridge needs to
+# be able to read it before it ever makes that first call.
 
 
 # ── Dashboard login (Phase 17D, upgraded to username/password same day) ─────
@@ -854,7 +811,9 @@ def module_config_put(
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/juris-kai/stats")
-def juris_kai_stats():
+def juris_kai_stats(
+    _: str = Depends(require_bridge_token),
+):
     """Aggregate Juris Kai stats for admin dashboard."""
     try:
         from core.juris_kai.dashboard import get_dashboard_stats
@@ -867,6 +826,7 @@ def juris_kai_stats():
 def juris_kai_accounts(
     q: str = "", tier: str = "", active_only: bool = False,
     page: int = 1, per_page: int = 50,
+    _: str = Depends(require_bridge_token),
 ):
     """List/search Juris Kai accounts."""
     try:
@@ -882,7 +842,10 @@ def juris_kai_accounts(
 
 
 @app.get("/api/juris-kai/accounts/{account_id}")
-def juris_kai_account_detail(account_id: str):
+def juris_kai_account_detail(
+    account_id: str,
+    _: str = Depends(require_bridge_token),
+):
     """Get detailed account info for admin view."""
     try:
         from core.juris_kai.dashboard import get_account_detail
@@ -998,7 +961,9 @@ def juris_kai_grant_days(
 
 
 @app.get("/api/juris-kai/referrals")
-def juris_kai_referrals():
+def juris_kai_referrals(
+    _: str = Depends(require_bridge_token),
+):
     """List all referrals (admin view)."""
     try:
         from core.juris_kai.accounts import get_account_manager
@@ -1030,7 +995,10 @@ def juris_kai_referral_generate(
 
 
 @app.get("/api/juris-kai/payments")
-def juris_kai_payments(account_id: str = "", limit: int = 50):
+def juris_kai_payments(
+    account_id: str = "", limit: int = 50,
+    _: str = Depends(require_bridge_token),
+):
     """Get payment history."""
     try:
         from core.juris_kai.dashboard import get_payment_history
@@ -1040,7 +1008,10 @@ def juris_kai_payments(account_id: str = "", limit: int = 50):
 
 
 @app.get("/api/juris-kai/security-log")
-def juris_kai_security_log(event_type: str = "", limit: int = 100):
+def juris_kai_security_log(
+    event_type: str = "", limit: int = 100,
+    _: str = Depends(require_bridge_token),
+):
     """Get security event log."""
     try:
         from core.juris_kai.accounts import get_account_manager
@@ -1055,7 +1026,9 @@ def juris_kai_security_log(event_type: str = "", limit: int = 100):
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/susu/stats")
-def susu_stats():
+def susu_stats(
+    _: str = Depends(require_bridge_token),
+):
     """Aggregate SUSU stats."""
     try:
         from core.susu import models as susu_models
@@ -1086,7 +1059,9 @@ def susu_stats():
 
 
 @app.get("/api/susu/users")
-def susu_users():
+def susu_users(
+    _: str = Depends(require_bridge_token),
+):
     """List all SUSU users."""
     try:
         from core.susu import models as susu_models
@@ -1103,7 +1078,9 @@ def susu_users():
 
 
 @app.get("/api/susu/groups")
-def susu_groups():
+def susu_groups(
+    _: str = Depends(require_bridge_token),
+):
     """List all SUSU groups with member counts."""
     try:
         from core.susu import models as susu_models
@@ -1124,7 +1101,10 @@ def susu_groups():
 
 
 @app.get("/api/susu/transactions")
-def susu_transactions(group_id: str = "", user_id: str = "", limit: int = 100):
+def susu_transactions(
+    group_id: str = "", user_id: str = "", limit: int = 100,
+    _: str = Depends(require_bridge_token),
+):
     """List SUSU transactions with optional filters."""
     try:
         from core.susu import models as susu_models
@@ -1145,7 +1125,9 @@ def susu_transactions(group_id: str = "", user_id: str = "", limit: int = 100):
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/legal-brain/stats")
-def legal_brain_stats():
+def legal_brain_stats(
+    _: str = Depends(require_bridge_token),
+):
     """Get Legal Brain knowledge engine stats."""
     try:
         from core.legal_brain.permanent import get_connection

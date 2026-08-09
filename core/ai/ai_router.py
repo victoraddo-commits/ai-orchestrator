@@ -153,12 +153,17 @@ ROLE_PROVIDERS = {
     # agent — separate billing from CloudCLI/Anthropic subscription.
     # 17S: opencode_fable5 (dedicated key) is highest priority for coding
     # per operator directive 2026-08-02.
+    # 2026-08-09: deepseek_native is now PRIMARY across ALL roles per operator
+    # directive ("set it as a primary"). For coding, deepseek routes through
+    # OmniRoute's auto/best-coding (which prefers deepseek models) and via
+    # the dedicated omniroute_deepseek path. opencode providers are fallback.
     "coding": [
+        "omniroute_deepseek_coding",
+        "omniroute",
         "opencode_fable5",
         "opencode_claude",
         "opencode_claude_sonnet",
         "opencode_claude_opus",
-        "omniroute",
         "claude",
         "opencode",
         "opencode_minimax",
@@ -235,12 +240,15 @@ ROLE_PROVIDERS = {
     # deepseek_native_flash is now primary — 100% reliable, ~$20/month.
     # 17S: opencode_gemini_pro + opencode_fable5 (dedicated keys) are highest
     # priority for every text role per operator directive 2026-08-02.
-    "planning": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash", "opencode_claude", "claude"],
-    "architecture": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
-    "log_analysis": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "groq", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "omniroute_deepseek_flash", "groq", "claude"],
-    "review": ["opencode_gemini_pro", "opencode_fable5", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
-    "classification": ["opencode_gemini_pro", "opencode_fable5", "groq", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    # 2026-08-09: DeepSeek PRIMARY for ALL text roles per operator directive.
+    # deepseek_native_pro first (full model, best quality), deepseek_native_flash
+    # second (fast + proven 100% reliable). All other providers are fallback.
+    "planning": ["deepseek_native_pro", "deepseek_native_flash", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "omniroute_deepseek_flash", "opencode_claude", "claude"],
+    "architecture": ["deepseek_native_pro", "deepseek_native_flash", "opencode_gemini_pro", "opencode_fable5", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "log_analysis": ["deepseek_native_flash", "deepseek_native_pro", "groq", "opencode_gemini_pro", "opencode_fable5", "omniroute_deepseek_flash", "claude"],
+    "documentation": ["deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "groq", "claude"],
+    "review": ["deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "claude"],
+    "classification": ["deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -254,13 +262,13 @@ ROLE_PROVIDERS = {
 # fixed-order treatment for from day one -- not a claim that evidence
 # already backs this ordering, since it's brand new.
 LAW_TUTOR_ROLE_PROVIDERS = {
-    # 2026-08-07: qwen4_text removed — RunPod pods OFFLINE.
-    "law_document": ["gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "law_case_analysis": ["claude", "deepseek_native_flash", "omniroute_deepseek_flash"],
-    "law_teaching": ["deepseek_native_flash", "claude"],
-    "law_exam": ["claude"],
-    "law_flashcards": ["groq", "claude"],
-    "law_chat": ["groq", "claude"],
+    # 2026-08-09: DeepSeek PRIMARY per operator directive.
+    "law_document": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "geminix", "omniroute_deepseek_flash", "claude"],
+    "law_case_analysis": ["deepseek_native_pro", "deepseek_native_flash", "claude", "omniroute_deepseek_flash"],
+    "law_teaching": ["deepseek_native_pro", "deepseek_native_flash", "claude"],
+    "law_exam": ["deepseek_native_pro", "claude"],
+    "law_flashcards": ["deepseek_native_flash", "groq", "claude"],
+    "law_chat": ["deepseek_native_flash", "groq", "claude"],
     # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
     "law_document_vision": ["gpuai_gemma", "claude"],
 }
@@ -273,24 +281,13 @@ LAW_TUTOR_ROLE_PROVIDERS = {
 # Flashcard generation - needs structured output and organization
 # General legal chat - needs quick responses and conversational ability
 JURIS_KAI_ROLE_PROVIDERS = {
-    # 2026-08-07 (late): deepseek_native_pro is now primary for ALL juris_* roles.
-    # deepseek_native_flash was returning empty responses for legal article queries
-    # (e.g. "Article 161") because it's a small/flash model that either content-filters
-    # or simply cannot handle specific legal statute references.
-    # deepseek_native_pro (DeepSeek-V4 Pro) is the full-size model with proper legal
-    # reasoning — its architecture primary status already proves it handles complex
-    # structured queries. No other task types share this chain — juris-kai has its
-    # OWN dedicated routing, never sharing a bridge with general-purpose tasks.
-    #
-    # Fallback chain: deepseek_native_pro → gemini → omniroute_deepseek_flash → groq
-    # (claude removed from juris fallbacks — Anthropic subscription out of credit
-    #  as of 2026-08-07 and cannot serve as a viable fallback for legal queries).
-    "juris_legal_teaching": ["deepseek_native_pro", "gemini", "groq"],
-    "juris_case_analysis": ["deepseek_native_pro", "gemini", "omniroute_deepseek_flash"],
-    "juris_research": ["deepseek_native_pro", "gemini", "geminix", "omniroute_deepseek_flash"],
-    "juris_argument_construction": ["deepseek_native_pro", "gemini", "groq"],
-    "juris_flashcards": ["deepseek_native_pro", "groq"],
-    "juris_chat": ["deepseek_native_pro", "groq", "gemini"],
+    # 2026-08-09: DeepSeek PRIMARY per operator directive.
+    "juris_legal_teaching": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "groq"],
+    "juris_case_analysis": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "omniroute_deepseek_flash"],
+    "juris_research": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "geminix", "omniroute_deepseek_flash"],
+    "juris_argument_construction": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "groq"],
+    "juris_flashcards": ["deepseek_native_flash", "deepseek_native_pro", "groq"],
+    "juris_chat": ["deepseek_native_flash", "deepseek_native_pro", "groq", "gemini"],
     # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
     "juris_document_vision": ["gpuai_gemma"],
 }
@@ -298,9 +295,8 @@ JURIS_KAI_ROLE_PROVIDERS = {
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
-# 2026-08-07: Legal module coding — opencode_claude (Fable 5 via OpenCode Zen).
-# Was qwen4_coding (RunPod) but both pods OFFLINE since Aug 6.
-ROLE_PROVIDERS["legal_coding"] = ["opencode_claude"]
+# 2026-08-09: Legal module coding — deepseek via OmniRoute primary, opencode_claude fallback.
+ROLE_PROVIDERS["legal_coding"] = ["omniroute_deepseek_coding", "opencode_claude"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -318,7 +314,8 @@ DEFAULT_TASK_TYPE = "coding"
 # task-fit judgment call (see LAW_TUTOR_ROLE_PROVIDERS comment), not a
 # default that rotation should spread load across.
 FIXED_ORDER_TASK_TYPES = frozenset({
-    "architecture", "planning",
+    "architecture", "planning", "review", "log_analysis",
+    "documentation", "classification",
     "law_document", "law_case_analysis", "law_teaching", "law_exam", "law_flashcards", "law_chat",
     "law_document_vision",
     "juris_legal_teaching", "juris_case_analysis", "juris_research",
@@ -363,9 +360,10 @@ def classify_task(description):
 # put direct "claude" first on a fraction of calls, defeating the
 # credit-preservation goal -- so only these rotate; every other coding
 # candidate is a fixed tail, always tried last and in ROLE_PROVIDERS order.
-# 2026-08-07: opencode_claude (Fable 5 via OpenCode Zen) is the only
-# working coding agent — qwen4_coding/qwen4Z removed (RunPod pods OFFLINE).
-CODING_ROTATING_FRONT = ["opencode_claude"]
+# 2026-08-09: DeepSeek (via OmniRoute) is primary coding agent per operator
+# directive. omniroute_deepseek_coding routes through OmniRoute's
+# auto/best-coding model which prefers DeepSeek models.
+CODING_ROTATING_FRONT = ["omniroute_deepseek_coding"]
 
 # --- Purge disabled providers from all routing on import ---
 # Reads memory/provider_state.json and removes any provider whose persisted

@@ -18,6 +18,12 @@ load_dotenv()
 
 from core.orchestrator_cycle import run_cycle
 from core.logger import info
+from core.workers.deepseek_pool import start_pool, stop_pool
+from core.workers.telegram_monitor import TelegramMonitor
+
+# Worker pool and Telegram monitor — started on first cycle, survive until shutdown.
+_pool = None
+_monitor = None
 
 
 # Was 300s, tuned for infra health checks (Phase 1-11) where that cadence is
@@ -103,7 +109,16 @@ class WatchdogHeartbeat:
 
 def start():
 
-    info("scheduler started")
+    global _pool, _monitor
+
+    # 2026-08-09: DeepSeek worker pool — primary AI engine per operator directive.
+    _pool = start_pool(workers=8)
+
+    # Telegram monitor — periodic status digests per operator directive.
+    _monitor = TelegramMonitor()
+    _monitor.start()
+
+    info("scheduler started (DeepSeek pool + Telegram monitor)")
 
     if notify:
         notify("READY=1")

@@ -136,6 +136,22 @@ app.include_router(telegram_router)
 from core.device_registry_routes import router as device_router
 app.include_router(device_router)
 
+# 2026-08-09: Kai Mobile Command Node — Sub-project 3: Push Notification System
+from core.notifications_routes import router as notifications_router
+app.include_router(notifications_router)
+
+# 2026-08-09: Kai Mobile Command Node — Sub-project 4: Permanent Health Worker
+from core.health_worker_routes import router as health_worker_router
+app.include_router(health_worker_router)
+
+# 2026-08-09: Kai Mobile Command Node — Sub-project 5: WireGuard Resilience
+from core.wireguard_routes import router as wireguard_router
+app.include_router(wireguard_router)
+
+# 2026-08-09: Kai Mobile Command Node — Sub-project 6: Module Launcher & App Shortcuts
+from core.mobile_launcher_routes import router as mobile_launcher_router
+app.include_router(mobile_launcher_router)
+
 # Create default API key on first startup if none exists
 try:
     from core.ai_gateway.keys import ensure_default_key

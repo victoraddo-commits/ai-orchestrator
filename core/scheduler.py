@@ -21,9 +21,11 @@ from core.logger import info
 from core.workers.deepseek_pool import start_pool, stop_pool
 from core.workers.telegram_monitor import TelegramMonitor
 
-# Worker pool and Telegram monitor — started on first cycle, survive until shutdown.
+# Worker pool, Telegram monitor, and Health Worker — started on first cycle,
+# survive until shutdown.
 _pool = None
 _monitor = None
+_health_worker = None
 
 
 # Was 300s, tuned for infra health checks (Phase 1-11) where that cadence is
@@ -109,7 +111,7 @@ class WatchdogHeartbeat:
 
 def start():
 
-    global _pool, _monitor
+    global _pool, _monitor, _health_worker
 
     # 2026-08-09: DeepSeek worker pool — primary AI engine per operator directive.
     _pool = start_pool(workers=8)
@@ -118,7 +120,13 @@ def start():
     _monitor = TelegramMonitor()
     _monitor.start()
 
-    info("scheduler started (DeepSeek pool + Telegram monitor)")
+    # 2026-08-09: Health Worker — permanent health sampling thread
+    # (Kai Mobile Command Node sub-project 4). Runs every 30s independently
+    # of the orchestrator cycle.
+    from core.health_worker import start_worker
+    _health_worker = start_worker()
+
+    info("scheduler started (DeepSeek pool + Telegram monitor + Health Worker)")
 
     if notify:
         notify("READY=1")

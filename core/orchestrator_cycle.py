@@ -84,6 +84,10 @@ def run_cycle():
     incidents = []
 
     for finding in findings:
+        # Skip info-only findings (risk_score=0, healthy status, etc.) —
+        # they are observations, not actionable incidents.
+        if finding.get("severity") == "info" or finding.get("risk_score", 0) == 0:
+            continue
 
         incidents.append(
             create_incident(

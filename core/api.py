@@ -17,6 +17,7 @@ from starlette.responses import HTMLResponse, RedirectResponse
 import logging
 
 from core.memory import save, load
+from core.security_headers import SecurityHeadersMiddleware
 
 # Load .env explicitly here rather than relying on tools/proxmox.py's own
 # load_dotenv() call as a side effect of some other import -- this is the
@@ -118,6 +119,9 @@ from core.klaus.scheduler import start_scheduler as start_klaus_scheduler
 
 
 app = FastAPI(title="AI Orchestrator Observability API")
+
+# Security headers on every response (CSP, HSTS, X-Frame-Options, etc.)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(klaus_api_router)
 

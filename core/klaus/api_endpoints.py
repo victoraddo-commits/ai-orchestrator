@@ -17,6 +17,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
 
+from core.bridge_auth import require_bridge_token
 from core.klaus.db_manager import (
     add_source,
     list_sources,
@@ -50,7 +51,11 @@ from core.klaus.schema import (
     EVENT_TYPES,
 )
 
-klaus_router = APIRouter(prefix="/klaus", tags=["klaus"])
+klaus_router = APIRouter(
+    prefix="/klaus",
+    tags=["klaus"],
+    dependencies=[Depends(require_bridge_token)],
+)
 
 
 # ── Sources ────────────────────────────────────────────────────────────

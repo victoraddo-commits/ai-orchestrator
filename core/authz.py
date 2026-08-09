@@ -69,6 +69,9 @@ CAPABILITIES = {
 ROLE_CAPABILITIES = {
     "operator": set(CAPABILITIES.keys()),
     "viewer": set(),  # read-only — no write capabilities
+    "device": {
+        "kai.chat.send",       # chat with Kai
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -197,6 +200,17 @@ def _resolve_session(token: str) -> dict | None:
         except (ValueError, KeyError):
             pass
         return session
+
+    # Device bearer tokens (kai_device_ prefix) — long-lived, revocable
+    if isinstance(token, str) and token.startswith("kai_device_"):
+        from core.device_registry import find_device_by_token
+        device = find_device_by_token(token)
+        if device and device.get("status") == "authorized":
+            return {
+                "username": device["device_id"],
+                "role": "device",
+                "created": device.get("created_at", datetime.now(timezone.utc).isoformat()),
+            }
 
     return None
 

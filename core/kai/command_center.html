@@ -491,16 +491,150 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 /* ── Responsive ─────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
+  /* ── Base typography bump ─────────────────────────── */
+  body { font-size: 14px; }
+  h2 { font-size: 1.1rem; }
+  h3 { font-size: 0.95rem; }
+
+  /* ── Login ────────────────────────────────────────── */
   .login-brand { display: none; }
   .login-form-wrap { width: 100%; padding: 24px; }
-  .sidebar { width: var(--sidebar-collapsed); min-width: var(--sidebar-collapsed); }
-  .sidebar .nav-item .label, .sidebar-brand .name, .collapse-btn span { display: none; }
-  .sidebar .nav-item { justify-content: center; padding: 8px 0; }
-  .sidebar .collapse-btn { justify-content: center; }
-  .main-area { margin-left: var(--sidebar-collapsed); }
-  .grid, .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-  .metric-row { grid-template-columns: repeat(2, 1fr); }
-  .worker-grid, .container-grid { grid-template-columns: 1fr; }
+  .login-form-card { width: 100%; max-width: 400px; padding: 28px 20px; }
+  .form-group input { padding: 12px 10px; font-size: 16px; } /* prevent iOS zoom */
+  .btn { padding: 12px 20px; font-size: 14px; min-height: 44px; }
+
+  /* ── Sidebar → hidden, replaced by bottom bar ─────── */
+  .sidebar { display: none; }
+  .main-area { margin-left: 0; padding-bottom: 64px; }
+
+  /* ── Bottom tab bar ───────────────────────────────── */
+  .mobile-nav {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    background: var(--bg-surface); border-top: 1px solid var(--border);
+    height: 60px; padding-bottom: env(safe-area-inset-bottom, 0);
+    justify-content: space-around; align-items: center;
+  }
+  .mobile-nav-item {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; min-width: 48px; min-height: 48px; padding: 4px 8px;
+    color: var(--fg-muted); font-size: 0.55rem; font-weight: 500;
+    font-family: var(--font-sans); text-decoration: none; border: none;
+    background: none; cursor: pointer; border-radius: 6px;
+    transition: color var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mobile-nav-item.active { color: var(--accent); }
+  .mobile-nav-item svg { width: 20px; height: 20px; stroke: currentColor; }
+  .mobile-nav-item .badge {
+    position: absolute; top: 2px; margin-left: 18px;
+    background: var(--destructive); color: #fff; font-size: 0.5rem;
+    min-width: 14px; height: 14px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+  }
+  .mobile-nav-item { position: relative; }
+
+  /* ── Slide-over "More" menu ───────────────────────── */
+  .more-overlay {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: rgba(2,6,23,0.85); flex-direction: column; justify-content: flex-end;
+  }
+  .more-overlay.open { display: flex; }
+  .more-sheet {
+    background: var(--bg-surface); border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; padding: 8px 0 24px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
+    max-height: 70vh; overflow-y: auto; animation: slideUp 0.2s ease-out;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .more-sheet-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px 8px; border-bottom: 1px solid var(--border-subtle);
+  }
+  .more-sheet-header span { font-size: 0.75rem; font-weight: 600; color: var(--fg-secondary); text-transform: uppercase; letter-spacing: 0.08em; }
+  .more-sheet-close {
+    background: none; border: none; color: var(--fg-muted); font-size: 1.2rem;
+    cursor: pointer; padding: 8px; min-width: 44px; min-height: 44px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .more-sheet-item {
+    display: flex; align-items: center; gap: 12px; padding: 14px 20px;
+    color: var(--fg); text-decoration: none; font-size: 0.82rem;
+    min-height: 44px; border-bottom: 1px solid var(--border-subtle);
+    transition: background var(--transition-fast);
+  }
+  .more-sheet-item:active { background: var(--bg-elevated); }
+  .more-sheet-item svg { width: 20px; height: 20px; stroke: var(--fg-secondary); flex-shrink: 0; }
+
+  /* ── Top bar ──────────────────────────────────────── */
+  .topbar { padding: 10px 14px; }
+  .topbar-left { font-size: 0.85rem; }
+  .topbar-right .btn { padding: 8px 10px; font-size: 0.65rem; min-height: 36px; }
+  .topbar-user-text { display: none; }
+
+  /* ── Content area ─────────────────────────────────── */
+  .content { padding: 12px; }
+
+  /* ── Grids ────────────────────────────────────────── */
+  .grid, .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; gap: 10px; }
+  .metric-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .worker-grid, .container-grid { grid-template-columns: 1fr; gap: 10px; }
+  .card { padding: 14px; }
+
+  /* ── Tables → scroll ──────────────────────────────── */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 600px; font-size: 0.7rem; }
+  th, td { padding: 8px 6px; }
+
+  /* ── Action rows ──────────────────────────────────── */
+  .action-row { flex-wrap: wrap; gap: 6px; }
+  .action-row select, .action-row .btn {
+    min-height: 44px; font-size: 14px; padding: 8px 12px;
+  }
+  .search-input { min-height: 44px; font-size: 16px; min-width: 140px; }
+
+  /* ── Metric cards ─────────────────────────────────── */
+  .metric { padding: 12px 10px; min-height: 60px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .metric .val { font-size: 1.3rem; }
+
+  /* ── Status pills / inline badges ─────────────────── */
+  .status-pill { padding: 3px 8px; font-size: 0.62rem; }
+
+  /* ── Tabs / sub-nav ───────────────────────────────── */
+  .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 2px; padding-bottom: 4px; }
+  .tab { padding: 8px 14px; font-size: 0.72rem; min-height: 40px; white-space: nowrap; flex-shrink: 0; }
+
+  /* ── Logs / code blocks ───────────────────────────── */
+  .log-line { font-size: 0.65rem; padding: 4px 8px; white-space: pre-wrap; word-break: break-all; }
+  pre, code { font-size: 0.68rem; max-width: 100%; overflow-x: auto; }
+
+  /* ── Modal dialogs ────────────────────────────────── */
+  .modal-content { width: 95vw; max-width: 420px; max-height: 85vh; padding: 20px 16px; margin: 8px; }
+  .modal-content h2 { font-size: 1rem; }
+
+  /* ── Panel transitions ────────────────────────────── */
+  .panel { animation: fadeSlideIn 0.15s ease-out; }
+  @keyframes fadeSlideIn { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* ── Prov grid ────────────────────────────────────── */
+  .prov-grid { grid-template-columns: 1fr; gap: 10px; }
+  .prov-card { padding: 14px; }
+}
+
+/* ── Tablet (768–1024) ──────────────────────────────────── */
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .grid, .grid-2 { grid-template-columns: 1fr; }
+  .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .worker-grid, .container-grid { grid-template-columns: repeat(2, 1fr); }
+  .prov-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ── Desktop: hide mobile elements ──────────────────────── */
+
+@media (min-width: 769px) {
+  .mobile-nav { display: none; }
+  .more-overlay { display: none; }
 }
 
 /* ── User Action Row (legal panel) ──────────────────────────────── */
@@ -607,6 +741,58 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <button class="collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg> <span>Collapse</span></button>
     </div>
   </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MOBILE BOTTOM TAB BAR (hidden on desktop via media query)
+       ═══════════════════════════════════════════════════════════════ -->
+  <nav class="mobile-nav">
+    <a class="mobile-nav-item active" href="#home" data-hash="home" onclick="switchMobileTab(event,'home')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Home
+    </a>
+    <a class="mobile-nav-item" href="#ai-workforce" data-hash="ai-workforce" onclick="switchMobileTab(event,'ai-workforce')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Workforce
+    </a>
+    <a class="mobile-nav-item" href="#docker" data-hash="docker" onclick="switchMobileTab(event,'docker')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Infra
+    </a>
+    <a class="mobile-nav-item" href="#legal" data-hash="legal" onclick="switchMobileTab(event,'legal')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Legal
+    </a>
+    <button class="mobile-nav-item" onclick="toggleMoreMenu()" aria-label="More">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>More
+    </button>
+  </nav>
+
+  <!-- "More" slide-over menu -->
+  <div class="more-overlay" id="more-overlay" onclick="closeMoreMenu(event)">
+    <div class="more-sheet" onclick="event.stopPropagation()">
+      <div class="more-sheet-header">
+        <span>More</span>
+        <button class="more-sheet-close" onclick="closeMoreMenu()" aria-label="Close">&times;</button>
+      </div>
+      <a class="more-sheet-item" href="#modules" data-hash="modules" onclick="switchMobileTab(event,'modules')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Modules
+      </a>
+      <a class="more-sheet-item" href="#telegram" data-hash="telegram" onclick="switchMobileTab(event,'telegram')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>Telegram
+      </a>
+      <a class="more-sheet-item" href="#airdrop" data-hash="airdrop" onclick="switchMobileTab(event,'airdrop')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Airdrop
+      </a>
+      <a class="more-sheet-item" href="#infrastructure" data-hash="infrastructure" onclick="switchMobileTab(event,'infrastructure')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>Infrastructure
+      </a>
+      <a class="more-sheet-item" href="#security" data-hash="security" onclick="switchMobileTab(event,'security')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Security
+      </a>
+      <a class="more-sheet-item" href="#settings" data-hash="settings" onclick="switchMobileTab(event,'settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Settings
+      </a>
+      <a class="more-sheet-item" href="#logs" data-hash="logs" onclick="switchMobileTab(event,'logs')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Logs
+      </a>
+    </div>
+  </div>
 
   <div class="main-area">
     <header class="topbar">
@@ -868,6 +1054,28 @@ async function doChangePassword() {
 // ── Sidebar ───────────────────────────────────────────────────────
 function toggleSidebar(){ $('sidebar').classList.toggle('collapsed'); }
 
+// ── Mobile Navigation ─────────────────────────────────────────────
+function switchMobileTab(e, hash) {
+  e.preventDefault();
+  location.hash = '#' + hash;
+  closeMoreMenu();
+}
+function toggleMoreMenu() {
+  const overlay = $('more-overlay');
+  if (overlay) overlay.classList.toggle('open');
+}
+function closeMoreMenu(e) {
+  if (e && e.target !== $('more-overlay')) return;
+  const overlay = $('more-overlay');
+  if (overlay) overlay.classList.remove('open');
+}
+function _syncMobileNav(hash) {
+  const name = (hash || '').replace('#', '') || 'home';
+  document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
+  const tab = document.querySelector(`.mobile-nav-item[data-hash="${name}"]`);
+  if (tab) tab.classList.add('active');
+}
+
 // ── Routing ───────────────────────────────────────────────────────
 function navigateTo(hash) {
   const name=hash.replace('#','')||'home';
@@ -878,6 +1086,7 @@ function navigateTo(hash) {
   const panel=$(`panel-${name}`);if(panel)panel.classList.add('active');
   $('topbar-title').textContent=PANEL_TITLES[name]||name;
   if(!S.loadedPanels.has(name)){S.loadedPanels.add(name);loadPanel(name);}
+  _syncMobileNav(hash);
 }
 function loadPanel(name) {
   const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs};

@@ -23,17 +23,47 @@ router = APIRouter(tags=["health-worker"])
 
 @router.get("/kai/health/status")
 async def api_health_worker_status():
-    """Get health worker status: running state, sample count, DB stats."""
-    from core.health_worker import get_worker
+    """Get health worker status: running state, sample count, DB stats.
+
+    Reads from a shared state file written by the health worker daemon thread
+    in the scheduler process — the API and scheduler run in separate processes
+    so in-memory state isn't accessible here.
+    """
+    import json
+    import os
+    from pathlib import Path
     from core.health_observatory import get_snapshot_stats
 
-    worker = get_worker()
     stats = get_snapshot_stats()
+
+    # Read worker liveness from shared state file
+    worker_state = {"running": False, "sample_count": 0, "last_sample": None}
+    try:
+        memory_dir = os.environ.get("AI_ORCHESTRATOR_MEMORY_DIR", "memory")
+        state_path = Path(memory_dir) / "health_worker_state.json"
+        if state_path.exists():
+            raw = state_path.read_text()
+            worker_state.update(json.loads(raw))
+    except Exception:
+        pass
+
+    # Worker is "running" if state file was updated within the last 90s
+    # (30s interval + generous margin)
+    from datetime import datetime, timezone
+    running = False
+    if worker_state.get("last_sample"):
+        try:
+            last = datetime.fromisoformat(worker_state["last_sample"])
+            age = (datetime.now(timezone.utc) - last).total_seconds()
+            running = age < 90
+        except Exception:
+            pass
 
     return {
         "worker": {
-            "running": worker.is_running if worker else False,
-            "sample_count": worker.sample_count if worker else 0,
+            "running": running,
+            "sample_count": worker_state.get("sample_count", 0),
+            "last_sample": worker_state.get("last_sample"),
         },
         "database": stats,
     }

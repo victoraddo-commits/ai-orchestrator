@@ -13,6 +13,7 @@ and forecasting.
 """
 
 import logging
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -92,6 +93,31 @@ class HealthWorker:
     def sample_count(self) -> int:
         return self._sample_count
 
+    def _write_state_file(self):
+        """Write a tiny state file so the API process can see worker liveness.
+
+        The scheduler and API run in separate processes, so in-memory state
+        isn't shared.  This file bridges the gap.
+        """
+        import json
+        from pathlib import Path
+        from datetime import datetime, timezone
+
+        state = {
+            "running": self.is_running,
+            "sample_count": self._sample_count,
+            "last_sample": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            path = Path(os.environ.get("AI_ORCHESTRATOR_MEMORY_DIR", "memory"))
+            path.mkdir(parents=True, exist_ok=True)
+            tmp = path / ".health_worker_state.tmp"
+            dest = path / "health_worker_state.json"
+            tmp.write_text(json.dumps(state))
+            tmp.replace(dest)
+        except Exception:
+            pass  # best-effort; logging here could spam
+
     # -------------------------------------------------------------------
     # Main loop
     # -------------------------------------------------------------------
@@ -149,6 +175,9 @@ class HealthWorker:
 
         record_snapshot(result)
         self._sample_count += 1
+
+        # Write shared state file so the API process can see worker health
+        self._write_state_file()
 
         if self._sample_count % SUMMARY_EVERY_N == 0:
             stats = get_snapshot_stats()

@@ -467,3 +467,153 @@ class TestDatabaseStats:
         stats = get_snapshot_stats()
         assert stats["metrics_count"] > 0
         assert stats["anomalies_total"] == 0  # normal data, no anomalies
+
+
+class TestStateFile:
+    """Cross-process state file bridging scheduler and API processes."""
+
+    def test_state_file_written(self, isolated_memory):
+        """After a sample, the state file exists with correct keys."""
+        from core.health_worker import HealthWorker
+
+        worker = HealthWorker(interval=30)
+        worker._sample_count = 5  # simulate sampling
+        worker._write_state_file()
+
+        state_path = isolated_memory / "health_worker_state.json"
+        assert state_path.exists()
+
+        state = json.loads(state_path.read_text())
+        assert state["running"] is False  # thread not started
+        assert state["sample_count"] == 5
+        assert state["last_sample"] is not None
+
+    def test_state_file_indicates_not_running_when_not_started(self, isolated_memory):
+        """Worker that hasn't been started reports running=False."""
+        from core.health_worker import HealthWorker
+
+        worker = HealthWorker(interval=30)
+        worker._write_state_file()
+
+        state_path = isolated_memory / "health_worker_state.json"
+        state = json.loads(state_path.read_text())
+        assert state["running"] is False
+
+    def test_state_file_handles_missing_dir(self, isolated_memory):
+        """State file write creates directories as needed."""
+        import core.health_worker as hw_module
+
+        # Point to a fresh subdirectory that doesn't exist yet
+        nested = isolated_memory / "deeply" / "nested"
+        old = os.environ.get("AI_ORCHESTRATOR_MEMORY_DIR")
+        try:
+            os.environ["AI_ORCHESTRATOR_MEMORY_DIR"] = str(nested)
+
+            worker = hw_module.HealthWorker(interval=30)
+            worker._write_state_file()  # must not raise
+
+            state_path = nested / "health_worker_state.json"
+            assert state_path.exists()
+        finally:
+            if old is not None:
+                os.environ["AI_ORCHESTRATOR_MEMORY_DIR"] = old
+            else:
+                os.environ.pop("AI_ORCHESTRATOR_MEMORY_DIR", None)
+
+    def test_state_file_is_valid_json_and_atomic(self, isolated_memory):
+        """State file is always valid JSON after write (atomic replace)."""
+        from core.health_worker import HealthWorker
+
+        worker = HealthWorker(interval=30)
+        worker._sample_count = 1
+        worker._write_state_file()
+
+        state_path = isolated_memory / "health_worker_state.json"
+        state = json.loads(state_path.read_text())
+        assert state["sample_count"] == 1
+
+        worker._sample_count = 42
+        worker._write_state_file()
+
+        state = json.loads(state_path.read_text())
+        assert state["sample_count"] == 42
+
+
+class TestHealthWorkerRoutes:
+    """Health worker API endpoints."""
+
+    def test_status_endpoint_no_state_file(self):
+        """When no state file exists, endpoint returns running=False."""
+        from fastapi.testclient import TestClient
+        from core.api import app
+
+        client = TestClient(app)
+        resp = client.get("/kai/health/status")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert "worker" in data
+        assert data["worker"]["running"] is False
+        assert data["worker"]["sample_count"] == 0
+
+    def test_status_endpoint_with_state_file(self, isolated_memory):
+        """When state file exists, endpoint reads worker liveness from it."""
+        import json as _json
+        from datetime import datetime, timezone
+        from fastapi.testclient import TestClient
+        from core.api import app
+
+        # Write a fresh state file to isolated_memory (where the API reads from)
+        state = {
+            "running": True,
+            "sample_count": 128,
+            "last_sample": datetime.now(timezone.utc).isoformat(),
+        }
+        (isolated_memory / "health_worker_state.json").write_text(_json.dumps(state))
+
+        client = TestClient(app)
+        resp = client.get("/kai/health/status")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert data["worker"]["running"] is True
+        assert data["worker"]["sample_count"] == 128
+        assert data["worker"]["last_sample"] == state["last_sample"]
+
+    def test_status_endpoint_stale_state_file(self, isolated_memory):
+        """State file older than 90s → worker considered not running."""
+        import json as _json
+        from datetime import datetime, timezone, timedelta
+        from fastapi.testclient import TestClient
+        from core.api import app
+
+        # Write a stale state file (last_sample = 2 minutes ago)
+        stale_time = datetime.now(timezone.utc) - timedelta(seconds=120)
+        state = {
+            "running": True,
+            "sample_count": 99,
+            "last_sample": stale_time.isoformat(),
+        }
+        (isolated_memory / "health_worker_state.json").write_text(_json.dumps(state))
+
+        client = TestClient(app)
+        resp = client.get("/kai/health/status")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert data["worker"]["running"] is False  # stale
+        assert data["worker"]["sample_count"] == 99
+
+    def test_status_endpoint_includes_database_stats(self):
+        """Status endpoint always includes database stats."""
+        from fastapi.testclient import TestClient
+        from core.api import app
+
+        client = TestClient(app)
+        resp = client.get("/kai/health/status")
+        assert resp.status_code == 200
+
+        data = resp.json()
+        assert "database" in data
+        assert "metrics_count" in data["database"]
+        assert "anomalies_total" in data["database"]

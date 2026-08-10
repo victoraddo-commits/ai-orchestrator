@@ -19,6 +19,13 @@ from core.device_registry import (
     update_heartbeat,
     inject_command,
     ack_commands,
+    queue_notification,
+    ack_notifications,
+    get_pending_notifications,
+    get_notification_config,
+    update_notification_config,
+    _should_deliver_notification,
+    DEFAULT_NOTIFICATION_CONFIG,
     DuplicateDeviceError,
     DeviceNotFoundError,
     CURRENT_SCHEMA_VERSION,
@@ -611,3 +618,286 @@ def test_register_optional_fields_null():
     assert rec["security_patch"] is None
     assert rec["vpn_ip"] is None
     assert rec["assigned_worker"] is None
+
+
+# ── Notification Queue ───────────────────────────────────────────────────────
+
+
+class TestNotificationQueue:
+    """Pending notification queue: enqueue, ack, heartbeat delivery."""
+
+    def test_queue_notification_appears_in_heartbeat(self):
+        """queue_notification() adds to _pending_notifications, returned by heartbeat."""
+        _register("NQ-HEARTBEAT")
+        notif = {
+            "id": "notif_test1",
+            "severity": "critical",
+            "title": "Server Down",
+            "body": "Docker daemon crashed",
+            "source": "health_analyzer",
+            "module": "health",
+            "actions": [{"label": "VIEW", "action": "open_panel", "target": "/health"}],
+            "created_at": _now_iso(),
+        }
+        queue_notification("NQ-HEARTBEAT", notif)
+
+        hb = update_heartbeat("NQ-HEARTBEAT", {})
+        assert "pending_notifications" in hb
+        assert len(hb["pending_notifications"]) == 1
+        assert hb["pending_notifications"][0]["id"] == "notif_test1"
+        assert hb["pending_notifications"][0]["severity"] == "critical"
+
+    def test_ack_notifications_removes_from_pending(self):
+        """ack_notifications() removes by ID, heartbeat returns empty afterward."""
+        _register("NQ-ACK")
+        notif = {
+            "id": "notif_ackme",
+            "severity": "important",
+            "title": "T",
+            "body": "B",
+            "source": "test",
+            "module": "system",
+            "actions": [],
+            "created_at": _now_iso(),
+        }
+        queue_notification("NQ-ACK", notif)
+
+        removed = ack_notifications("NQ-ACK", ["notif_ackme"])
+        assert removed == 1
+
+        hb = update_heartbeat("NQ-ACK", {})
+        assert len(hb["pending_notifications"]) == 0
+
+    def test_ack_notifications_nonexistent_device(self):
+        """ack_notifications() on unknown device returns 0."""
+        assert ack_notifications("NO-DEVICE", ["notif_x"]) == 0
+
+    def test_multiple_notifications_preserved_in_order(self):
+        """Multiple queued notifications are all returned, in FIFO order."""
+        _register("NQ-MULTI")
+        for i in range(3):
+            queue_notification("NQ-MULTI", {
+                "id": f"notif_{i}",
+                "severity": "informational",
+                "title": f"Title {i}",
+                "body": f"Body {i}",
+                "source": "test",
+                "module": "system",
+                "actions": [],
+                "created_at": _now_iso(),
+            })
+
+        hb = update_heartbeat("NQ-MULTI", {})
+        ids = [n["id"] for n in hb["pending_notifications"]]
+        assert ids == ["notif_0", "notif_1", "notif_2"]
+
+    def test_ack_partial(self):
+        """Ack some notifications, leave others."""
+        _register("NQ-PARTIAL")
+        for i in range(3):
+            queue_notification("NQ-PARTIAL", {
+                "id": f"notif_p{i}",
+                "severity": "informational",
+                "title": f"T{i}",
+                "body": f"B{i}",
+                "source": "test",
+                "module": "system",
+                "actions": [],
+                "created_at": _now_iso(),
+            })
+
+        removed = ack_notifications("NQ-PARTIAL", ["notif_p1"])
+        assert removed == 1
+
+        hb = update_heartbeat("NQ-PARTIAL", {})
+        assert len(hb["pending_notifications"]) == 2
+        ids = [n["id"] for n in hb["pending_notifications"]]
+        assert "notif_p1" not in ids
+        assert "notif_p0" in ids
+        assert "notif_p2" in ids
+
+    def test_heartbeat_with_both_commands_and_notifications(self):
+        """Heartbeat returns both pending_commands and pending_notifications separately."""
+        _register("NQ-BOTH")
+
+        inject_command("NQ-BOTH", "restart", {"service": "nginx"})
+        queue_notification("NQ-BOTH", {
+            "id": "notif_both1",
+            "severity": "important",
+            "title": "Mixed",
+            "body": "B",
+            "source": "test",
+            "module": "system",
+            "actions": [],
+            "created_at": _now_iso(),
+        })
+
+        hb = update_heartbeat("NQ-BOTH", {})
+        assert len(hb["pending_commands"]) == 1
+        assert len(hb["pending_notifications"]) == 1
+        assert hb["pending_commands"][0]["action"] == "restart"
+        assert hb["pending_notifications"][0]["id"] == "notif_both1"
+
+    def test_api_heartbeat_acks_notifications(self):
+        """Heartbeat endpoint processes ack_notification_ids."""
+        rec = _register("NQ-API-ACK").json()
+        token = rec["token"]
+
+        # Queue a notification directly
+        queue_notification("NQ-API-ACK", {
+            "id": "notif_api_ack",
+            "severity": "critical",
+            "title": "T",
+            "body": "B",
+            "source": "test",
+            "module": "system",
+            "actions": [],
+            "created_at": _now_iso(),
+        })
+
+        # Send heartbeat with ack
+        resp = client.post(
+            "/kai/devices/NQ-API-ACK/heartbeat",
+            json={"ack_notification_ids": ["notif_api_ack"]},
+            headers=_device_headers(token),
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()["pending_notifications"]) == 0
+
+    def test_get_pending_notifications(self):
+        """get_pending_notifications() returns list without removing."""
+        _register("NQ-GET")
+        notif = {
+            "id": "notif_view",
+            "severity": "informational",
+            "title": "T",
+            "body": "B",
+            "source": "test",
+            "module": "system",
+            "actions": [],
+            "created_at": _now_iso(),
+        }
+        queue_notification("NQ-GET", notif)
+
+        pending = get_pending_notifications("NQ-GET")
+        assert len(pending) == 1
+        # Still there — not removed
+        pending2 = get_pending_notifications("NQ-GET")
+        assert len(pending2) == 1
+
+
+# ── Notification Config ──────────────────────────────────────────────────────
+
+
+class TestNotificationConfig:
+    """Per-device notification preferences."""
+
+    def test_default_config_on_new_device(self):
+        """New devices return DEFAULT_NOTIFICATION_CONFIG."""
+        _register("NC-DEFAULT")
+        config = get_notification_config("NC-DEFAULT")
+        assert config is not None
+        assert config["enabled"] is True
+        assert config["per_severity"]["critical"] is True
+        assert config["per_severity"]["important"] is True
+        assert config["per_severity"]["informational"] is True
+
+    def test_update_config_disables_severity(self):
+        """Update notification config to disable a severity tier."""
+        _register("NC-DISABLE-SEV")
+        update_notification_config("NC-DISABLE-SEV", {
+            "per_severity": {"informational": False},
+        })
+        config = get_notification_config("NC-DISABLE-SEV")
+        assert config["per_severity"]["informational"] is False
+        assert config["per_severity"]["critical"] is True  # unchanged
+
+    def test_update_config_deep_merges(self):
+        """Subsequent updates deep-merge, don't replace."""
+        _register("NC-MERGE")
+        update_notification_config("NC-MERGE", {
+            "per_severity": {"informational": False},
+        })
+        update_notification_config("NC-MERGE", {
+            "per_module": {"health": False},
+        })
+        config = get_notification_config("NC-MERGE")
+        assert config["per_severity"]["informational"] is False  # from first update
+        assert config["per_module"]["health"] is False            # from second update
+
+    def test_update_config_disabled_top_level(self):
+        """Setting enabled=False blocks all notifications."""
+        _register("NC-DISABLED")
+        update_notification_config("NC-DISABLED", {"enabled": False})
+        config = get_notification_config("NC-DISABLED")
+        assert config["enabled"] is False
+
+    def test_update_config_nonexistent_device(self):
+        """update_notification_config on unknown device raises."""
+        with pytest.raises(DeviceNotFoundError):
+            update_notification_config("NO-DEVICE", {"enabled": False})
+
+    def test_get_config_nonexistent_device(self):
+        """get_notification_config on unknown device returns None."""
+        assert get_notification_config("NO-DEVICE") is None
+
+    def test_api_get_notification_config(self):
+        """GET /kai/devices/{id}/notification-config returns config."""
+        _register("NC-API-GET")
+        resp = client.get("/kai/devices/NC-API-GET/notification-config")
+        assert resp.status_code == 200
+        assert resp.json()["device_id"] == "NC-API-GET"
+        assert resp.json()["notification_config"]["enabled"] is True
+
+    def test_api_put_notification_config_requires_operator(self):
+        """PUT notification config requires operator auth."""
+        _register("NC-API-PUT")
+        resp = client.put(
+            "/kai/devices/NC-API-PUT/notification-config",
+            json={"per_severity": {"informational": False}},
+        )
+        assert resp.status_code == 401  # Unauthorized without bridge token
+
+
+class TestNotificationFiltering:
+    """_should_deliver_notification preference filtering."""
+
+    def test_enabled_true_allows_all(self):
+        """Default config allows everything through."""
+        _register("NF-ALLOW")
+        notif = {"severity": "critical", "source": "health_analyzer", "module": "health"}
+        assert _should_deliver_notification("NF-ALLOW", notif) is True
+
+    def test_enabled_false_blocks_all(self):
+        """enabled=False blocks everything."""
+        _register("NF-BLOCKED")
+        update_notification_config("NF-BLOCKED", {"enabled": False})
+        notif = {"severity": "critical", "source": "test", "module": "system"}
+        assert _should_deliver_notification("NF-BLOCKED", notif) is False
+
+    def test_per_severity_filter(self):
+        """Severity-level filtering."""
+        _register("NF-SEV")
+        update_notification_config("NF-SEV", {"per_severity": {"informational": False}})
+        assert _should_deliver_notification("NF-SEV", {
+            "severity": "critical", "source": "t", "module": "s"}) is True
+        assert _should_deliver_notification("NF-SEV", {
+            "severity": "informational", "source": "t", "module": "s"}) is False
+
+    def test_per_module_filter(self):
+        """Module-level filtering."""
+        _register("NF-MOD")
+        update_notification_config("NF-MOD", {"per_module": {"health": False}})
+        assert _should_deliver_notification("NF-MOD", {
+            "severity": "important", "source": "t", "module": "health"}) is False
+        assert _should_deliver_notification("NF-MOD", {
+            "severity": "important", "source": "t", "module": "build"}) is True
+
+    def test_per_source_filter_overrides_module(self):
+        """Source-level filter takes precedence."""
+        _register("NF-SRC")
+        update_notification_config("NF-SRC", {"per_source": {"health_analyzer": False}})
+        assert _should_deliver_notification("NF-SRC", {
+            "severity": "critical", "source": "health_analyzer", "module": "health"}) is False
+        assert _should_deliver_notification("NF-SRC", {
+            "severity": "critical", "source": "vpn_failover", "module": "vpn"}) is True

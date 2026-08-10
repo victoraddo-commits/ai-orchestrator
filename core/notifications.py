@@ -59,6 +59,58 @@ _TELEGRAM_ALWAYS_SOURCES = frozenset({
     "budget_alert",
 })
 
+# Default notification actions by module
+_MODULE_ACTIONS: dict[str, list[dict]] = {
+    "health": [
+        {"label": "VIEW", "action": "open_panel", "target": "/command-center/health"},
+        {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+    ],
+    "build": [
+        {"label": "VIEW", "action": "open_panel", "target": "/command-center/builds"},
+        {"label": "OPEN LOG", "action": "open_panel", "target": "/command-center/logs"},
+        {"label": "RETRY", "action": "retry_build", "target": None},
+        {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+    ],
+    "vpn": [
+        {"label": "VIEW", "action": "open_panel", "target": "/command-center/network"},
+        {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+    ],
+    "provider": [
+        {"label": "VIEW", "action": "open_panel", "target": "/command-center/providers"},
+        {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+    ],
+    "security": [
+        {"label": "VIEW", "action": "open_panel", "target": "/command-center/security"},
+        {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+    ],
+    "worker": [
+        {"label": "VIEW", "action": "open_panel", "target": "/command-center/workers"},
+        {"label": "OPEN WORKER", "action": "open_worker", "target": None},
+        {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+    ],
+    "system": [
+        {"label": "VIEW", "action": "open_panel", "target": "/command-center/system"},
+        {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+    ],
+}
+
+# Default actions when module doesn't have specific ones
+_DEFAULT_ACTIONS = [
+    {"label": "VIEW", "action": "open_panel", "target": "/command-center"},
+    {"label": "ACKNOWLEDGE", "action": "ack", "target": None},
+]
+
+# Map source strings to modules for automatic routing
+_SOURCE_MODULE_MAP = {
+    "health_analyzer": "health",
+    "health_worker": "health",
+    "vpn_failover": "vpn",
+    "docker_watchdog": "system",
+    "build_failure": "build",
+    "budget_alert": "system",
+    "provider_health": "provider",
+}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -108,6 +160,8 @@ class NotificationManager:
         body: str,
         source: str,
         device_id: Optional[str] = None,
+        module: Optional[str] = None,
+        actions: Optional[list[dict]] = None,
     ) -> Optional[dict]:
         """Create a notification and deliver it through the configured channels.
 
@@ -117,6 +171,9 @@ class NotificationManager:
         - critical → Telegram (immediate push) + heartbeat queue
         - important → heartbeat queue (Telegram only for _TELEGRAM_ALWAYS_SOURCES)
         - informational → heartbeat queue only
+
+        If module is not provided, it's derived from source via _SOURCE_MODULE_MAP.
+        If actions are not provided, defaults are picked from _MODULE_ACTIONS.
         """
         if severity not in SEVERITY_ORDER:
             raise ValueError(
@@ -146,6 +203,14 @@ class NotificationManager:
                 return None
 
         # -------------------------------------------------------------------
+        # Determine module and actions if not explicitly provided
+        # -------------------------------------------------------------------
+        if module is None:
+            module = _SOURCE_MODULE_MAP.get(source, "system")
+        if actions is None:
+            actions = _MODULE_ACTIONS.get(module, _DEFAULT_ACTIONS)
+
+        # -------------------------------------------------------------------
         # Build notification record
         # -------------------------------------------------------------------
         import uuid
@@ -157,6 +222,8 @@ class NotificationManager:
             "title": title,
             "body": body,
             "source": source,
+            "module": module,
+            "actions": actions,
             "device_id": device_id,
             "created_at": now,
             "acked": False,
@@ -358,45 +425,57 @@ def _deliver_to_telegram(record: dict):
 def _deliver_to_heartbeat(record: dict, device_id: Optional[str] = None):
     """Queue notification for delivery via device heartbeat response.
 
-    Uses device_registry.inject_command() to queue a "notification" command
-    that gets delivered on the next heartbeat.  If device_id is None, the
-    notification goes to ALL registered devices.
+    Uses device_registry.queue_notification() to add to the dedicated
+    _pending_notifications queue, which is returned verbatim in the
+    heartbeat response as a separate "pending_notifications" array.
+
+    If device_id is None, the notification goes to ALL authorized devices
+    that have not opted out via notification preferences.
     """
     try:
-        from core.device_registry import inject_command, _pending_commands
+        from core.device_registry import (
+            queue_notification,
+            _should_deliver_notification,
+            list_devices,
+        )
+
+        # Build a heartbeat-ready dict (strip internal fields)
+        notification = {
+            "id": record["id"],
+            "severity": record["severity"],
+            "title": record["title"],
+            "body": record["body"],
+            "module": record.get("module", "system"),
+            "actions": record.get("actions", []),
+            "source": record["source"],
+            "created_at": record["created_at"],
+        }
 
         if device_id:
             # Deliver to a specific device
-            inject_command(
-                device_id,
-                "notification",
-                {
-                    "id": record["id"],
-                    "severity": record["severity"],
-                    "title": record["title"],
-                    "body": record["body"],
-                },
-            )
+            if not _should_deliver_notification(device_id, notification):
+                logger.debug(
+                    "notifications: filtered %s for device %s (preferences)",
+                    record["id"], device_id,
+                )
+                return
+            queue_notification(device_id, notification)
             logger.debug("notifications: queued %s for device %s", record["id"], device_id)
         else:
-            # Deliver to all authorized devices
-            from core.device_registry import list_devices
+            # Deliver to all authorized devices (respecting per-device prefs)
             devices = list_devices(status="authorized")
+            delivered = 0
             for dev in devices:
                 did = dev.get("device_id")
-                if did:
-                    inject_command(
-                        did,
-                        "notification",
-                        {
-                            "id": record["id"],
-                            "severity": record["severity"],
-                            "title": record["title"],
-                            "body": record["body"],
-                        },
-                    )
+                if not did:
+                    continue
+                if not _should_deliver_notification(did, notification):
+                    continue
+                queue_notification(did, notification)
+                delivered += 1
             logger.debug(
-                "notifications: queued %s for %d device(s)", record["id"], len(devices)
+                "notifications: queued %s for %d/%d device(s)",
+                record["id"], delivered, len(devices),
             )
     except Exception as exc:
         logger.error("notifications: heartbeat delivery failed for %s: %s", record["id"], exc)

@@ -41,6 +41,16 @@ DEVICE_TOKEN_PREFIX = "kai_device_"
 _pending_commands: dict[str, list[dict]] = {}
 MAX_COMMAND_RETRIES = 5
 
+# ---------------------------------------------------------------------------
+# Pending notifications — in-memory only.  Delivered via heartbeat responses.
+# Separate from commands because notifications are delivery-once (no retries)
+# and carry different payload shape (severity, title, body, actions, module).
+# ───────────────────────────────────────────────────────────────────────────
+# { device_id: [{"id": str, "severity": str, "title": str, "body": str,
+#                "module": str, "actions": [...], "source": str, "created_at": str}] }
+# ---------------------------------------------------------------------------
+_pending_notifications: dict[str, list[dict]] = {}
+
 
 # ---------------------------------------------------------------------------
 # Path helpers (same pattern as app_registry.py)
@@ -365,12 +375,14 @@ def update_heartbeat(device_id: str, heartbeat_data: dict) -> Optional[dict]:
 
     _update_registry(_update)
 
-    # Return pending commands + health snapshot
+    # Return pending commands + pending notifications + health snapshot
     commands = _pending_commands.get(device_id, [])
+    notifications = _pending_notifications.get(device_id, [])
     return {
         "ok": True,
         "server_time": _now_iso(),
         "pending_commands": commands,
+        "pending_notifications": notifications,
         "health_summary": _get_health_summary(vpn_ip=heartbeat_data.get("vpn_ip")),
     }
 
@@ -426,6 +438,137 @@ def _prune_stale_commands(device_id: str):
     _pending_commands[device_id] = [
         c for c in _pending_commands[device_id] if c["retries"] < MAX_COMMAND_RETRIES
     ]
+
+
+# ---------------------------------------------------------------------------
+# Notification queue (called by NotificationManager)
+# ---------------------------------------------------------------------------
+
+def queue_notification(device_id: str, notif: dict) -> str:
+    """Queue a notification for delivery via heartbeat.
+
+    Unlike commands, notifications are delivered once (not retried).
+    The notification dict is already built by NotificationManager.enqueue()
+    and includes: id, severity, title, body, source, module, actions.
+
+    Returns the notification id.
+    """
+    notif_id = notif["id"]
+
+    if device_id not in _pending_notifications:
+        _pending_notifications[device_id] = []
+    _pending_notifications[device_id].append(notif)
+
+    logger.debug(
+        "device_registry: queued notification %s for %s [%s]",
+        notif_id, device_id, notif.get("severity"),
+    )
+    return notif_id
+
+
+def ack_notifications(device_id: str, ack_ids: list[str]) -> int:
+    """Remove acknowledged notifications.  Returns count removed."""
+
+    if device_id not in _pending_notifications:
+        return 0
+
+    before = len(_pending_notifications[device_id])
+    _pending_notifications[device_id] = [
+        n for n in _pending_notifications[device_id] if n["id"] not in ack_ids
+    ]
+    removed = before - len(_pending_notifications[device_id])
+    if removed:
+        logger.debug(
+            "device_registry: acked %d notification(s) for %s", removed, device_id,
+        )
+    return removed
+
+
+def get_pending_notifications(device_id: str) -> list[dict]:
+    """Return all pending notifications for a device (without removing)."""
+    return _pending_notifications.get(device_id, [])
+
+
+# ---------------------------------------------------------------------------
+# Notification preferences (stored on the device record)
+# ---------------------------------------------------------------------------
+
+DEFAULT_NOTIFICATION_CONFIG = {
+    "enabled": True,
+    "per_severity": {
+        "critical": True,
+        "important": True,
+        "informational": True,
+    },
+    "per_module": {},    # {"health": True, "build": False, ...} — True=allowed unless explicit False
+    "per_source": {},    # {"health_analyzer": False, ...} — explicit overrides
+}
+
+
+def get_notification_config(device_id: str) -> Optional[dict]:
+    """Get per-device notification preferences.  Returns defaults if not set."""
+    record = get_device(device_id)
+    if record is None:
+        return None
+    return record.get("notification_config", dict(DEFAULT_NOTIFICATION_CONFIG))
+
+
+def update_notification_config(device_id: str, config: dict) -> dict:
+    """Update per-device notification preferences.  Merges with defaults."""
+
+    def _update(data: dict) -> dict:
+        record = _device_record(device_id, data)
+        if record is None:
+            raise DeviceNotFoundError(device_id)
+
+        existing = record.get("notification_config", dict(DEFAULT_NOTIFICATION_CONFIG))
+        # Deep-merge: update top-level keys, nested dicts merge (not replace)
+        merged = dict(existing)
+        for key in ("per_severity", "per_module", "per_source"):
+            if key in config and isinstance(config[key], dict):
+                merged.setdefault(key, {})
+                merged[key].update(config[key])
+            elif key in config:
+                merged[key] = config[key]
+        if "enabled" in config:
+            merged["enabled"] = config["enabled"]
+
+        record["notification_config"] = merged
+        record["updated_at"] = _now_iso()
+        return data
+
+    _update_registry(_update)
+    logger.info("device_registry: updated notification config for %s", device_id)
+    return get_notification_config(device_id)
+
+
+def _should_deliver_notification(device_id: str, notif: dict) -> bool:
+    """Check device notification preferences against a notification.
+
+    Returns True if the notification should be delivered, False if filtered out.
+    """
+    config = get_notification_config(device_id)
+    if config is None:
+        return True  # device may have been deleted — deliver anyway
+
+    if not config.get("enabled", True):
+        return False
+
+    severity = notif.get("severity", "informational")
+    if not config.get("per_severity", {}).get(severity, True):
+        return False
+
+    module = notif.get("module")
+    if module and module in config.get("per_module", {}):
+        if not config["per_module"][module]:
+            return False
+
+    source = notif.get("source")
+    if source and source in config.get("per_source", {}):
+        if not config["per_source"][source]:
+            return False
+
+    return True
 
 
 # ---------------------------------------------------------------------------

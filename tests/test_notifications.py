@@ -269,3 +269,152 @@ class TestConvenienceFunctions:
 
         count = enqueue_from_vpn_events(events)
         assert count == 1
+
+
+class TestModuleAndActions:
+    """Notification module routing and action buttons."""
+
+    def test_module_derived_from_source(self):
+        """Module is auto-derived from source if not explicitly provided."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="critical",
+            title="Health Alert",
+            body="Something is broken",
+            source="health_analyzer",
+        )
+        assert n is not None
+        assert n["module"] == "health"
+
+    def test_vpn_source_routes_to_vpn_module(self):
+        """vpn_failover source → vpn module."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="critical",
+            title="VPN Down",
+            body="Tunnel to Proxmox B lost",
+            source="vpn_failover",
+        )
+        assert n is not None
+        assert n["module"] == "vpn"
+
+    def test_build_failure_routes_to_build_module(self):
+        """build_failure source → build module."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="important",
+            title="Build Failed",
+            body="Compilation error",
+            source="build_failure",
+        )
+        assert n is not None
+        assert n["module"] == "build"
+
+    def test_unknown_source_defaults_to_system_module(self):
+        """Unknown sources map to 'system' module."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="informational",
+            title="Unknown Source",
+            body="Test",
+            source="custom_script",
+        )
+        assert n is not None
+        assert n["module"] == "system"
+
+    def test_explicit_module_overrides_derived(self):
+        """Explicit module parameter takes precedence over source mapping."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="critical",
+            title="VPN Issue",
+            body="Something",
+            source="vpn_failover",
+            module="security",  # override
+        )
+        assert n is not None
+        assert n["module"] == "security"
+
+    def test_actions_included_in_record(self):
+        """Notification record includes action buttons."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="critical",
+            title="Alert",
+            body="Body",
+            source="health_analyzer",
+        )
+        assert n is not None
+        assert isinstance(n["actions"], list)
+        assert len(n["actions"]) >= 1
+        # Health module should have at least VIEW and ACKNOWLEDGE
+        labels = [a["label"] for a in n["actions"]]
+        assert "VIEW" in labels
+        assert "ACKNOWLEDGE" in labels
+
+    def test_build_module_has_retry_action(self):
+        """Build module notifications include a RETRY action."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="important",
+            title="Build Stuck",
+            body="Planning phase is taking too long",
+            source="build_failure",
+        )
+        assert n is not None
+        labels = [a["label"] for a in n["actions"]]
+        assert "RETRY" in labels
+        assert "OPEN LOG" in labels
+
+    def test_explicit_actions_override_defaults(self):
+        """Providing actions parameter uses those instead of module defaults."""
+        from core.notifications import NotificationManager
+
+        custom_actions = [
+            {"label": "CUSTOM", "action": "do_thing", "target": "/custom"},
+        ]
+        n = NotificationManager.enqueue(
+            severity="critical",
+            title="Custom",
+            body="Test",
+            source="test",
+            actions=custom_actions,
+        )
+        assert n is not None
+        assert n["actions"] == custom_actions
+
+    def test_default_actions_for_unknown_module(self):
+        """Modules without specific actions get _DEFAULT_ACTIONS."""
+        from core.notifications import NotificationManager
+
+        n = NotificationManager.enqueue(
+            severity="informational",
+            title="Generic",
+            body="Test",
+            source="test",
+            module="custom_unknown_module",
+        )
+        assert n is not None
+        labels = [a["label"] for a in n["actions"]]
+        assert "VIEW" in labels
+        assert "ACKNOWLEDGE" in labels
+        # Should NOT have module-specific actions like RETRY
+        assert "RETRY" not in labels
+
+    def test_enqueue_build_failure_has_build_actions(self):
+        """Convenience function enqueue_build_failure() includes build actions."""
+        from core.notifications import enqueue_build_failure
+
+        n = enqueue_build_failure("TestApp", "build_42", "Out of memory")
+        assert n is not None
+        assert n["module"] == "build"
+        labels = [a["label"] for a in n["actions"]]
+        assert "RETRY" in labels
+        assert "VIEW" in labels

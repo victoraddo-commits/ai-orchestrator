@@ -371,7 +371,7 @@ def update_heartbeat(device_id: str, heartbeat_data: dict) -> Optional[dict]:
         "ok": True,
         "server_time": _now_iso(),
         "pending_commands": commands,
-        "health_summary": _get_health_summary(),
+        "health_summary": _get_health_summary(vpn_ip=heartbeat_data.get("vpn_ip")),
     }
 
 
@@ -432,11 +432,14 @@ def _prune_stale_commands(device_id: str):
 # Health summary
 # ---------------------------------------------------------------------------
 
-def _get_health_summary() -> dict:
+def _get_health_summary(vpn_ip: Optional[str] = None) -> dict:
     """Build a compact health summary for heartbeat responses.
 
     Uses data available without importing the full orchestration stack.
     Health check details come from the existing /health endpoint data.
+
+    When vpn_ip is provided (from device heartbeat), includes WireGuard
+    peer connectivity status for that device's VPN IP.
     """
 
     # Default: assume healthy unless we can detect otherwise
@@ -457,7 +460,58 @@ def _get_health_summary() -> dict:
     except (OSError, json.JSONDecodeError):
         pass
 
+    # Check WireGuard peer status for this device's VPN IP
+    if vpn_ip:
+        summary["components"]["vpn"] = _check_vpn_peer_health(vpn_ip)
+
     return summary
+
+
+def _check_vpn_peer_health(vpn_ip: str) -> dict:
+    """Check whether a WireGuard peer at vpn_ip is healthy.
+
+    Uses core.wireguard_manager to query DD-WRT for peer status.
+    Returns a compact status dict: {status, handshake_age_s, endpoint}.
+    Status is one of: connected, degraded (handshake > 150s), offline.
+    If the WireGuard module can't be reached, returns {status: "unknown"}.
+    """
+    try:
+        from core.wireguard_manager import get_wg_status
+
+        wg = get_wg_status()
+        if not wg.get("ok"):
+            return {"status": "unknown", "error": "WireGuard status query failed"}
+
+        peers = wg.get("peers", [])
+        target_cidr = f"{vpn_ip}/32"
+        for peer in peers:
+            allowed = peer.get("allowed_ips", [])
+            if target_cidr in allowed:
+                handshake = peer.get("handshake_age_sec", 0)
+                if handshake < 90:
+                    status = "connected"
+                elif handshake < 300:
+                    status = "degraded"
+                else:
+                    status = "offline"
+                # Transfer values are human-readable strings like "33.17 MiB"
+                return {
+                    "status": status,
+                    "handshake_age_s": handshake,
+                    "endpoint": peer.get("endpoint"),
+                    "transfer_rx": peer.get("transfer_rx", "0"),
+                    "transfer_tx": peer.get("transfer_tx", "0"),
+                }
+
+        # peer not found in WG show output
+        return {"status": "offline", "error": f"Peer {vpn_ip} not in WireGuard table"}
+
+    except ImportError:
+        logger.warning("wireguard_manager not importable; skipping VPN health check")
+        return {"status": "unknown", "error": "WireGuard module unavailable"}
+    except Exception as exc:
+        logger.warning("VPN health check failed for %s: %s", vpn_ip, exc)
+        return {"status": "unknown", "error": str(exc)}
 
 
 # ---------------------------------------------------------------------------

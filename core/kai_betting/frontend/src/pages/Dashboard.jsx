@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp, Target, Users, DollarSign,
-  BarChart3, Sparkles, AlertCircle, ArrowRight,
+  BarChart3, Sparkles, AlertCircle, ArrowRight, CreditCard,
 } from 'lucide-react';
 import StatCard from '../components/StatCard';
 import PredictionCard from '../components/PredictionCard';

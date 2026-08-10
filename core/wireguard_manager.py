@@ -664,8 +664,20 @@ def collect_wg_health_metrics() -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 
+def _strip_ansi(text: str) -> str:
+    """Strip ANSI terminal escape sequences (color codes, bold, etc.).
+
+    DD-WRT's wg show output includes ANSI formatting codes like
+    \\x1b[0m, \\x1b[32m, \\x1b[1m that break startswith() checks.
+    """
+    import re
+    return re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
+
+
 def _parse_wg_show(output: str) -> Optional[dict]:
     """Parse 'wg show <iface>' output into structured data.
+
+    Handles DD-WRT ANSI color codes (\\x1b[...m sequences) in the output.
 
     Example output:
     interface: wg0
@@ -679,6 +691,9 @@ def _parse_wg_show(output: str) -> Optional[dict]:
       latest handshake: 1 minute, 30 seconds ago
       transfer: 1.2 GiB received, 800 MiB sent
     """
+    # Strip ANSI escape codes before parsing
+    output = _strip_ansi(output)
+
     result = {
         "public_key": None,
         "listen_port": None,

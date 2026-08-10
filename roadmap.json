@@ -1834,7 +1834,7 @@
       "id": "15C",
       "name": "Kai platform audit log",
       "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [
         "15A"
       ],
@@ -1847,7 +1847,7 @@
         "Tests cover: a build approval, a deploy approval, and an incident all appear correctly attributed in the merged feed; filtering and export produce correct subsets"
       ],
       "tests_required": true,
-      "build_id": "4325f333",
+      "build_id": "a2716ad7",
       "failure_reason": "Build 4325f333 missing from builds.json (deleted or stale reference)",
       "assigned_provider": "omniroute",
       "completed_at": "2026-08-07",
@@ -2397,7 +2397,7 @@
         "SUSU-3a"
       ],
       "assigned_agent": "qwen3",
-      "status": "in_progress",
+      "status": "failed",
       "description": "Fraud detection: duplicate detection, device fingerprinting, velocity checks, unusual pattern detection. Risk scoring per user and per group. Configurable detection rules.",
       "completion_criteria": [
         "Duplicate detection operational",
@@ -2409,7 +2409,7 @@
       "build_id": "39e51508",
       "completed_at": "2026-08-07",
       "completion_note": "Built: core/risk.py (340+ lines) multi-signal risk engine. core/risk.py (340+ lines) multi-signal risk engine. Done.",
-      "failure_reason": "Build 264a788e missing from builds.json (deleted or stale reference)",
+      "failure_reason": "Build 39e51508 missing from builds.json (deleted or stale reference)",
       "completed": "2026-08-08"
     },
     {
@@ -2496,7 +2496,7 @@
         "15H"
       ],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "in_progress",
       "description": "Project-aware chat context: conversations scoped to projects, project switching, context persistence across sessions, integration with build pipeline.",
       "completion_criteria": [
         "Project-scoped conversations",
@@ -2504,7 +2504,7 @@
         "Context persistence across sessions",
         "Build pipeline integration"
       ],
-      "build_id": "a84d8d6a",
+      "build_id": "b77a31d9",
       "completed_at": "2026-08-07",
       "completion_note": "project_id in create_conversation() and get_conversations(). Fixed KEEP_RECENT_TURNS bug. Full CRUD in place.",
       "failure_reason": "Build a84d8d6a missing from builds.json (deleted or stale reference)",
@@ -2567,7 +2567,7 @@
     {
       "id": "AI-4",
       "name": "AI-4: Serverless Endpoints",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 4,
       "dependencies": [
         "AI-1"
@@ -2583,7 +2583,7 @@
       "build_id": "f99ebc1a",
       "completed_at": "2026-08-07",
       "completion_note": "core/ai_serverless/ with handler.py + vercel_handler.py. core/ai_serverless/ with handler.py + vercel_handler.py. Done.",
-      "failure_reason": "Build 01edb709 missing from builds.json (deleted or stale reference)",
+      "failure_reason": "Build f99ebc1a missing from builds.json (deleted or stale reference)",
       "completed": "2026-08-08"
     },
     {

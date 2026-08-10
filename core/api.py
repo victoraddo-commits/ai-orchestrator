@@ -148,6 +148,10 @@ app.include_router(health_worker_router)
 from core.wireguard_routes import router as wireguard_router
 app.include_router(wireguard_router)
 
+# 2026-08-10: Kai Betting — AI-powered sports prediction platform
+from core.kai_betting.api import router as betting_router
+app.include_router(betting_router)
+
 # 2026-08-09: Kai Mobile Command Node — Sub-project 6: Module Launcher & App Shortcuts
 from core.mobile_launcher_routes import router as mobile_launcher_router
 app.include_router(mobile_launcher_router)

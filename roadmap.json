@@ -2567,7 +2567,7 @@
     {
       "id": "AI-4",
       "name": "AI-4: Serverless Endpoints",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 4,
       "dependencies": [
         "AI-1"
@@ -2580,7 +2580,7 @@
         "Integrated into role-based routing",
         "Scale-to-zero confirmed working"
       ],
-      "build_id": "01edb709",
+      "build_id": "f99ebc1a",
       "completed_at": "2026-08-07",
       "completion_note": "core/ai_serverless/ with handler.py + vercel_handler.py. core/ai_serverless/ with handler.py + vercel_handler.py. Done.",
       "failure_reason": "Build 01edb709 missing from builds.json (deleted or stale reference)",
@@ -2589,7 +2589,7 @@
     {
       "id": "AI-5",
       "name": "AI-5: Cost Tracking Dashboard",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 5,
       "dependencies": [
         "AI-1"
@@ -2602,7 +2602,7 @@
         "Budget threshold alerts via Telegram",
         "Cost history export"
       ],
-      "build_id": "ca37e7d9",
+      "build_id": "be76549d",
       "completed_at": "2026-08-07",
       "completion_note": "core/ai/cost_tracker.py with cost summary/provider detail endpoints. core/ai/cost_tracker.py with cost summary endpoints. Done.",
       "failure_reason": "Build ca37e7d9 missing from builds.json (deleted or stale reference)",
@@ -2631,7 +2631,7 @@
     {
       "id": "AI-7",
       "name": "AI-7: Credential Vault (extends 17E-2)",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 7,
       "dependencies": [
         "AI-1"
@@ -2644,7 +2644,7 @@
         "Audit log for all credential access",
         "Migration of existing .env keys to vault"
       ],
-      "build_id": "af22ed86",
+      "build_id": "16509732",
       "completed_at": "2026-08-07",
       "completion_note": "core/ai/credential_vault.py with AES-256-GCM encryption. core/ai/credential_vault.py with AES-256-GCM. Done.",
       "failure_reason": "Build af22ed86 missing from builds.json (deleted or stale reference)",
@@ -2847,7 +2847,7 @@
       "name": "Juris Kai Analytics",
       "description": "User engagement metrics: queries per day, topic popularity, retention rates, conversion rates (trial\u2192paid). Cost per user tracking. AI response quality sampling. Export for business intelligence.",
       "priority": 25,
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "JK-1",
         "JK-3"
@@ -2857,7 +2857,7 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "build_id": "1791086a",
+      "build_id": "77b474f9",
       "failure_reason": "Build 1791086a missing from builds.json (deleted or stale reference)",
       "completion_note": "Deferred: Juris Kai Analytics. Stretch goal. Deferred: Juris Kai Analytics. Stretch goal.",
       "completed": "2026-08-08"
@@ -2867,7 +2867,7 @@
       "name": "Juris Kai Monetization Readiness",
       "description": "Live Hubtel API integration (currently test mode). Payment webhook handling. Automatic subscription activation on payment confirmation. Receipt generation. Payment dispute handling flows.",
       "priority": 30,
-      "status": "pending",
+      "status": "in_progress",
       "depends_on": [
         "JK-1",
         "JK-2"
@@ -2877,7 +2877,7 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "build_id": "92e1c42f",
+      "build_id": "75709023",
       "failure_reason": "Build 92e1c42f missing from builds.json (deleted or stale reference)",
       "completion_note": "Deferred: Juris Kai Monetization. Stretch goal. Deferred: Juris Kai Monetization. Stretch goal.",
       "completed": "2026-08-08"

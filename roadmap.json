@@ -2191,7 +2191,7 @@
     {
       "id": "SUSU-1d",
       "name": "SUSU-1d: Telegram Bot - Profile + History Views",
-      "status": "pending",
+      "status": "completed",
       "priority": 4,
       "dependencies": [
         "SUSU-1a",

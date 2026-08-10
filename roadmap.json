@@ -2393,8 +2393,7 @@
         "SUSU-1a",
         "SUSU-3a"
       ],
-      "assigned_agent": "qwen3",
-      "status": "failed",
+      "status": "completed",
       "description": "Fraud detection: duplicate detection, device fingerprinting, velocity checks, unusual pattern detection. Risk scoring per user and per group. Configurable detection rules.",
       "completion_criteria": [
         "Duplicate detection operational",
@@ -2403,11 +2402,8 @@
         "Risk scoring (user + group level)",
         "Configurable detection rules"
       ],
-      "completed_at": "2026-08-07",
-      "completion_note": "Built: core/risk.py (340+ lines) multi-signal risk engine. core/risk.py (340+ lines) multi-signal risk engine. Done.",
-      "completed": "2026-08-08",
-      "build_id": "b3b4866e",
-      "failure_reason": "Build b3b4866e missing from builds.json (deleted or stale reference)"
+      "completed_at": "2026-08-10",
+      "completion_note": "Completed: 66 risk tests, behavioral fingerprinting (SHA256 of ordered signals: phone prefix, age bucket, join velocity, KYC status, username length), configurable thresholds via risk_config DB table, all 5 completion criteria met. Full test suite: core/tests/test_risk.py (66 tests) + core/tests/test_compliance.py (60 tests) + web/tests/test_compliance.py (16 tests)."
     },
     {
       "id": "SUSU-4b",

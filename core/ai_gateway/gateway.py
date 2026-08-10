@@ -17,8 +17,11 @@ from core.ai.ai_router import classify_task, delegate, AllProvidersFailed
 from core.ai_provider import list_providers as get_all_providers
 from core.rate_limiter import RateLimiter
 
-from core.ai_gateway.keys import validate_api_key, ensure_default_key
-from core.ai_gateway.audit import log_request
+from core.ai_gateway.keys import (
+    validate_api_key, ensure_default_key, generate_api_key,
+    list_api_keys, revoke_api_key,
+)
+from core.ai_gateway.audit import log_request, get_consumer_usage
 from core.ai_gateway.models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -172,7 +175,7 @@ def _model_response_shape(provider: str, delegate_result: dict, requested_model:
 
 
 @router.get("/models", response_model=ModelList)
-async def list_models():
+async def list_models(api_key: dict = Depends(get_api_key)):
     """Return all available text_task providers as OpenAI-compatible models."""
     data: list[ModelInfo] = []
     for name, info in get_all_providers().items():
@@ -189,7 +192,7 @@ async def list_models():
 
 
 @router.get("/providers", response_model=ProviderList)
-async def api_list_providers():
+async def api_list_providers(api_key: dict = Depends(get_api_key)):
     """Return provider health/status for all registered providers."""
     from core.ai.ai_router import get_provider_dashboard
 
@@ -415,4 +418,112 @@ async def test_provider_connection(
         latency_ms=result["latency_ms"],
         detail=result["detail"],
         models=result["models"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# API key management (self-service)
+# ---------------------------------------------------------------------------
+
+class CreateApiKeyRequest(_BaseModel):
+    label: str = ""
+
+
+class CreateApiKeyResponse(_BaseModel):
+    key_id: str
+    api_key: str  # plaintext — only returned once at creation
+    label: str
+    created_at: str
+
+
+class ApiKeyInfo(_BaseModel):
+    key_id: str
+    label: str
+    created_at: str
+
+
+class ApiKeyList(_BaseModel):
+    keys: list[ApiKeyInfo]
+
+
+class ConsumerUsageInfo(_BaseModel):
+    consumer_id: str
+    total_requests: int
+    total_cost: Optional[float] = None
+    providers: dict[str, int] = {}
+    models: dict[str, int] = {}
+
+
+@router.post("/keys", response_model=CreateApiKeyResponse)
+async def create_api_key(
+    body: CreateApiKeyRequest,
+    api_key: dict = Depends(get_api_key),
+):
+    """Create a new API key.  The plaintext key is returned ONCE — save it.
+
+    Requires an existing valid API key to authenticate (self-service creation).
+    """
+    from datetime import datetime
+
+    key_id, plaintext = generate_api_key(label=body.label)
+    return CreateApiKeyResponse(
+        key_id=key_id,
+        api_key=plaintext,
+        label=body.label,
+        created_at=datetime.now().isoformat(),
+    )
+
+
+@router.get("/keys", response_model=ApiKeyList)
+async def get_api_keys(api_key: dict = Depends(get_api_key)):
+    """List all API keys (key_ids only — no plaintext keys are ever returned)."""
+    keys = list_api_keys()
+    return ApiKeyList(keys=[ApiKeyInfo(**k) for k in keys])
+
+
+@router.delete("/keys/{key_id}")
+async def delete_api_key(
+    key_id: str,
+    api_key: dict = Depends(get_api_key),
+):
+    """Revoke an API key by its key_id.  The key immediately stops working.
+
+    You cannot revoke the key you're currently authenticating with —
+    use a different key to revoke it.
+    """
+    if key_id == api_key["key_id"]:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "cannot_revoke_self",
+                "message": "You cannot revoke the key you're currently using. "
+                           "Use a different API key to revoke this one.",
+            },
+        )
+
+    removed = revoke_api_key(key_id)
+    if not removed:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "key_not_found", "message": f"No key with id '{key_id}'"},
+        )
+
+    return {"ok": True, "revoked": key_id}
+
+
+# ---------------------------------------------------------------------------
+# Consumer usage
+# ---------------------------------------------------------------------------
+
+
+@router.get("/usage", response_model=ConsumerUsageInfo)
+async def get_usage(api_key: dict = Depends(get_api_key)):
+    """Return usage stats for the authenticated consumer key."""
+    usage = get_consumer_usage(api_key["key_id"])
+    return ConsumerUsageInfo(
+        consumer_id=api_key["key_id"],
+        total_requests=usage["total_requests"],
+        total_cost=usage["total_cost"],
+        providers=usage["providers"],
+        models=usage["models"],
     )

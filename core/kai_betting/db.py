@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS teams (
     name TEXT NOT NULL,
     short_name TEXT DEFAULT '',
     country TEXT DEFAULT '',
+    external_id TEXT DEFAULT '',         -- data provider's team ID
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE(sport_id, key)
 );
@@ -103,6 +104,8 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_sport ON events(sport_id);
 CREATE INDEX IF NOT EXISTS idx_events_time ON events(event_time);
 CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_external_id
+    ON events(sport_id, external_id) WHERE external_id IS NOT NULL AND external_id != '';
 
 -- Event statistics
 CREATE TABLE IF NOT EXISTS event_statistics (
@@ -412,6 +415,12 @@ DEFAULT_CONFIG = {
     "correlation_threshold": "0.6",
     "backtest_min_samples": "100",
     "feature_live_predictions": "false",
+    # Data source refresh tracking
+    "last_events_refresh": "",
+    "last_odds_refresh": "",
+    "last_results_refresh": "",
+    "last_rate_limit_reset": "",
+    "active_sports_for_sync": "football,basketball,tennis",
 }
 
 
@@ -464,6 +473,76 @@ def init_db():
 
         conn.commit()
     return True
+
+
+# ── Data Ingestion Helpers ──────────────────────────────────────────────────
+
+
+def upsert_team(conn, sport_id: int, name: str, short_name: str = "",
+                country: str = "", external_id: str = "") -> int:
+    """Insert or get a team, returning its ID.
+
+    Generates a stable key from the team name by slugifying.
+    Uses INSERT OR IGNORE so duplicate key violations safely return
+    the existing row.
+    """
+    import re
+    key = re.sub(r'[^a-z0-9]+', '_', name.lower().strip()).strip('_')
+    if not key:
+        key = f"team_{sport_id}_{hash(name) & 0xFFFF:04x}"
+
+    conn.execute("""
+        INSERT OR IGNORE INTO teams (sport_id, key, name, short_name, country, external_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (sport_id, key, name, short_name, country, external_id))
+
+    row = conn.execute(
+        "SELECT id FROM teams WHERE sport_id = ? AND key = ?",
+        (sport_id, key)
+    ).fetchone()
+    return row["id"]
+
+
+def upsert_league(conn, sport_id: int, league_key: str, name: str,
+                  country: str = "", tier: int = 1) -> int:
+    """Insert or get a league, returning its ID."""
+    conn.execute("""
+        INSERT OR IGNORE INTO leagues (sport_id, key, name, country, tier)
+        VALUES (?, ?, ?, ?, ?)
+    """, (sport_id, league_key, name, country, tier))
+
+    row = conn.execute(
+        "SELECT id FROM leagues WHERE sport_id = ? AND key = ?",
+        (sport_id, league_key)
+    ).fetchone()
+    return row["id"]
+
+
+def upsert_event(conn, sport_id: int, external_id: str,
+                 home_team_id: int, away_team_id: int,
+                 event_time: str, league_id: int = None,
+                 status: str = "scheduled", venue: str = "",
+                 round_name: str = "", season: str = "") -> int:
+    """Insert or replace an event, returning its ID.
+
+    Uses (sport_id, external_id) as the dedup key via the
+    UNIQUE index on events.
+    """
+    conn.execute("""
+        INSERT OR REPLACE INTO events (
+            external_id, sport_id, league_id,
+            home_team_id, away_team_id, event_time,
+            status, venue, round, season, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    """, (external_id, sport_id, league_id,
+          home_team_id, away_team_id, event_time,
+          status, venue, round_name, season))
+
+    row = conn.execute(
+        "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
+        (sport_id, external_id)
+    ).fetchone()
+    return row["id"]
 
 
 def _seed_data(conn):

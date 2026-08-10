@@ -1,0 +1,19 @@
+{
+  "data_sources": {
+    "odds_api": {
+      "enabled": true,
+      "api_key_env": "ODDS_API_KEY",
+      "base_url": "https://api.the-odds-api.com/v4",
+      "sports": ["football", "basketball", "tennis"],
+      "bookmakers": ["williamhill", "bet365", "pinnacle"],
+      "markets": ["h2h", "totals"],
+      "rate_limit_monthly": 500
+    }
+  },
+  "refresh": {
+    "events_interval_hours": 6,
+    "odds_interval_minutes": 60,
+    "results_interval_minutes": 15,
+    "api_rate_limit_per_second": 1
+  }
+}

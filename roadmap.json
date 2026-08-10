@@ -2397,7 +2397,7 @@
         "SUSU-3a"
       ],
       "assigned_agent": "qwen3",
-      "status": "pending",
+      "status": "failed",
       "description": "Fraud detection: duplicate detection, device fingerprinting, velocity checks, unusual pattern detection. Risk scoring per user and per group. Configurable detection rules.",
       "completion_criteria": [
         "Duplicate detection operational",
@@ -2567,7 +2567,7 @@
     {
       "id": "AI-4",
       "name": "AI-4: Serverless Endpoints",
-      "status": "pending",
+      "status": "failed",
       "priority": 4,
       "dependencies": [
         "AI-1"

@@ -25,13 +25,13 @@ def _find_project_root(source_files, test_dir):
     return str(common)
 
 
-def generate_tests(source_files, test_dir, provider_name="opencode_claude", timeout=None, project_path=None):
+def generate_tests(source_files, test_dir, provider_name="gpuai_minimax", timeout=None, project_path=None):
     """Generate tests for the given source files using the specified coding provider.
 
     Args:
         source_files: List of Path objects pointing to Python source files.
         test_dir: Path where generated test files should be written.
-        provider_name: Name of the registered AI provider to use (default: opencode_claude).
+        provider_name: Name of the registered AI provider to use (default: gpuai_minimax).
         timeout: Wall-clock timeout in seconds for the generation call.
         project_path: Optional project root to run the coding agent in. Auto-detected if not given.
 

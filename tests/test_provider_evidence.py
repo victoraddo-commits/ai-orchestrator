@@ -80,9 +80,9 @@ def test_evaluate_provider_role_never_says_trusted_below_the_sample_guard():
     # A perfect record over fewer than MIN_SAMPLE_SIZE attempts is real
     # evidence, but not enough of it to call a provider "trusted" -- that is
     # exactly the over-reaction 13T exists to avoid, in both directions.
-    _write_history([_entry("opencode_minimax", "coding", True)] * (provider_evidence.MIN_SAMPLE_SIZE - 1))
+    _write_history([_entry("gpuai_minimax", "coding", True)] * (provider_evidence.MIN_SAMPLE_SIZE - 1))
 
-    stats = provider_evidence.evaluate_provider_role("opencode_minimax", "coding")
+    stats = provider_evidence.evaluate_provider_role("gpuai_minimax", "coding")
 
     assert stats["success_rate"] == 100.0
     assert stats["sufficient_sample"] is False
@@ -90,9 +90,9 @@ def test_evaluate_provider_role_never_says_trusted_below_the_sample_guard():
 
 
 def test_evaluate_provider_role_says_trusted_once_the_sample_guard_is_met():
-    _write_history([_entry("opencode_minimax", "coding", True)] * provider_evidence.MIN_SAMPLE_SIZE)
+    _write_history([_entry("gpuai_minimax", "coding", True)] * provider_evidence.MIN_SAMPLE_SIZE)
 
-    stats = provider_evidence.evaluate_provider_role("opencode_minimax", "coding")
+    stats = provider_evidence.evaluate_provider_role("gpuai_minimax", "coding")
 
     assert stats["sufficient_sample"] is True
     assert stats["recommendation"] == "trusted"
@@ -137,15 +137,15 @@ def test_evaluate_provider_role_accepts_an_explicit_history_argument():
 def test_summarize_usage_nests_stats_by_provider_then_task_type():
     _write_history([
         _entry("minimax", "planning", False),
-        _entry("opencode", "coding", True),
-        _entry("opencode", "coding", True),
+        _entry("omniroute", "coding", True),
+        _entry("omniroute", "coding", True),
     ])
 
     summary = provider_evidence.summarize_usage()
 
-    assert set(summary) == {"minimax", "opencode"}
+    assert set(summary) == {"minimax", "omniroute"}
     assert summary["minimax"]["planning"]["attempts"] == 1
-    assert summary["opencode"]["coding"]["successes"] == 2
+    assert summary["omniroute"]["coding"]["successes"] == 2
 
 
 def test_summarize_usage_is_empty_for_an_empty_history():
@@ -206,30 +206,30 @@ def test_record_usage_lesson_defaults_a_failing_record_to_common_failure():
 
 
 def test_record_usage_lesson_defaults_a_passing_record_to_successful_solution():
-    _write_history([_entry("opencode", "coding", True)] * 3)
+    _write_history([_entry("omniroute", "coding", True)] * 3)
 
-    lesson = provider_evidence.record_usage_lesson("opencode", "coding", source="13T")
+    lesson = provider_evidence.record_usage_lesson("omniroute", "coding", source="13T")
 
     assert lesson["category"] == "successful_solution"
     assert lesson["recommendation"] == "observe"
 
 
 def test_record_usage_lesson_defaults_subject_to_provider_and_task_type():
-    _write_history([_entry("opencode", "coding", True)])
+    _write_history([_entry("omniroute", "coding", True)])
 
-    lesson = provider_evidence.record_usage_lesson("opencode", "coding", source="13T")
+    lesson = provider_evidence.record_usage_lesson("omniroute", "coding", source="13T")
 
-    assert lesson["subject"] == "opencode/coding"
+    assert lesson["subject"] == "omniroute/coding"
 
 
 def test_record_usage_lesson_accepts_an_explicit_subject():
-    _write_history([_entry("opencode", "coding", True)])
+    _write_history([_entry("omniroute", "coding", True)])
 
     lesson = provider_evidence.record_usage_lesson(
-        "opencode", "coding", source="13T", subject="opencode/minimax-m2.7 coding_agent"
+        "omniroute", "coding", source="13T", subject="omniroute/coding_agent"
     )
 
-    assert lesson["subject"] == "opencode/minimax-m2.7 coding_agent"
+    assert lesson["subject"] == "omniroute/coding_agent"
 
 
 def test_record_usage_lesson_lets_caller_evidence_override_the_derived_counts():
@@ -255,19 +255,19 @@ def test_record_usage_lesson_lets_caller_evidence_override_the_derived_counts():
 
 
 def test_record_usage_lesson_accepts_an_explicit_category():
-    _write_history([_entry("opencode", "coding", True)] * 3)
+    _write_history([_entry("omniroute", "coding", True)] * 3)
 
     lesson = provider_evidence.record_usage_lesson(
-        "opencode", "coding", source="13T", category="preferred_architecture"
+        "omniroute", "coding", source="13T", category="preferred_architecture"
     )
 
     assert lesson["category"] == "preferred_architecture"
 
 
 def test_record_usage_lesson_rejects_an_unknown_category():
-    _write_history([_entry("opencode", "coding", True)])
+    _write_history([_entry("omniroute", "coding", True)])
 
     with pytest.raises(ValueError):
         provider_evidence.record_usage_lesson(
-            "opencode", "coding", source="13T", category="not_a_category"
+            "omniroute", "coding", source="13T", category="not_a_category"
         )

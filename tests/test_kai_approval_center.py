@@ -26,8 +26,8 @@ def _force_status(build_id, status):
 
 def _disable_code_review(monkeypatch):
     # Same helper as tests/test_build_manager.py -- code review is a
-    # fallback chain (build_manager.CODE_REVIEW_CANDIDATES: opencode_claude
-    # then deepseek_native_pro), both real env-credential-available
+    # fallback chain (build_manager.CODE_REVIEW_CANDIDATES: deepseek_native_pro
+    # only), a real env-credential-available
     # providers on this host/process, so tests that don't care about the
     # review step's outcome must disable the whole chain, not just one name.
     import core.ai_provider as ai_provider
@@ -108,7 +108,7 @@ def test_advance_builds_creates_a_deploy_approval_after_security_review(monkeypa
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -189,7 +189,7 @@ def test_approving_deploy_approval_resumes_the_build(monkeypatch):
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )

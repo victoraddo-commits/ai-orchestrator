@@ -364,7 +364,7 @@ def test_generate_tests_delegates_to_provider(tmp_path):
 
     monkeypatch = mock.patch.dict(
         ai_provider._PROVIDERS,
-        {"opencode_claude": {
+        {"gpuai_minimax": {
             "run_coding_task": fake_run_coding,
             "available_fn": lambda: True,
             "kind": "cloud",
@@ -379,11 +379,11 @@ def test_generate_tests_delegates_to_provider(tmp_path):
         result = generator.generate_tests(
             source_files=[src],
             test_dir=test_dir,
-            provider_name="opencode_claude",
+            provider_name="gpuai_minimax",
         )
 
     assert result["success"] is True
-    assert result["provider"] == "opencode_claude"
+    assert result["provider"] == "gpuai_minimax"
     assert result["cost"] == 0.005
     assert len(run_calls) == 1
     assert str(src) in run_calls[0]["instruction"]
@@ -471,7 +471,7 @@ def test_generate_tests_uses_default_timeout(tmp_path):
 
     monkeypatch = mock.patch.dict(
         ai_provider._PROVIDERS,
-        {"opencode_claude": {
+        {"gpuai_minimax": {
             "run_coding_task": fake_run,
             "available_fn": lambda: True,
             "kind": "cloud",
@@ -484,7 +484,7 @@ def test_generate_tests_uses_default_timeout(tmp_path):
 
     with monkeypatch:
         generator.generate_tests(
-            source_files=[src], test_dir=test_dir, provider_name="opencode_claude",
+            source_files=[src], test_dir=test_dir, provider_name="gpuai_minimax",
         )
 
     assert run_calls[0] == config.DEFAULT_TIMEOUT
@@ -507,7 +507,7 @@ def test_generate_tests_auto_detects_project_path(monkeypatch, tmp_path):
 
     monkeypatch = mock.patch.dict(
         ai_provider._PROVIDERS,
-        {"opencode_claude": {
+        {"gpuai_minimax": {
             "run_coding_task": fake_run,
             "available_fn": lambda: True,
             "kind": "cloud",
@@ -520,7 +520,7 @@ def test_generate_tests_auto_detects_project_path(monkeypatch, tmp_path):
 
     with monkeypatch:
         generator.generate_tests(
-            source_files=[src], test_dir=test_dir, provider_name="opencode_claude",
+            source_files=[src], test_dir=test_dir, provider_name="gpuai_minimax",
         )
 
     assert run_calls[0]["project_path"] is not None
@@ -638,7 +638,7 @@ def test_run_smoke_full_pipeline(monkeypatch, tmp_path):
 
     monkeypatch = mock.patch.dict(
         ai_provider._PROVIDERS,
-        {"opencode_claude": {
+        {"gpuai_minimax": {
             "run_coding_task": fake_run_coding,
             "available_fn": lambda: True,
             "kind": "cloud",
@@ -650,7 +650,7 @@ def test_run_smoke_full_pipeline(monkeypatch, tmp_path):
     )
 
     with monkeypatch:
-        result = smoke.run_smoke(provider_name="opencode_claude")
+        result = smoke.run_smoke(provider_name="gpuai_minimax")
 
     assert result["passed"] is True
     assert result["generation_result"]["success"] is True
@@ -663,7 +663,7 @@ def test_run_smoke_generation_failure(monkeypatch):
 
     monkeypatch = mock.patch.dict(
         ai_provider._PROVIDERS,
-        {"opencode_claude": {
+        {"gpuai_minimax": {
             "run_coding_task": lambda *a, **kw: {"success": False, "response_text": "", "files_changed": [], "tool_errors": [{"tool": None, "content": "quota exceeded"}], "cost": None},
             "available_fn": lambda: True,
             "kind": "cloud",
@@ -675,7 +675,7 @@ def test_run_smoke_generation_failure(monkeypatch):
     )
 
     with monkeypatch:
-        result = smoke.run_smoke(provider_name="opencode_claude")
+        result = smoke.run_smoke(provider_name="gpuai_minimax")
 
     assert result["passed"] is False
     assert result["generation_result"]["success"] is False
@@ -694,7 +694,7 @@ def test_run_smoke_keep_output(monkeypatch, tmp_path):
 
     provider_patch = mock.patch.dict(
         ai_provider._PROVIDERS,
-        {"opencode_claude": {"run_coding_task": fake_run, "available_fn": lambda: True, "kind": "cloud", "description": "t", "capabilities": ["coding_agent"], "cost_tier": "paid", "enabled": True}},
+        {"gpuai_minimax": {"run_coding_task": fake_run, "available_fn": lambda: True, "kind": "cloud", "description": "t", "capabilities": ["coding_agent"], "cost_tier": "paid", "enabled": True}},
     )
 
     fake_subprocess = subprocess.CompletedProcess(args=["pytest"], returncode=0, stdout="1 passed\n", stderr="")
@@ -704,12 +704,12 @@ def test_run_smoke_keep_output(monkeypatch, tmp_path):
     monkeypatch.setattr(shutil, "rmtree", lambda p, **kw: rmtree_calls.append(str(p)))
 
     with provider_patch:
-        result_no_keep = smoke.run_smoke(provider_name="opencode_claude", keep_output=False)
+        result_no_keep = smoke.run_smoke(provider_name="gpuai_minimax", keep_output=False)
         assert result_no_keep["passed"] is True
         assert len(rmtree_calls) == 1
 
     with provider_patch:
-        result_keep = smoke.run_smoke(provider_name="opencode_claude", keep_output=True)
+        result_keep = smoke.run_smoke(provider_name="gpuai_minimax", keep_output=True)
         assert result_keep["passed"] is True
         assert len(rmtree_calls) == 1
 
@@ -719,7 +719,7 @@ def test_run_smoke_keep_output(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_config_defaults():
-    assert config.DEFAULT_CODING_PROVIDER in ("opencode_claude", "qwen4_coding")
+    assert config.DEFAULT_CODING_PROVIDER in ("gpuai_minimax", "qwen4_coding")
     assert isinstance(config.DEFAULT_TIMEOUT, int)
     assert config.DEFAULT_TIMEOUT > 0
     assert config.DEFAULT_TEST_RUNNER == "pytest"

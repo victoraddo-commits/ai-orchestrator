@@ -238,211 +238,6 @@ def test_claude_provider_availability_reflects_bridge_key_presence(tmp_path, mon
     assert providers["claude"]["available"] is True
 
 
-def test_opencode_provider_is_registered_with_coding_agent_capability_only():
-    providers = ai_provider.list_providers()
-
-    assert "opencode" in providers
-    assert "coding_agent" in providers["opencode"]["capabilities"]
-    assert "text_task" not in providers["opencode"]["capabilities"]
-
-
-def test_opencode_provider_run_coding_task_wraps_the_bridge_module(monkeypatch, tmp_path):
-    import core.opencode_bridge as opencode_bridge
-
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["project_path"] = project_path
-        captured["instruction"] = instruction
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider("opencode")
-    result = provider["run_coding_task"](str(tmp_path), "build a widget")
-
-    assert result["success"] is True
-    assert captured["project_path"] == str(tmp_path)
-    assert captured["instruction"] == "build a widget"
-
-
-def test_opencode_provider_unavailable_when_cli_missing(monkeypatch):
-    import core.ai_provider as provider_module
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-
-    assert ai_provider.list_providers()["opencode"]["available"] is False
-
-
-def test_opencode_provider_unavailable_when_cli_present_but_not_authenticated(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", tmp_path / "auth.json")
-
-    assert ai_provider.list_providers()["opencode"]["available"] is False
-
-
-def test_opencode_provider_available_when_cli_present_and_authenticated(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    assert ai_provider.list_providers()["opencode"]["available"] is True
-
-
-def test_opencode_claude_provider_is_registered_with_both_capabilities():
-    # 2026-08-02 operator directive: Fable 5 gained a text_task route
-    # (Q&A, see ai_provider._opencode_claude_run_text_task) alongside its
-    # original coding_agent one -- was coding_agent-only until this.
-    providers = ai_provider.list_providers()
-
-    assert "opencode_claude" in providers
-    assert "coding_agent" in providers["opencode_claude"]["capabilities"]
-    assert "text_task" in providers["opencode_claude"]["capabilities"]
-
-
-def test_opencode_claude_provider_defaults_to_a_claude_model_via_zen(monkeypatch, tmp_path):
-    import core.opencode_bridge as opencode_bridge
-
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider("opencode_claude")
-    provider["run_coding_task"](str(tmp_path), "build a widget")
-
-    assert "claude" in captured["model"]
-    assert captured["model"].startswith("opencode/")
-
-
-def test_opencode_claude_provider_shares_availability_with_opencode(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    assert ai_provider.list_providers()["opencode_claude"]["available"] is True
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-    assert ai_provider.list_providers()["opencode_claude"]["available"] is False
-
-
-@pytest.mark.parametrize(
-    "provider_name,expected_model_fragment",
-    [
-        ("opencode_claude_sonnet", "claude-sonnet-5"),
-        ("opencode_claude_opus", "claude-opus-5"),
-    ],
-)
-def test_opencode_claude_escalation_tiers_are_registered_with_coding_agent_capability_only(
-    provider_name, expected_model_fragment
-):
-    providers = ai_provider.list_providers()
-
-    assert provider_name in providers
-    assert "coding_agent" in providers[provider_name]["capabilities"]
-    assert "text_task" not in providers[provider_name]["capabilities"]
-
-
-@pytest.mark.parametrize(
-    "provider_name,expected_model_fragment",
-    [
-        ("opencode_claude_sonnet", "claude-sonnet-5"),
-        ("opencode_claude_opus", "claude-opus-5"),
-    ],
-)
-def test_opencode_claude_escalation_tiers_use_the_correct_zen_model(
-    monkeypatch, tmp_path, provider_name, expected_model_fragment
-):
-    import core.opencode_bridge as opencode_bridge
-
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider(provider_name)
-    provider["run_coding_task"](str(tmp_path), "build a widget")
-
-    assert captured["model"] == f"opencode/{expected_model_fragment}"
-
-
-@pytest.mark.parametrize("provider_name", ["opencode_claude_sonnet", "opencode_claude_opus"])
-def test_opencode_claude_escalation_tiers_share_availability_with_opencode(monkeypatch, tmp_path, provider_name):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    assert ai_provider.list_providers()[provider_name]["available"] is True
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-    assert ai_provider.list_providers()[provider_name]["available"] is False
-
-
-# --- 13T: minimax restored on the coding_agent route only -------------------
-
-def test_opencode_minimax_provider_is_registered_with_coding_agent_capability_only():
-    # 13T: minimax-m2.7 is registered for coding_agent and *only* coding_agent
-    # -- the usage-history review found its tools-less text_task record to be
-    # 0/4 usable, so it must never be reachable as a text provider.
-    providers = ai_provider.list_providers()
-
-    assert "opencode_minimax" in providers
-    assert "coding_agent" in providers["opencode_minimax"]["capabilities"]
-    assert "text_task" not in providers["opencode_minimax"]["capabilities"]
-
-
-def test_opencode_minimax_provider_uses_the_minimax_zen_model(monkeypatch, tmp_path):
-    import core.opencode_bridge as opencode_bridge
-
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider("opencode_minimax")
-    provider["run_coding_task"](str(tmp_path), "build a widget")
-
-    assert captured["model"] == "opencode/minimax-m2.7"
-
-
-def test_opencode_minimax_provider_shares_availability_with_opencode(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-test"}}')
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    assert ai_provider.list_providers()["opencode_minimax"]["available"] is True
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-    assert ai_provider.list_providers()["opencode_minimax"]["available"] is False
-
-
 def test_minimax_text_provider_is_still_registered_but_text_only():
     # The registry entry stays (it is what any future re-evaluation would
     # exercise); what 13T changed is only whether ai_router routes to it.
@@ -452,7 +247,7 @@ def test_minimax_text_provider_is_still_registered_but_text_only():
     assert "coding_agent" not in providers["minimax"]["capabilities"]
 
 
-# --- 13U: deepseek text-task provider + opencode_deepseek coding route ------
+# --- 13U: deepseek text-task provider ------
 
 def test_deepseek_provider_availability_reflects_env_var(monkeypatch):
     monkeypatch.delenv("DEEPSEEK_OPENROUTER_API_KEY", raising=False)
@@ -584,16 +379,10 @@ def test_every_registered_provider_has_a_valid_cost_tier():
         # cheap/credit-pool models, per the user's own labeling request
         ("minimax", "free_or_low_cost"),
         ("deepseek", "free_or_low_cost"),
-        ("opencode", "free_or_low_cost"),
-        ("opencode_claude", "free_or_low_cost"),
-        ("opencode_minimax", "free_or_low_cost"),
-        # 2026-08-02: qwen4_coding -- same self-hosted RunPod GPU as "qwen4_text"
-        # below, own-hardware billing rather than per-call.
+        ("gpuai_minimax", "paid"),
         # real per-call billing / materially expensive models
         ("claude", "paid"),
         ("openrouter", "paid"),
-        ("opencode_claude_sonnet", "paid"),
-        ("opencode_claude_opus", "paid"),
     ],
 )
 def test_provider_cost_tier_matches_the_static_classification(provider_name, expected_tier):
@@ -623,82 +412,11 @@ def test_deepseek_run_text_task_does_not_use_the_shared_OPENROUTER_API_KEY(monke
         ai_provider.get_provider("deepseek")["run_text_task"]("hello")
 
 
-# --- 13M: opencode credential generalization ---------------------------------
-
-def test_opencode_credential_available_checks_each_key_independently(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-zen"}}')
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    assert provider_module._opencode_credential_available("opencode") is True
-    assert provider_module._opencode_credential_available("openrouter") is False
-
-    auth_path.write_text(
-        '{"opencode": {"type": "api", "key": "sk-zen"}, "openrouter": {"type": "api", "key": "sk-or"}}'
-    )
-    assert provider_module._opencode_credential_available("openrouter") is True
-
-
-def test_opencode_credential_available_is_false_when_cli_missing(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    auth_path.write_text('{"openrouter": {"type": "api", "key": "sk-or"}}')
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    assert provider_module._opencode_credential_available("openrouter") is False
-
-
-def test_opencode_credential_available_is_false_when_auth_file_missing_or_corrupt(monkeypatch, tmp_path):
-    import core.ai_provider as provider_module
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", tmp_path / "auth.json")
-
-    assert provider_module._opencode_credential_available("openrouter") is False
-
-    (tmp_path / "auth.json").write_text("{not json")
-    assert provider_module._opencode_credential_available("openrouter") is False
-
-
-def test_opencode_available_is_a_thin_wrapper_over_the_generalized_helper(monkeypatch):
-    import core.ai_provider as provider_module
-
-    captured = {}
-
-    def fake_credential_available(key):
-        captured["key"] = key
-        return True
-
-    monkeypatch.setattr(provider_module, "_opencode_credential_available", fake_credential_available)
-
-    assert provider_module._opencode_available() is True
-    assert captured["key"] == "opencode"
-
-
-# --- 13M: OpenRouter-billed Claude coding routes via the opencode CLI --------
-
-@pytest.mark.parametrize("provider_name", [])
-def test_openrouter_claude_coding_providers_are_registered_with_coding_agent_capability_only(provider_name):
-    providers = ai_provider.list_providers()
-
-    assert provider_name in providers
-    assert "coding_agent" in providers[provider_name]["capabilities"]
-    assert "text_task" not in providers[provider_name]["capabilities"]
-
-
 def test_13v_text_task_openrouter_claude_provider_is_not_overwritten():
     # 13V shipped a text_task-only "openrouter_claude" (anthropic/
     # claude-sonnet-4.6 via OpenRouter's plain chat-completions API) for the
-    # Chief Architect chain. 13M's coding routes use distinct keys
-    # (openrouter_claude_opus/openrouter_claude_sonnet) -- the 13V entry must
-    # survive unchanged.
+    # Chief Architect chain. All other externally-billed coding routes were
+    # removed 2026-08-10 — this entry must survive unchanged.
     providers = ai_provider.list_providers()
 
     assert "openrouter_claude" in providers
@@ -708,48 +426,6 @@ def test_13v_text_task_openrouter_claude_provider_is_not_overwritten():
     entry = ai_provider.get_provider("openrouter_claude")
     assert entry["run_coding_task"] is None
     assert entry["run_text_task"] is not None
-
-
-
-@pytest.mark.parametrize("provider_name", [])
-def test_openrouter_claude_coding_providers_respect_an_explicit_model_override(
-    monkeypatch, tmp_path, provider_name
-):
-    import core.opencode_bridge as opencode_bridge
-
-    captured = {}
-
-    def fake_run_coding_task(project_path, instruction, **kwargs):
-        captured["model"] = kwargs.get("model")
-        return {"success": True, "response_text": "ok", "files_changed": [], "commits": [], "tool_errors": []}
-
-    monkeypatch.setattr(opencode_bridge, "run_coding_task", fake_run_coding_task)
-
-    provider = ai_provider.get_provider(provider_name)
-    provider["run_coding_task"](str(tmp_path), "build a widget", model="openrouter/some/other-model")
-
-    assert captured["model"] == "openrouter/some/other-model"
-
-
-@pytest.mark.parametrize("provider_name", [])
-def test_openrouter_claude_coding_providers_are_gated_on_the_openrouter_credential(
-    monkeypatch, tmp_path, provider_name
-):
-    import core.ai_provider as provider_module
-
-    auth_path = tmp_path / "auth.json"
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: "/usr/bin/opencode")
-    monkeypatch.setattr(provider_module, "OPENCODE_AUTH_PATH", auth_path)
-
-    # A Zen-only auth.json is NOT enough -- these bill through OpenRouter.
-    auth_path.write_text('{"opencode": {"type": "api", "key": "sk-zen"}}')
-    assert ai_provider.list_providers()[provider_name]["available"] is False
-
-    auth_path.write_text('{"openrouter": {"type": "api", "key": "sk-or"}}')
-    assert ai_provider.list_providers()[provider_name]["available"] is True
-
-    monkeypatch.setattr(provider_module.shutil, "which", lambda name: None)
-    assert ai_provider.list_providers()[provider_name]["available"] is False
 
 
 # --- 13M: openrouter text-task model rotation --------------------------------

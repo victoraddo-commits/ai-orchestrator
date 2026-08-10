@@ -20,7 +20,7 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(
         prog="test-gen",
-        description="Verify coding generation with opencode_claude front",
+        description="Verify coding generation with gpuai_minimax front",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -29,8 +29,8 @@ def main(argv=None):
         "files", nargs="+", help="Python source files or directories to generate tests for"
     )
     gen_parser.add_argument(
-        "--provider", default="opencode_claude",
-        help="Coding provider to use (default: opencode_claude)"
+        "--provider", default="gpuai_minimax",
+        help="Coding provider to use (default: gpuai_minimax)"
     )
     gen_parser.add_argument(
         "--output", "-o", default=None,
@@ -53,8 +53,8 @@ def main(argv=None):
 
     smoke_parser = sub.add_parser("smoke", help="Run end-to-end smoke test")
     smoke_parser.add_argument(
-        "--provider", default="opencode_claude",
-        help="Coding provider to use (default: opencode_claude)"
+        "--provider", default="gpuai_minimax",
+        help="Coding provider to use (default: gpuai_minimax)"
     )
     smoke_parser.add_argument(
         "--timeout", type=int, default=None,

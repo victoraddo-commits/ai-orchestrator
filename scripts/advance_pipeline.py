@@ -6,7 +6,7 @@ sys.path.insert(0, '/project/ai-orchestrator')
 from core.build_manager import list_builds, advance_builds, BUILD_TRANSITIONS, submit_answer
 from core.lifecycle import transition
 
-subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
 
 builds = list_builds()
 print(f"Advancing {len(builds)} builds", flush=True)
@@ -19,7 +19,7 @@ try:
     advance_builds()
     print("R1 OK", flush=True)
 except TimeoutError:
-    subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+    subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
     print("R1 timeout", flush=True)
 finally:
     signal.alarm(0)
@@ -54,13 +54,13 @@ with open('memory/builds.json', 'w') as f:
     json.dump({'schema_version':1,'records':builds}, f, indent=2)
 
 if approved > 0:
-    subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+    subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
     signal.alarm(300)
     try:
         advance_builds()
         print("R2 OK", flush=True)
     except TimeoutError:
-        subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+        subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
         print("R2 timeout", flush=True)
     finally:
         signal.alarm(0)

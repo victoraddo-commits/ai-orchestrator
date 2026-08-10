@@ -8,7 +8,7 @@ from core.build_manager import (list_builds, create_build, advance_builds,
                                  submit_answer, BUILD_TRANSITIONS)
 from core.lifecycle import transition
 
-subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
 
 # ---- Phase 0: Re-queue ----
 current = {b.get('name','') for b in list_builds()}
@@ -46,7 +46,7 @@ try:
     print("P1 OK")
 except TimeoutError:
     print("P1 timeout")
-    subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+    subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
 finally:
     signal.alarm(0)
 
@@ -78,14 +78,14 @@ with open('memory/builds.json', 'w') as f:
 
 # ---- Phase 3: Generate code ----
 if approved > 0:
-    subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+    subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
     signal.alarm(300)
     try:
         advance_builds()
         print("P3 OK")
     except TimeoutError:
         print("P3 timeout")
-        subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+        subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
     finally:
         signal.alarm(0)
 
@@ -101,7 +101,7 @@ for b in builds:
 with open('memory/builds.json', 'w') as f:
     json.dump({'schema_version':1,'records':builds}, f, indent=2)
 
-subprocess.run(['pkill', '-9', '-f', 'opencode'], capture_output=True)
+subprocess.run(['pkill', '-9', '-f', 'cloudcli'], capture_output=True)
 signal.alarm(60)
 try:
     advance_builds()

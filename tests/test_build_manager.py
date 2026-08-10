@@ -388,7 +388,7 @@ def test_advance_builds_records_learning_outcome_on_generation_failure(monkeypat
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: (_ for _ in ()).throw(
-            AllProvidersFailed("claude: generation did not succeed; opencode: not available")
+            AllProvidersFailed("claude: generation did not succeed; fallback: not available")
         ),
     )
 
@@ -564,12 +564,12 @@ def test_advance_builds_marks_planning_failed_when_all_providers_fail(monkeypatc
 
 
 def test_generation_reporting_success_with_no_changes_is_treated_as_failure(monkeypatch):
-    # opencode_bridge.run_coding_task (and equivalents) define success purely
+    # gpuai_minimax_bridge.run_coding_task (and equivalents) define success purely
     # as "process exited cleanly, no tool errors" -- a coding agent that
     # stops early (hits its own internal turn/step budget without ever
     # implementing anything) can exit 0 with that flag still set. Confirmed
     # live 2026-07-29: build 1b3875d7 (13U) reported success via
-    # opencode_claude_sonnet with files_changed=[] and no commits, response
+    # gpuai_minimax_sonnet with files_changed=[] and no commits, response
     # text mid-exploration. Every generation prompt explicitly instructs
     # "write the code, and commit your work with git as you go" -- a claimed
     # success with neither files_changed nor commits must not cascade to a
@@ -581,7 +581,7 @@ def test_generation_reporting_success_with_no_changes_is_treated_as_failure(monk
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude_sonnet", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True,
                 "response_text": "Now let's check how this workspace relates to the project...",
@@ -611,7 +611,7 @@ def test_generation_with_no_files_changed_but_a_real_commit_is_not_treated_as_no
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True,
                 "response_text": "Done.",
@@ -648,7 +648,7 @@ def test_run_generation_uses_the_longer_generation_timeout_not_the_planning_one(
     def fake_delegate(description, **kwargs):
         captured["timeout"] = kwargs.get("timeout")
         return {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         }
 
@@ -689,9 +689,9 @@ def test_advance_builds_drives_generating_to_deploy_approval_via_security_review
     )
     # generated_by stays "claude" here (asserted below) -- unlike the other
     # generation tests, this one can't dodge the review call by swapping to
-    # "opencode_claude", so stub the reviewer instead of hitting a real
-    # opencode call.
-    _stub_opencode_claude_reviewer(monkeypatch)
+    # "gpuai_minimax", so stub the reviewer instead of hitting a real
+    # gpuai_minimax call.
+    _stub_code_reviewer(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -714,7 +714,7 @@ def test_advance_builds_reaches_deploy_approval_even_with_critical_findings(monk
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -740,7 +740,7 @@ def test_advance_builds_drives_generating_to_failed_on_unsuccessful_run(monkeypa
         build_manager,
         "delegate",
         lambda description, **kwargs: (_ for _ in ()).throw(
-            AllProvidersFailed("claude: tests failed; opencode: not available")
+            AllProvidersFailed("claude: tests failed; fallback: not available")
         ),
     )
 
@@ -829,7 +829,7 @@ def test_max_concurrent_builds_defaults_when_config_is_missing_or_bad(tmp_path, 
 
 def _disable_code_review(monkeypatch):
     # 2026-08-02: code review is a fallback chain now (CODE_REVIEW_CANDIDATES
-    # -- opencode_claude then deepseek_native_pro, see build_manager's
+    # -- gpuai_minimax then deepseek_native_pro, see build_manager's
     # module-level comment above it), both real, env-credential-available
     # providers on this host/process (core.api's load_dotenv() leaks
     # VLLM_QWEN3_CODER_*/DEEPSEEK_NATIVE_PRO_API_KEY into the whole pytest
@@ -842,19 +842,16 @@ def _disable_code_review(monkeypatch):
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
 
-def _stub_opencode_claude_reviewer(monkeypatch, findings="No issues found."):
-    # Renamed from _stub_claude_reviewer 2026-08-02: code review moved from
-    # the direct "claude" provider to "opencode_claude" (Fable 5) -- see
-    # build_manager's CODE_REVIEW_CANDIDATES comment. opencode_claude is
-    # first in the fallback chain, so stubbing it alone is enough to make
-    # the review succeed without ever reaching deepseek_native_pro.
+def _stub_code_reviewer(monkeypatch, findings="No issues found."):
+    # OpenCode providers removed 2026-08-10. CODE_REVIEW_CANDIDATES is now
+    # just ["deepseek_native_pro"], so stub that single candidate.
     fake = {
         "available_fn": lambda: True,
         "run_text_task": lambda prompt, timeout=60, project_path=None: findings,
     }
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
-        lambda name: fake if name == "opencode_claude" else None,
+        lambda name: fake if name == "deepseek_native_pro" else None,
     )
     return fake
 
@@ -874,7 +871,7 @@ def test_advance_builds_runs_two_ready_builds_concurrently_without_cross_talk(mo
 
     def fake_delegate(description, **kwargs):
         barrier.wait()  # deadlocks (and breaks) unless both run at once
-        provider = "claude" if "app-a" in description else "opencode"
+        provider = "claude" if "app-a" in description else "gpuai_minimax"
         return {
             "provider": provider, "task_type": "coding", "duration_ms": 10,
             "response": {
@@ -889,7 +886,7 @@ def test_advance_builds_runs_two_ready_builds_concurrently_without_cross_talk(mo
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
-    _stub_opencode_claude_reviewer(monkeypatch)
+    _stub_code_reviewer(monkeypatch)
 
     build_manager.advance_builds()
 
@@ -899,9 +896,9 @@ def test_advance_builds_runs_two_ready_builds_concurrently_without_cross_talk(mo
     assert updated_a["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated_b["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated_a["generated_by"] == "claude"
-    assert updated_b["generated_by"] == "opencode"
+    assert updated_b["generated_by"] == "gpuai_minimax"
     assert updated_a["generation_result"]["response_text"] == "built by claude"
-    assert updated_b["generation_result"]["response_text"] == "built by opencode"
+    assert updated_b["generation_result"]["response_text"] == "built by gpuai_minimax"
 
 
 def test_one_builds_crash_does_not_lose_the_other_builds_result(monkeypatch, tmp_path):
@@ -916,7 +913,7 @@ def test_one_builds_crash_does_not_lose_the_other_builds_result(monkeypatch, tmp
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -953,10 +950,10 @@ def test_persist_build_updates_only_that_builds_record():
 
 # -- 13R: CODE_REVIEW ----------------------------------------------------------
 
-def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_generated_it(monkeypatch):
+def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_generated_it(monkeypatch):
     # 2026-08-02: CODE_REVIEW_CANDIDATES is a fallback chain now, not a
     # single reviewer -- self-review isn't independent oversight, but that
-    # only rules out opencode_claude specifically when it's the build's own
+    # only rules out gpuai_minimax specifically when it's the build's own
     # generator. deepseek_native_pro (the fallback, "add DeepSeek-V4-Pro as
     # fallback reviewer... behind fable 5") still gets a real attempt rather
     # than the whole review being skipped outright.
@@ -966,7 +963,7 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_gene
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -982,7 +979,7 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_gene
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
         lambda name: (
-            pytest.fail("opencode_claude must not be asked to review its own work") if name == "opencode_claude"
+            pytest.fail("gpuai_minimax must not be asked to review its own work") if name == "gpuai_minimax"
             else fake_deepseek if name == "deepseek_native_pro"
             else None
         ),
@@ -999,7 +996,7 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_gene
     }
 
 
-def test_code_review_attaches_opencode_claude_findings_for_other_builds(monkeypatch, tmp_path):
+def test_code_review_attaches_gpuai_minimax_findings_for_other_builds(monkeypatch, tmp_path):
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
@@ -1019,7 +1016,7 @@ def test_code_review_attaches_opencode_claude_findings_for_other_builds(monkeypa
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
-    _stub_opencode_claude_reviewer(monkeypatch, findings="Advisory: app/main.py has no tests.")
+    _stub_code_reviewer(monkeypatch, findings="Advisory: app/main.py has no tests.")
 
     build_manager.advance_builds()
 
@@ -1027,7 +1024,7 @@ def test_code_review_attaches_opencode_claude_findings_for_other_builds(monkeypa
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["code_review"] == {
         "skipped": False,
-        "reviewer": "opencode_claude",
+        "reviewer": "deepseek_native_pro",
         "findings": "Advisory: app/main.py has no tests.",
     }
 
@@ -1041,7 +1038,7 @@ def test_code_review_findings_never_block_the_build(monkeypatch, tmp_path):
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1049,7 +1046,7 @@ def test_code_review_findings_never_block_the_build(monkeypatch, tmp_path):
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
-    _stub_opencode_claude_reviewer(monkeypatch, findings="CRITICAL: this code is broken and must not ship.")
+    _stub_code_reviewer(monkeypatch, findings="CRITICAL: this code is broken and must not ship.")
 
     build_manager.advance_builds()
 
@@ -1059,16 +1056,15 @@ def test_code_review_findings_never_block_the_build(monkeypatch, tmp_path):
 
 
 def test_code_review_skips_gracefully_when_every_reviewer_candidate_is_unavailable(monkeypatch, tmp_path):
-    # Both opencode_claude and its fallback deepseek_native_pro unavailable
-    # -- the whole review comes back skipped, with each candidate's reason
-    # joined rather than only the first one reported.
+    # deepseek_native_pro (sole code-review candidate) is unavailable
+    # -- the whole review comes back skipped with the reason reported.
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode", "task_type": "coding", "duration_ms": 10,
+            "provider": "omniroute_deepseek_coding", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1087,18 +1083,18 @@ def test_code_review_skips_gracefully_when_every_reviewer_candidate_is_unavailab
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["code_review"] == {
         "skipped": True,
-        "reason": "opencode_claude unavailable; deepseek_native_pro unavailable",
+        "reason": "deepseek_native_pro unavailable",
     }
 
 
-def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_is_unavailable(monkeypatch, tmp_path):
+def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_is_unavailable(monkeypatch, tmp_path):
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1114,7 +1110,7 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_is_u
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
         lambda name: (
-            {"available_fn": lambda: False, "run_text_task": None} if name == "opencode_claude"
+            {"available_fn": lambda: False, "run_text_task": None} if name == "gpuai_minimax"
             else fake_deepseek if name == "deepseek_native_pro"
             else None
         ),
@@ -1131,14 +1127,14 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_opencode_claude_is_u
     }
 
 
-def test_code_review_skips_gracefully_when_the_opencode_claude_call_fails(monkeypatch, tmp_path):
+def test_code_review_skips_gracefully_when_the_gpuai_minimax_call_fails(monkeypatch, tmp_path):
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1170,13 +1166,13 @@ def test_advance_builds_picks_up_a_build_stranded_in_code_review(monkeypatch):
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "CODE_REVIEW")
 
-    # "opencode_claude" only skips itself in the review fallback chain
+    # "gpuai_minimax" only skips itself in the review fallback chain
     # (self-authorship) -- deepseek_native_pro would still get a real
     # attempt, so also disable the whole chain.
     builds = build_manager.load_builds()
     for b in builds:
         if b["id"] == build["id"]:
-            b["generated_by"] = "opencode_claude"
+            b["generated_by"] = "gpuai_minimax"
     build_manager.save_builds(builds)
 
     monkeypatch.setattr(
@@ -1201,7 +1197,7 @@ def test_deploy_approval_surfaces_code_review_findings(monkeypatch, tmp_path):
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1209,7 +1205,7 @@ def test_deploy_approval_surfaces_code_review_findings(monkeypatch, tmp_path):
         build_manager, "run_all_scans",
         lambda project_path: {"scanners": {}, "total_findings": 1, "highest_severity": "low"},
     )
-    _stub_opencode_claude_reviewer(monkeypatch, findings="Advisory: missing input validation.")
+    _stub_code_reviewer(monkeypatch, findings="Advisory: missing input validation.")
 
     build_manager.advance_builds()
 
@@ -1221,7 +1217,7 @@ def test_deploy_approval_surfaces_code_review_findings(monkeypatch, tmp_path):
 
 def test_code_review_prompt_is_read_only_and_includes_generation_context():
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
-    build["generated_by"] = "opencode"
+    build["generated_by"] = "gpuai_minimax"
     build["generation_result"] = {
         "response_text": "Implemented the app.",
         "files_changed": ["app/main.py"],
@@ -1262,7 +1258,7 @@ def test_full_lifecycle_happy_path(monkeypatch):
         build_manager,
         "delegate",
         lambda description, **kwargs: {
-            "provider": "opencode_claude", "task_type": "coding", "duration_ms": 10,
+            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True,
                 "response_text": "Implemented.",

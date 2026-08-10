@@ -8,7 +8,7 @@ DEFAULT_GENERATED_TEST_DIR = os.environ.get(
     str(Path(__file__).parent.parent.parent / "tests" / "generated"),
 )
 
-DEFAULT_CODING_PROVIDER = os.environ.get("TEST_GEN_CODING_PROVIDER", "opencode_claude")
+DEFAULT_CODING_PROVIDER = os.environ.get("TEST_GEN_CODING_PROVIDER", "gpuai_minimax")
 
 DEFAULT_TIMEOUT = int(os.environ.get("TEST_GEN_TIMEOUT", "300"))
 

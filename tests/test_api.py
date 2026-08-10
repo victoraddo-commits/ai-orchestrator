@@ -363,9 +363,8 @@ def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
 def test_delegate_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # opencode_claude gained a real text_task route 2026-08-02 and sits in
-    # "planning" -- included so every candidate really is unavailable.
-    for name in ("gemini", "geminix", "openrouter", "minimax", "deepseek", "claude", "deepseek_native_flash", "opencode_claude", "deepseek_native_pro", "qwen4_text"):
+    # OpenCode providers removed 2026-08-10
+    for name in ("gemini", "geminix", "openrouter", "minimax", "deepseek", "claude", "deepseek_native_flash", "deepseek_native_pro", "qwen4_text"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
@@ -960,9 +959,8 @@ def test_kai_chat_endpoint_approval_returns_no_pending_after_request_handled():
 def test_kai_chat_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # opencode_claude gained a real text_task route 2026-08-02 and sits in
-    # "planning" -- included so every candidate really is unavailable.
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "claude", "gemini", "geminix", "opencode_claude", "deepseek_native_pro", "qwen4_text"):
+    # OpenCode providers removed 2026-08-10
+    for name in ("deepseek_native_flash", "openrouter", "deepseek", "claude", "gemini", "geminix", "deepseek_native_pro", "qwen4_text"):
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 

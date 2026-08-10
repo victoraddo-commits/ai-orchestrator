@@ -492,39 +492,6 @@ def bootstrap_default_agents() -> int:
     created = 0
 
     default_agents = {
-        "opencode_claude": {
-            "name": "OpenCode Claude (Fable 5)",
-            "model_name": "Claude Fable 5",
-            "model_version": "OpenCode Zen",
-            "gpu_type": "",
-            "gpu_memory_gb": 0,
-            "cost_per_hour": 0.0,
-            "capabilities": ["coding_agent", "file_access", "text_task"],
-            "fallback_chain": ["opencode_claude_sonnet", "opencode_claude_opus"],
-            "description": "Fable 5 via OpenCode Zen — separate billing, healthy. Both coding and text_task",
-        },
-        "opencode_claude_sonnet": {
-            "name": "OpenCode Claude (Sonnet 5)",
-            "model_name": "Claude Sonnet 5",
-            "model_version": "OpenCode Zen",
-            "gpu_type": "",
-            "gpu_memory_gb": 0,
-            "cost_per_hour": 0.0,
-            "capabilities": ["coding_agent", "file_access"],
-            "fallback_chain": ["opencode_claude_opus"],
-            "description": "Claude Sonnet 5 via OpenCode Zen — fallback coding agent",
-        },
-        "opencode_claude_opus": {
-            "name": "OpenCode Claude (Opus 5)",
-            "model_name": "Claude Opus 5",
-            "model_version": "OpenCode Zen",
-            "gpu_type": "",
-            "gpu_memory_gb": 0,
-            "cost_per_hour": 0.0,
-            "capabilities": ["coding_agent", "file_access"],
-            "fallback_chain": [],
-            "description": "Claude Opus 5 via OpenCode Zen — last-resort coding agent",
-        },
         "gemini": {
             "name": "Gemini",
             "model_name": "Gemini 2.5 Pro",
@@ -577,7 +544,7 @@ def bootstrap_default_agents() -> int:
             "gpu_memory_gb": 0,
             "cost_per_hour": 0.0,
             "capabilities": ["coding_agent", "text_task", "file_access"],
-            "fallback_chain": ["opencode", "opencode_minimax"],
+            "fallback_chain": ["omniroute", "gpuai_minimax"],
             "description": "Claude via direct CloudCLI subscription — out of credit currently, in tail position",
         },
         "omniroute": {
@@ -590,6 +557,17 @@ def bootstrap_default_agents() -> int:
             "capabilities": ["coding_agent", "text_task"],
             "fallback_chain": ["claude"],
             "description": "Self-hosted aggregator gateway on localhost:20128 — always-on fallback",
+        },
+        "gpuai_minimax": {
+            "name": "GPU.ai Minimax M3",
+            "model_name": "MiniMax M3",
+            "model_version": "GPU.ai serverless",
+            "gpu_type": "",
+            "gpu_memory_gb": 0,
+            "cost_per_hour": 0.0,
+            "capabilities": ["coding_agent", "text_task"],
+            "fallback_chain": [],
+            "description": "MiniMax M3 (gpuai/minimax-m3) via GPU.ai serverless API — replaces opencode_minimax, OpenAI-compatible",
         },
     }
 

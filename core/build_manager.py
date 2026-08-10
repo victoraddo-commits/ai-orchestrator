@@ -912,7 +912,7 @@ def _code_review_prompt(build):
 # tests/test_kai_identity.py's structural guarantee that nothing under
 # core/kai/ -- or here -- calls approve_architecture/approve_deploy). A
 # human makes every approve/reject decision.
-CODE_REVIEW_CANDIDATES = ["opencode_claude", "deepseek_native_pro"]
+CODE_REVIEW_CANDIDATES = ["deepseek_native_pro"]
 
 
 def _advisory_code_review(build):

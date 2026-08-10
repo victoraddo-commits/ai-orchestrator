@@ -157,16 +157,15 @@ ROLE_PROVIDERS = {
     # directive ("set it as a primary"). For coding, deepseek routes through
     # OmniRoute's auto/best-coding (which prefers deepseek models) and via
     # the dedicated omniroute_deepseek path. opencode providers are fallback.
+    # 2026-08-10: deepseek (via omniroute_deepseek_coding) remains primary
+    # per operator directive. claude is first fallback (coding_bridge directly).
+    # All opencode providers removed 2026-08-10 (INSUFFICIENT BALANCE on
+    # OpenCode Zen). gpuai_minimax replaces opencode_minimax as tail fallback.
     "coding": [
         "omniroute_deepseek_coding",
-        "omniroute",
-        "opencode_fable5",
-        "opencode_claude",
-        "opencode_claude_sonnet",
-        "opencode_claude_opus",
         "claude",
-        "opencode",
-        "opencode_minimax",
+        "omniroute",
+        "gpuai_minimax",
     ],
     # minimax stays out of every text_task role -- unchanged from the
     # 2026-07-28 pause, but 13T re-grounded it in the full usage history
@@ -247,12 +246,12 @@ ROLE_PROVIDERS = {
     # deepseek_native_flash produced 4 consecutive unusable planning responses.
     # deepseek_native_pro stays first per operator directive but its auth is
     # currently failing; gemini is the proven fallback.
-    "planning": ["deepseek_native_pro", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "opencode_claude", "claude"],
-    "architecture": ["deepseek_native_pro", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "log_analysis": ["deepseek_native_flash", "deepseek_native_pro", "groq", "opencode_gemini_pro", "opencode_fable5", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "groq", "claude"],
-    "review": ["deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "claude"],
-    "classification": ["deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "claude"],
+    "planning": ["deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "architecture": ["deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "log_analysis": ["deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "claude"],
+    "documentation": ["deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "groq", "claude"],
+    "review": ["deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "classification": ["deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -300,7 +299,7 @@ ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
 # 2026-08-09: Legal module coding — deepseek via OmniRoute primary, opencode_claude fallback.
-ROLE_PROVIDERS["legal_coding"] = ["omniroute_deepseek_coding", "opencode_claude"]
+ROLE_PROVIDERS["legal_coding"] = ["omniroute_deepseek_coding", "claude"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -626,27 +625,6 @@ _QUOTA_EXCEEDED_MARKERS = (
     "out of credit", "credit balance", "payment required", "billing",
 )
 
-# Providers driven through the shared OpenCode Zen credential -- a credit
-# exhaustion there is a single account-wide event, not provider-specific,
-# so it's worth a human notification the first time it's seen (not on every
-# subsequent call that also fails the same known way).
-_OPENCODE_ZEN_PROVIDERS_PREFIX = "opencode"
-
-
-def _notify_opencode_quota_exceeded(provider_name, detail):
-    from core.telegram_bridge import send_message
-
-    try:
-        send_message(
-            f"OpenCode Zen credit exhausted (detected via {provider_name}): {detail}\n\n"
-            "This account is shared across every opencode_* provider -- all of them "
-            "will keep failing until credits are renewed."
-        )
-    except Exception as error:
-        from core.logger import info
-        info(f"telegram notify (opencode quota) failed: {type(error).__name__}")
-
-
 def _record_coding_failure_health(provider_name, detail):
     was_quota_exceeded = (
         provider_health.get_quota_snapshot(provider_name) or {}
@@ -654,8 +632,6 @@ def _record_coding_failure_health(provider_name, detail):
 
     if any(marker in detail.lower() for marker in _QUOTA_EXCEEDED_MARKERS):
         provider_health.capture_quota_exceeded(provider_name, detail=detail)
-        if not was_quota_exceeded and provider_name.startswith(_OPENCODE_ZEN_PROVIDERS_PREFIX):
-            _notify_opencode_quota_exceeded(provider_name, detail)
     else:
         provider_health.capture_provider_error(provider_name, detail=detail)
 

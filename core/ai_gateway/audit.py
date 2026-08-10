@@ -41,7 +41,7 @@ def _save(records: list[dict]) -> None:
     # Trim oldest if over limit
     if len(records) > MAX_RECORDS:
         records = records[-MAX_RECORDS:]
-    json.dump({"records": records, "schema_version": 1}, tmp, indent=2)
+    tmp.write_text(json.dumps({"records": records, "schema_version": 1}, indent=2))
     tmp.replace(STORAGE_PATH)
 
 

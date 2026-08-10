@@ -159,6 +159,13 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border
 .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
 .toggle-switch input:disabled + .toggle-slider { opacity: 0.4; cursor: not-allowed; }
 
+.btn-delete-agent {
+  background: none; border: 1px solid transparent; color: var(--muted);
+  cursor: pointer; font-size: 0.9rem; padding: 4px 8px; border-radius: 4px;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.btn-delete-agent:hover { color: var(--red); border-color: var(--red); background: rgba(248,81,73,0.08); }
+
 /* ── Chat tab ──────────────────────────────────────────────────────── */
 
 .chat-wrap {
@@ -2047,7 +2054,7 @@ tr:hover { background: rgba(255,255,255,0.03); }
 
       function renderTable(rows) {
         if (!rows.length) return '<span class="empty">none</span>';
-        let h = '<table><thead><tr><th>Agent</th><th>Capabilities</th><th>Cost</th><th>Usage</th><th>On/Off</th></tr></thead><tbody>';
+        let h = '<table><thead><tr><th>Agent</th><th>Capabilities</th><th>Cost</th><th>Usage</th><th>On/Off</th><th></th></tr></thead><tbody>';
         for (const {name, info} of rows) {
           const caps = (info.capabilities||[]).join(", ");
           const cost = info.cost_tier || "-";
@@ -2069,6 +2076,9 @@ tr:hover { background: rgba(255,255,255,0.03); }
                 <input type="checkbox" data-provider="${esc(name)}" ${checked} ${disabledAttr}>
                 <span class="toggle-slider"></span>
               </label>
+            </td>
+            <td>
+              <button class="btn-delete-agent" data-provider="${esc(name)}" title="Permanently delete">&#x1F5D1;</button>
             </td>
           </tr>`;
         }
@@ -2094,6 +2104,29 @@ tr:hover { background: rgba(255,255,255,0.03); }
             console.error("Toggle failed:", e);
             cb.checked = !enabled; // revert on failure
             alert("Failed to toggle " + name + ": " + e.message);
+          }
+        });
+      });
+
+      // Attach delete handlers
+      document.querySelectorAll("#tab-agents .btn-delete-agent").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const name = btn.dataset.provider;
+          if (!confirm(`Permanently delete "${name}"? This removes it from the registry and all routing chains.`)) return;
+          try {
+            const resp = await fetch(`/dashboard/api/proxy/providers/${name}`, {
+              method: "DELETE",
+              headers: {"Authorization": getAuthHeader()},
+            });
+            if (!resp.ok) {
+              const err = await resp.json();
+              alert(`Cannot delete: ${err.detail || resp.statusText}`);
+              return;
+            }
+            btn.closest("tr").remove();
+          } catch (e) {
+            console.error("Delete failed:", e);
+            alert("Failed to delete " + name + ": " + e.message);
           }
         });
       });

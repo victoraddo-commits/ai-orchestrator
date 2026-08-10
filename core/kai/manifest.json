@@ -1,0 +1,56 @@
+{
+  "name": "Kai Command Center",
+  "short_name": "Kai",
+  "description": "Kai Mobile Command Node — autonomous infrastructure control plane",
+  "start_url": "/command-center",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#16A34A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/kai/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/kai/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities", "developer tools"],
+  "lang": "en-US",
+  "shortcuts": [
+    {
+      "name": "System Status",
+      "short_name": "Status",
+      "description": "View system health overview",
+      "url": "/command-center#home",
+      "icons": [{ "src": "/kai/shortcut-status.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "AI Workforce",
+      "short_name": "Workforce",
+      "description": "View AI workers and jobs",
+      "url": "/command-center#ai-workforce",
+      "icons": [{ "src": "/kai/shortcut-workers.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Kai Chat",
+      "short_name": "Chat",
+      "description": "Chat with Kai",
+      "url": "/command-center#kai-chat",
+      "icons": [{ "src": "/kai/shortcut-chat.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Devices",
+      "short_name": "Devices",
+      "description": "View registered devices",
+      "url": "/command-center#devices",
+      "icons": [{ "src": "/kai/shortcut-devices.png", "sizes": "96x96" }]
+    }
+  ]
+}

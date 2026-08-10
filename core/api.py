@@ -207,6 +207,18 @@ def service_worker():
     return Response(content=_SW_JS, media_type="application/javascript")
 
 
+@app.get("/kai/mobile/diagnose")
+def mobile_diagnose():
+    """Run Kai Mobile Command Node self-diagnostics (SP6 — Integration & Testing).
+
+    Returns 8 checks: device registry, WireGuard, API reachability,
+    authentication, notifications, AI providers, health worker, and PWA assets.
+    Each check has status (PASS/WARN/FAIL), detail text, and optional artifact.
+    """
+    from core.kai.mobile_diagnose import run_diagnostic
+    return run_diagnostic()
+
+
 @app.get("/")
 def root_redirect():
     return RedirectResponse(url="/command-center")

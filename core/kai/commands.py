@@ -399,4 +399,28 @@ COMMAND_PATTERNS += (
         lambda match: _handle_provider_status(str(match.group(1)).strip()),
         "Check a specific provider's status — 'Kai, how is qwen4_coding doing?'",
     ),
+    # SP6: Mobile Command Node self-diagnostics
+    (
+        re.compile(r"^(?:kai,?\s*)?(?:mobile\s+diagnose|run\s+diagnostics?|diagnose\s+mobile)\s*\.?$", re.IGNORECASE),
+        lambda match: _handle_mobile_diagnose(),
+        "Run Kai Mobile Command Node self-diagnostics.",
+    ),
 )
+
+
+# ---------------------------------------------------------------------------
+# SP6: Mobile diagnostic command handler
+# ---------------------------------------------------------------------------
+
+def _handle_mobile_diagnose():
+    """Run Kai Mobile Command Node self-diagnostics."""
+    from core.kai.mobile_diagnose import run_diagnostic
+    result = run_diagnostic()
+    checks = []
+    for c in result["checks"]:
+        icon = "✅" if c["status"] == "PASS" else "⚠️" if c["status"] == "WARN" else "❌"
+        checks.append(f"  {icon} {c['name']}: {c['status']} — {c['detail']}")
+    lines = [f"Kai Mobile Command Node — {result['summary']}"]
+    lines.extend(checks)
+    result["reply"] = "\n".join(lines)
+    return result

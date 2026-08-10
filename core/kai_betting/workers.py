@@ -110,10 +110,11 @@ class KaiBettingWorkers:
             try:
                 # Skip events that already have predictions with real bookmaker odds
                 # (they were already covered by refresh_sync)
-                existing_odds = db.execute(
-                    "SELECT COUNT(*) as cnt FROM predictions WHERE event_id = ? AND bookmaker_odds IS NOT NULL",
-                    (event["id"],)
-                ).fetchone()
+                with get_db() as guard_db:
+                    existing_odds = guard_db.execute(
+                        "SELECT COUNT(*) as cnt FROM predictions WHERE event_id = ? AND bookmaker_odds IS NOT NULL",
+                        (event["id"],)
+                    ).fetchone()
                 if existing_odds and existing_odds["cnt"] > 0:
                     continue  # Already has real-odds predictions — skip synthetic generation
 
@@ -174,7 +175,7 @@ class KaiBettingWorkers:
                         published += 1
 
             except Exception as e:
-                logger.error(f"Prediction generation failed for event {event.get('id')}: {e}")
+                logger.error(f"Prediction generation failed for event {event['id']}: {e}")
                 errors += 1
 
         logger.info(

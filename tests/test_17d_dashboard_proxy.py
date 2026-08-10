@@ -2,7 +2,8 @@
 
 Upgraded same day from a single shared passphrase to a real username/
 password login (user directive: "gate it with a login page, username Kai
-password Kai-Enzo... admin can change the password anytime").
+password <strong random value>... admin can change the password anytime").
+Default password rotated to strong random value 2026-08-10.
 
 Covers:
 - Token never leaks to the browser bundle or proxy responses
@@ -93,7 +94,10 @@ def test_dashboard_credentials_default_username_and_password():
     assert creds["username"]
     assert creds["password"]
     assert DEFAULT_DASHBOARD_USERNAME == "Kai"
-    assert DEFAULT_DASHBOARD_PASSWORD == "Kai-Enzo"
+    # Default password is now a strong random value (rotated 2026-08-10).
+    # Verify it's non-empty and not the old well-known default.
+    assert len(DEFAULT_DASHBOARD_PASSWORD) >= 32
+    assert DEFAULT_DASHBOARD_PASSWORD != "Kai-Enzo"
 
 
 def test_dashboard_credentials_stable_across_calls():

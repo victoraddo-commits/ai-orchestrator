@@ -519,13 +519,13 @@ def test_summarize_lessons_does_not_escalate_a_lone_observe_lesson_to_trusted():
     # MIN_SAMPLE_SIZE), so the summary silently overriding it back to
     # "trusted" would defeat the point of the guard.
     build_learning.record_lesson(
-        "successful_solution", "opencode_minimax", "13T", recommendation="observe"
+        "successful_solution", "gpuai_minimax", "13T", recommendation="observe"
     )
 
     summary = build_learning.summarize_lessons()
 
-    assert summary["opencode_minimax"]["success_rate"] == 100.0
-    assert summary["opencode_minimax"]["recommendation"] == "observe"
+    assert summary["gpuai_minimax"]["success_rate"] == 100.0
+    assert summary["gpuai_minimax"]["recommendation"] == "observe"
 
 
 def test_summarize_lessons_still_reaches_trusted_when_a_lesson_claims_it():

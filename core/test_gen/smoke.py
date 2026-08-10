@@ -58,7 +58,7 @@ def write_smoke_fixture(target_path):
     target_path.write_text(SMOKE_FIXTURE, encoding="utf-8")
 
 
-def run_smoke(provider_name="opencode_claude", timeout=None, keep_output=False):
+def run_smoke(provider_name="gpuai_minimax", timeout=None, keep_output=False):
     """Run the full end-to-end smoke test.
 
     1. Write the fixture module.

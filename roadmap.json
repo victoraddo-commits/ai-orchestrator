@@ -273,7 +273,7 @@
       "id": "18C",
       "name": "Zero-Trust Legal Brain Architecture + 16-Tier Corpus Foundation",
       "description": "Complete zero-trust Legal Brain with 16-tier Ghana corpus acquisition priority system: dedicated PostgreSQL DB, immutable WORM storage, hash-chain document verification, sandboxed PDF processing (subprocess+seccomp), ClamAV malware scanning, temp workspace isolation, permanent/temporary service boundary. NEW: 16-tier acquisition priority registry (klaus_acquisition_tiers), 22-field Legal Authority Record schema (klaus_legal_authority_records), source registry expansion with trust-level classification, Ghana jurisdiction enforcement at DB constraint level, tier-prioritized acquisition queue, migration of existing 75 documents to correct tiers.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [
         "17O-D"
       ],
@@ -292,11 +292,12 @@
       "priority": 1,
       "title": "18C: Zero-Trust Legal Brain Architecture + 16-Tier Corpus Foundation",
       "updated_at": "2026-08-07T12:24:29.220382+00:00",
-      "build_id": "cde493d5",
-      "failure_reason": "Build 48c69077 missing from builds.json (deleted or stale reference)",
       "completed_at": "2026-08-07",
       "completion_note": "16 acquisition tiers, 22-field Legal Authority Record. core/klaus/ complete. 16 acquisition tiers, 22-field Legal Authority Record. Done.",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "assigned_provider": "omniroute",
+      "build_id": "3a2bb5b5",
+      "failure_reason": "Build 3a2bb5b5 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "IT-3",
@@ -1834,7 +1835,7 @@
       "id": "15C",
       "name": "Kai platform audit log",
       "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [
         "15A"
       ],
@@ -1847,12 +1848,12 @@
         "Tests cover: a build approval, a deploy approval, and an incident all appear correctly attributed in the merged feed; filtering and export produce correct subsets"
       ],
       "tests_required": true,
-      "build_id": "a2716ad7",
-      "failure_reason": "Build a2716ad7 missing from builds.json (deleted or stale reference)",
       "assigned_provider": "omniroute",
       "completed_at": "2026-08-07",
       "completion_note": "core/audit_logger.py (290 lines) JSONL audit with HMAC-SHA256 integrity. GET /audit endpoint merging 4 sources. Completed 2026-08-08.",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "73c93e97",
+      "failure_reason": "Build 73c93e97 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "15D",
@@ -2167,7 +2168,7 @@
     {
       "id": "SUSU-1c",
       "name": "SUSU-1c: Telegram Bot - Member Joining + Fee Acceptance",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 3,
       "dependencies": [
         "SUSU-1a",
@@ -2181,11 +2182,11 @@
         "Contribution tracking per user per group",
         "Wallet balance stored"
       ],
-      "build_id": "3940e437",
       "completed_at": "2026-08-07",
       "completion_note": "Built: handle_join_flow() fee acceptance state machine in telegram/bot.py. handle_join_flow() fee acceptance state machine. Done.",
-      "failure_reason": "Build 717055d6 missing from builds.json (deleted or stale reference)",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "9265292a",
+      "failure_reason": "Build 9265292a missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "SUSU-1d",
@@ -2203,9 +2204,7 @@
         "Contribution and payout history viewable",
         "Group status view for admins"
       ],
-      "build_id": "594acbb0",
-      "completed_at": "2026-08-08",
-      "failure_reason": "Build 594acbb0 missing from builds.json (deleted or stale reference)"
+      "completed_at": "2026-08-08"
     },
     {
       "id": "17O-A",
@@ -2363,8 +2362,6 @@
         "Fee Engine rule management UI",
         "Integrated with Kai Command Center"
       ],
-      "build_id": "54573ea4",
-      "failure_reason": "Build 54573ea4 missing from builds.json (deleted or stale reference)",
       "completed": "2026-08-08",
       "completion_note": "Admin Dashboard - User + Group Management. Done."
     },
@@ -2397,7 +2394,7 @@
         "SUSU-3a"
       ],
       "assigned_agent": "qwen3",
-      "status": "in_progress",
+      "status": "failed",
       "description": "Fraud detection: duplicate detection, device fingerprinting, velocity checks, unusual pattern detection. Risk scoring per user and per group. Configurable detection rules.",
       "completion_criteria": [
         "Duplicate detection operational",
@@ -2406,11 +2403,11 @@
         "Risk scoring (user + group level)",
         "Configurable detection rules"
       ],
-      "build_id": "3ff09729",
       "completed_at": "2026-08-07",
       "completion_note": "Built: core/risk.py (340+ lines) multi-signal risk engine. core/risk.py (340+ lines) multi-signal risk engine. Done.",
-      "failure_reason": "Build 39e51508 missing from builds.json (deleted or stale reference)",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "b3b4866e",
+      "failure_reason": "Build b3b4866e missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "SUSU-4b",
@@ -2429,9 +2426,7 @@
         "Suspicious activity auto-flagging",
         "Immutable compliance audit trail"
       ],
-      "build_id": "8a8f2b78",
-      "completed_at": "2026-08-08",
-      "failure_reason": "Build 8a8f2b78 missing from builds.json (deleted or stale reference)"
+      "completed_at": "2026-08-08"
     },
     {
       "id": "18A-a",
@@ -2496,7 +2491,7 @@
         "15H"
       ],
       "assigned_agent": "qwen3",
-      "status": "in_progress",
+      "status": "failed",
       "description": "Project-aware chat context: conversations scoped to projects, project switching, context persistence across sessions, integration with build pipeline.",
       "completion_criteria": [
         "Project-scoped conversations",
@@ -2504,11 +2499,11 @@
         "Context persistence across sessions",
         "Build pipeline integration"
       ],
-      "build_id": "d0020ffd",
       "completed_at": "2026-08-07",
       "completion_note": "project_id in create_conversation() and get_conversations(). Fixed KEEP_RECENT_TURNS bug. Full CRUD in place.",
-      "failure_reason": "Build a84d8d6a missing from builds.json (deleted or stale reference)",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "6c2d9adf",
+      "failure_reason": "Build 6c2d9adf missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "AI-1",
@@ -2567,7 +2562,7 @@
     {
       "id": "AI-4",
       "name": "AI-4: Serverless Endpoints",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 4,
       "dependencies": [
         "AI-1"
@@ -2580,16 +2575,16 @@
         "Integrated into role-based routing",
         "Scale-to-zero confirmed working"
       ],
-      "build_id": "2de47a4f",
       "completed_at": "2026-08-07",
       "completion_note": "core/ai_serverless/ with handler.py + vercel_handler.py. core/ai_serverless/ with handler.py + vercel_handler.py. Done.",
-      "failure_reason": "Build f99ebc1a missing from builds.json (deleted or stale reference)",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "1b2ba544",
+      "failure_reason": "Build 1b2ba544 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "AI-5",
       "name": "AI-5: Cost Tracking Dashboard",
-      "status": "pending",
+      "status": "failed",
       "priority": 5,
       "dependencies": [
         "AI-1"
@@ -2602,11 +2597,11 @@
         "Budget threshold alerts via Telegram",
         "Cost history export"
       ],
-      "build_id": "a4e9713e",
       "completed_at": "2026-08-07",
       "completion_note": "core/ai/cost_tracker.py with cost summary/provider detail endpoints. core/ai/cost_tracker.py with cost summary endpoints. Done.",
-      "failure_reason": "Build a4e9713e missing from builds.json (deleted or stale reference)",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "65f990f9",
+      "failure_reason": "Build 65f990f9 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "AI-6",
@@ -2631,7 +2626,7 @@
     {
       "id": "AI-7",
       "name": "AI-7: Credential Vault (extends 17E-2)",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 7,
       "dependencies": [
         "AI-1"
@@ -2644,11 +2639,11 @@
         "Audit log for all credential access",
         "Migration of existing .env keys to vault"
       ],
-      "build_id": "e42238b6",
       "completed_at": "2026-08-07",
       "completion_note": "core/ai/credential_vault.py with AES-256-GCM encryption. core/ai/credential_vault.py with AES-256-GCM. Done.",
-      "failure_reason": "Build af22ed86 missing from builds.json (deleted or stale reference)",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "0d69b0b7",
+      "failure_reason": "Build 0d69b0b7 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "18D",
@@ -2847,7 +2842,7 @@
       "name": "Juris Kai Analytics",
       "description": "User engagement metrics: queries per day, topic popularity, retention rates, conversion rates (trial\u2192paid). Cost per user tracking. AI response quality sampling. Export for business intelligence.",
       "priority": 25,
-      "status": "in_progress",
+      "status": "failed",
       "depends_on": [
         "JK-1",
         "JK-3"
@@ -2857,17 +2852,17 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "build_id": "8057d589",
-      "failure_reason": "Build 1791086a missing from builds.json (deleted or stale reference)",
       "completion_note": "Deferred: Juris Kai Analytics. Stretch goal. Deferred: Juris Kai Analytics. Stretch goal.",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "a468b6b4",
+      "failure_reason": "Build a468b6b4 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "JK-6",
       "name": "Juris Kai Monetization Readiness",
       "description": "Live Hubtel API integration (currently test mode). Payment webhook handling. Automatic subscription activation on payment confirmation. Receipt generation. Payment dispute handling flows.",
       "priority": 30,
-      "status": "in_progress",
+      "status": "failed",
       "depends_on": [
         "JK-1",
         "JK-2"
@@ -2877,10 +2872,10 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "build_id": "27d41877",
-      "failure_reason": "Build 92e1c42f missing from builds.json (deleted or stale reference)",
       "completion_note": "Deferred: Juris Kai Monetization. Stretch goal. Deferred: Juris Kai Monetization. Stretch goal.",
-      "completed": "2026-08-08"
+      "completed": "2026-08-08",
+      "build_id": "d5450269",
+      "failure_reason": "Build d5450269 missing from builds.json (deleted or stale reference)"
     }
   ],
   "_audit": {

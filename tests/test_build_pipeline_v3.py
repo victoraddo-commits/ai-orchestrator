@@ -266,21 +266,23 @@ class TestSandboxIsolation:
 
 
 class TestPodRoutingV3:
-    """V3: Pod A = Generator, Pod B = Reviewer in router."""
+    """V3: omniroute_deepseek_coding primary in coding, deepseek_native_pro primary in text roles."""
 
-    def test_coding_front_excludes_opencode_claude(self):
+    def test_coding_front_includes_omniroute_deepseek_coding(self):
         from core.ai.ai_router import CODING_ROTATING_FRONT
-        assert "opencode_claude" not in CODING_ROTATING_FRONT
-        assert "qwen4_coding" in CODING_ROTATING_FRONT
+        assert "omniroute_deepseek_coding" in CODING_ROTATING_FRONT
+        # gpuai_minimax (MiniMax M3 via GPU.ai) is in the coding fallback chain,
+        # not the rotating front.
+        assert "gpuai_minimax" not in CODING_ROTATING_FRONT
 
-    def test_pod_b_is_review_primary(self):
+    def test_deepseek_native_pro_is_review_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["review"][0] == "qwen4_pod_b"
+        assert ROLE_PROVIDERS["review"][0] == "deepseek_native_pro"
 
-    def test_pod_b_is_architecture_primary(self):
+    def test_deepseek_native_pro_is_architecture_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["architecture"][0] == "qwen4_pod_b"
+        assert ROLE_PROVIDERS["architecture"][0] == "deepseek_native_pro"
 
-    def test_pod_a_is_planning_primary(self):
+    def test_deepseek_native_pro_is_planning_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["planning"][0] == "qwen4_text"
+        assert ROLE_PROVIDERS["planning"][0] == "deepseek_native_pro"

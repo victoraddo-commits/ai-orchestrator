@@ -151,11 +151,11 @@ def test_watchdog_handles_already_exited_process(tmp_path):
 
 
 def test_generation_timeout_error_is_catchable_as_timeout_expired():
-    err = GenerationTimeoutError(cmd=["opencode"], timeout=5)
+    err = GenerationTimeoutError(cmd=["cloudcli"], timeout=5)
     assert isinstance(err, subprocess.TimeoutExpired)
     assert err.cpu_idle is False
 
 
 def test_generation_timeout_error_cpu_idle_flag():
-    err = GenerationTimeoutError(cmd=["opencode"], timeout=5, cpu_idle=True)
+    err = GenerationTimeoutError(cmd=["cloudcli"], timeout=5, cpu_idle=True)
     assert err.cpu_idle is True

@@ -417,3 +417,38 @@ def call_gpuai_gemma(prompt, model=GPUAI_GEMMA_MODEL, timeout=120, max_tokens=40
         raise RuntimeError(f"gpuai_gemma request failed: {detail}")
 
     return data["choices"][0]["message"]["content"]
+
+
+# GPU.ai Minimax M3 — serverless, OpenAI-compatible.
+# Replaces opencode_minimax (removed 2026-08-10). Same GPU.ai account key
+# as gpuai_gemma, different model. https://api.gpu.ai/v1/chat/completions
+GPUAI_MINIMAX_MODEL = "gpuai/minimax-m3"
+
+
+def call_gpuai_minimax(prompt, model=GPUAI_MINIMAX_MODEL, timeout=60, max_tokens=4096):
+    """Call GPU.ai's Minimax M3 (OpenAI-compatible chat API).
+
+    Uses the same GPU.ai account key as call_gpuai_gemma — stored secrets,
+    not env vars. Returns the response text. Raises ProviderUnavailable if
+    no key is stored.
+    """
+    from core.ai.secrets import get_api_key
+    key = get_api_key("gpuai")
+    if not key:
+        raise ProviderUnavailable(
+            "GPU.ai Minimax M3 needs a stored secret (provider: 'gpuai')"
+        )
+
+    data = _post_json(
+        "gpuai_minimax",
+        f"{GPUAI_BASE_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": model, "messages": [{"role": "user", "content": prompt}], "max_tokens": max_tokens},
+        timeout=timeout,
+    )
+
+    if not data.get("choices"):
+        detail = (data.get("error") or {}).get("message", "unknown error")
+        raise RuntimeError(f"gpuai_minimax request failed: {detail}")
+
+    return data["choices"][0]["message"]["content"]

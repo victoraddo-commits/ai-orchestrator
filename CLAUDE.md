@@ -55,15 +55,17 @@ Five lifecycle objects all share a common schema from `core/lifecycle.py::new_ob
 
 ```
 CODING_ROTATING_FRONT: ["qwen4_coding"]  (Qwen4 RunPod — primary)
-Fixed tail: qwen4Z → opencode_claude → opencode_claude_sonnet → opencode_claude_opus → omniroute → claude → opencode → opencode_minimax
+Coding fallback chain: omniroute_deepseek_coding → claude → omniroute → gpuai_minimax
 ```
 
 - `qwen4_coding` — Qwen4 Pod A (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB. Primary — sole member of CODING_ROTATING_FRONT.
-- `qwen4Z` — Qwen4 Pod A via opencode CLI agent loop. Full tool-use capability. Fallback.
-- `opencode_claude` — Fable 5 via OpenCode Zen (separate billing, healthy). Fallback.
-- `claude` — Direct CloudCLI/Anthropic subscription. Out of credit currently, in tail.
+- `qwen4Z` — Qwen4 Pod A via coding bridge. Full tool-use capability. Fallback.
+- `omniroute_deepseek_coding` — DeepSeek via OmniRoute self-hosted gateway. Coding fallback.
+- `claude` — Direct CloudCLI/Anthropic subscription. Out of credit currently.
 - `omniroute` — Self-hosted aggregator gateway on localhost:20128. Always-on fallback.
-- `openrouter_claude_opus`, `openrouter_claude_sonnet`, `opencode_deepseek` — DEREGISTERED (OpenRouter account out of credit; removed from registry 2026-08-07).
+- `gpuai_minimax` — MiniMax M3 via GPU.ai serverless API. Replaces opencode_minimax (removed 2026-08-10).
+- `openrouter_claude_opus`, `openrouter_claude_sonnet`, `opencode_deepseek` — DEREGISTERED (OpenRouter account out of credit; removed 2026-08-07).
+- All OpenCode Zen providers (`opencode`, `opencode_claude`, `opencode_claude_sonnet`, `opencode_claude_opus`, `opencode_minimax`, `opencode_fable5`, `opencode_gemini_pro`) — REMOVED 2026-08-10 (insufficient balance).
 
 ### Text-task providers (chat/completion, no tool use)
 
@@ -71,7 +73,7 @@ The Provider rotation varies by task_type. Key roles:
 
 | Role | Primary | Fallback chain |
 |------|---------|----------------|
-| planning | qwen4_text | qwen4_pod_b → gemini → geminix → deepseek_native_flash → omniroute_deepseek_flash → opencode_claude → deepseek_native_pro → claude |
+| planning | qwen4_text | qwen4_pod_b → gemini → geminix → deepseek_native_flash → omniroute_deepseek_flash → deepseek_native_pro → claude |
 | architecture | qwen4_pod_b | qwen4_text → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → openai → claude |
 | review | qwen4_pod_b | qwen4_text → openai → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → claude |
 | classification | qwen4_pod_b | qwen4_text → groq → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → claude |
@@ -87,10 +89,10 @@ The Provider rotation varies by task_type. Key roles:
 | Provider | Type | Status | Billing |
 |----------|------|--------|---------|
 | qwen4_coding (RunPod A) | coding | ✅ primary | $0.99/hr GPU |
-| qwen4Z (RunPod A via opencode) | coding | ✅ fallback | same GPU |
+| qwen4Z (RunPod A via coding bridge) | coding | ✅ fallback | same GPU |
 | qwen4_text (RunPod A) | text | ✅ primary | same GPU |
 | qwen4_pod_b (RunPod B) | text | ✅ primary (review) | separate $0.99/hr GPU |
-| opencode_claude (Fable 5) | both | ✅ healthy | OpenCode Zen (separate) |
+| gpuai_minimax (GPU.ai) | both | ✅ fallback | GPU.ai serverless (paid) |
 | openai | text | ✅ aliases qwen4_text | same GPU |
 | omniroute | both | ✅ fallback | self-hosted |
 | omniroute_deepseek_flash | text | ✅ fallback | self-hosted |
@@ -102,7 +104,6 @@ The Provider rotation varies by task_type. Key roles:
 | deepseek_native_pro | text | ✅ healthy | native api.deepseek.com |
 | claude (direct) | both | ⚠️ out of credit | Anthropic subscription |
 | minimax | text | ⚠️ excluded (0/4 verified) | |
-| opencode_minimax | coding | ⚠️ in tail only | OpenCode Zen |
 | local | both | ❌ placeholder | N/A |
 
 ## Roadmap state
@@ -200,8 +201,8 @@ When a new AI provider picks up Kai's work:
 
 **What's already done (17Z — Qwen3/Qwen4 RunPod Provider):**
 - `qwen4_text` (was `qwen3_coder_text`) properly registered as text_task provider
-- `qwen4_coding` registered as coding agent (tool-use loop via opencode CLI)
-- `qwen4Z` registered as coding agent via opencode CLI
+- `qwen4_coding` registered as coding agent (tool-use loop via coding bridge)
+- `qwen4Z` registered as coding agent via coding bridge
 - `qwen4_pod_b` registered as dedicated review/deploy text pod
 - `call_qwen4_text()` in `llm_clients.py` (was `call_qwen3_coder_text`)
 - `call_qwen4_pod_b_text()` in `llm_clients.py` (was `call_qwen3_pod_b_text`)

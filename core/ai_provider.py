@@ -7,9 +7,8 @@ or tool use, so this still doesn't duplicate CloudCLI's coding engine. Only
 Claude has "coding_agent" capability.
 """
 
-import os
-import shutil
 import json
+import os
 from pathlib import Path
 
 # Load .env file to ensure environment variables are available for provider checks
@@ -29,12 +28,8 @@ from core.coding_bridge import run_coding_task as _claude_run_coding_task
 import core.coding_bridge as coding_bridge
 import core.llm_clients as llm_clients
 import core.ai.provider_health as provider_health
-import core.opencode_bridge as opencode_bridge
 from core.memory import update
 from core.repo_manager import create_local_repo
-
-
-OPENCODE_AUTH_PATH = Path.home() / ".local" / "share" / "opencode" / "auth.json"
 
 
 _PROVIDERS = {}
@@ -200,189 +195,20 @@ def _claude_run_text_task(prompt, timeout=60, project_path=None):
     return result.get("response_text", "")
 
 
-def _opencode_credential_available(key):
-    """True when the opencode CLI is on PATH and its own credential store
-    (~/.local/share/opencode/auth.json) holds an entry under `key` -- e.g.
-    "opencode" for the OpenCode Zen account, "openrouter" for the OpenRouter
-    account (see scripts/setup_openrouter_opencode_auth.py)."""
-    if shutil.which("opencode") is None:
-        return False
-
-    try:
-        auth = json.loads(OPENCODE_AUTH_PATH.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
-        return False
-
-    return key in auth
-
-
-def _opencode_available():
-    return _opencode_credential_available("opencode")
-
-
-def _opencode_run_coding_task(project_path, instruction, **kwargs):
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-# Billed through OpenCode Zen's own account, entirely separate from the
-# CloudCLI/Anthropic subscription -- confirmed useful live: that subscription
-# hit its weekly limit tonight, but Zen's Claude access has its own quota
-# pool and would have kept working. Same availability check as "opencode"
-# (same CLI, same Zen credential) since model choice doesn't affect that.
-# Fable 5 chosen deliberately over Sonnet 5 to maximize the Zen account's
-# usage headroom (per-account credit, not shared with the CloudCLI
-# subscription) while still staying on a real Claude model for this route.
-OPENCODE_CLAUDE_MODEL = "opencode/claude-fable-5"
-
-
-def _opencode_claude_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", OPENCODE_CLAUDE_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-# 2026-08-02 operator directive: give Fable 5 a text_task route too (Q&A --
-# e.g. Kai's operator chat, task_type="planning") alongside its existing
-# coding_agent one, same "text only, don't touch files" wrapper pattern as
-# _claude_run_text_task above (reuses the coding-task path with an
-# instruction prefix + the same scratch workspace, since opencode has no
-# separate non-agentic text endpoint). NOT wired into any approval flow --
-# approvals stay human-only (see core.build_manager.approve_architecture/
-# approve_deploy and tests/test_kai_identity.py's structural guarantee that
-# nothing under core/kai/ calls them); "answer questions" is the entire
-# scope of this route.
-def _opencode_claude_run_text_task(prompt, timeout=60, project_path=None):
-    if project_path is None:
-        create_local_repo(_SCRATCH_WORKSPACE)
-        project_path = _SCRATCH_WORKSPACE
-
-    instruction = (
-        "Answer the following as text only. Do NOT write, edit, or modify "
-        "any files, and do not run commands that change anything.\n\n"
-        f"{prompt}"
-    )
-    result = _opencode_claude_run_coding_task(project_path, instruction, timeout=timeout)
-
-    if not result.get("success"):
-        errors = result.get("tool_errors") or []
-        detail = "; ".join(e.get("content", "") for e in errors) or "opencode run did not succeed"
-        raise RuntimeError(f"opencode_claude text task failed: {detail}")
-
-    return result.get("response_text", "")
-
-
-# Escalation tier above Fable 5: same Zen credential/billing, confirmed live
-# via `opencode models` to be valid model strings (2026-07-29, user directive
-# after Claude's weekly subscription limit hit mid-session). Fable 5 stays
-# the first Zen attempt (cheapest, maximizes account headroom per the
-# existing directive above) -- these are for when Fable 5 itself is also
-# unavailable/failing, before falling all the way to a non-Claude model
-# (plain "opencode"/DeepSeek). See ai.ai_router.ROLE_PROVIDERS["coding"]
-# for the actual fallback order.
-OPENCODE_CLAUDE_SONNET_MODEL = "opencode/claude-sonnet-5"
-OPENCODE_CLAUDE_OPUS_MODEL = "opencode/claude-opus-5"
-
-
-def _opencode_claude_sonnet_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", OPENCODE_CLAUDE_SONNET_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-def _opencode_claude_opus_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", OPENCODE_CLAUDE_OPUS_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-# 13T: minimax-m2.7 pinned as its own routable coding-agent provider rather
-# than left as an implicit historical default of "opencode". Two reasons it
-# has to be a separate registry entry:
-#
-#   * "opencode" now means deepseek-v4-pro (2026-07-29), so routing to
-#     minimax at all requires an explicit model pin.
-#   * every usage-history entry is keyed by *provider*, not model -- the
-#     "opencode" aggregate is already a blend of the two models, and 13T had
-#     to reconstruct which was which from the opencode CLI session store to
-#     get real per-model counts. A distinct name means the next review reads
-#     minimax's coding-agent record straight out of
-#     core.ai.provider_evidence with no external attribution step.
-#
-# The evidence for having this route at all (see ai.ai_router.ROLE_PROVIDERS
-# ["coding"] and the 13T lesson records): 3/3 recorded coding_agent runs,
-# zero hallucinated-tool-call/timeout/tool-error events -- unlike the
-# tools-less text_task path, which is 0/4 usable and stays unrouted.
-OPENCODE_MINIMAX_MODEL = "opencode/minimax-m2.7"
-
-
-def _opencode_minimax_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", OPENCODE_MINIMAX_MODEL)
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-# 17S: Dedicated per-model OpenCode Zen keys (2026-08-08).
-# Each key is scoped to exactly one model on the platform side, with its own
-# isolated XDG_DATA_HOME/auth.json so the shared 'opencode' credential's other
-# models are never reachable through these routes (operator directive).
-OPENCODE_FABLE5_MODEL = "opencode/claude-fable-5"
-OPENCODE_GEMINI_PRO_MODEL = "opencode/gemini-3.1-pro"
-
-
-def _opencode_fable5_run_coding_task(project_path, instruction, **kwargs):
-    """Dedicated CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY — isolated auth."""
-    return opencode_bridge.run_opencode_fable5(project_path, instruction, **kwargs)
-
-
-def _opencode_fable5_run_text_task(prompt, timeout=60, project_path=None):
-    """Fable 5 text-task route via dedicated key. Same 'text only' wrapper as
-    _opencode_claude_run_text_task but with isolated auth."""
-    from core.build_manager import create_local_repo
-    if project_path is None:
-        create_local_repo(_SCRATCH_WORKSPACE)
-        project_path = _SCRATCH_WORKSPACE
-    instruction = (
-        "Answer the following as text only. Do NOT write, edit, or modify "
-        "any files, and do not run commands that change anything.\n\n"
-        f"{prompt}"
-    )
-    result = _opencode_fable5_run_coding_task(project_path, instruction, timeout=timeout)
-    if not result.get("success"):
-        errors = result.get("tool_errors") or []
-        detail = "; ".join(e.get("content", "") for e in errors) or "opencode run did not succeed"
-        raise RuntimeError(f"opencode_fable5 text task failed: {detail}")
-    return result.get("response_text", "")
-
-
-def _opencode_gemini_pro_run_text_task(prompt, timeout=60, project_path=None):
-    """Dedicated GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY — isolated auth.
-    Text-only route: Gemini 3.1 Pro is a reasoning model, not a coding agent."""
-    from core.build_manager import create_local_repo
-    if project_path is None:
-        create_local_repo(_SCRATCH_WORKSPACE)
-        project_path = _SCRATCH_WORKSPACE
-    instruction = (
-        "Answer the following as text only. Do NOT write, edit, or modify "
-        "any files, and do not run commands that change anything.\n\n"
-        f"{prompt}"
-    )
-    result = opencode_bridge.run_opencode_gemini_pro(project_path, instruction, timeout=timeout)
-    if not result.get("success"):
-        errors = result.get("tool_errors") or []
-        detail = "; ".join(e.get("content", "") for e in errors) or "opencode run did not succeed"
-        raise RuntimeError(f"opencode_gemini_pro text task failed: {detail}")
-    return result.get("response_text", "")
-
-
 # 2026-08-03 operator directive: OmniRoute (localhost:20128) as Kai's
 # always-on fallback provider. The gateway exposes OpenAI-compatible /v1
-# endpoints with auto/ routes that pick the best upstream per request, so
-# coding through the opencode CLI (--model omniroute/auto/best-coding) and
-# text through llm_clients.call_omniroute both survive any single upstream's
-# outage/credit state. See llm_clients.OMNIROUTE_* and
-# ~/.config/opencode/opencode.jsonc's "omniroute" provider block.
+# endpoints with auto/ routes that pick the best upstream per request.
+# Text through llm_clients.call_omniroute; coding through the CloudCLI
+# bridge routing via omniroute as the backend model.
+# See llm_clients.OMNIROUTE_* config.
 OMNIROUTE_CODING_MODEL = llm_clients.OMNIROUTE_CODING_MODEL
 
 
 def _omniroute_run_coding_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", f"omniroute/{OMNIROUTE_CODING_MODEL}")
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+    """Route coding through CloudCLI bridge — omniroute is the backend model
+    configured in CloudCLI.  This replaces the opencode CLI path removed
+    2026-08-10."""
+    return coding_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
 def _omniroute_run_text_task(prompt, timeout=60, project_path=None):
@@ -515,9 +341,7 @@ register_provider(
 # Architect fallback chain (see ai.ai_router.ROLE_PROVIDERS["architecture"]).
 # Same OPENROUTER_API_KEY as "openrouter" but a distinct provider key, so its
 # health/quota snapshots and usage history don't blend with the gpt-4o-mini
-# route. This is the 13V-approved "reuse the plain openrouter provider pinned
-# to anthropic/claude-sonnet-4.6" option -- 13M's opencode-CLI coding route
-# can still land separately later.
+# route.
 register_provider(
     "openrouter_claude",
     run_text_task=_openrouter_claude_run_text_task,
@@ -532,7 +356,7 @@ register_provider(
     run_text_task=_minimax_run_text_task,
     available_fn=lambda: bool(os.getenv("MINIMAX_API_KEY")),
     kind="cloud",
-    description="MiniMax-M2 (tools-less chat completion) -- registered but deliberately unrouted: 13T's usage review found 0/4 usable text_task outputs. Its coding-agent counterpart is 'opencode_minimax'",
+    description="MiniMax-M2 (tools-less chat completion) -- registered but deliberately unrouted: 13T's usage review found 0/4 usable text_task outputs. Its replacement is 'gpuai_minimax'",
     cost_tier="free_or_low_cost",
 )
 
@@ -578,73 +402,41 @@ register_provider(
 )
 
 
-register_provider(
-    "opencode",
-    run_coding_task=_opencode_run_coding_task,
-    available_fn=_opencode_available,
-    kind="cloud",
-    description="OpenCode (DeepSeek V4 Pro via OpenCode Zen by default, was MiniMax-m2.7 until 2026-07-29) -- sandboxed coding agent, second code-writing worker alongside Claude",
-    cost_tier="free_or_low_cost",
-)
+# GPU.ai Minimax M3 — serverless OpenAI-compatible API.
+# Replaces opencode_minimax (removed 2026-08-10). Uses the same GPU.ai
+# account key as gpuai_gemma but with the gpuai/minimax-m3 model.
+# See https://api.gpu.ai/v1 for API docs.
+GPUAI_MINIMAX_MODEL = "gpuai/minimax-m3"
+
+
+def _gpuai_minimax_run_text_task(prompt, timeout=60, project_path=None):
+    """GPU.ai Minimax M3 — text task via OpenAI-compatible chat API."""
+    return llm_clients.call_gpuai_minimax(prompt, timeout=timeout)
+
+
+def _gpuai_minimax_run_coding_task(project_path, instruction, **kwargs):
+    """GPU.ai Minimax M3 — coding task. Uses the CloudCLI bridge for the
+    agent loop; for direct text-only coding, falls through to the text-task
+    path (same as how _claude_run_text_task wraps coding results)."""
+    return coding_bridge.run_coding_task(project_path, instruction, **kwargs)
+
+
+def _gpuai_available():
+    try:
+        from core.ai.secrets import get_api_key
+        return get_api_key("gpuai") is not None
+    except ImportError:
+        return False
+
 
 register_provider(
-    "opencode_claude",
-    run_coding_task=_opencode_claude_run_coding_task,
-    run_text_task=_opencode_claude_run_text_task,
-    available_fn=_opencode_available,
+    "gpuai_minimax",
+    run_coding_task=_gpuai_minimax_run_coding_task,
+    run_text_task=_gpuai_minimax_run_text_task,
+    available_fn=_gpuai_available,
     kind="cloud",
-    description="Claude Fable 5 (opencode/claude-fable-5 via OpenCode Zen) -- billed separately from the CloudCLI/Anthropic subscription, survives that subscription's own outages/quota limits; also handles Q&A (text_task) since 2026-08-02",
-    cost_tier="free_or_low_cost",
-)
-
-register_provider(
-    "opencode_claude_sonnet",
-    run_coding_task=_opencode_claude_sonnet_run_coding_task,
-    available_fn=_opencode_available,
-    kind="cloud",
-    description="Claude Sonnet 5 (opencode/claude-sonnet-5 via OpenCode Zen) -- escalation above Fable 5 when it's also unavailable/failing, same separate Zen billing",
-    cost_tier="paid",
-)
-
-register_provider(
-    "opencode_claude_opus",
-    run_coding_task=_opencode_claude_opus_run_coding_task,
-    available_fn=_opencode_available,
-    kind="cloud",
-    description="Claude Opus 5 (opencode/claude-opus-5 via OpenCode Zen) -- top escalation tier above Fable 5/Sonnet 5, same separate Zen billing",
-    cost_tier="paid",
-)
-
-register_provider(
-    "opencode_minimax",
-    run_coding_task=_opencode_minimax_run_coding_task,
-    available_fn=_opencode_available,
-    kind="cloud",
-    description="MiniMax-m2.7 (opencode/minimax-m2.7 via OpenCode Zen) -- coding_agent only, restored 2026-07-29 by 13T's usage review: 3/3 recorded runs through opencode CLI's real tool-use loop, none of the text_task path's hallucinated tool-call failures",
-    cost_tier="free_or_low_cost",
-)
-
-# 17S: Dedicated per-model OpenCode Zen providers (2026-08-08).
-# Each has its own isolated auth.json via XDG_DATA_HOME, cleanly separating
-# the shared 'opencode' credential's multi-model slot from these single-model
-# keys. Per operator directive: highest priority for eligible roles.
-register_provider(
-    "opencode_fable5",
-    run_coding_task=_opencode_fable5_run_coding_task,
-    run_text_task=_opencode_fable5_run_text_task,
-    available_fn=_opencode_available,
-    kind="cloud",
-    description="Claude Fable 5 via dedicated OpenCode Zen key (CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY) -- isolated from shared 'opencode' credential, highest priority per operator directive 2026-08-02",
-    cost_tier="paid",
-)
-
-register_provider(
-    "opencode_gemini_pro",
-    run_text_task=_opencode_gemini_pro_run_text_task,
-    available_fn=_opencode_available,
-    kind="cloud",
-    description="Gemini 3.1 Pro via dedicated OpenCode Zen key (GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY) -- isolated from shared 'opencode' credential, text-only route per operator directive, highest priority for text roles",
-    cost_tier="paid",
+    description="MiniMax M3 (gpuai/minimax-m3 via GPU.ai serverless API) — replaces opencode_minimax, OpenAI-compatible chat + coding",
+    cost_tier="paid",  # GPU.ai pay-per-use
 )
 
 
@@ -706,15 +498,15 @@ register_provider(
 
 # 2026-08-09: Dedicated DeepSeek coding agent via OmniRoute gateway.
 # Per operator directive: "use deepseek" — routes through OmniRoute's
-# auto/best-coding slot which prefers DeepSeek models. This is Kai's
-# PRIMARY coding agent, backed by the same opencode CLI sandbox all
-# coding agents use, so DeepSeek powers the build/roadmap pipeline.
+# auto/best-coding slot which prefers DeepSeek models. Uses the CloudCLI
+# coding bridge for the agent loop (replaced opencode CLI 2026-08-10).
 OMNIROUTE_DEEPSEEK_CODING_MODEL = "auto/best-coding"
 
 
 def _omniroute_deepseek_coding_run_task(project_path, instruction, **kwargs):
-    kwargs.setdefault("model", f"omniroute/{OMNIROUTE_DEEPSEEK_CODING_MODEL}")
-    return opencode_bridge.run_coding_task(project_path, instruction, **kwargs)
+    """DeepSeek coding via OmniRoute gateway — routes through CloudCLI bridge.
+    Replaces the opencode CLI path removed 2026-08-10."""
+    return coding_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
 register_provider(

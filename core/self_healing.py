@@ -80,8 +80,8 @@ def _clear_provider_errors(provider_name):
         return False
 
 
-def _kill_stale_opencode():
-    """Kill any opencode processes that have been running >30 minutes."""
+def _kill_stale_coding():
+    """Kill any coding bridge processes that have been running >30 minutes."""
     import subprocess
     try:
         result = subprocess.run(
@@ -90,7 +90,7 @@ def _kill_stale_opencode():
         )
         killed = []
         for line in result.stdout.split("\n"):
-            if "opencode run" not in line:
+            if "cloudcli" not in line and "coding_bridge" not in line:
                 continue
             parts = line.split()
             if len(parts) < 3:
@@ -160,11 +160,11 @@ def run_self_healing():
                 "timestamp": _now(),
             })
 
-    # 3. Kill stale opencode processes
-    killed = _kill_stale_opencode()
+    # 3. Kill stale coding bridge processes
+    killed = _kill_stale_coding()
     if killed:
         actions.append({
-            "type": "stale_opencode_killed",
+            "type": "stale_coding_killed",
             "pids": killed,
             "timestamp": _now(),
         })

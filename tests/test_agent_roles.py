@@ -20,11 +20,12 @@ def _ensure_in_role_providers(monkeypatch, name, task_type):
 
 
 def test_architecture_agent_routes_to_claude(monkeypatch):
-    # opencode_claude gained a real text_task route 2026-08-02 and leads
-    # "coding" ahead of claude -- disabled so this test doesn't make a real
-    # opencode/Zen call.
+    # Disable coding providers ahead of claude so this test stays fast.
     import core.ai_provider as ai_provider
-    monkeypatch.setitem(ai_provider.get_provider("opencode_claude"), "available_fn", lambda: False)
+    for name in ("omniroute", "gpuai_minimax"):
+        p = ai_provider.get_provider(name)
+        if p is not None:
+            monkeypatch.setitem(p, "available_fn", lambda: False)
 
     _ensure_in_role_providers(monkeypatch, "claude", "coding")
     _stub_provider(monkeypatch, "claude", "claude answered")
@@ -36,18 +37,14 @@ def test_architecture_agent_routes_to_claude(monkeypatch):
 
 
 def test_research_agent_routes_to_claude_fallback(monkeypatch):
-    # gemini removed from "planning" entirely 2026-08-02 (disabled,
-    # quota-exhausted) -- claude (now last) demonstrates the fallback.
-    # opencode_claude gained a real text_task route 2026-08-02 -- disabled
-    # so this test doesn't make a real opencode/Zen call. deepseek_native_pro
-    # joined "planning" the same day -- disabled for the same reason (real
-    # api.deepseek.com call).
+    # deepseek_native_pro joined "planning" -- disabled so this doesn't
+    # make a real api.deepseek.com call. OpenCode providers removed 2026-08-10.
     import core.ai_provider as ai_provider
     # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "planning".
     # Only disable providers that are actually registered (qwen may be absent
     # when RunPod env vars aren't set).
     to_disable = [n for n in ("deepseek_native_flash", "omniroute_deepseek_flash",
-                    "openrouter", "deepseek", "opencode_claude",
+                    "openrouter", "deepseek",
                     "deepseek_native_pro", "gemini", "geminix",
                     "qwen4_text", "qwen4_pod_b")
                   if ai_provider.get_provider(n) is not None]
@@ -108,9 +105,8 @@ def test_general_reasoning_agent_falls_back_to_claude_when_all_primary_unavailab
 
     to_disable = [n for n in ("deepseek_native_pro", "deepseek_native_flash",
                     "omniroute_deepseek_flash", "deepseek",
-                    "opencode_gemini_pro", "opencode_fable5",
                     "gemini", "geminix", "qwen4_text", "qwen4_pod_b",
-                    "opencode_claude", "groq")
+                    "groq")
                   if ai_provider.get_provider(n) is not None]
     for name in to_disable:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)

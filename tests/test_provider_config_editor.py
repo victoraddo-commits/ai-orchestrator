@@ -231,7 +231,7 @@ class TestRouterIntegration:
     def test_router_uses_override_for_coding_with_rotation(self, isolated_memory, monkeypatch):
         from core.ai import ai_router
 
-        pce.save_overrides({"fallback_order": {"coding": ["qwen4_coding", "opencode_claude", "groq"]}})
+        pce.save_overrides({"fallback_order": {"coding": ["qwen4_coding", "gpuai_minimax", "groq"]}})
 
         # Make rotation deterministic
         monkeypatch.setattr(ai_router, "_rotate_candidates", lambda task_type, candidates: candidates)

@@ -1,0 +1,37 @@
+[Unit]
+Description=Kai Betting — AI Sports Prediction Platform
+After=network-online.target ai-orchestrator-api.service
+Wants=network-online.target ai-orchestrator-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/project/ai-orchestrator
+Environment="PYTHONUNBUFFERED=1"
+Environment="KAI_BETTING_DB=/project/ai-orchestrator/memory/kai_betting.db"
+ExecStart=/project/ai-orchestrator/.venv/bin/python -c "
+import time
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(levelname)s: %(message)s')
+from core.kai_betting.workers import get_workers
+from core.kai_betting.db import init_db
+
+init_db()
+workers = get_workers()
+logging.getLogger('kai_betting').info('Kai Betting worker started')
+
+while True:
+    try:
+        results = workers.run_cycle()
+        logging.getLogger('kai_betting').info(f'Cycle complete: {results}')
+    except Exception as e:
+        logging.getLogger('kai_betting').error(f'Cycle error: {e}')
+    time.sleep(300)
+"
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -21,6 +21,7 @@ from core.kai_betting.odds_engine import OddsEngine
 from core.kai_betting.subscriptions import SubscriptionManager
 from core.kai_betting.performance import PerformanceTracker
 from core.kai_betting.api import _ensure_prediction_saved
+from core.kai_betting.data_ingestion import DataIngestionManager
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,26 @@ class KaiBettingWorkers:
         self._prediction_engine = PredictionEngine()
         self._subscription_mgr = SubscriptionManager()
         self._perf_tracker = PerformanceTracker()
+        self._ingestion = DataIngestionManager(engine=self._prediction_engine)
+
+    # ── Data Ingestion (real odds from external providers) ──────────────────
+
+    def refresh_events(self) -> Dict[str, Any]:
+        """Fetch upcoming events from data providers and upsert into DB.
+
+        Delegates to DataIngestionManager which handles rate limiting,
+        interval gating, and provider-specific logic.
+        """
+        return self._ingestion.refresh_events()
+
+    def refresh_sync(self, with_odds: bool = True,
+                     with_results: bool = True) -> Dict[str, Any]:
+        """Fetch odds and/or scores for existing events.
+
+        Delegates to DataIngestionManager which handles rate limiting,
+        interval gating, and provider-specific logic.
+        """
+        return self._ingestion.refresh_sync(with_odds=with_odds, with_results=with_results)
 
     # ── Daily Prediction Generation ──────────────────────────────────────────
 
@@ -87,6 +108,15 @@ class KaiBettingWorkers:
 
         for event in events:
             try:
+                # Skip events that already have predictions with real bookmaker odds
+                # (they were already covered by refresh_sync)
+                existing_odds = db.execute(
+                    "SELECT COUNT(*) as cnt FROM predictions WHERE event_id = ? AND bookmaker_odds IS NOT NULL",
+                    (event["id"],)
+                ).fetchone()
+                if existing_odds and existing_odds["cnt"] > 0:
+                    continue  # Already has real-odds predictions — skip synthetic generation
+
                 sport_key = event["sport_key"]
                 # Get available markets for this sport from config
                 markets = self._get_markets_for_sport(db, sport_key)
@@ -318,6 +348,18 @@ class KaiBettingWorkers:
             results["subscriptions"] = self.check_subscription_expiry()
         except Exception as e:
             results["subscriptions_error"] = str(e)
+
+        # Refresh events from external data providers (interval-gated)
+        try:
+            results["events_refresh"] = self.refresh_events()
+        except Exception as e:
+            results["events_refresh_error"] = str(e)
+
+        # Sync odds and results from external data providers (interval-gated)
+        try:
+            results["odds_sync"] = self.refresh_sync()
+        except Exception as e:
+            results["odds_sync_error"] = str(e)
 
         # Auto-settle finished events
         try:

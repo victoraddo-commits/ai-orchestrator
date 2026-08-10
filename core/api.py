@@ -178,6 +178,12 @@ _DASHBOARD_HTML = _DASHBOARD_PATH.read_text()
 _COMMAND_CENTER_PATH = Path(__file__).resolve().parent / "kai" / "command_center.html"
 _COMMAND_CENTER_HTML = _COMMAND_CENTER_PATH.read_text()
 
+_MANIFEST_PATH = Path(__file__).resolve().parent / "kai" / "manifest.json"
+_MANIFEST_JSON = _MANIFEST_PATH.read_text() if _MANIFEST_PATH.exists() else "{}"
+
+_SW_PATH = Path(__file__).resolve().parent / "kai" / "sw.js"
+_SW_JS = _SW_PATH.read_text() if _SW_PATH.exists() else "// service worker not found"
+
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
@@ -187,6 +193,18 @@ def dashboard():
 @app.get("/command-center", response_class=HTMLResponse)
 def command_center():
     return _COMMAND_CENTER_HTML
+
+
+@app.get("/kai/manifest.json")
+def manifest():
+    """PWA manifest for Kai Command Center (SP5 — Mobile Agent & UI)."""
+    return Response(content=_MANIFEST_JSON, media_type="application/json")
+
+
+@app.get("/kai/sw.js")
+def service_worker():
+    """PWA service worker for Kai Command Center (SP5 — Mobile Agent & UI)."""
+    return Response(content=_SW_JS, media_type="application/javascript")
 
 
 @app.get("/")

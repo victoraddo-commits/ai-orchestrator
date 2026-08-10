@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Shield, Users, Settings, FileText, Search,
   RefreshCw, CheckCircle2, XCircle, Clock,
+  UserPlus, UserMinus, Crown,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '../hooks/useAuth';
@@ -51,6 +52,23 @@ export default function Admin() {
         (u.email || '').toLowerCase().includes(search.toLowerCase()) ||
         (u.full_name || '').toLowerCase().includes(search.toLowerCase()))
     : users;
+
+  const handleUpdateUser = async (userId, updates) => {
+    try {
+      const res = await fetch(`/api/betting/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+      const data = await res.json();
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? data.data : u))
+      );
+    } catch (e) {
+      alert(`Update failed: ${e.message}`);
+    }
+  };
 
   const TABS = [
     { key: 'overview', label: 'Overview', icon: Shield },
@@ -128,6 +146,7 @@ export default function Admin() {
                         <th className="table-header">Subscription</th>
                         <th className="table-header">Role</th>
                         <th className="table-header">Joined</th>
+                        <th className="table-header">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -162,6 +181,44 @@ export default function Admin() {
                           </td>
                           <td className="table-cell text-sm text-surface-500">
                             {u.created_at?.slice(0, 10)}
+                          </td>
+                          <td className="table-cell">
+                            <div className="flex items-center gap-1">
+                              {u.is_admin === 1 ? (
+                                <button
+                                  className="btn-icon text-xs text-amber-400 hover:text-amber-300"
+                                  title="Revoke admin"
+                                  onClick={() => handleUpdateUser(u.id, { is_admin: false })}
+                                >
+                                  <UserMinus className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn-icon text-xs text-brand-400 hover:text-brand-300"
+                                  title="Grant admin"
+                                  onClick={() => handleUpdateUser(u.id, { is_admin: true })}
+                                >
+                                  <UserPlus className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {u.subscription_status === 'active' ? (
+                                <button
+                                  className="btn-icon text-xs text-red-400 hover:text-red-300"
+                                  title="Cancel subscription"
+                                  onClick={() => handleUpdateUser(u.id, { subscription_status: 'cancelled' })}
+                                >
+                                  <Crown className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn-icon text-xs text-emerald-400 hover:text-emerald-300"
+                                  title="Upgrade to premium"
+                                  onClick={() => handleUpdateUser(u.id, { subscription_status: 'active' })}
+                                >
+                                  <Crown className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

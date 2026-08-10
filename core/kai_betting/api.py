@@ -661,6 +661,37 @@ async def admin_audit_logs(
         return APIResponse(success=True, data=[dict(r) for r in rows])
 
 
+class AdminUserUpdate(BaseModel):
+    is_admin: Optional[bool] = None
+    subscription_status: Optional[str] = None  # 'active', 'cancelled', or None
+    subscription_expires: Optional[str] = None
+
+
+@router.put("/admin/users/{user_id}", response_model=APIResponse)
+async def admin_update_user(user_id: int, update: AdminUserUpdate):
+    """Update user admin status or subscription (admin only)."""
+    with get_db() as db:
+        user = db.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user:
+            raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+
+        if update.is_admin is not None:
+            db.execute("UPDATE users SET is_admin = ?, updated_at = datetime('now') WHERE id = ?",
+                       (1 if update.is_admin else 0, user_id))
+        if update.subscription_status is not None:
+            expires = update.subscription_expires or (
+                "datetime('now', '+30 days')" if update.subscription_status == "active" else None
+            )
+            db.execute("""UPDATE users SET subscription_status = ?, subscription_expires = ?,
+                          updated_at = datetime('now') WHERE id = ?""",
+                       (update.subscription_status, expires, user_id))
+
+        db.commit()
+
+        user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return APIResponse(success=True, data=dict(user))
+
+
 # ── User Preferences ─────────────────────────────────────────────────────────
 
 @router.get("/preferences/{user_id}", response_model=APIResponse)

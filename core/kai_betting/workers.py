@@ -20,6 +20,7 @@ from core.kai_betting.prediction_engine import PredictionEngine
 from core.kai_betting.odds_engine import OddsEngine
 from core.kai_betting.subscriptions import SubscriptionManager
 from core.kai_betting.performance import PerformanceTracker
+from core.kai_betting.api import _ensure_prediction_saved
 
 logger = logging.getLogger(__name__)
 
@@ -276,15 +277,17 @@ class KaiBettingWorkers:
                             ))
                             group_id = cursor.lastrowid
                             for i, sel in enumerate(result.selections):
+                                pred_id = _ensure_prediction_saved(db, sel)
+                                db.commit()  # flush so FK is visible
                                 db.execute(
-                                    "INSERT OR IGNORE INTO odds_group_selections "
+                                    "INSERT INTO odds_group_selections "
                                     "(odds_group_id, prediction_id, sort_order) VALUES (?, ?, ?)",
-                                    (group_id, sel.__dict__.get("id", 0), i + 1)
+                                    (group_id, pred_id, i + 1)
                                 )
                             db.commit()
                         generated += 1
                 except Exception as e:
-                    logger.warning(f"Odds group refresh failed for {risk} {target}: {e}")
+                    logger.warning(f"Odds group refresh failed for {risk} {target}: {e}", exc_info=True)
 
         logger.info(f"Odds groups: {expired} expired, {generated} generated")
         return {"expired": expired, "generated": generated, "active_remaining": active_count}

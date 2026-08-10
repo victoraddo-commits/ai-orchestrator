@@ -19,6 +19,9 @@ from core.device_registry import (
     delete_device,
     update_heartbeat,
     ack_commands,
+    ack_notifications,
+    get_notification_config,
+    update_notification_config,
     find_device_by_token,
     DeviceNotFoundError,
     DuplicateDeviceError,
@@ -55,6 +58,7 @@ class HeartbeatRequest(BaseModel):
     agent_version: Optional[str] = None
     notification_status: str = "unknown"
     ack_ids: list[str] = []
+    ack_notification_ids: list[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -176,11 +180,16 @@ async def api_device_heartbeat(
     _verify_device_owns_path(authenticated_device, device_id)
 
     # Process acknowledgements BEFORE building heartbeat response so
-    # the pending_commands list reflects what's actually pending.
+    # the pending lists reflect what's actually pending.
     if body.ack_ids:
         acked = ack_commands(device_id, body.ack_ids)
         if acked > 0:
             logger.debug("Device %s acknowledged %d commands", device_id, acked)
+
+    if body.ack_notification_ids:
+        acked_notifs = ack_notifications(device_id, body.ack_notification_ids)
+        if acked_notifs > 0:
+            logger.debug("Device %s acknowledged %d notifications", device_id, acked_notifs)
 
     try:
         result = update_heartbeat(device_id, heartbeat_data={
@@ -227,3 +236,52 @@ async def api_delete_device(
 
     logger.info("Device deleted: %s by %s", device_id, _operator)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Notification preferences
+# ---------------------------------------------------------------------------
+
+
+class NotificationConfigRequest(BaseModel):
+    """Per-device notification preferences.  All fields optional — only
+    provided keys are updated (deep-merge for nested dicts)."""
+    enabled: Optional[bool] = None
+    per_severity: Optional[dict[str, bool]] = None
+    per_module: Optional[dict[str, bool]] = None
+    per_source: Optional[dict[str, bool]] = None
+
+
+@router.get("/kai/devices/{device_id}/notification-config")
+async def api_get_notification_config(device_id: str):
+    """Get per-device notification preferences.  Returns defaults if unset.
+
+    Anyone can read — no auth required (matches existing convention).
+    """
+    config = get_notification_config(device_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail=f"Device {device_id!r} not found")
+    return {"device_id": device_id, "notification_config": config}
+
+
+@router.put("/kai/devices/{device_id}/notification-config")
+async def api_update_notification_config(
+    device_id: str,
+    body: NotificationConfigRequest,
+    _operator: str = Depends(require_bridge_token),
+):
+    """Update per-device notification preferences.  Operator-only.
+
+    Provides only the keys you want to change — nested dicts are deep-merged.
+    Example: {"per_severity": {"informational": false}} turns off info alerts
+    while keeping critical/important enabled.
+    """
+    try:
+        config = update_notification_config(
+            device_id,
+            {k: v for k, v in body.dict().items() if v is not None},
+        )
+    except DeviceNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Device {device_id!r} not found")
+
+    return {"device_id": device_id, "notification_config": config}

@@ -243,8 +243,12 @@ ROLE_PROVIDERS = {
     # 2026-08-09: DeepSeek PRIMARY for ALL text roles per operator directive.
     # deepseek_native_pro first (full model, best quality), deepseek_native_flash
     # second (fast + proven 100% reliable). All other providers are fallback.
-    "planning": ["deepseek_native_pro", "deepseek_native_flash", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "omniroute_deepseek_flash", "opencode_claude", "claude"],
-    "architecture": ["deepseek_native_pro", "deepseek_native_flash", "opencode_gemini_pro", "opencode_fable5", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    # 2026-08-09: gemini/geminix moved ahead of deepseek_native_flash after
+    # deepseek_native_flash produced 4 consecutive unusable planning responses.
+    # deepseek_native_pro stays first per operator directive but its auth is
+    # currently failing; gemini is the proven fallback.
+    "planning": ["deepseek_native_pro", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "opencode_claude", "claude"],
+    "architecture": ["deepseek_native_pro", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
     "log_analysis": ["deepseek_native_flash", "deepseek_native_pro", "groq", "opencode_gemini_pro", "opencode_fable5", "omniroute_deepseek_flash", "claude"],
     "documentation": ["deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "groq", "claude"],
     "review": ["deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "opencode_gemini_pro", "opencode_fable5", "gemini", "geminix", "claude"],

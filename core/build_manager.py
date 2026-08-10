@@ -461,9 +461,12 @@ def _planning_prompt(build):
         f"Description: {build['description']}\n"
         + _template_context(build)
         + (f"\nPrior clarifications:\n{qa_context}\n" if qa_context else "")
-        + "\nPropose an architecture/implementation plan. If anything is "
-        "ambiguous or you need a decision from the requester, ask for it "
-        "explicitly in your response."
+        + "\nPropose a CONCRETE architecture/implementation plan. Make reasonable "
+        "assumptions for any ambiguities — use industry defaults and best "
+        "practices. Provide a definitive, actionable plan. Do NOT end with "
+        "questions or ask for clarifications. If you need to note a trade-off "
+        "you made, state your choice and why you made it; do not ask the "
+        "requester to choose."
     )
 
 

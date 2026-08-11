@@ -165,12 +165,12 @@ class DataIngestionManager:
 
     def generate_todays_picks(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Generate today's qualified picks — used for Telegram/dashboard output."""
-        picks = self._sync_odds_v3(max_events=50)
+        picks = self._sync_odds_v3(max_events=15)
         return picks.get("qualified_picks", [])[:limit]
 
     # ── v3 Odds Sync (primary pipeline) ──────────────────────────────────────
 
-    def _sync_odds_v3(self, max_events: int = 200) -> Dict[str, Any]:
+    def _sync_odds_v3(self, max_events: int = 15) -> Dict[str, Any]:
         """Fetch odds from Odds-API.io v3 with full market discovery.
 
         For each upcoming event, fetches all available markets from Bet365

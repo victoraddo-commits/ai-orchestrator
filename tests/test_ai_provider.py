@@ -11,11 +11,14 @@ def test_claude_provider_is_registered_by_default():
 
 
 def test_local_provider_is_registered_as_a_placeholder():
+    """Local provider is now real (qwen2.5:7b via ollama, deployed 2026-08-11).
+    It registers as a text_task-capable, local, free-tier provider."""
     providers = ai_provider.list_providers()
 
     assert "local" in providers
     assert providers["local"]["kind"] == "local"
-    assert providers["local"]["available"] is False
+    # Available depends on whether Proxmox B is reachable — accept either.
+    assert providers["local"]["available"] in (True, False)
 
 
 def test_list_providers_does_not_expose_raw_callables():
@@ -37,10 +40,20 @@ def test_get_provider_returns_none_for_unknown_name():
 
 
 def test_local_provider_run_coding_task_raises_not_implemented():
+    """Local provider (qwen2.5:7b ollama) is text-only — no coding agent.
+
+    Before 2026-08-11 deployment this test expected NotImplementedError
+    from a stub.  Now the local provider simply has no coding_task
+    registered (None), which the router's fallback logic handles.
+    """
     provider = ai_provider.get_provider("local")
 
-    with pytest.raises(NotImplementedError):
-        provider["run_coding_task"]("/proj", "do something")
+    assert provider["run_text_task"] is not None, (
+        "local provider should have a run_text_task (qwen2.5:7b)"
+    )
+    assert provider["run_coding_task"] is None, (
+        "local provider should NOT have run_coding_task (text-only)"
+    )
 
 
 def test_register_provider_adds_a_new_entry():

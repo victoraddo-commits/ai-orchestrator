@@ -379,35 +379,72 @@ class BettingTelegramBot:
     def send_picks_to(cls, chat_id: str, limit: int = 10) -> int:
         """Query the latest published predictions and send them to a chat.
 
+        Uses real event data (teams, leagues) via JOIN with events/teams tables.
         Returns the number of predictions sent.
         """
         with get_db() as db:
             rows = db.execute("""
-                SELECT p.*, s.key as sport_key, s.name as sport_name
+                SELECT p.*, s.key as sport_key, s.name as sport_name, s.icon as sport_icon,
+                       e.id as event_id,
+                       ht.name as home_team, at.name as away_team,
+                       l.name as league_name,
+                       e.event_time
                 FROM predictions p
                 JOIN sports s ON s.id = p.sport_id
+                LEFT JOIN events e ON e.id = p.event_id
+                LEFT JOIN teams ht ON ht.id = e.home_team_id
+                LEFT JOIN teams at ON at.id = e.away_team_id
+                LEFT JOIN leagues l ON l.id = e.league_id
                 WHERE p.status = 'published'
                 ORDER BY p.confidence DESC
                 LIMIT ?
             """, (limit,)).fetchall()
 
         if not rows:
-            cls.send_raw(chat_id, "📊 *Kai Betting Picks*\n\n_No published predictions yet. Check back soon._")
+            cls.send_raw(chat_id,
+                "🎯 *Kai Betting — Today's Picks*\n\n"
+                "_No qualified picks available right now._\n"
+                "_Check back soon for real predictions._")
             return 0
 
-        lines = [f"📊 *Kai Betting — Today's Picks* ({len(rows)})\n"]
+        lines = [f"🎯 *Kai Betting — Today's Picks* ({len(rows)})\n"]
         for i, row in enumerate(rows, 1):
-            emoji = "🟢" if row["confidence"] >= 70 else ("🟡" if row["confidence"] >= 50 else "🔴")
-            odds_str = f" @ {row['bookmaker_odds']:.2f}" if row["bookmaker_odds"] else ""
-            edge_val = row["edge"] if row["edge"] else None
-            edge_str = f" | Edge: {edge_val:.1%}" if edge_val else ""
+            conf = row["confidence"] or 0
+            emoji = "🟢" if conf >= 75 else ("🟡" if conf >= 65 else "🔴")
+            odds = row["bookmaker_odds"]
+            odds_str = f"{odds:.2f}" if odds else "N/A"
+            prob = row["estimated_probability"] or 0
+            edge_val = row["edge"]
+            edge_str = f"+{edge_val*100:.1f}%" if edge_val and edge_val > 0 else \
+                       f"{edge_val*100:.1f}%" if edge_val and edge_val < 0 else ""
+
+            # Build the event line
+            home = row["home_team"] or "Home"
+            away = row["away_team"] or "Away"
+            league = row["league_name"] or ""
+            sport = row["sport_name"] or ""
+            market = row["market_name"] or ""
+            selection = (row["selection"] or "").upper()
+            sport_icon = row["sport_icon"] or "⚽"
+
+            match_line = f"**{home} vs {away}**"
+            if league:
+                match_line += f"\n{sport_icon} {league}"
+
+            pick_display = f"🎯 {market} — {selection}"
+
             lines.append(
-                f"{i}\\. {emoji} *{row['selection'].upper()}* \\- {row['sport_name']} "
-                f"\\({row['market_name']}\\){odds_str}\n"
-                f"   ⚡ {row['confidence']:.0f}% confidence{edge_str}"
+                f"*{i}⃣ {home} vs {away}*\n"
+                f"{sport_icon} {league}\n\n"
+                f"🎯 *{market}*\n"
+                f"Selection: *{selection}*\n"
+                f"📈 Odds: {odds_str}\n"
+                f"🎲 Probability: {prob*100:.0f}%\n"
+                f"🔥 Confidence: {conf:.0f}%\n"
+                f"💎 Edge: {edge_str}"
             )
 
-        cls.send_raw(chat_id, "\n".join(lines))
+        cls.send_raw(chat_id, "\n\n".join(lines))
         return len(rows)
 
     @classmethod
@@ -415,7 +452,7 @@ class BettingTelegramBot:
         """Send picks to all configured notification chat IDs.
 
         Reads chat_id from betting_config key 'telegram_notify_chat_id'
-        (comma-separated).
+        (comma-separated). Uses the new Odds-API.io pipeline for real picks.
         """
         with get_db() as db:
             row = db.execute(
@@ -438,17 +475,30 @@ class BettingTelegramBot:
     @staticmethod
     def format_prediction(row: Dict[str, Any]) -> str:
         """Format a single prediction for Telegram."""
-        conf = row["confidence"] if row["confidence"] else 0
-        emoji = "🟢" if conf >= 70 else ("🟡" if conf >= 50 else "🔴")
-        odds = row["bookmaker_odds"]
+        conf = row.get("confidence", 0) or 0
+        emoji = "🟢" if conf >= 75 else ("🟡" if conf >= 65 else "🔴")
+        odds = row.get("bookmaker_odds")
         odds_str = f" @ {odds:.2f}" if odds else ""
-        sport = row["sport_name"] or row["sport_key"] or ""
-        market = row["market_name"] or ""
-        sel = (row["selection"] or "").upper()
+        sport = row.get("sport_name") or row.get("sport_key") or ""
+        market = row.get("market_name") or ""
+        sel = (row.get("selection") or "").upper()
+        home = row.get("home_team") or ""
+        away = row.get("away_team") or ""
+        league = row.get("league_name") or ""
+
+        match_line = f"*{home} vs {away}*" if home and away else f"{sport}"
+        if league:
+            match_line += f" — {league}"
+
+        edge = row.get("edge")
+        prob = row.get("estimated_probability") or 0
+
         return (
-            f"{emoji} {sport} — {market}\n"
-            f"Pick: *{sel}*{odds_str}\n"
-            f"Conf: {conf:.0f}%"
+            f"{match_line}\n"
+            f"🎯 {market} — *{sel}*\n"
+            f"📈 Odds: {odds_str}\n"
+            f"🎲 {prob*100:.0f}% | 🔥 {conf:.0f}%"
+            + (f" | 💎 +{edge*100:.1f}%" if edge and edge > 0 else "")
         )
 
     @staticmethod

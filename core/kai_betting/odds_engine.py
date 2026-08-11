@@ -6,14 +6,22 @@ Handles correlation detection, risk-level filtering, and odds target matching.
 
 from __future__ import annotations
 
+import logging
 import math
+import os
 from typing import Optional, List, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 from core.kai_betting.models import (
     PredictionResult, OddsGroupResult, RiskLevel,
 )
 from core.kai_betting.prediction_engine import PredictionEngine
 from core.kai_betting.db import get_db
+
+
+def _live_data_mode() -> bool:
+    return os.environ.get("LIVE_DATA_MODE", "true").lower() in ("1", "true", "yes")
 
 
 # ── Odds Group Targets ───────────────────────────────────────────────────────
@@ -109,7 +117,17 @@ class OddsEngine:
         )
 
         if not candidates:
-            # Generate synthetic candidates for now
+            if _live_data_mode():
+                # Fail closed — no synthetic data
+                logger.warning("OddsEngine: no candidate predictions available in LIVE_DATA_MODE")
+                return OddsGroupResult(
+                    target_odds=target_odds,
+                    label=label,
+                    risk_level=risk_level,
+                    selections=[],
+                    status="no_candidates",
+                )
+            # Only generate synthetic in dev/test mode
             candidates = self._generate_synthetic_candidates(
                 risk_config=risk_config,
                 sport_keys=sport_keys,

@@ -257,15 +257,19 @@ class TestOddsEngine:
     """Odds group generation."""
 
     def test_all_risk_levels_generate(self):
+        import os
+        os.environ["LIVE_DATA_MODE"] = "false"  # Allow synthetic for tests
         engine = PredictionEngine()
         odds = OddsEngine(engine)
         for risk in ["conservative", "moderate", "aggressive", "high_risk"]:
             group = odds.generate(target_odds=10, risk_level=risk, min_selections=2)
-            assert len(group.selections) >= 2
+            assert len(group.selections) >= 2, f"Risk {risk} returned {len(group.selections)} selections (status: {group.status})"
             assert group.risk_level == risk
             assert group.combined_odds > 1.0
 
     def test_label_generation(self):
+        import os
+        os.environ["LIVE_DATA_MODE"] = "false"
         engine = PredictionEngine()
         odds = OddsEngine(engine)
         group = odds.generate(target_odds=10, risk_level="moderate", min_selections=2)

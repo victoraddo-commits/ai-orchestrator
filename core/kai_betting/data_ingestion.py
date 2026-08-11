@@ -1,11 +1,10 @@
-"""Kai Betting — Data Ingestion Manager.
+"""Kai Betting — Data Ingestion Manager (Odds-API.io v3).
 
-Orchestrates the pipeline from external sports data providers into
-the Kai Betting database: fetch → transform → upsert.
+Orchestrates the real-data pipeline:
+  Odds-API.io → Real Events → Real Odds → All Markets → Predictions → Quality Filter → Store
 
-Designed to be called from the worker cycle (every 300s), with
-interval-gating so external API calls happen at sensible frequencies
-rather than every cycle.
+Uses OddsAPIioSource as primary. Falls back to legacy OddsAPISource if unavailable.
+With LIVE_DATA_MODE=true, synthetic/placeholder data is rejected.
 """
 
 from __future__ import annotations
@@ -17,67 +16,92 @@ from typing import Optional, Dict, List, Any, Set
 from core.kai_betting.db import (
     get_db, upsert_team, upsert_league, upsert_event,
 )
-from core.kai_betting.data_sources.odds_api import (
-    OddsAPISource, SPORT_KEY_MAP, kai_sport_for,
-    odds_sport_keys_for, _selection_from_outcome_name,
+from core.kai_betting.data_sources.odds_api_io import (
+    OddsAPIioSource, SPORT_SLUG_MAP, slug_for_kai,
+    MARKET_NORMALIZATION, normalize_selection,
+    market_is_predictable, sportybet_display,
 )
 from core.kai_betting.prediction_engine import PredictionEngine
 
 logger = logging.getLogger(__name__)
 
+# ── Quality Thresholds ─────────────────────────────────────────────────────────
+# Configurable via betting_config; these are defaults.
+
+DEFAULT_QUALITY = {
+    "min_probability": 0.65,
+    "min_confidence": 70.0,
+    "min_data_quality": 70.0,
+    "require_positive_edge": True,
+    "require_real_odds": True,
+}
+
+# The 2 bookmakers allowed on the free tier
+FREE_TIER_BOOKMAKERS = "Bet365,1xbet"
+
+
+def _is_live_data_mode(db) -> bool:
+    """Check if LIVE_DATA_MODE is enabled."""
+    try:
+        row = db.execute(
+            "SELECT value FROM betting_config WHERE key = 'live_data_mode'"
+        ).fetchone()
+        return row and row["value"] == "true"
+    except Exception:
+        return True  # default to real-data-only
+
 
 class DataIngestionManager:
-    """Fetches sports data from configured providers and upserts into the DB.
+    """Fetches sports data from Odds-API.io v3 and generates predictions.
 
-    Uses the PredictionEngine to generate picks with real odds data.
+    Pipeline:
+      1. Fetch active sports → sport slugs
+      2. Fetch upcoming events per sport
+      3. For each event, fetch odds (all markets)
+      4. Extract & normalize all market selections
+      5. Run each through PredictionEngine
+      6. Apply quality filters
+      7. Store qualified predictions
     """
 
     def __init__(self, engine: Optional[PredictionEngine] = None):
         self._engine = engine or PredictionEngine()
-        self._odds_api = OddsAPISource()
+        self._primary = OddsAPIioSource()
 
     @property
     def is_configured(self) -> bool:
-        return self._odds_api.is_configured
+        return self._primary.is_configured
 
-    # ── Public entry points (called by workers) ────────────────────────────
+    @property
+    def provider_status(self) -> Dict[str, Any]:
+        return self._primary.provider_status
+
+    # ── Public entry points ──────────────────────────────────────────────────
 
     def refresh_events(self) -> Dict[str, Any]:
-        """Fetch upcoming events and upsert into DB.
-
-        Rate-limit gated: runs at most every events_interval_hours.
-        Uses the free /events endpoint (no usage credits).
-        """
+        """Fetch upcoming events from Odds-API.io and upsert into DB."""
         if not self.is_configured:
-            return {"status": "skipped", "reason": "ODDS_API_KEY not set"}
+            return {"status": "skipped", "reason": "ODDS_API_IO_KEY not set"}
 
         if not self._should_run("last_events_refresh",
                                 self._config_int("events_interval_hours", 6) * 3600):
             return {"status": "skipped", "reason": "within refresh interval"}
 
-        self._odds_api.refresh_rate_limits()
-
         active_sports = self._get_active_sports()
-        if not active_sports:
-            return {"status": "skipped", "reason": "no active sports configured"}
+        slugs = self._sports_to_slugs(active_sports)
 
-        # Collect Odds API sport keys for the active Kai sports
-        odds_keys: List[str] = []
-        for kai_sport in active_sports:
-            odds_keys.extend(odds_sport_keys_for(kai_sport))
-
-        if not odds_keys:
-            return {"status": "skipped", "reason": "no Odds API sport keys for active sports"}
+        if not slugs:
+            return {"status": "skipped", "reason": "no active sports"}
 
         total_new = 0
         total_updated = 0
         error_count = 0
 
-        all_events = self._odds_api.fetch_events(odds_keys, days_ahead=7)
+        all_events = self._primary.fetch_events(slugs, days=5)
 
         with get_db() as db:
-            for odds_key, events in all_events.items():
-                kai_sport = kai_sport_for(odds_key)
+            for slug, events in all_events.items():
+                kai_sport = SPORT_SLUG_MAP.get(slug)
                 if not kai_sport:
                     continue
 
@@ -90,7 +114,7 @@ class DataIngestionManager:
 
                 for evt in events:
                     try:
-                        count = self._ingest_event(db, sport_id, odds_key, evt)
+                        count = self._ingest_event(db, sport_id, slug, evt)
                         if count > 0:
                             total_new += 1
                         else:
@@ -103,54 +127,286 @@ class DataIngestionManager:
 
         logger.info(
             f"refresh_events: {total_new} new, {total_updated} updated, "
-            f"{error_count} errors, remaining_quota={self._odds_api.rate_limit_remaining}"
+            f"{error_count} errors"
         )
         return {
             "status": "ok",
             "new_events": total_new,
             "updated_events": total_updated,
             "errors": error_count,
-            "rate_limit_remaining": self._odds_api.rate_limit_remaining,
         }
 
     def refresh_sync(self, with_odds: bool = True,
                      with_results: bool = True) -> Dict[str, Any]:
-        """Fetch odds and/or scores for existing events.
-
-        Runs at intervals config-gated by last_odds_refresh / last_results_refresh.
-        """
+        """Fetch odds for upcoming events and generate predictions."""
         if not self.is_configured:
-            return {"status": "skipped", "reason": "ODDS_API_KEY not set"}
+            return {"status": "skipped", "reason": "ODDS_API_IO_KEY not set"}
 
-        self._odds_api.refresh_rate_limits()
-
-        odds_result = {"status": "skipped", "reason": "odds sync disabled"}
-        results_result = {"status": "skipped", "reason": "results sync disabled"}
+        odds_result = {"status": "skipped", "reason": "within refresh interval"}
+        results_result = {"status": "skipped", "reason": "within refresh interval"}
 
         if with_odds and self._should_run("last_odds_refresh",
                                           self._config_int("odds_interval_minutes", 60) * 60):
-            odds_result = self._sync_odds()
+            odds_result = self._sync_odds_v3()
 
+        # Results sync still uses the legacy provider for now
         if with_results and self._should_run("last_results_refresh",
-                                             self._config_int("results_interval_minutes", 15) * 60):
+                                             self._config_int("results_interval_minutes", 30) * 60):
             try:
-                results_result = self._sync_results()
+                results_result = self._sync_results_legacy()
             except Exception as e:
-                import traceback as _tb
                 logger.error(f"_sync_results failed: {e}", exc_info=True)
                 results_result = {"status": "error", "error": str(e)}
 
         return {
             "odds": odds_result,
             "results": results_result,
-            "rate_limit_remaining": self._odds_api.rate_limit_remaining,
         }
 
-    # ── Ingestion helpers ──────────────────────────────────────────────────
+    def generate_todays_picks(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Generate today's qualified picks — used for Telegram/dashboard output."""
+        picks = self._sync_odds_v3(max_events=50)
+        return picks.get("qualified_picks", [])[:limit]
+
+    # ── v3 Odds Sync (primary pipeline) ──────────────────────────────────────
+
+    def _sync_odds_v3(self, max_events: int = 200) -> Dict[str, Any]:
+        """Fetch odds from Odds-API.io v3 with full market discovery.
+
+        For each upcoming event, fetches all available markets from Bet365
+        and 1xbet, normalizes them, runs predictions, and filters by quality.
+        """
+        active_sports = self._get_active_sports()
+        slugs = self._sports_to_slugs(active_sports)
+
+        if not slugs:
+            return {"status": "skipped", "reason": "no active sports"}
+
+        total_events_fetched = 0
+        total_events_with_odds = 0
+        total_markets_discovered = 0
+        total_predictions = 0
+        qualified_count = 0
+        error_count = 0
+        all_qualified: List[Dict[str, Any]] = []
+
+        with get_db() as db:
+            live_data = _is_live_data_mode(db)
+            quality = self._load_quality_config(db)
+
+            for slug in slugs:
+                kai_sport = SPORT_SLUG_MAP.get(slug)
+                if not kai_sport:
+                    continue
+
+                sport_row = db.execute(
+                    "SELECT id FROM sports WHERE key = ?", (kai_sport,)
+                ).fetchone()
+                if not sport_row:
+                    continue
+                sport_id = sport_row["id"]
+
+                # Get upcoming events for this sport (next 5 days)
+                events_data = self._primary.fetch_events([slug], days=5)
+                events = events_data.get(slug, [])
+                if not events:
+                    continue
+
+                # Filter to upcoming events only
+                upcoming = [e for e in events
+                           if e.get("status") in ("pending", "not_started", "upcoming", "open")]
+                total_events_fetched += len(upcoming)
+
+                # Process each event
+                for evt in upcoming[:max_events]:
+                    event_id = evt.get("id")
+                    if not event_id:
+                        continue
+
+                    try:
+                        # Fetch odds with ALL markets
+                        odds_data = self._primary.fetch_odds(
+                            event_id, slug, FREE_TIER_BOOKMAKERS
+                        )
+
+                        if not odds_data:
+                            continue
+
+                        # Check if bookmakers returned data
+                        bms = odds_data.get("bookmakers", {})
+                        if not bms or all(
+                            not isinstance(v, list) or len(v) == 0
+                            for v in bms.values()
+                        ):
+                            continue
+
+                        total_events_with_odds += 1
+                        home = odds_data.get("home", evt.get("home", ""))
+                        away = odds_data.get("away", evt.get("away", ""))
+
+                        # Upsert event into DB
+                        self._ingest_event_v3(db, sport_id, evt)
+
+                        # Extract all markets
+                        markets = OddsAPIioSource.extract_markets(odds_data)
+                        total_markets_discovered += len(markets)
+
+                        # Run predictions on predictable markets
+                        for mkt in markets:
+                            kai_market = mkt["market_type"]
+                            if not market_is_predictable(kai_market):
+                                continue
+
+                            try:
+                                result = self._engine.predict_with_odds(
+                                    sport_key=kai_sport,
+                                    market_type=kai_market,
+                                    selection=mkt["selection"],
+                                    home_team=home,
+                                    away_team=away,
+                                    bookmaker_odds=mkt["odds"],
+                                    line=mkt.get("line"),
+                                    bookmaker_name=mkt.get("bookmaker"),
+                                )
+
+                                total_predictions += 1
+
+                                # Apply quality filters
+                                if self._passes_quality(result, quality, live_data):
+                                    qualified_count += 1
+
+                                    # Store the qualified prediction
+                                    pred_id = self._upsert_prediction_v3(
+                                        db, event_id, sport_id, evt, result, mkt
+                                    )
+
+                                    # Build display output
+                                    sportybet = sportybet_display(
+                                        kai_market, result.selection, mkt.get("line")
+                                    )
+
+                                    all_qualified.append({
+                                        "prediction_id": pred_id,
+                                        "event_id": event_id,
+                                        "sport": kai_sport,
+                                        "sport_name": evt.get("sport", {}).get("name", kai_sport),
+                                        "league": evt.get("league", {}).get("name", ""),
+                                        "league_slug": evt.get("league", {}).get("slug", ""),
+                                        "home": home,
+                                        "away": away,
+                                        "event_time": evt.get("date", ""),
+                                        "market_type": kai_market,
+                                        "market_name": mkt["market_name"],
+                                        "selection": result.selection,
+                                        "display_pick": sportybet,
+                                        "odds": mkt["odds"],
+                                        "bookmaker": mkt.get("bookmaker", ""),
+                                        "probability": result.estimated_probability,
+                                        "implied_probability": result.implied_probability,
+                                        "edge": result.edge,
+                                        "confidence": result.confidence,
+                                        "risk_score": result.risk_score,
+                                        "data_quality": result.data_quality,
+                                        "prediction_id": pred_id,
+                                    })
+
+                            except Exception as e:
+                                logger.warning(
+                                    f"Prediction failed for {slug}/{event_id}/{mkt['market_type']}: {e}"
+                                )
+                                error_count += 1
+
+                    except Exception as e:
+                        logger.warning(f"Odds fetch failed for event {event_id}: {e}")
+                        error_count += 1
+
+            self._mark_refreshed(db, "last_odds_refresh")
+
+        # Sort qualified picks by confidence * edge
+        all_qualified.sort(
+            key=lambda p: (p.get("confidence", 0) or 0) * max(0, (p.get("edge", 0) or 0)),
+            reverse=True,
+        )
+
+        # Enforce uniqueness: one primary pick per event
+        seen_events: Set[int] = set()
+        unique_picks: List[Dict[str, Any]] = []
+        other_markets: Dict[int, List[str]] = {}
+        for pick in all_qualified:
+            eid = pick["event_id"]
+            if eid not in seen_events:
+                seen_events.add(eid)
+                unique_picks.append(pick)
+            else:
+                other_markets.setdefault(eid, []).append(pick["display_pick"])
+
+        # Attach other qualified markets
+        for pick in unique_picks:
+            pick["other_markets"] = other_markets.get(pick["event_id"], [])
+
+        logger.info(
+            f"sync_odds_v3: {total_events_fetched} events, "
+            f"{total_events_with_odds} with odds, "
+            f"{total_markets_discovered} markets, "
+            f"{total_predictions} predictions, "
+            f"{qualified_count} qualified, "
+            f"{len(unique_picks)} unique picks, "
+            f"{error_count} errors"
+        )
+
+        return {
+            "status": "ok",
+            "events_fetched": total_events_fetched,
+            "events_with_odds": total_events_with_odds,
+            "markets_discovered": total_markets_discovered,
+            "predictions_generated": total_predictions,
+            "qualified_predictions": qualified_count,
+            "unique_picks": len(unique_picks),
+            "picks": unique_picks,
+            "errors": error_count,
+        }
+
+    # ── Event Ingestion (v3 format) ──────────────────────────────────────────
+
+    def _ingest_event_v3(self, db, sport_id: int, evt: Dict[str, Any]) -> int:
+        """Upsert event from Odds-API.io v3 format. Returns 1 if new, 0 if updated."""
+        external_id = str(evt.get("id", ""))
+        if not external_id:
+            return 0
+
+        home_name = evt.get("home", "Home")
+        away_name = evt.get("away", "Away")
+        event_time = evt.get("date", "")
+        league_info = evt.get("league", {})
+        league_slug = league_info.get("slug", "")
+        league_name = league_info.get("name", league_slug)
+
+        # Upsert teams
+        home_id = upsert_team(db, sport_id, home_name)
+        away_id = upsert_team(db, sport_id, away_name)
+
+        # Upsert league
+        league_id = upsert_league(db, sport_id, league_slug, league_name) if league_slug else None
+
+        existing = db.execute(
+            "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
+            (sport_id, external_id)
+        ).fetchone()
+
+        upsert_event(
+            db, sport_id, external_id,
+            home_id, away_id, event_time,
+            league_id=league_id,
+            status=evt.get("status", "scheduled"),
+        )
+
+        return 1 if existing is None else 0
+
+    # ── Legacy Event Ingestion ───────────────────────────────────────────────
 
     def _ingest_event(self, db, sport_id: int, odds_key: str,
                       evt: Dict[str, Any]) -> int:
-        """Upsert a single event record.  Returns 1 if new, 0 if updated."""
+        """Upsert an event from The Odds API v4 format. Returns 1 if new."""
         external_id = str(evt.get("id", ""))
         if not external_id:
             return 0
@@ -159,15 +415,12 @@ class DataIngestionManager:
         away_name = evt.get("away_team", "Away")
         event_time = evt.get("commence_time", "")
 
-        # Upsert teams
         home_id = upsert_team(db, sport_id, home_name)
         away_id = upsert_team(db, sport_id, away_name)
 
-        # Try to extract a league from the odds sport key (e.g. "soccer_epl" → "epl")
         league_key = odds_key.split("_", 1)[-1] if "_" in odds_key else odds_key
         league_name = league_key.replace("_", " ").title()
 
-        # Check if event already exists (to distinguish new vs updated)
         existing = db.execute(
             "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
             (sport_id, external_id)
@@ -184,134 +437,26 @@ class DataIngestionManager:
 
         return 1 if existing is None else 0
 
-    def _sync_odds(self) -> Dict[str, Any]:
-        """Fetch odds for scheduled events and generate predictions."""
-        if not self._odds_api.has_quota():
-            return {"status": "skipped", "reason": "rate limit exhausted"}
+    # ── Legacy Results Sync ──────────────────────────────────────────────────
+
+    def _sync_results_legacy(self) -> Dict[str, Any]:
+        """Fetch scores using legacy provider."""
+        from core.kai_betting.data_sources.odds_api import OddsAPISource, SPORT_KEY_MAP, kai_sport_for
+
+        legacy = OddsAPISource()
+        if not legacy.is_configured:
+            return {"status": "skipped", "reason": "legacy ODDS_API_KEY not set"}
 
         active_sports = self._get_active_sports()
         odds_keys: List[str] = []
         for kai_sport in active_sports:
+            from core.kai_betting.data_sources.odds_api import odds_sport_keys_for
             odds_keys.extend(odds_sport_keys_for(kai_sport))
 
         if not odds_keys:
-            return {"status": "skipped", "reason": "no active sports"}
+            return {"status": "skipped", "reason": "no legacy sport keys"}
 
-        all_odds = self._odds_api.fetch_odds(odds_keys)
-
-        total_predictions = 0
-        total_events = 0
-        error_count = 0
-
-        with get_db() as db:
-            for odds_key, odds_events in all_odds.items():
-                kai_sport = kai_sport_for(odds_key)
-                if not kai_sport:
-                    continue
-
-                sport_row = db.execute(
-                    "SELECT id FROM sports WHERE key = ?", (kai_sport,)
-                ).fetchone()
-                if not sport_row:
-                    continue
-                sport_id = sport_row["id"]
-
-                for odds_evt in odds_events:
-                    if not isinstance(odds_evt, dict):
-                        logger.warning(
-                            f"sync_odds: unexpected event type "
-                            f"{type(odds_evt).__name__} for {odds_key}: {odds_evt!r}"
-                        )
-                        continue
-                    total_events += 1
-                    ext_id = str(odds_evt.get("id", ""))
-                    home_team = odds_evt.get("home_team", "")
-                    away_team = odds_evt.get("away_team", "")
-
-                    # Find the Kai event
-                    event_row = db.execute(
-                        "SELECT id, home_team_id, away_team_id FROM events WHERE sport_id = ? AND external_id = ?",
-                        (sport_id, ext_id)
-                    ).fetchone()
-                    event_id = event_row["id"] if event_row else None
-
-                    # Iterate bookmakers and markets
-                    for bookmaker in odds_evt.get("bookmakers", []):
-                        for market in bookmaker.get("markets", []):
-                            market_key = market.get("key", "")
-                            kai_market = MARKET_MAP_INTERNAL.get(market_key)
-                            if not kai_market:
-                                continue
-
-                            for outcome in market.get("outcomes", []):
-                                price = outcome.get("price")
-                                if not price or price <= 1.0:
-                                    continue
-
-                                name = outcome.get("name", "")
-                                selection = _selection_from_outcome_name(
-                                    name, kai_market, home_team, away_team
-                                )
-
-                                # For over_under, embed the line from the market point
-                                if kai_market == "over_under":
-                                    point = market.get("point")
-                                    if point:
-                                        kai_market = f"over_under_{point}"
-
-                                try:
-                                    result = self._engine.predict(
-                                        sport_key=kai_sport,
-                                        market_type=kai_market.split("_", 2)[0]
-                                        if kai_market.startswith("over_under_")
-                                        else kai_market,
-                                        home_team=home_team,
-                                        away_team=away_team,
-                                        bookmaker_odds=float(price),
-                                    )
-
-                                    # Determine publish status
-                                    status = self._determine_publish_status(db, result)
-
-                                    # Upsert prediction (dedup by event + market + selection)
-                                    self._upsert_prediction(
-                                        db, event_id, sport_id, result, status
-                                    )
-                                    total_predictions += 1
-
-                                except Exception as e:
-                                    logger.warning(
-                                        f"Prediction failed for {odds_key}/{ext_id}/{name}: {e}"
-                                    )
-                                    error_count += 1
-
-            self._mark_refreshed(db, "last_odds_refresh")
-
-        logger.info(
-            f"sync_odds: {total_predictions} predictions from {total_events} events, "
-            f"{error_count} errors"
-        )
-        return {
-            "status": "ok",
-            "predictions_generated": total_predictions,
-            "events_processed": total_events,
-            "errors": error_count,
-        }
-
-    def _sync_results(self) -> Dict[str, Any]:
-        """Fetch scores for recent/live events and update DB."""
-        if not self._odds_api.has_quota():
-            return {"status": "skipped", "reason": "rate limit exhausted"}
-
-        active_sports = self._get_active_sports()
-        odds_keys: List[str] = []
-        for kai_sport in active_sports:
-            odds_keys.extend(odds_sport_keys_for(kai_sport))
-
-        if not odds_keys:
-            return {"status": "skipped", "reason": "no active sports"}
-
-        all_scores = self._odds_api.fetch_scores(odds_keys, days_from=3)
+        all_scores = legacy.fetch_scores(odds_keys, days_from=3)
 
         total_updated = 0
         total_settled = 0
@@ -331,54 +476,38 @@ class DataIngestionManager:
 
                 for se in score_events:
                     if not isinstance(se, dict):
-                        logger.warning(
-                            f"sync_results: unexpected score event type "
-                            f"{type(se).__name__} for {odds_key}: {se!r}"
-                        )
                         continue
                     if not se.get("completed", False):
                         continue
 
                     ext_id = str(se.get("id", ""))
                     raw_scores = se.get("scores")
-                    # The Odds API returns scores as either a dict
-                    # {home_score, away_score} or a list [{name, score}].
+                    home_score = None
+                    away_score = None
+
                     if isinstance(raw_scores, dict):
                         home_score = raw_scores.get("home_score")
                         away_score = raw_scores.get("away_score")
                     elif isinstance(raw_scores, list) and raw_scores:
-                        # List format: extract numeric scores
-                        home_score = None
-                        away_score = None
                         home_team = se.get("home_team", "")
                         away_team = se.get("away_team", "")
                         for item in raw_scores:
-                            if not isinstance(item, dict):
-                                continue
-                            item_name = item.get("name", "")
-                            item_score = item.get("score")
-                            if item_name == home_team:
-                                home_score = item_score
-                            elif item_name == away_team:
-                                away_score = item_score
-                    else:
-                        home_score = None
-                        away_score = None
+                            if isinstance(item, dict):
+                                if item.get("name") == home_team:
+                                    home_score = item.get("score")
+                                elif item.get("name") == away_team:
+                                    away_score = item.get("score")
 
-                    # Normalize to int for DB INTEGER column
                     try:
                         home_score = int(home_score) if home_score is not None else None
-                    except (ValueError, TypeError):
-                        home_score = None
-                    try:
                         away_score = int(away_score) if away_score is not None else None
                     except (ValueError, TypeError):
+                        home_score = None
                         away_score = None
 
                     if home_score is None and away_score is None:
                         continue
 
-                    # Update event status and scores
                     cursor = db.execute("""
                         UPDATE events SET status = 'finished',
                         home_score = ?, away_score = ?, updated_at = datetime('now')
@@ -387,7 +516,6 @@ class DataIngestionManager:
                     if cursor.rowcount > 0:
                         total_updated += 1
 
-                    # Trigger auto-settlement for this event's predictions
                     settled = self._settle_event_predictions(
                         db, sport_id, ext_id, home_score, away_score
                     )
@@ -396,7 +524,7 @@ class DataIngestionManager:
             self._mark_refreshed(db, "last_results_refresh")
 
         logger.info(
-            f"sync_results: {total_updated} events updated, {total_settled} predictions settled"
+            f"sync_results_legacy: {total_updated} events updated, {total_settled} settled"
         )
         return {
             "status": "ok",
@@ -404,7 +532,106 @@ class DataIngestionManager:
             "predictions_settled": total_settled,
         }
 
-    # ── Config helpers ─────────────────────────────────────────────────────
+    # ── Quality Filters ──────────────────────────────────────────────────────
+
+    def _load_quality_config(self, db) -> Dict[str, Any]:
+        """Load quality thresholds from config, falling back to defaults."""
+        cfg = dict(DEFAULT_QUALITY)
+        for key in cfg:
+            try:
+                row = db.execute(
+                    "SELECT value FROM betting_config WHERE key = ?",
+                    (f"quality_{key}",)
+                ).fetchone()
+                if row and row["value"]:
+                    if isinstance(cfg[key], bool):
+                        cfg[key] = row["value"] == "true"
+                    else:
+                        cfg[key] = float(row["value"])
+            except Exception:
+                pass
+        return cfg
+
+    def _passes_quality(self, result, quality: Dict[str, Any],
+                        live_data: bool) -> bool:
+        """Check if a prediction passes all quality filters."""
+        # In LIVE_DATA_MODE, reject anything without real odds
+        if live_data and not result.bookmaker_odds:
+            return False
+
+        if result.estimated_probability < quality["min_probability"]:
+            return False
+        if result.confidence < quality["min_confidence"]:
+            return False
+        if result.data_quality < quality["min_data_quality"]:
+            return False
+        if quality["require_positive_edge"] and (result.edge is None or result.edge <= 0):
+            return False
+        if quality["require_real_odds"] and not result.bookmaker_odds:
+            return False
+
+        return True
+
+    # ── Prediction Storage ───────────────────────────────────────────────────
+
+    def _upsert_prediction_v3(self, db, event_id: int, sport_id: int,
+                              evt: Dict[str, Any], result,
+                              mkt: Dict[str, Any]) -> int:
+        """Store a prediction with all event/odds context."""
+        # Find the DB event row
+        ext_id = str(evt.get("id", event_id))
+        event_row = db.execute(
+            "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
+            (sport_id, ext_id)
+        ).fetchone()
+        db_event_id = event_row["id"] if event_row else None
+
+        # Check for existing prediction (dedup by event + market + selection)
+        if db_event_id:
+            existing = db.execute("""
+                SELECT id FROM predictions
+                WHERE event_id = ? AND market_type = ? AND selection = ?
+                LIMIT 1
+            """, (db_event_id, result.market_type, result.selection)).fetchone()
+
+            if existing:
+                db.execute("""
+                    UPDATE predictions SET
+                        bookmaker_odds = ?, estimated_probability = ?,
+                        implied_probability = ?, edge = ?,
+                        confidence = ?, risk_score = ?, data_quality = ?,
+                        reasoning = ?, tags = ?, status = 'published',
+                        data_timestamp = datetime('now'), updated_at = datetime('now')
+                    WHERE id = ?
+                """, (
+                    result.bookmaker_odds, result.estimated_probability,
+                    result.implied_probability, result.edge,
+                    result.confidence, result.risk_score, result.data_quality,
+                    result.reasoning, ",".join(result.tags),
+                    existing["id"],
+                ))
+                return existing["id"]
+
+        # Insert new
+        cursor = db.execute("""
+            INSERT INTO predictions (
+                event_id, sport_id, market_type, market_name, selection,
+                bookmaker_odds, estimated_probability, implied_probability, edge,
+                confidence, risk_score, data_quality, reasoning, tags,
+                correlation_group, model_version, status, data_timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', datetime('now'))
+        """, (
+            db_event_id, sport_id,
+            result.market_type, result.market_name, result.selection,
+            result.bookmaker_odds, result.estimated_probability,
+            result.implied_probability, result.edge,
+            result.confidence, result.risk_score, result.data_quality,
+            result.reasoning, ",".join(result.tags),
+            result.correlation_group, result.model_version,
+        ))
+        return cursor.lastrowid
+
+    # ── Config helpers ───────────────────────────────────────────────────────
 
     def _should_run(self, config_key: str, interval_seconds: int) -> bool:
         """Check if enough time has passed since the last run."""
@@ -413,7 +640,7 @@ class DataIngestionManager:
                 "SELECT value FROM betting_config WHERE key = ?", (config_key,)
             ).fetchone()
             if not row or not row["value"]:
-                return True  # never run before
+                return True
 
             try:
                 last = datetime.fromisoformat(row["value"])
@@ -423,7 +650,6 @@ class DataIngestionManager:
                 return True
 
     def _mark_refreshed(self, db, config_key: str):
-        """Update the last-refreshed timestamp."""
         now = datetime.now(timezone.utc).isoformat()
         db.execute(
             "INSERT OR REPLACE INTO betting_config (key, value) VALUES (?, ?)",
@@ -431,7 +657,6 @@ class DataIngestionManager:
         )
 
     def _config_int(self, key: str, default: int) -> int:
-        """Read an integer from betting_config."""
         try:
             with get_db() as db:
                 row = db.execute(
@@ -444,7 +669,6 @@ class DataIngestionManager:
         return default
 
     def _get_active_sports(self) -> List[str]:
-        """Return the list of Kai sport keys to sync, from betting_config."""
         with get_db() as db:
             row = db.execute(
                 "SELECT value FROM betting_config WHERE key = 'active_sports_for_sync'"
@@ -453,79 +677,18 @@ class DataIngestionManager:
                 return [s.strip() for s in row["value"].split(",") if s.strip()]
         return ["football", "basketball", "tennis"]
 
-    def _determine_publish_status(self, db, result) -> str:
-        """Decide whether a prediction should be auto-published."""
-        auto_pub_row = db.execute(
-            "SELECT value FROM betting_config WHERE key = 'auto_publish'"
-        ).fetchone()
-        should_publish = auto_pub_row and auto_pub_row["value"] == "true"
-
-        if not should_publish:
-            return "pending"
-
-        min_conf = float(db.execute(
-            "SELECT value FROM betting_config WHERE key = 'min_confidence_publish'"
-        ).fetchone()["value"])
-        min_edge = float(db.execute(
-            "SELECT value FROM betting_config WHERE key = 'min_edge_publish'"
-        ).fetchone()["value"])
-
-        if result.confidence >= min_conf and (result.edge or 0) >= min_edge:
-            return "published"
-        return "pending"
-
-    def _upsert_prediction(self, db, event_id, sport_id, result, status):
-        """Insert or update a prediction in the DB."""
-        if event_id is None:
-            return
-
-        # Check for existing prediction with same event+market+selection
-        existing = db.execute("""
-            SELECT id FROM predictions
-            WHERE event_id = ? AND market_type = ? AND selection = ?
-              AND bookmaker_odds IS NOT NULL
-            LIMIT 1
-        """, (event_id, result.market_type, result.selection)).fetchone()
-
-        if existing:
-            # Update existing
-            db.execute("""
-                UPDATE predictions SET
-                    bookmaker_odds = ?, estimated_probability = ?,
-                    implied_probability = ?, edge = ?,
-                    confidence = ?, risk_score = ?, data_quality = ?,
-                    reasoning = ?, tags = ?, status = ?,
-                    data_timestamp = datetime('now'), updated_at = datetime('now')
-                WHERE id = ?
-            """, (
-                result.bookmaker_odds, result.estimated_probability,
-                result.implied_probability, result.edge,
-                result.confidence, result.risk_score, result.data_quality,
-                result.reasoning, ",".join(result.tags), status,
-                existing["id"],
-            ))
-        else:
-            # Insert new
-            db.execute("""
-                INSERT INTO predictions (
-                    event_id, sport_id, market_type, market_name, selection,
-                    bookmaker_odds, estimated_probability, implied_probability, edge,
-                    confidence, risk_score, data_quality, reasoning, tags,
-                    correlation_group, model_version, status, data_timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            """, (
-                event_id, sport_id,
-                result.market_type, result.market_name, result.selection,
-                result.bookmaker_odds, result.estimated_probability,
-                result.implied_probability, result.edge,
-                result.confidence, result.risk_score, result.data_quality,
-                result.reasoning, ",".join(result.tags),
-                result.correlation_group, result.model_version, status,
-            ))
+    def _sports_to_slugs(self, kai_sports: List[str]) -> List[str]:
+        """Convert Kai sport keys to Odds-API.io slugs."""
+        slugs = []
+        for kai in kai_sports:
+            slug = slug_for_kai(kai)
+            if slug:
+                slugs.append(slug)
+        return slugs
 
     def _settle_event_predictions(self, db, sport_id, ext_id,
                                   home_score, away_score) -> int:
-        """Settle predictions for a finished event. Returns count settled."""
+        """Settle predictions for a finished event."""
         from core.kai_betting.workers import KaiBettingWorkers
 
         event_row = db.execute(
@@ -561,11 +724,3 @@ class DataIngestionManager:
                 settled += 1
 
         return settled
-
-
-# Local market mapping (same as odds_api but used internally)
-MARKET_MAP_INTERNAL = {
-    "h2h": "match_result",
-    "totals": "over_under",
-    "spreads": "handicap",
-}

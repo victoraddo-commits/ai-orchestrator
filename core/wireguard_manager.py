@@ -47,7 +47,7 @@ WG_INTERFACE = os.environ.get("WG_DDWRT_INTERFACE", "wg0")
 WG_TUNNEL_SUBNET = os.environ.get("WG_TUNNEL_SUBNET", "10.8.0.0/24")
 
 # Proxmox B — the critical peer
-PROXMOX_B_WG_IP = os.environ.get("PROXMOX_B_WG_IP", "10.8.0.102")
+PROXMOX_B_WG_IP = os.environ.get("PROXMOX_B_WG_IP", "10.8.0.5")
 PROXMOX_B_PROBE_PORT = int(os.environ.get("PROXMOX_B_PROBE_PORT", "8006"))
 
 # Endpoint fallback configuration
@@ -304,7 +304,7 @@ def get_wg_status() -> dict:
 
 
 def check_tunnel_to_proxmox_b() -> dict:
-    """Check if Proxmox B (10.8.0.102:8006) is reachable through the WG tunnel.
+    """Check if Proxmox B (10.8.0.5:8006) is reachable through the WG tunnel.
 
     Uses TCP connect as the definitive reachability test.  If Proxmox B is
     reachable, the tunnel is working regardless of what wg show says.

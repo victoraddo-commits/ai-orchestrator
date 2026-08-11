@@ -5,7 +5,7 @@ automatic recovery.  Designed to work with both OPNsense-terminated and
 locally-terminated WireGuard tunnels.
 
 Architecture:
-    1. Health check — can we reach 10.8.0.102:8006?
+    1. Health check — can we reach 10.8.0.5:8006?
     2. Attempt recovery — restart wg interface, try alternate endpoint
     3. Escalate — alert operator if recovery fails
 
@@ -37,7 +37,7 @@ WG_INTERFACE = os.environ.get("VPN_FAILOVER_WG_IFACE", "wg-proxmox-b")
 WG_UP_TIMEOUT = int(os.environ.get("VPN_FAILOVER_WG_UP_TIMEOUT", "30"))
 
 # Probe target — must be a host reachable through the WG tunnel
-PROBE_HOST = os.environ.get("VPN_FAILOVER_PROBE_HOST", "10.8.0.102")
+PROBE_HOST = os.environ.get("VPN_FAILOVER_PROBE_HOST", "10.8.0.5")
 PROBE_PORT = int(os.environ.get("VPN_FAILOVER_PROBE_PORT", "8006"))
 
 # Max recovery attempts per cycle (prevents thrashing)
@@ -225,7 +225,7 @@ def attempt_recovery() -> list[dict]:
             "severity": "warning",
             "component": "vpn_failover",
             "message": (
-                "Proxmox B (10.8.0.102) is unreachable.  No local WireGuard "
+                "Proxmox B (10.8.0.5) is unreachable via DD-WRT WireGuard.  "
                 "interface configured — the tunnel is managed externally "
                 "(OPNsense).  Check the site-to-site VPN."
             ),
@@ -292,13 +292,13 @@ Address = {address}
 [Peer]
 PublicKey = <PASTE-PROXMOX-B-PUBLIC-KEY-HERE>
 Endpoint = {endpoint}
-AllowedIPs = 10.8.0.102/32
+AllowedIPs = 10.8.0.5/32
 PersistentKeepalive = 25
 """
 
 
 def generate_config_template(iface=WG_INTERFACE, address="10.8.0.3/32",
-                             endpoint="10.8.0.102:51820"):
+                             endpoint="10.8.0.5:51820"):
     """Print (not write) a WireGuard config template the operator can fill in.
 
     The operator runs this once to scaffold the tunnel config file:

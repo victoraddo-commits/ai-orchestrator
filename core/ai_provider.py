@@ -220,12 +220,20 @@ def _omniroute_available():
 
 
 
-def _local_not_implemented(*args, **kwargs):
-    raise NotImplementedError(
-        "The local provider is a Phase 12I architecture placeholder -- no "
-        "local model is installed or implemented. See Phase 12J/12I in the "
-        "roadmap before wiring one in."
-    )
+def _local_run_text_task(prompt, timeout=120, project_path=None):
+    """qwen2.5:7b via ollama on Proxmox B — deployed 2026-08-11.
+
+    This replaces the _local_not_implemented placeholder after benchmark
+    Phases 1-11 selected qwen2.5:7b as the best local model for Kai Brain.
+    The ollama server lives on Proxmox B (Samsung 970 EVO NVMe, i3-10100)
+    and is reachable via ZeroTier → LXC-B DNAT port 11434.
+    """
+    return llm_clients.call_ollama_qwen(prompt, timeout=timeout)
+
+
+def _local_available():
+    """True if the ollama server on Proxmox B is responding."""
+    return llm_clients.check_ollama_available()
 
 
 # Uniform run_text_task(prompt, timeout=60, project_path=None) contract
@@ -521,10 +529,10 @@ register_provider(
 
 register_provider(
     "local",
-    run_coding_task=_local_not_implemented,
-    available_fn=lambda: False,
+    run_text_task=_local_run_text_task,
+    available_fn=_local_available,
     kind="local",
-    description="Extension point for a future local model (e.g. Ollama) -- not installed",
+    description="qwen2.5:7b via ollama on Proxmox B (Samsung 970 EVO NVMe, i3-10100) — local text-task provider, deployed 2026-08-11 after benchmark Phases 1-11",
     cost_tier="free",
 )
 

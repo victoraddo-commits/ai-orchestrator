@@ -452,3 +452,48 @@ def call_gpuai_minimax(prompt, model=GPUAI_MINIMAX_MODEL, timeout=60, max_tokens
         raise RuntimeError(f"gpuai_minimax request failed: {detail}")
 
     return data["choices"][0]["message"]["content"]
+
+
+# ── Local ollama (qwen2.5:7b) on Proxmox B ────────────────────────────
+# Deployed 2026-08-11 after benchmark Phases 1-11: qwen2.5:7b beat
+# llama3.2:3b and llama3.1:8b on speed, code quality, JSON output,
+# reliability, hallucination resistance, and long-context extraction.
+# The ollama API is reachable via ZeroTier → LXC-B DNAT → Proxmox B host.
+# No API key needed — ollama runs unauthenticated on the local network.
+OLLAMA_BASE_URL = "http://10.250.0.2:11434"
+OLLAMA_MODEL = "qwen2.5:7b"
+
+
+def check_ollama_available(timeout=5):
+    """Lightweight availability check — true if ollama is responding."""
+    try:
+        r = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=timeout)
+        return r.status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
+    """Call qwen2.5:7b via ollama on Proxmox B (ZeroTier → LXC-B DNAT).
+
+    Uses ollama's /api/generate endpoint (not OpenAI-compatible) with
+    stream=false. Returns just the response text. Raises ProviderUnavailable
+    if the ollama server can't be reached.
+    """
+    if not check_ollama_available():
+        raise ProviderUnavailable(
+            f"Ollama ({OLLAMA_BASE_URL}) is not reachable — is Proxmox B online?"
+        )
+
+    try:
+        response = requests.post(
+            f"{OLLAMA_BASE_URL}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", "")
+    except requests.RequestException as error:
+        provider_health.capture_provider_error("ollama_qwen", detail=str(error)[:300])
+        raise RuntimeError(f"ollama_qwen request failed: {type(error).__name__}") from None

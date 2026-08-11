@@ -69,7 +69,7 @@ class KaiBettingWorkers:
         """
         # Primary: real odds from Odds-API.io v3
         try:
-            result = self._ingestion._sync_odds_v3(max_events=200)
+            result = self._ingestion._sync_odds_v3(max_events=15)
             picks = result.get("picks", [])
             return {
                 "generated": result.get("predictions_generated", 0),

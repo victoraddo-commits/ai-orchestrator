@@ -527,13 +527,32 @@ def upsert_event(conn, sport_id: int, external_id: str,
                  event_time: str, league_id: int = None,
                  status: str = "scheduled", venue: str = "",
                  round_name: str = "", season: str = "") -> int:
-    """Insert or replace an event, returning its ID.
+    """Insert or update an event, returning its ID.
 
-    Uses (sport_id, external_id) as the dedup key via the
-    UNIQUE index on events.
+    Uses UPDATE-or-INSERT (not INSERT OR REPLACE) to avoid
+    FOREIGN KEY violations when predictions already reference
+    the event.  (REPLACE = DELETE + INSERT; DELETE fails if
+    child rows exist and the FK lacks ON DELETE CASCADE.)
     """
+    existing = conn.execute(
+        "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
+        (sport_id, external_id)
+    ).fetchone()
+
+    if existing:
+        conn.execute("""
+            UPDATE events SET
+                home_team_id = ?, away_team_id = ?,
+                league_id = ?, event_time = ?,
+                status = ?, venue = ?, round = ?, season = ?,
+                updated_at = datetime('now')
+            WHERE id = ?
+        """, (home_team_id, away_team_id, league_id, event_time,
+              status, venue, round_name, season, existing["id"]))
+        return existing["id"]
+
     conn.execute("""
-        INSERT OR REPLACE INTO events (
+        INSERT INTO events (
             external_id, sport_id, league_id,
             home_team_id, away_team_id, event_time,
             status, venue, round, season, updated_at

@@ -9,7 +9,7 @@
       "sports": ["football", "basketball", "tennis", "baseball", "ice_hockey", "american_football", "rugby", "cricket"],
       "bookmakers": ["Bet365", "1xbet"],
       "markets": "all",
-      "rate_limit_daily": 1000
+      "rate_limit_hourly": 100
     },
     "odds_api": {
       "enabled": false,

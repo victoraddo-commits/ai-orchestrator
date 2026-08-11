@@ -60,7 +60,7 @@ def api_wg_peers():
 def api_tunnel_check():
     """Check if the WireGuard tunnel to Proxmox B is healthy.
 
-    Performs a TCP connect to Proxmox B (10.8.0.102:8006) through the
+    Performs a TCP connect to Proxmox B (10.8.0.5:8006) through the
     WireGuard tunnel.  This is the definitive health check — if Proxmox B
     responds, the tunnel is working regardless of what wg show says.
     """

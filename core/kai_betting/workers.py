@@ -360,6 +360,8 @@ class KaiBettingWorkers:
         try:
             results["odds_sync"] = self.refresh_sync()
         except Exception as e:
+            import traceback
+            logger.error(f"refresh_sync failed: {e}", exc_info=True)
             results["odds_sync_error"] = str(e)
 
         # Auto-settle finished events
@@ -379,6 +381,12 @@ class KaiBettingWorkers:
             results["odds_groups"] = self.refresh_odds_groups()
         except Exception as e:
             results["odds_groups_error"] = str(e)
+
+        # Send Telegram notifications for published picks
+        try:
+            results["telegram_notify"] = self._notify_telegram()
+        except Exception as e:
+            results["telegram_notify_error"] = str(e)
 
         # Update performance
         try:
@@ -405,6 +413,44 @@ class KaiBettingWorkers:
         return markets_map.get(sport_key, ["match_result"])
 
     @staticmethod
+    def _notify_telegram() -> Dict[str, Any]:
+        """Send published predictions via Telegram if configured.
+
+        Interval-gated: only sends if last_telegram_notify hasn't been
+        updated in the last 6 hours, or never sent.
+        """
+        try:
+            from core.kai_betting.telegram_bot import BettingTelegramBot
+            from core.kai_betting.db import get_db
+            from datetime import datetime, timezone
+
+            with get_db() as db:
+                row = db.execute(
+                    "SELECT value FROM betting_config WHERE key = 'last_telegram_notify'"
+                ).fetchone()
+
+                if row and row["value"]:
+                    try:
+                        last = datetime.fromisoformat(row["value"])
+                        elapsed = (datetime.now(timezone.utc) - last).total_seconds()
+                        if elapsed < 6 * 3600:  # 6-hour cooldown
+                            return {"sent": 0, "reason": "cooldown", "elapsed_seconds": int(elapsed)}
+                    except (ValueError, OSError):
+                        pass
+
+            result = BettingTelegramBot.send_daily_notifications()
+
+            # Mark notified
+            with get_db() as db:
+                now = datetime.now(timezone.utc).isoformat()
+                db.execute(
+                    "INSERT OR REPLACE INTO betting_config (key, value) VALUES "
+                    "('last_telegram_notify', ?)", (now,)
+                )
+
+            return result
+        except ImportError as e:
+            return {"sent": 0, "error": str(e)}
     def _determine_outcome(
         market_type: str,
         selection: str,

@@ -14,14 +14,19 @@ Integrates with the main Kai Telegram infrastructure via the betting router.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List, Callable
+
+import requests
 
 from core.kai_betting.db import get_db
 from core.kai_betting.subscriptions import SubscriptionManager
 from core.kai_betting.performance import PerformanceTracker
 
 logger = logging.getLogger(__name__)
+
+TELEGRAM_API = "https://api.telegram.org"
 
 
 class BettingTelegramBot:
@@ -340,30 +345,126 @@ class BettingTelegramBot:
                 "_Use `/subscribe` to upgrade._"
             )
 
+    # ── Notification Sending ──────────────────────────────────────────────────
+
+    @staticmethod
+    def send_raw(chat_id: str, text: str, parse_mode: str = "markdown") -> bool:
+        """Send a message to a Telegram chat via the Bot API.
+
+        Returns True if the message was sent successfully.
+        """
+        token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        if not token:
+            logger.warning("TELEGRAM_BOT_TOKEN not set — cannot send Telegram message")
+            return False
+
+        try:
+            url = f"{TELEGRAM_API}/bot{token}/sendMessage"
+            resp = requests.post(url, json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": True,
+            }, timeout=10)
+
+            if resp.ok:
+                return True
+            logger.warning(f"Telegram send failed: HTTP {resp.status_code} — {resp.text}")
+            return False
+        except requests.RequestException as e:
+            logger.error(f"Telegram send error: {e}")
+            return False
+
+    @classmethod
+    def send_picks_to(cls, chat_id: str, limit: int = 10) -> int:
+        """Query the latest published predictions and send them to a chat.
+
+        Returns the number of predictions sent.
+        """
+        with get_db() as db:
+            rows = db.execute("""
+                SELECT p.*, s.key as sport_key, s.name as sport_name
+                FROM predictions p
+                JOIN sports s ON s.id = p.sport_id
+                WHERE p.status = 'published'
+                ORDER BY p.confidence DESC
+                LIMIT ?
+            """, (limit,)).fetchall()
+
+        if not rows:
+            cls.send_raw(chat_id, "📊 *Kai Betting Picks*\n\n_No published predictions yet. Check back soon._")
+            return 0
+
+        lines = [f"📊 *Kai Betting — Today's Picks* ({len(rows)})\n"]
+        for i, row in enumerate(rows, 1):
+            emoji = "🟢" if row["confidence"] >= 70 else ("🟡" if row["confidence"] >= 50 else "🔴")
+            odds_str = f" @ {row['bookmaker_odds']:.2f}" if row["bookmaker_odds"] else ""
+            edge_val = row["edge"] if row["edge"] else None
+            edge_str = f" | Edge: {edge_val:.1%}" if edge_val else ""
+            lines.append(
+                f"{i}\\. {emoji} *{row['selection'].upper()}* \\- {row['sport_name']} "
+                f"\\({row['market_name']}\\){odds_str}\n"
+                f"   ⚡ {row['confidence']:.0f}% confidence{edge_str}"
+            )
+
+        cls.send_raw(chat_id, "\n".join(lines))
+        return len(rows)
+
+    @classmethod
+    def send_daily_notifications(cls) -> Dict[str, Any]:
+        """Send picks to all configured notification chat IDs.
+
+        Reads chat_id from betting_config key 'telegram_notify_chat_id'
+        (comma-separated).
+        """
+        with get_db() as db:
+            row = db.execute(
+                "SELECT value FROM betting_config WHERE key = 'telegram_notify_chat_id'"
+            ).fetchone()
+
+        if not row or not row["value"]:
+            return {"sent": 0, "reason": "no chat_ids configured"}
+
+        chat_ids = [cid.strip() for cid in row["value"].split(",") if cid.strip()]
+        results = {}
+        for cid in chat_ids:
+            count = cls.send_picks_to(cid)
+            results[cid] = count
+
+        return {"sent": sum(results.values()), "by_chat": results}
+
     # ── Formatters ────────────────────────────────────────────────────────────
 
     @staticmethod
     def format_prediction(row: Dict[str, Any]) -> str:
         """Format a single prediction for Telegram."""
-        emoji = "🟢" if row.get("confidence", 0) >= 70 else ("🟡" if row.get("confidence", 0) >= 50 else "🔴")
-        odds = row.get("bookmaker_odds")
+        conf = row["confidence"] if row["confidence"] else 0
+        emoji = "🟢" if conf >= 70 else ("🟡" if conf >= 50 else "🔴")
+        odds = row["bookmaker_odds"]
         odds_str = f" @ {odds:.2f}" if odds else ""
+        sport = row["sport_name"] or row["sport_key"] or ""
+        market = row["market_name"] or ""
+        sel = (row["selection"] or "").upper()
         return (
-            f"{emoji} {row.get('sport_name', row.get('sport_key', ''))} — "
-            f"{row.get('market_name', '')}\n"
-            f"Pick: *{row.get('selection', '').upper()}*{odds_str}\n"
-            f"Conf: {row.get('confidence', 0):.0f}%"
+            f"{emoji} {sport} — {market}\n"
+            f"Pick: *{sel}*{odds_str}\n"
+            f"Conf: {conf:.0f}%"
         )
 
     @staticmethod
     def format_odds_group(row: Dict[str, Any]) -> str:
         """Format an odds group for Telegram."""
         risk_emoji = {"conservative": "🛡️", "moderate": "⚖️", "aggressive": "🔥", "high_risk": "💎"}
-        emoji = risk_emoji.get(row.get("risk_level", ""), "📊")
+        level = row["risk_level"] or ""
+        emoji = risk_emoji.get(level, "📊")
+        label = row["label"] or ""
+        odds = row["combined_odds"] or 0
+        num = row["num_selections"] or 0
+        conf = row["average_confidence"] or 0
         return (
-            f"{emoji} *{row.get('label', '')}*\n"
-            f"Combined: {row.get('combined_odds', 0):.2f} | "
-            f"Selections: {row.get('num_selections', 0)}\n"
-            f"Confidence: {row.get('average_confidence', 0):.0f}% | "
-            f"Risk: {row.get('risk_level', '')}"
+            f"{emoji} *{label}*\n"
+            f"Combined: {odds:.2f} | "
+            f"Selections: {num}\n"
+            f"Confidence: {conf:.0f}% | "
+            f"Risk: {level}"
         )

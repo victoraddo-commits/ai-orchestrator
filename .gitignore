@@ -35,3 +35,5 @@ __pycache__/
 # Git worktrees
 .worktrees/
 core/legal_brain/legal_brain.db
+kai_betting.db
+*.db

@@ -61,133 +61,35 @@ class KaiBettingWorkers:
     # ── Daily Prediction Generation ──────────────────────────────────────────
 
     def generate_daily_predictions(self, sport_keys: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Generate predictions for today's scheduled events.
+        """Generate predictions for today's events using REAL odds from Odds-API.io.
 
-        Queries events happening today and runs the prediction engine
-        for each event against relevant markets.
-
-        Args:
-            sport_keys: Optional list of sport keys to generate for.
-                       If None, generates for all active sports.
+        Delegates to the DataIngestionManager to fetch real odds, discover all
+        markets, run predictions, and apply quality filters.
+        Falls back to DB-only predictions only if the API is unavailable.
         """
-        with get_db() as db:
-            # Get config
-            auto_publish = db.execute(
-                "SELECT value FROM betting_config WHERE key = 'auto_publish'"
-            ).fetchone()
-            should_publish = auto_publish and auto_publish["value"] == "true"
-            min_conf = float((db.execute(
-                "SELECT value FROM betting_config WHERE key = 'min_confidence_publish'"
-            ).fetchone() or {"value": "50"})["value"])
-            min_edge = float((db.execute(
-                "SELECT value FROM betting_config WHERE key = 'min_edge_publish'"
-            ).fetchone() or {"value": "0.02"})["value"])
-
-            # Get today's events
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            query = """
-                SELECT e.*, s.key as sport_key, ht.name as home_team, at.name as away_team
-                FROM events e
-                JOIN sports s ON s.id = e.sport_id
-                JOIN teams ht ON ht.id = e.home_team_id
-                JOIN teams at ON at.id = e.away_team_id
-                WHERE date(e.event_time) = date(?)
-                  AND e.status = 'scheduled'
-            """
-            params = [today]
-            if sport_keys:
-                placeholders = ",".join(["?"] * len(sport_keys))
-                query += f" AND s.key IN ({placeholders})"
-                params.extend(sport_keys)
-
-            events = db.execute(query, params).fetchall()
-
-        generated = 0
-        published = 0
-        errors = 0
-
-        for event in events:
-            try:
-                # Skip events that already have predictions with real bookmaker odds
-                # (they were already covered by refresh_sync)
-                with get_db() as guard_db:
-                    existing_odds = guard_db.execute(
-                        "SELECT COUNT(*) as cnt FROM predictions WHERE event_id = ? AND bookmaker_odds IS NOT NULL",
-                        (event["id"],)
-                    ).fetchone()
-                if existing_odds and existing_odds["cnt"] > 0:
-                    continue  # Already has real-odds predictions — skip synthetic generation
-
-                sport_key = event["sport_key"]
-                # Get available markets for this sport from config
-                markets = self._get_markets_for_sport(db, sport_key)
-
-                for market_type in markets:
-                    result = self._prediction_engine.predict(
-                        sport_key=sport_key,
-                        market_type=market_type,
-                        home_team=event["home_team"],
-                        away_team=event["away_team"],
-                    )
-
-                    # Determine status
-                    status = "pending"
-                    if should_publish and result.confidence >= min_conf:
-                        if result.edge and result.edge >= min_edge:
-                            status = "published"
-
-                    # Save
-                    with get_db() as conn:
-                        conn.execute("""
-                            INSERT INTO predictions (
-                                event_id, sport_id, league_id,
-                                market_type, market_name, selection,
-                                bookmaker_odds, estimated_probability,
-                                implied_probability, edge,
-                                confidence, risk_score, data_quality,
-                                reasoning, tags, correlation_group,
-                                model_version, status, data_timestamp
-                            ) VALUES (?, (SELECT id FROM sports WHERE key = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                        """, (
-                            event["id"],
-                            sport_key,
-                            event["league_id"],
-                            market_type,
-                            result.market_name,
-                            result.selection,
-                            result.bookmaker_odds,
-                            result.estimated_probability,
-                            result.implied_probability,
-                            result.edge,
-                            result.confidence,
-                            result.risk_score,
-                            result.data_quality,
-                            result.reasoning,
-                            ",".join(result.tags),
-                            result.correlation_group,
-                            result.model_version,
-                            status,
-                        ))
-                        conn.commit()
-
-                    generated += 1
-                    if status == "published":
-                        published += 1
-
-            except Exception as e:
-                logger.error(f"Prediction generation failed for event {event['id']}: {e}")
-                errors += 1
-
-        logger.info(
-            f"Daily predictions: {generated} generated, {published} auto-published, {errors} errors"
-        )
-
-        return {
-            "generated": generated,
-            "published": published,
-            "errors": errors,
-            "date": today,
-        }
+        # Primary: real odds from Odds-API.io v3
+        try:
+            result = self._ingestion._sync_odds_v3(max_events=200)
+            picks = result.get("picks", [])
+            return {
+                "generated": result.get("predictions_generated", 0),
+                "qualified": result.get("qualified_predictions", 0),
+                "unique_picks": result.get("unique_picks", 0),
+                "published": result.get("unique_picks", 0),
+                "errors": result.get("errors", 0),
+                "source": "odds_api_io",
+                "events_with_odds": result.get("events_with_odds", 0),
+                "markets_discovered": result.get("markets_discovered", 0),
+            }
+        except Exception as e:
+            logger.error(f"Daily predictions via Odds-API.io failed: {e}", exc_info=True)
+            return {
+                "generated": 0,
+                "published": 0,
+                "errors": 1,
+                "source": "error",
+                "error": str(e)[:200],
+            }
 
     # ── Auto-Settlement ──────────────────────────────────────────────────────
 
@@ -416,8 +318,8 @@ class KaiBettingWorkers:
     def _notify_telegram() -> Dict[str, Any]:
         """Send published predictions via Telegram if configured.
 
-        Interval-gated: only sends if last_telegram_notify hasn't been
-        updated in the last 6 hours, or never sent.
+        Forces a fresh sync from Odds-API.io to get the latest picks,
+        then sends them via Telegram. Interval-gated at 6 hours.
         """
         try:
             from core.kai_betting.telegram_bot import BettingTelegramBot

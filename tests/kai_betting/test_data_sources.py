@@ -197,30 +197,31 @@ class TestDataIngestionManager:
     def test_init_creates_odds_api_source(self):
         from core.kai_betting.data_ingestion import DataIngestionManager
         mgr = DataIngestionManager()
-        assert mgr._odds_api is not None
+        assert mgr._primary is not None
         assert mgr._engine is not None
 
     def test_not_configured_without_key(self):
         from core.kai_betting.data_ingestion import DataIngestionManager
         mgr = DataIngestionManager()
-        with patch.dict(os.environ, {}, clear=True):
-            assert not mgr.is_configured
+        # Clear env and secrets to simulate no-key scenario
+        mgr._primary._api_key = ""
+        assert not mgr.is_configured
 
     def test_refresh_events_skips_when_not_configured(self, temp_db):
         from core.kai_betting.data_ingestion import DataIngestionManager
         mgr = DataIngestionManager()
-        mgr._odds_api._api_key = ""
+        mgr._primary._api_key = ""
         result = mgr.refresh_events()
         assert result["status"] == "skipped"
-        assert "ODDS_API_KEY" in result["reason"]
+        assert "ODDS_API_IO_KEY" in result["reason"]
 
     def test_refresh_sync_skips_when_not_configured(self, temp_db):
         from core.kai_betting.data_ingestion import DataIngestionManager
         mgr = DataIngestionManager()
-        mgr._odds_api._api_key = ""
+        mgr._primary._api_key = ""
         result = mgr.refresh_sync()
         assert result["status"] == "skipped"
-        assert "ODDS_API_KEY" in result["reason"]
+        assert "ODDS_API_IO_KEY" in result["reason"]
 
     def test_get_active_sports_defaults(self, temp_db):
         from core.kai_betting.data_ingestion import DataIngestionManager

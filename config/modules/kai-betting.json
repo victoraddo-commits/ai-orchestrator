@@ -1,7 +1,18 @@
 {
   "data_sources": {
-    "odds_api": {
+    "odds_api_io": {
       "enabled": true,
+      "api_key_provider": "odds_api_io",
+      "api_key_env": "ODDS_API_IO_KEY",
+      "legacy_key_env": "ODDSAPIKEY",
+      "base_url": "https://api.odds-api.io/v3",
+      "sports": ["football", "basketball", "tennis", "baseball", "ice_hockey", "american_football", "rugby", "cricket"],
+      "bookmakers": ["Bet365", "1xbet"],
+      "markets": "all",
+      "rate_limit_daily": 1000
+    },
+    "odds_api": {
+      "enabled": false,
       "api_key_env": "ODDS_API_KEY",
       "base_url": "https://api.the-odds-api.com/v4",
       "sports": ["football", "basketball", "tennis"],
@@ -11,9 +22,17 @@
     }
   },
   "refresh": {
-    "events_interval_hours": 6,
-    "odds_interval_minutes": 60,
-    "results_interval_minutes": 15,
+    "events_interval_hours": 4,
+    "odds_interval_minutes": 30,
+    "results_interval_minutes": 30,
     "api_rate_limit_per_second": 1
+  },
+  "quality_filters": {
+    "min_probability": 0.65,
+    "min_confidence": 70,
+    "min_data_quality": 70,
+    "require_positive_edge": true,
+    "require_real_odds": true,
+    "live_data_mode": true
   }
 }

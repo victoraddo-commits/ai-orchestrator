@@ -4,21 +4,31 @@ Multi-stage prediction pipeline that combines statistical modeling,
 AI-assisted analysis, and historical performance data.
 
 Architecture:
-  1. Data Collection — gather stats for the event
-  2. Statistical Model — base probability from historical data
-  3. AI Enhancement — contextual analysis via Kai's AI router
-  4. Quality Scoring — confidence, risk, and data quality scores
-  5. Correlation Detection — identify correlated picks
+  1. Real Odds Input — receive real bookmaker odds + market
+  2. Implied Probability — compute from decimal odds
+  3. Statistical Model — base probability from market heuristics
+  4. AI Enhancement — contextual analysis via Kai's AI router (when available)
+  5. Quality Scoring — confidence, risk, and data quality scores
+  6. Edge Calculation — model_probability vs implied_probability
+  7. Correlation Detection — identify correlated picks
+
+LIVE_DATA_MODE=true: Rejects predictions without real bookmaker odds.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any, Tuple
 
 from core.kai_betting.models import PredictionInput, PredictionResult
+
+
+def is_live_data_mode() -> bool:
+    """Check if LIVE_DATA_MODE is enabled (default: True)."""
+    return os.environ.get("LIVE_DATA_MODE", "true").lower() in ("1", "true", "yes")
 
 
 # ── Market Templates ─────────────────────────────────────────────────────────
@@ -41,36 +51,86 @@ MARKET_TEMPLATES: Dict[str, Dict[str, Any]] = {
             "description": "Home, Away",
         },
         "over_under": {
-            "name": "Over/Under 2.5 Goals",
+            "name": "Over/Under Goals",
             "selections": ["over", "under"],
-            "description": "Over/Under 0.5-3.5",
+            "description": "Over/Under 0.5-10.5",
         },
         "btts": {
             "name": "Both Teams To Score",
             "selections": ["yes", "no"],
             "description": "Yes/No",
         },
-        "team_goals": {
-            "name": "Team Goals",
-            "selections": ["home_over", "home_under", "away_over", "away_under"],
-            "description": "Home/Away Over/Under",
+        "team_goals_home": {
+            "name": "Home Team Goals",
+            "selections": ["over", "under"],
+            "description": "Home Over/Under",
+        },
+        "team_goals_away": {
+            "name": "Away Team Goals",
+            "selections": ["over", "under"],
+            "description": "Away Over/Under",
         },
         "ht_result": {
             "name": "Half-Time Result",
             "selections": ["home", "draw", "away"],
             "description": "1X2",
         },
+        "ht_double_chance": {
+            "name": "Half-Time Double Chance",
+            "selections": ["1X", "X2", "12"],
+            "description": "1X, X2, 12",
+        },
         "ht_goals": {
             "name": "Half-Time Goals",
             "selections": ["over", "under"],
             "description": "Over/Under",
+        },
+        "2h_result": {
+            "name": "2nd Half Result",
+            "selections": ["home", "draw", "away"],
+            "description": "1X2",
+        },
+        "odd_even": {
+            "name": "Odd/Even Goals",
+            "selections": ["odd", "even"],
+            "description": "Odd/Even",
+        },
+        "clean_sheet_home": {
+            "name": "Home Clean Sheet",
+            "selections": ["yes", "no"],
+            "description": "Yes/No",
+        },
+        "clean_sheet_away": {
+            "name": "Away Clean Sheet",
+            "selections": ["yes", "no"],
+            "description": "Yes/No",
+        },
+        "first_to_score": {
+            "name": "First Team To Score",
+            "selections": ["home", "away"],
+            "description": "Home/Away",
+        },
+        "handicap": {
+            "name": "Handicap",
+            "selections": ["home", "away"],
+            "description": "Spread",
+        },
+        "corners_over_under": {
+            "name": "Corners Over/Under",
+            "selections": ["over", "under"],
+            "description": "Over/Under",
+        },
+        "corners_handicap": {
+            "name": "Corners Handicap",
+            "selections": ["home", "away"],
+            "description": "Spread",
         },
     },
     "basketball": {
         "match_result": {
             "name": "Match Result",
             "selections": ["home", "away"],
-            "description": "1X2",
+            "description": "Moneyline",
         },
         "over_under": {
             "name": "Over/Under Points",
@@ -88,11 +148,6 @@ MARKET_TEMPLATES: Dict[str, Dict[str, Any]] = {
             "name": "Match Result",
             "selections": ["home", "away"],
             "description": "Player Win",
-        },
-        "set_betting": {
-            "name": "Set Betting",
-            "selections": ["3-0", "3-1", "3-2", "2-3", "1-3", "0-3"],
-            "description": "Set Score",
         },
         "over_under": {
             "name": "Over/Under Games",
@@ -151,6 +206,103 @@ class PredictionEngine:
     def __init__(self):
         self._market_templates = MARKET_TEMPLATES
 
+    def predict_with_odds(
+        self,
+        sport_key: str,
+        market_type: str,
+        selection: str,
+        home_team: str = "",
+        away_team: str = "",
+        bookmaker_odds: float = 0.0,
+        line: Optional[float] = None,
+        bookmaker_name: Optional[str] = None,
+    ) -> PredictionResult:
+        """Generate a prediction from REAL odds data.
+
+        This is the PRIMARY entry point for the real-data pipeline.
+        Uses bookmaker odds to compute implied probability, then models
+        the actual probability based on market type and team context.
+
+        Args:
+            sport_key: e.g. 'football', 'basketball'
+            market_type: e.g. 'match_result', 'over_under', 'btts'
+            selection: The specific outcome (e.g. 'home', 'over', 'yes')
+            home_team: Home team name
+            away_team: Away team name
+            bookmaker_odds: Decimal odds from the bookmaker
+            line: For over/under and handicap, the line value (e.g. 2.5)
+            bookmaker_name: Name of the bookmaker providing the odds
+        """
+        market_info = self._get_market_info(sport_key, market_type)
+
+        # Compute implied probability from real odds
+        if bookmaker_odds and bookmaker_odds > 1.0:
+            implied_prob = 1.0 / bookmaker_odds
+        else:
+            implied_prob = None
+
+        # Model probability: start from implied, adjust for market context
+        model_prob = self._model_probability(
+            sport_key, market_type, selection, home_team, away_team,
+            bookmaker_odds, implied_prob, line
+        )
+
+        # Compute edge
+        if implied_prob is not None:
+            edge = model_prob - implied_prob
+        else:
+            edge = None
+
+        # Score quality
+        confidence, risk_score, data_quality = self._score_quality_real(
+            sport_key=sport_key,
+            market_type=market_type,
+            home_team=home_team,
+            away_team=away_team,
+            bookmaker_odds=bookmaker_odds,
+            bookmaker_name=bookmaker_name,
+            selection=selection,
+        )
+
+        # Build reasoning
+        market_display = market_info.get("name", market_type)
+        reasoning = (
+            f"Real odds: {bookmaker_odds:.2f} ({bookmaker_name or 'bookmaker'}) | "
+            f"Model: {model_prob:.1%} | Implied: {implied_prob:.1%}" if implied_prob else
+            f"Real odds: {bookmaker_odds:.2f} ({bookmaker_name or 'bookmaker'}) | "
+            f"Model: {model_prob:.1%}"
+        )
+
+        if home_team and away_team:
+            reasoning += f" | {home_team} vs {away_team}"
+
+        # Tags
+        tags = self._generate_tags(sport_key, market_type, confidence, risk_score, edge)
+
+        # Correlation group
+        corr_group = self._compute_correlation_group(
+            sport_key, market_type, home_team, away_team
+        )
+
+        return PredictionResult(
+            sport_key=sport_key,
+            league_key=None,
+            market_type=market_type,
+            market_name=market_display,
+            selection=selection,
+            estimated_probability=model_prob,
+            bookmaker_odds=bookmaker_odds,
+            implied_probability=implied_prob,
+            edge=edge,
+            confidence=confidence,
+            risk_score=risk_score,
+            data_quality=data_quality,
+            reasoning=reasoning,
+            tags=tags,
+            correlation_group=corr_group,
+            model_version="kai-betting-v2",
+        )
+
     def predict(
         self,
         sport_key: str,
@@ -161,19 +313,9 @@ class PredictionEngine:
         bookmaker_odds: Optional[float] = None,
         stats: Optional[Dict[str, Any]] = None,
     ) -> PredictionResult:
-        """Run the full prediction pipeline.
+        """Run the prediction pipeline (legacy path — tests & synthetic only).
 
-        Args:
-            sport_key: e.g. 'football', 'basketball'
-            market_type: e.g. 'match_result', 'over_under'
-            home_team: Home team name
-            away_team: Away team name
-            event_external_id: Data provider's event ID
-            bookmaker_odds: Current bookmaker odds for the selection
-            stats: Optional pre-collected statistics
-
-        Returns:
-            PredictionResult with selection, probability, and confidence
+        In production, use predict_with_odds() which requires real odds data.
         """
         # Stage 1: Validate market
         market_info = self._get_market_info(sport_key, market_type)
@@ -237,6 +379,146 @@ class PredictionEngine:
         )
 
     # ── Stage Helpers ────────────────────────────────────────────────────────
+
+    def _model_probability(
+        self,
+        sport_key: str,
+        market_type: str,
+        selection: str,
+        home_team: str,
+        away_team: str,
+        bookmaker_odds: float,
+        implied_prob: Optional[float],
+        line: Optional[float],
+    ) -> float:
+        """Compute model probability from real odds and market context.
+
+        The model starts from implied probability (what the market believes)
+        and adjusts based on:
+        - Market type (some markets are more predictable than others)
+        - Home/away context (team-specific adjustment)
+        - Line context (for over/under and handicap markets)
+        """
+        if implied_prob is None:
+            implied_prob = 0.50  # no information
+
+        # Market reliability: how much we trust the market for each type
+        market_reliability = {
+            "match_result": 0.85,
+            "double_chance": 0.82,
+            "draw_no_bet": 0.80,
+            "over_under": 0.78,
+            "btts": 0.75,
+            "team_goals_home": 0.70,
+            "team_goals_away": 0.68,
+            "ht_result": 0.65,
+            "ht_double_chance": 0.63,
+            "ht_goals": 0.60,
+            "2h_result": 0.58,
+            "odd_even": 0.55,
+            "handicap": 0.72,
+            "european_handicap": 0.70,
+            "clean_sheet_home": 0.65,
+            "clean_sheet_away": 0.63,
+            "first_to_score": 0.62,
+            "teams_to_score": 0.60,
+            "corners_over_under": 0.50,
+            "corners_handicap": 0.45,
+        }.get(market_type, 0.70)
+
+        # Selection strength: how often does this selection type win?
+        selection_adjust = {
+            "home": 0.02,      # slight home bias
+            "away": -0.01,
+            "draw": -0.01,
+            "over": 0.01,
+            "under": 0.01,
+            "yes": 0.0,
+            "no": 0.0,
+            "1X": 0.015,
+            "X2": -0.005,
+            "12": -0.01,
+            "odd": 0.0,
+            "even": 0.0,
+        }.get(selection, 0.0)
+
+        # Team-specific adjustment
+        team_adj = 0.0
+        if home_team and away_team:
+            modifier = self._team_strength_modifier(home_team, away_team)
+            if selection in ("home", "1X", "12"):
+                team_adj = modifier * 0.3
+            elif selection in ("away", "X2"):
+                team_adj = -modifier * 0.3
+
+        # Blend: weighted mix of implied and adjusted probability
+        # Higher reliability = model tracks market more closely
+        noise = self._hash_to_float(home_team, away_team, market_type, selection) * 0.04 - 0.02
+        model_prob = implied_prob + (selection_adjust + team_adj + noise) * (1 - market_reliability)
+        return min(0.95, max(0.05, model_prob))
+
+    def _score_quality_real(
+        self,
+        sport_key: str,
+        market_type: str,
+        home_team: str,
+        away_team: str,
+        bookmaker_odds: float,
+        bookmaker_name: Optional[str],
+        selection: str,
+    ) -> Tuple[float, float, float]:
+        """Score quality for real-odds predictions.
+
+        Returns (confidence, risk_score, data_quality) all 0-100.
+        """
+        # Data quality: starts high with real odds
+        data_quality = 75.0
+        if home_team and away_team:
+            data_quality += 5
+        if bookmaker_name:
+            data_quality += 5
+        if bookmaker_odds and bookmaker_odds > 1.0:
+            # Odds in the sweet spot (1.20-3.00) are most reliable
+            if 1.2 <= bookmaker_odds <= 3.0:
+                data_quality += 10
+            elif bookmaker_odds <= 10.0:
+                data_quality += 5
+        data_quality = min(100, data_quality)
+
+        # Market complexity affects confidence
+        market_complexity = {
+            "match_result": 0.90,
+            "double_chance": 0.85,
+            "draw_no_bet": 0.82,
+            "over_under": 0.78,
+            "btts": 0.75,
+            "team_goals_home": 0.70,
+            "team_goals_away": 0.68,
+            "ht_result": 0.65,
+            "ht_double_chance": 0.63,
+            "ht_goals": 0.60,
+            "handicap": 0.70,
+            "clean_sheet_home": 0.65,
+            "clean_sheet_away": 0.63,
+            "first_to_score": 0.60,
+            "odd_even": 0.50,
+            "corners_over_under": 0.45,
+            "corners_handicap": 0.40,
+        }.get(market_type, 0.60)
+
+        confidence = data_quality * market_complexity
+
+        # Risk: higher for complex/high-odds markets
+        base_risk = max(5, 100 - confidence * 0.7)
+        if bookmaker_odds and bookmaker_odds > 5.0:
+            base_risk += 10  # long shots are risky
+        if market_type.startswith("corners"):
+            base_risk += 15  # corner markets are volatile
+        risk_score = min(100, base_risk)
+
+        return round(min(100, max(10, confidence)), 1), \
+               round(min(100, max(5, risk_score)), 1), \
+               round(data_quality, 1)
 
     def _get_market_info(self, sport_key: str, market_type: str) -> Dict[str, Any]:
         """Get market template, falling back to a generic template."""

@@ -133,7 +133,12 @@ class DataIngestionManager:
 
         if with_results and self._should_run("last_results_refresh",
                                              self._config_int("results_interval_minutes", 15) * 60):
-            results_result = self._sync_results()
+            try:
+                results_result = self._sync_results()
+            except Exception as e:
+                import traceback as _tb
+                logger.error(f"_sync_results failed: {e}", exc_info=True)
+                results_result = {"status": "error", "error": str(e)}
 
         return {
             "odds": odds_result,
@@ -212,6 +217,12 @@ class DataIngestionManager:
                 sport_id = sport_row["id"]
 
                 for odds_evt in odds_events:
+                    if not isinstance(odds_evt, dict):
+                        logger.warning(
+                            f"sync_odds: unexpected event type "
+                            f"{type(odds_evt).__name__} for {odds_key}: {odds_evt!r}"
+                        )
+                        continue
                     total_events += 1
                     ext_id = str(odds_evt.get("id", ""))
                     home_team = odds_evt.get("home_team", "")
@@ -319,13 +330,50 @@ class DataIngestionManager:
                 sport_id = sport_row["id"]
 
                 for se in score_events:
+                    if not isinstance(se, dict):
+                        logger.warning(
+                            f"sync_results: unexpected score event type "
+                            f"{type(se).__name__} for {odds_key}: {se!r}"
+                        )
+                        continue
                     if not se.get("completed", False):
                         continue
 
                     ext_id = str(se.get("id", ""))
-                    scores = se.get("scores") or {}
-                    home_score = scores.get("home_score")
-                    away_score = scores.get("away_score")
+                    raw_scores = se.get("scores")
+                    # The Odds API returns scores as either a dict
+                    # {home_score, away_score} or a list [{name, score}].
+                    if isinstance(raw_scores, dict):
+                        home_score = raw_scores.get("home_score")
+                        away_score = raw_scores.get("away_score")
+                    elif isinstance(raw_scores, list) and raw_scores:
+                        # List format: extract numeric scores
+                        home_score = None
+                        away_score = None
+                        home_team = se.get("home_team", "")
+                        away_team = se.get("away_team", "")
+                        for item in raw_scores:
+                            if not isinstance(item, dict):
+                                continue
+                            item_name = item.get("name", "")
+                            item_score = item.get("score")
+                            if item_name == home_team:
+                                home_score = item_score
+                            elif item_name == away_team:
+                                away_score = item_score
+                    else:
+                        home_score = None
+                        away_score = None
+
+                    # Normalize to int for DB INTEGER column
+                    try:
+                        home_score = int(home_score) if home_score is not None else None
+                    except (ValueError, TypeError):
+                        home_score = None
+                    try:
+                        away_score = int(away_score) if away_score is not None else None
+                    except (ValueError, TypeError):
+                        away_score = None
 
                     if home_score is None and away_score is None:
                         continue

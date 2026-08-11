@@ -433,7 +433,10 @@ class OddsAPISource:
                 logger.warning(f"OddsAPISource: unprocessable request (422) — sport may be out of season: {path}")
                 return None
             if not resp.ok:
-                logger.error(f"OddsAPISource: HTTP {resp.status_code} from {path}")
+                if resp.status_code == 404:
+                    logger.debug(f"OddsAPISource: HTTP 404 from {path} (out of season)")
+                else:
+                    logger.error(f"OddsAPISource: HTTP {resp.status_code} from {path}")
                 return None
 
             data = resp.json()

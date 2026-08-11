@@ -54,11 +54,11 @@ export default function Predictions() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <TrendingUp className="w-6 h-6 text-brand-400" />
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-brand-400" />
             Predictions
           </h1>
-          <p className="text-surface-400 text-sm mt-1">AI-generated sports predictions</p>
+          <p className="text-surface-400 text-xs sm:text-sm mt-1">AI-generated sports predictions</p>
         </div>
         <button onClick={load} className="btn-ghost" title="Refresh">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -66,14 +66,15 @@ export default function Predictions() {
       </div>
 
       {/* Filters */}
-      <div className="card p-4 flex flex-wrap gap-3 items-center">
-        <Filter className="w-4 h-4 text-surface-500" />
-        <div className="flex flex-wrap gap-2">
+      <div className="card p-3 sm:p-4 space-y-3">
+        {/* Sport filter — horizontally scrollable */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+          <Filter className="w-4 h-4 text-surface-500 flex-shrink-0" />
           {SPORTS.map((s) => (
             <button
               key={s.key}
               onClick={() => { setSport(s.key); setPage(0); }}
-              className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+              className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ${
                 sport === s.key
                   ? 'bg-brand-600 text-white'
                   : 'bg-surface-800 text-surface-400 hover:text-surface-200 hover:bg-surface-700'
@@ -83,13 +84,13 @@ export default function Predictions() {
             </button>
           ))}
         </div>
-        <div className="w-px h-6 bg-surface-700 mx-1" />
-        <div className="flex gap-2">
+        {/* Status filter */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
           {STATUSES.map((s) => (
             <button
               key={s.key}
               onClick={() => { setStatus(s.key); setPage(0); }}
-              className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+              className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ${
                 status === s.key
                   ? 'bg-brand-600 text-white'
                   : 'bg-surface-800 text-surface-400 hover:text-surface-200 hover:bg-surface-700'

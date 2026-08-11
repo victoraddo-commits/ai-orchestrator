@@ -43,11 +43,11 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Sparkles className="w-8 h-8 text-brand-400" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2 sm:gap-3">
+            <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-brand-400" />
             Kai Betting
           </h1>
-          <p className="text-surface-400 mt-1">AI-powered sports predictions across 10 sports</p>
+          <p className="text-surface-400 mt-1 text-sm sm:text-base">AI-powered sports predictions across 10 sports</p>
         </div>
       </div>
 
@@ -174,10 +174,10 @@ function DashboardSkeleton() {
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-pulse">
       <div className="skeleton h-12 w-64" />
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[...Array(4)].map((_, i) => <div key={i} className="skeleton h-28 rounded-xl" />)}
       </div>
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-2 space-y-3">
           {[...Array(4)].map((_, i) => <div key={i} className="skeleton h-24 rounded-xl" />)}
         </div>

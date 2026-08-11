@@ -31,11 +31,11 @@ export default function OddsGroups() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Target className="w-6 h-6 text-accent-amber" />
+        <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+          <Target className="w-5 h-5 sm:w-6 sm:h-6 text-accent-amber" />
           Odds Groups
         </h1>
-        <p className="text-surface-400 text-sm mt-1">Multi-selection accumulators by risk level</p>
+        <p className="text-surface-400 text-xs sm:text-sm mt-1">Multi-selection accumulators by risk level</p>
       </div>
 
       {loading ? (
@@ -70,14 +70,14 @@ export default function OddsGroups() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-3 sm:gap-6">
                     <div className="text-right">
-                      <p className="text-lg font-bold text-white font-mono">{g.combined_odds?.toFixed(2)}</p>
-                      <p className="text-xs text-surface-500">Combined odds</p>
+                      <p className="text-base sm:text-lg font-bold text-white font-mono">{g.combined_odds?.toFixed(2)}</p>
+                      <p className="text-[10px] sm:text-xs text-surface-500">Odds</p>
                     </div>
-                    <div className="text-right">
+                    <div className="hidden sm:block text-right">
                       <p className="text-sm font-semibold text-white">{g.average_confidence?.toFixed(0)}%</p>
-                      <p className="text-xs text-surface-500">Avg confidence</p>
+                      <p className="text-xs text-surface-500">Avg conf</p>
                     </div>
                     {isExpanded ? <ChevronUp className="w-5 h-5 text-surface-500" /> : <ChevronDown className="w-5 h-5 text-surface-500" />}
                   </div>

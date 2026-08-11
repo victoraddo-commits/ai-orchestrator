@@ -118,8 +118,8 @@ export default function Account() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <User className="w-6 h-6 text-brand-400" />
+        <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+          <User className="w-5 h-5 sm:w-6 sm:h-6 text-brand-400" />
           My Account
         </h1>
       </div>
@@ -204,7 +204,7 @@ function Toggle({ label, defaultChecked = false }) {
         }`}
       >
         <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-          on ? 'translate-x-4.5' : 'translate-x-0.5'
+          on ? 'translate-x-[18px]' : 'translate-x-0.5'
         }`} />
       </button>
     </label>

@@ -47,7 +47,7 @@ export default function Subscribe() {
     return (
       <div className="max-w-4xl mx-auto space-y-6 animate-pulse">
         <div className="skeleton h-10 w-48" />
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-80 rounded-xl" />)}
         </div>
       </div>
@@ -94,11 +94,11 @@ export default function Subscribe() {
         {plans.map((plan) => {
           const Icon = PLAN_ICONS[plan.key] || Zap;
           return (
-            <div key={plan.key} className={`card flex flex-col ${
+            <div key={plan.key} className={`card relative flex flex-col ${
               plan.key === 'monthly' ? 'border-brand-600/50 ring-1 ring-brand-600/20' : ''
             }`}>
               {plan.key === 'monthly' && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-xs font-bold px-3 py-0.5 rounded-full">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-xs font-bold px-3 py-0.5 rounded-full whitespace-nowrap">
                   BEST VALUE
                 </div>
               )}

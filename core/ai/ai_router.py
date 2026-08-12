@@ -683,7 +683,7 @@ def _response_cost(response):
     return None
 
 
-def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task", return_attempts=False, requires_file_access=False):
+def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task", return_attempts=False, requires_file_access=False, provider=None):
     # 13V: return_attempts=True adds an "attempts" key to the result -- the
     # structured log of every candidate that failed before the winner, each
     # {"provider", "error_type", "error"} with error_type in
@@ -694,6 +694,86 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
     # 17R: requires_file_access=True signals that this call needs a provider
     # that can read/write files (coding_agent capability); text-only
     # providers are filtered out entirely rather than deprioritized.
+
+    # ── 18A-ai Phase 2: direct provider routing ──────────────────────
+    # When a caller specifies a provider, skip classification, rotation,
+    # and candidate iteration — try ONLY that provider.  No fallback.
+    if provider is not None:
+        prov = ai_provider.get_provider(provider)
+        if prov is None:
+            raise AllProvidersFailed(
+                f"Provider {provider!r} is not registered",
+                attempts=[{"provider": provider, "error_type": "unknown_provider",
+                           "error": "not registered"}],
+            )
+
+        if not prov.get("enabled", True):
+            raise AllProvidersFailed(
+                f"Provider {provider!r} is disabled",
+                attempts=[{"provider": provider, "error_type": "disabled",
+                           "error": "operator disabled this provider"}],
+            )
+
+        if not prov["available_fn"]():
+            raise AllProvidersFailed(
+                f"Provider {provider!r} is not available (no credentials configured)",
+                attempts=[{"provider": provider, "error_type": "unavailable",
+                           "error": "not available (no credentials configured)"}],
+            )
+
+        # Check circuit breaker
+        from core.ai import circuit_breaker as _cb
+        if _cb.is_open(provider):
+            breaker = _cb.get_breaker_snapshot(provider) or {}
+            raise AllProvidersFailed(
+                f"Provider {provider!r} circuit breaker is open",
+                attempts=[{"provider": provider, "error_type": "circuit_open",
+                           "error": f"{breaker.get('consecutive_failures', '?')} consecutive failures"}],
+            )
+
+        run_fn = prov.get("run_coding_task" if capability == "coding_agent" else "run_text_task")
+        if run_fn is None:
+            raise AllProvidersFailed(
+                f"Provider {provider!r} does not support {capability}",
+                attempts=[{"provider": provider, "error_type": "unavailable",
+                           "error": f"does not support {capability}"}],
+            )
+
+        start = time.time()
+        resolved_type = task_type or classify_task(description)
+        try:
+            if capability == "coding_agent":
+                response = run_fn(project_path, description, timeout=timeout)
+            else:
+                response = run_fn(description, timeout=timeout, project_path=project_path)
+        except Exception as error:
+            duration_ms = int((time.time() - start) * 1000)
+            record_usage(provider, resolved_type, description, success=False,
+                         duration_ms=duration_ms, error=str(error))
+            _cb.record_failure(provider)
+            raise AllProvidersFailed(
+                f"Provider {provider!r} failed: {error}",
+                attempts=[{"provider": provider, "error_type": "error",
+                           "error": str(error)[:300]}],
+            )
+
+        duration_ms = int((time.time() - start) * 1000)
+        record_usage(provider, resolved_type, description, success=True,
+                     duration_ms=duration_ms)
+        provider_health.clear_quota_exceeded(provider)
+        _cb.record_success(provider)
+
+        result = {
+            "provider": provider,
+            "task_type": resolved_type,
+            "response": response,
+            "duration_ms": duration_ms,
+        }
+        if return_attempts:
+            result["attempts"] = []
+        return result
+    # ── end 18A-ai Phase 2 provider override ─────────────────────────
+
     resolved_type = task_type or classify_task(description)
     candidates = _candidates_for(resolved_type)
     # "coding" is excluded from the outer rotation: _candidates_for already

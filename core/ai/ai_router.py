@@ -247,12 +247,23 @@ ROLE_PROVIDERS = {
     # deepseek_native_flash produced 4 consecutive unusable planning responses.
     # deepseek_native_pro stays first per operator directive but its auth is
     # currently failing; gemini is the proven fallback.
-    "planning": ["deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "architecture": ["deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "log_analysis": ["deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "groq", "claude"],
-    "review": ["deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
-    "classification": ["deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    # 2026-08-12 operator directive: the best LOCAL model (qwen2.5:7b, provider
+    # "local" via Ollama on Proxmox B) is Kai's MAIN BRAIN -- primary for
+    # planning/architecture/review, which also drives Kai's operator chat
+    # (core.ai.ai_router.chat delegates with task_type="planning"). The lighter
+    # llama3.2:3b (provider "llama3") HELPS with the quick utility roles --
+    # classification, log_analysis, documentation -- where its fast, fence-free
+    # output suits short low-latency tasks. Both are availability-gated on
+    # check_ollama_available(), so if Ollama on Proxmox B is down the router
+    # falls straight through to the cloud chain below -- local is a live
+    # primary, never a hard dependency. Coding is untouched: neither local
+    # model registers a run_coding_task.
+    "planning": ["local", "deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "architecture": ["local", "deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "log_analysis": ["llama3", "local", "deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "claude"],
+    "documentation": ["llama3", "local", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "groq", "claude"],
+    "review": ["local", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    "classification": ["llama3", "local", "deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product

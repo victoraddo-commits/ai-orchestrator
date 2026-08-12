@@ -637,6 +637,11 @@ AUDIT_SOURCES = {
     "approval_queue": "approval_queue.json",
     "decisions": "decisions.json",
     "incidents": "incidents.json",
+    "gateway_audit": "gateway_audit.json",
+    "secret_access_audit": "secret_access_audit.json",
+    "ai_usage_history": "ai_usage_history.json",
+    "remediation_history": "remediation_history.json",
+    "verification_history": "verification_history.json",
 }
 
 
@@ -696,6 +701,77 @@ def _normalize_incident(entry: dict) -> dict | None:
     }
 
 
+def _normalize_gateway(entry: dict) -> dict | None:
+    if not entry.get("trace_id"):
+        return None
+    status = entry.get("status_code", 0)
+    return {
+        "timestamp": entry.get("timestamp", ""),
+        "source": "gateway",
+        "action": f"gateway.{'success' if 200 <= status < 300 else 'error'}",
+        "actor": entry.get("consumer", "system"),
+        "summary": f"{entry.get('provider', '?')} — {entry.get('model', 'auto')} ({entry.get('duration_ms', 0)}ms)",
+        "status": str(status),
+        "detail": {"trace_id": entry["trace_id"], "model": entry.get("model"), "error": entry.get("error")},
+    }
+
+
+def _normalize_secret(entry: dict) -> dict | None:
+    if not entry.get("timestamp"):
+        return None
+    return {
+        "timestamp": entry["timestamp"],
+        "source": "secret",
+        "action": f"secret.{entry.get('action', 'access')}",
+        "actor": "system",
+        "summary": f"{entry.get('provider', '?')}: {entry.get('success', False)}",
+        "status": "success" if entry.get("success") else "failure",
+        "detail": {"provider": entry.get("provider"), "detail": entry.get("detail")},
+    }
+
+
+def _normalize_ai_usage(entry: dict) -> dict | None:
+    if not entry.get("timestamp"):
+        return None
+    return {
+        "timestamp": entry["timestamp"],
+        "source": "ai",
+        "action": "ai.delegate",
+        "actor": entry.get("operator", "system"),
+        "summary": f"{entry.get('provider', '?')} — {entry.get('task_type', '?')} ({'success' if entry.get('success') else 'failed'})",
+        "status": "success" if entry.get("success") else "error",
+        "detail": {"provider": entry.get("provider"), "task_type": entry.get("task_type"), "duration_ms": entry.get("duration_ms")},
+    }
+
+
+def _normalize_remediation(entry: dict) -> dict | None:
+    if not entry.get("timestamp"):
+        return None
+    return {
+        "timestamp": entry["timestamp"],
+        "source": "remediation",
+        "action": f"remediation.{entry.get('action', 'unknown')}",
+        "actor": "system",
+        "summary": entry.get("incident", entry.get("action", "")),
+        "status": entry.get("result", "unknown"),
+        "detail": {"incident": entry.get("incident"), "action": entry.get("action")},
+    }
+
+
+def _normalize_verification(entry: dict) -> dict | None:
+    if not entry.get("timestamp"):
+        return None
+    return {
+        "timestamp": entry["timestamp"],
+        "source": "verification",
+        "action": f"verification.{entry.get('status', 'unknown')}",
+        "actor": "system",
+        "summary": f"{entry.get('service', '?')}: {entry.get('remaining_findings', '?')} remaining",
+        "status": entry.get("status", "unknown"),
+        "detail": {"service": entry.get("service"), "remaining_findings": entry.get("remaining_findings")},
+    }
+
+
 def _last_actor(history: list) -> str:
     """Extract the last human actor from a status-change history."""
     if not history:
@@ -730,11 +806,17 @@ _NORMALIZERS = {
     "approval_queue": _normalize_approval,
     "decisions": _normalize_decision,
     "incidents": _normalize_incident,
+    "gateway_audit": _normalize_gateway,
+    "secret_access_audit": _normalize_secret,
+    "ai_usage_history": _normalize_ai_usage,
+    "remediation_history": _normalize_remediation,
+    "verification_history": _normalize_verification,
 }
 
 
 @app.get("/audit")
 def get_audit_log(
+    request: Request,
     actor: str | None = None,
     source: str | None = None,
     action: str | None = None,
@@ -742,20 +824,35 @@ def get_audit_log(
     date_to: str | None = None,
     limit: int = 200,
     format: str = "json",
+    _: None = Depends(_require_dashboard_login),
 ):
-    """Merged chronological audit log from all Kai data sources.
+    """Merged chronological audit log from all Kai data sources (9 total).
 
     Query params:
       actor      — filter by operator/username
-      source     — filter by source: build, approval, decision, incident
+      source     — filter by source: build, approval, decision, incident,
+                   gateway, secret, ai, remediation, verification
       action     — filter by action prefix (e.g. 'build.failed')
       date_from  — ISO date string, inclusive
       date_to    — ISO date string, inclusive
       limit      — max entries (default 200, max 1000)
       format     — 'json' (default) or 'csv'
+
+    Requires dashboard login (Basic Auth).
     """
     limit = min(limit, 1000)
     entries: list[dict] = []
+
+    # Real client IP from forwarded headers, or the direct client.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    elif request.headers.get("x-real-ip"):
+        client_ip = request.headers["x-real-ip"].strip()
+    elif request.client and request.client.host:
+        client_ip = request.client.host
+    else:
+        client_ip = "127.0.0.1"
 
     for source_key, filename in AUDIT_SOURCES.items():
         if source and source_key != source:
@@ -767,6 +864,7 @@ def get_audit_log(
             entry = normalizer(raw)
             if entry is None:
                 continue
+            entry["source_ip"] = client_ip
             entries.append(entry)
 
     # Filter
@@ -787,10 +885,10 @@ def get_audit_log(
     if format == "csv":
         import io, csv as _csv
         output = io.StringIO()
-        writer = _csv.DictWriter(output, fieldnames=["timestamp", "source", "action", "actor", "summary", "status"])
+        writer = _csv.DictWriter(output, fieldnames=["timestamp", "source", "action", "actor", "summary", "status", "source_ip"])
         writer.writeheader()
         for e in entries:
-            writer.writerow({k: e.get(k, "") for k in ["timestamp", "source", "action", "actor", "summary", "status"]})
+            writer.writerow({k: e.get(k, "") for k in ["timestamp", "source", "action", "actor", "summary", "status", "source_ip"]})
         return Response(content=output.getvalue(), media_type="text/csv",
                         headers={"Content-Disposition": "attachment; filename=kai_audit.csv"})
 

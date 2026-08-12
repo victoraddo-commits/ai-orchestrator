@@ -2738,6 +2738,8 @@ class KaiCommandRequest(BaseModel):
 
 class KaiChatRequest(BaseModel):
     text: str
+    project_id: str | None = None
+    conversation_id: str | None = None
 
 
 @app.post("/kai/command")
@@ -3148,24 +3150,26 @@ async def kai_chat_stream_endpoint(
     import json
     from starlette.responses import EventSourceResponse
     from typing import AsyncGenerator
-    from core.kai.conversation import create_conversation, create_message, get_messages, update_conversation_title
+    from core.kai.conversation import create_conversation, create_message, get_messages, update_conversation_title, get_conversation
     
     text = (body.text or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Message text is required")
 
-    # Create or get conversation ID
-    conversation_id = None
-    # Try to get conversation_id from request (if available) or create new
-    # For now, we'll create a new conversation for simplicity
-    conversation_id = create_conversation(operator, None)
+    # Use existing conversation or create a new one
+    if body.conversation_id:
+        existing = get_conversation(body.conversation_id)
+        if not existing or existing.get("user_id") != operator:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        conversation_id = body.conversation_id
+    else:
+        conversation_id = create_conversation(operator, body.project_id)
     
     # Save user message
     create_message(conversation_id, "user", text)
     
     # Update conversation title from first message
     if len(get_messages(conversation_id)) <= 1:
-        # Generate title from first message content (truncate to 50 chars)
         title = text[:50] + "..." if len(text) > 50 else text
         if not title.strip():
             title = "New Conversation"

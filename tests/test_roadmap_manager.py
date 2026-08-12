@@ -51,6 +51,14 @@ def _drive_build_to_deploy_approval(project_path):
     return build["id"]
 
 
+def _save_build(build_id, status, **extra):
+    """Save a minimal build record at *status* so the V3 stale-reference check
+    (which consults load_builds, not the get_build mock) finds the build, while
+    _process_in_progress_phase observes *status* directly."""
+    build = {"id": build_id, "status": status, "name": build_id, "project_path": "/tmp/fake-build", **extra}
+    save_builds([build])
+
+
 def test_autonomous_mode_defaults_to_disabled():
     assert roadmap_manager.is_autonomous_mode_enabled() is False
 
@@ -110,7 +118,7 @@ def test_advance_roadmap_creates_a_self_targeting_build_for_the_next_phase(isola
     roadmap_manager.enable_autonomous_mode()
 
     fake_clone_path = str(tmp_path / "isolated-clone")
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", lambda **kwargs: fake_clone_path)
+    monkeypatch.setattr(roadmap_manager, "_sandbox_create", lambda build_id, include_plugin=False: fake_clone_path)
 
     captured = {}
 
@@ -303,11 +311,11 @@ def test_advance_roadmap_requests_a_dual_repo_workspace_for_plugin_phases(isolat
 
     captured = {}
 
-    def fake_clone(include_plugin=False):
+    def fake_sandbox(build_id, include_plugin=False):
         captured["include_plugin"] = include_plugin
         return str(tmp_path / "workspace")
 
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", fake_clone)
+    monkeypatch.setattr(roadmap_manager, "_sandbox_create", fake_sandbox)
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda name, description, project_path, template=None: {"id": "build-x", "status": "REQUESTED"},
@@ -328,11 +336,11 @@ def test_advance_roadmap_requests_a_single_repo_workspace_for_non_plugin_phases(
 
     captured = {}
 
-    def fake_clone(include_plugin=False):
+    def fake_sandbox(build_id, include_plugin=False):
         captured["include_plugin"] = include_plugin
         return str(tmp_path / "workspace")
 
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", fake_clone)
+    monkeypatch.setattr(roadmap_manager, "_sandbox_create", fake_sandbox)
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda name, description, project_path, template=None: {"id": "build-x", "status": "REQUESTED"},
@@ -382,12 +390,11 @@ def test_run_self_build_tests_runs_in_the_orchestrator_repo_of_a_dual_workspace(
 
 
 def test_advance_roadmap_marks_phase_completed_when_linked_build_completes(isolated_roadmap, monkeypatch):
+    _save_build("build-123", "COMPLETED")
     _write(isolated_roadmap, [
         {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": "build-123"},
     ])
     roadmap_manager.enable_autonomous_mode()
-
-    monkeypatch.setattr(roadmap_manager, "get_build", lambda build_id: {"id": build_id, "status": "COMPLETED"})
 
     result = roadmap_manager.advance_roadmap()
 
@@ -403,23 +410,22 @@ def test_advance_roadmap_marks_phase_failed_when_linked_build_fails_and_does_not
     # core "a failed phase is never AUTO-RETRIED" doctrine (X itself is
     # not re-run without a human) is what STOPPING_BUILD_STATUSES actually
     # protects and is asserted here.
+    _save_build("build-123", "FAILED", failure_reason="tests failed")
     _write(isolated_roadmap, [
         {"id": "X", "status": "in_progress", "dependencies": [], "priority": 1, "build_id": "build-123"},
         {"id": "Y", "status": "pending", "dependencies": [], "priority": 2},
     ])
     roadmap_manager.enable_autonomous_mode()
 
-    monkeypatch.setattr(roadmap_manager, "get_build", lambda build_id: {"id": build_id, "status": "FAILED", "failure_reason": "tests failed"})
-
     # Any create_build call must be for Y (a fresh start), never for X (the
     # already-failed phase). Auto-retrying X itself is what "does_not_retry"
     # in this test's name forbids.
     monkeypatch.setattr(
-        roadmap_manager, "_create_isolated_self_clone", lambda **kwargs: str(tmp_path / "clone-y")
+        roadmap_manager, "_sandbox_create", lambda build_id, include_plugin=False: str(tmp_path / "clone-y")
     )
     real_create_build = roadmap_manager.create_build
 
-    def guarded_create_build(name, description, project_path, template=None):
+    def guarded_create_build(name, description, project_path, template=None, **kwargs):
         assert name != "X", "the already-failed phase X must not be auto-retried"
         return real_create_build(name=name, description=description, project_path=project_path, template=template)
 
@@ -454,11 +460,7 @@ def test_advance_roadmap_does_not_start_a_new_phase_while_another_is_still_waiti
     ])
     roadmap_manager.enable_autonomous_mode()
 
-    monkeypatch.setattr(
-        roadmap_manager, "get_build",
-        lambda build_id: {"id": build_id, "status": "WAITING_FOR_ARCHITECTURE_APPROVAL",
-                          "project_path": str(tmp_path / "clone-x")},
-    )
+    _save_build("build-1", "WAITING_FOR_ARCHITECTURE_APPROVAL", project_path=str(tmp_path / "clone-x"))
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda *a, **k: pytest.fail("must not start Y while an exclusive phase X is still in flight"),
@@ -711,7 +713,7 @@ def test_advance_roadmap_fails_the_phase_when_self_build_tests_fail(isolated_roa
     assert result["phase_id"] == "X"
     assert "Self-build test suite failed" in result["reason"]
 
-    updated_build = roadmap_manager.get_build(build_id)
+    updated_build = roadmap_manager.get_build(build_id, include_terminal=True)
     assert updated_build["status"] == "FAILED"
     assert updated_build["self_build_test_result"]["passed"] is False
 

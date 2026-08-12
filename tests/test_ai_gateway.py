@@ -283,7 +283,11 @@ class TestStreaming:
             lines = [l for l in body.split("\n") if l.startswith("data:") and l != "data: [DONE]"]
             if lines:
                 chunk = json.loads(lines[0][6:].strip())
-                assert "provider" in chunk
+                # When every provider is unavailable the stream emits a single
+                # error chunk (no provider field). Only assert the field on a
+                # real completion chunk.
+                if "error" not in chunk:
+                    assert "provider" in chunk
 
 
 # ---------------------------------------------------------------------------

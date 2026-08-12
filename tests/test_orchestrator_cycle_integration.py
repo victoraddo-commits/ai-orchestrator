@@ -7,7 +7,7 @@ def test_run_cycle_completes_without_error_and_has_expected_shape():
     result = run_cycle()
 
     assert set(result) == {
-        "state", "findings", "incidents", "decisions", "builds", "roadmap_progress", "remediation", "verification"
+        "state", "findings", "incidents", "decisions", "builds", "roadmap_progress", "remediation", "verification", "vpn_events"
     }
     assert isinstance(result["incidents"], list)
     assert isinstance(result["decisions"], list)
@@ -15,6 +15,7 @@ def test_run_cycle_completes_without_error_and_has_expected_shape():
     assert result["roadmap_progress"]["action"] == "disabled"
     assert isinstance(result["remediation"], list)
     assert isinstance(result["verification"], list)
+    assert isinstance(result["vpn_events"], list)
 
 
 def test_run_cycle_processes_a_roadmap_created_build_in_the_same_cycle(monkeypatch, tmp_path):

@@ -12,7 +12,7 @@ class TestLoadSaveDefaults:
         assert result == {"schema_version": 1, "overrides": {}}
 
     def test_load_overrides_persists_and_reloads(self, isolated_memory):
-        overrides = {"fallback_order": {"coding": ["qwen4_coding", "claude"]}}
+        overrides = {"fallback_order": {"coding": ["claude", "gpuai_minimax"]}}
         success, errors, warnings = pce.save_overrides(overrides)
         assert success is True
         assert errors == []
@@ -27,8 +27,8 @@ class TestLoadSaveDefaults:
         assert pce.get_fallback_order("nonexistent_role") is None
 
     def test_get_fallback_order_returns_override_when_set(self, isolated_memory):
-        pce.save_overrides({"fallback_order": {"coding": ["claude", "qwen4_coding"]}})
-        assert pce.get_fallback_order("coding") == ["claude", "qwen4_coding"]
+        pce.save_overrides({"fallback_order": {"coding": ["claude", "gpuai_minimax"]}})
+        assert pce.get_fallback_order("coding") == ["claude", "gpuai_minimax"]
         assert pce.get_fallback_order("planning") is None  # not set
 
     def test_get_max_concurrent_builds_returns_none_when_not_set(self, isolated_memory):
@@ -143,17 +143,17 @@ class TestSaveOverrides:
     def test_save_overrides_with_multiple_roles(self, isolated_memory):
         pce.save_overrides({
             "fallback_order": {
-                "coding": ["claude", "qwen4_coding"],
+                "coding": ["claude", "gpuai_minimax"],
                 "planning": ["gemini", "deepseek_native_flash"],
-                "review": ["qwen4_text"],
+                "review": ["deepseek_native_pro"],
             },
             "max_concurrent_builds": 8,
         })
 
         result = pce.load_overrides()
-        assert result["overrides"]["fallback_order"]["coding"] == ["claude", "qwen4_coding"]
+        assert result["overrides"]["fallback_order"]["coding"] == ["claude", "gpuai_minimax"]
         assert result["overrides"]["fallback_order"]["planning"] == ["gemini", "deepseek_native_flash"]
-        assert result["overrides"]["fallback_order"]["review"] == ["qwen4_text"]
+        assert result["overrides"]["fallback_order"]["review"] == ["deepseek_native_pro"]
         assert result["overrides"]["max_concurrent_builds"] == 8
 
 
@@ -198,8 +198,8 @@ class TestBackwardCompatibility:
 
     def test_partial_overrides_dont_affect_unconfigured_roles(self, isolated_memory):
         """Setting fallback_order for 'coding' should not affect 'planning'."""
-        pce.save_overrides({"fallback_order": {"coding": ["qwen4_coding"]}})
-        assert pce.get_fallback_order("coding") == ["qwen4_coding"]
+        pce.save_overrides({"fallback_order": {"coding": ["gpuai_minimax"]}})
+        assert pce.get_fallback_order("coding") == ["gpuai_minimax"]
         assert pce.get_fallback_order("planning") is None
 
 
@@ -231,7 +231,7 @@ class TestRouterIntegration:
     def test_router_uses_override_for_coding_with_rotation(self, isolated_memory, monkeypatch):
         from core.ai import ai_router
 
-        pce.save_overrides({"fallback_order": {"coding": ["qwen4_coding", "gpuai_minimax", "groq"]}})
+        pce.save_overrides({"fallback_order": {"coding": ["omniroute_deepseek_coding", "gpuai_minimax", "groq"]}})
 
         # Make rotation deterministic
         monkeypatch.setattr(ai_router, "_rotate_candidates", lambda task_type, candidates: candidates)
@@ -239,7 +239,7 @@ class TestRouterIntegration:
         candidates = ai_router._candidates_for("coding")
         # The rotating front comes first (CODING_ROTATING_FRONT members in the override),
         # then the fixed tail
-        assert "qwen4_coding" in candidates
+        assert "omniroute_deepseek_coding" in candidates
         assert "groq" in candidates
 
     def test_router_for_nonexistent_role_without_override(self, isolated_memory):
@@ -296,7 +296,7 @@ class TestAPIEndpoints:
     def test_put_config_sets_fallback_order(self, isolated_memory, client, auth_headers):
         body = {
             "fallback_order": {
-                "coding": ["claude", "qwen4_coding"],
+                "coding": ["claude", "gpuai_minimax"],
                 "planning": ["gemini", "deepseek_native_flash"],
             },
         }
@@ -304,7 +304,7 @@ class TestAPIEndpoints:
         assert response.status_code == 200, response.text
         data = response.json()
         assert data["saved"] is True
-        assert data["overrides"]["fallback_order"]["coding"] == ["claude", "qwen4_coding"]
+        assert data["overrides"]["fallback_order"]["coding"] == ["claude", "gpuai_minimax"]
         assert data["overrides"]["fallback_order"]["planning"] == ["gemini", "deepseek_native_flash"]
 
     def test_put_config_sets_max_concurrent_builds(self, isolated_memory, client, auth_headers):

@@ -715,9 +715,13 @@ class TestAccountManagerAdmin:
         from core.juris_kai.accounts import get_account_manager
 
         mgr = get_account_manager()
+        # Create a fresh active account (defaults to free_trial tier) so the
+        # by_tier aggregation is guaranteed non-empty regardless of how many
+        # accounts prior tests created and deactivated.
+        mgr.get_or_create(self._fresh_telegram_id(), "Stats Test")
         stats = mgr.get_stats()
 
         assert stats["total_accounts"] >= stats["active_accounts"]
         assert stats["total_queries"] >= 0
         assert stats["total_revenue_ghs"] >= 0
-        assert "free_trial" in stats["by_tier"] or stats["total_accounts"] == 0
+        assert "free_trial" in stats["by_tier"]

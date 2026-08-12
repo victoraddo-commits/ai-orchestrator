@@ -184,7 +184,7 @@ def check_stale_failures(now=None, send_message=None):
 
         for phase in failed_phases:
             phase_id = phase["id"]
-            build = get_build(phase.get("build_id")) if phase.get("build_id") else None
+            build = get_build(phase.get("build_id"), include_terminal=True) if phase.get("build_id") else None
             failed_at = _entered_current_status_at(build) if build else None
 
             if failed_at is None:

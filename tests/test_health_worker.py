@@ -357,9 +357,15 @@ class TestHealthScore:
 class TestWorkerLifecycle:
     """HealthWorker start/stop/state."""
 
-    def test_worker_starts_and_stops(self):
+    def test_worker_starts_and_stops(self, monkeypatch):
         """Worker starts, runs, and stops cleanly."""
         from core.health_worker import HealthWorker
+
+        # The real _sample() runs a full system scan (Docker/Proxmox/WG)
+        # that makes slow network calls; the lifecycle test only needs the
+        # thread start/stop machinery, so stub the sampling to return fast.
+        monkeypatch.setattr(HealthWorker, "_sample", lambda self: None)
+        monkeypatch.setattr(HealthWorker, "_notify_anomalies", lambda self: None)
 
         worker = HealthWorker(interval=30)
         assert not worker.is_running

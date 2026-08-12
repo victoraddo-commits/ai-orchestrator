@@ -569,7 +569,7 @@ def _process_in_progress_phase(phase):
     as pre-17A: phase_completed / phase_failed / waiting_on_human), or None
     if the phase has no live build to look at (already-cleaned-up state)."""
 
-    build = get_build(phase["build_id"])
+    build = get_build(phase["build_id"], include_terminal=True)
     if build is None:
         return None
 

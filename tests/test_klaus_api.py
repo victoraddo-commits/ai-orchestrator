@@ -17,6 +17,21 @@ from core.klaus.api_endpoints import klaus_router
 app.include_router(klaus_router)
 
 
+async def _bypass_auth():
+    """Override require_bridge_token for tests — skip token validation."""
+    return "test-operator"
+
+
+app.dependency_overrides = {
+    # The router-level dependencies are set on the router itself,
+    # not easily overridden at app level for the whole router. Instead
+    # we override require_bridge_token globally.
+}
+
+from core.bridge_auth import require_bridge_token
+app.dependency_overrides[require_bridge_token] = _bypass_auth
+
+
 @pytest.fixture
 def client():
     return TestClient(app)

@@ -24,7 +24,7 @@ from core.klaus.scheduler import (
 
 class TestTier1Seeds:
     def test_seeds_are_valid(self):
-        assert len(TIER_1_SEEDS) == 3
+        assert len(TIER_1_SEEDS) == 2
         for seed in TIER_1_SEEDS:
             assert "url" in seed
             assert "domain" in seed
@@ -35,17 +35,16 @@ class TestTier1Seeds:
     def test_seeds_match_approved_plan(self):
         domains = {s["domain"] for s in TIER_1_SEEDS}
         assert "parliament.gh" in domains
-        assert "judiciary.gov.gh" in domains
         assert "ghalii.org" in domains
 
 
 class TestEnsureSeeds:
-    def test_adds_all_three_seeds(self):
+    def test_adds_all_seeds(self):
         with patch("core.klaus.db_manager.add_source", return_value=1):
             _ensure_seeds()
 
     def test_handles_add_failure_gracefully(self):
-        with patch("core.klaus.db_manager.add_source", side_effect=[1, RuntimeError("duplicate"), 3]):
+        with patch("core.klaus.db_manager.add_source", side_effect=[1, RuntimeError("duplicate")]):
             _ensure_seeds()
 
 
@@ -54,7 +53,7 @@ class TestDailyLegislationCheck:
         import core.klaus.scheduler as sch
         with patch.object(sch, "list_sources", return_value=[
             {"domain": "parliament.gh", "tier": 1},
-            {"domain": "judiciary.gov.gh", "tier": 1},
+            {"domain": "ghalii.org", "tier": 2},
         ]), patch.object(sch, "get_failed_sources", return_value=[]), \
            patch.object(sch, "log_audit_event"):
             daily_legislation_check()
@@ -97,7 +96,8 @@ class TestMonthlyFullRefresh:
         with patch.object(sch, "list_sources", return_value=[
             {"domain": "a.gh"}, {"domain": "b.gh"}, {"domain": "c.gh"},
         ]), patch.object(sch, "get_failed_sources", return_value=[]), \
-           patch.object(sch, "log_audit_event"):
+           patch.object(sch, "log_audit_event"), \
+           patch.object(sch, "_run_government_source_discovery"):
             monthly_full_refresh()
 
 

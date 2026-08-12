@@ -236,6 +236,16 @@ def _local_available():
     return llm_clients.check_ollama_available()
 
 
+def _llama_run_text_task(prompt, timeout=60, project_path=None):
+    """llama3.2:3b via ollama on Proxmox B — faster, lighter fallback.
+
+    Deployed 2026-08-11 alongside qwen2.5:7b. Better format compliance
+    (no markdown fences) but weaker at hallucination resistance and long
+    context. Good for classification, quick lookups, low-latency tasks.
+    """
+    return llm_clients.call_ollama_llama(prompt, timeout=timeout)
+
+
 # Uniform run_text_task(prompt, timeout=60, project_path=None) contract
 # across every provider -- project_path is accepted but ignored here since
 # plain chat-completion providers never touch a filesystem. Each wrapper
@@ -533,6 +543,15 @@ register_provider(
     available_fn=_local_available,
     kind="local",
     description="qwen2.5:7b via ollama on Proxmox B (Samsung 970 EVO NVMe, i3-10100) — local text-task provider, deployed 2026-08-11 after benchmark Phases 1-11",
+    cost_tier="free",
+)
+
+register_provider(
+    "llama3",
+    run_text_task=_llama_run_text_task,
+    available_fn=_local_available,
+    kind="local",
+    description="llama3.2:3b via ollama on Proxmox B — faster (2.0GB), better format compliance, weaker at hallucination/long-context. Good for classification and quick lookups.",
     cost_tier="free",
 )
 

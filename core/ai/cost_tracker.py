@@ -306,3 +306,60 @@ def get_monthly_summary(year: Optional[int] = None, month: Optional[int] = None)
             key=lambda x: x["date"],
         ),
     }
+
+
+def get_cost_export(days: int = 30) -> list[dict]:
+    """Return flat cost records for CSV/JSON export.
+
+    Each record includes computed cost (recorded or estimated), provider,
+    task_type, timestamp, duration_ms, and success status.
+    """
+    history = _load_history()
+    cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
+
+    records: list[dict] = []
+    for entry in history:
+        ts = entry.get("timestamp", "")
+        if ts < cutoff:
+            continue
+
+        provider = entry.get("provider", "unknown")
+        task_type = entry.get("task_type", "unknown")
+        recorded_cost = entry.get("cost")
+
+        if isinstance(recorded_cost, (int, float)) and not isinstance(
+            recorded_cost, bool
+        ):
+            cost = float(recorded_cost)
+            cost_source = "recorded"
+        else:
+            prompt_tokens = entry.get("usage", {}).get("prompt_tokens", 0)
+            completion_tokens = entry.get("usage", {}).get("completion_tokens", 0)
+            if isinstance(prompt_tokens, dict):
+                prompt_tokens = 0
+            if isinstance(completion_tokens, dict):
+                completion_tokens = 0
+
+            estimated = _compute_call_cost(
+                provider, None, int(prompt_tokens or 0), int(completion_tokens or 0)
+            )
+            if estimated is not None:
+                cost = estimated
+                cost_source = "estimated"
+            else:
+                cost = 0.0
+                cost_source = "unknown"
+
+        records.append({
+            "timestamp": ts,
+            "provider": provider,
+            "task_type": task_type,
+            "cost_usd": round(cost, 8),
+            "cost_source": cost_source,
+            "duration_ms": entry.get("duration_ms"),
+            "success": entry.get("success", False),
+            "description": entry.get("description", ""),
+        })
+
+    records.sort(key=lambda r: r["timestamp"], reverse=True)
+    return records

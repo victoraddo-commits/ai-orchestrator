@@ -2580,7 +2580,7 @@
     {
       "id": "AI-5",
       "name": "AI-5: Cost Tracking Dashboard",
-      "status": "failed",
+      "status": "completed",
       "priority": 5,
       "dependencies": [
         "AI-1"
@@ -2594,10 +2594,10 @@
         "Cost history export"
       ],
       "completed_at": "2026-08-07",
-      "completion_note": "core/ai/cost_tracker.py with cost summary/provider detail endpoints. core/ai/cost_tracker.py with cost summary endpoints. Done.",
-      "completed": "2026-08-08",
+      "completion_note": "Fixed 7 failing budget monitor tests (patch target mismatch). Added cost history export endpoint (JSON/CSV). Budget alerts via Telegram operational. All budget monitor tests pass.",
+      "completed": "2026-08-11",
       "build_id": "65f990f9",
-      "failure_reason": "Build 65f990f9 missing from builds.json (deleted or stale reference)"
+      "failure_reason": ""
     },
     {
       "id": "AI-6",

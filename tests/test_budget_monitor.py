@@ -502,7 +502,7 @@ class TestCheckBudgets:
             {"provider": "gemini", "cost": 3.00, "timestamp": f"{today}T11:00:00"},
         ]
 
-        monkeypatch.setattr(budget_monitor, "get_usage_history", lambda: history)
+        monkeypatch.setattr(ai_router, "get_usage_history", lambda: history)
         monkeypatch.setattr(budget_monitor, "_load_config", lambda: {
             "enabled": True,
             "daily_limit_usd": 100.00,
@@ -528,7 +528,7 @@ class TestCheckBudgets:
             {"provider": "gemini", "cost": 4.22, "timestamp": f"{today}T11:00:00"},
         ]
 
-        monkeypatch.setattr(budget_monitor, "get_usage_history", lambda: history)
+        monkeypatch.setattr(ai_router, "get_usage_history", lambda: history)
         monkeypatch.setattr(budget_monitor, "_load_config", lambda: {
             "enabled": True,
             "daily_limit_usd": 10.00,  # Limit is $10
@@ -544,7 +544,7 @@ class TestCheckBudgets:
         budget_monitor.check_budgets()
 
         assert len(sent_messages) == 1
-        assert "Total Spend: $11.42 / $10.00 limit" in sent_messages[0]
+        assert "$11.42 / $10.00 limit" in sent_messages[0]
         assert "Action required: Manual review needed. No providers have been disabled." in sent_messages[0]
 
     def test_total_monthly_limit_exceeded(self, monkeypatch, tmp_path, isolated_memory):
@@ -556,7 +556,7 @@ class TestCheckBudgets:
             {"provider": "gemini", "cost": 60.00, "timestamp": f"{this_month}-20T11:00:00"},
         ]
 
-        monkeypatch.setattr(budget_monitor, "get_usage_history", lambda: history)
+        monkeypatch.setattr(ai_router, "get_usage_history", lambda: history)
         monkeypatch.setattr(budget_monitor, "_load_config", lambda: {
             "enabled": True,
             "daily_limit_usd": 1000.00,  # High daily
@@ -573,7 +573,7 @@ class TestCheckBudgets:
 
         assert len(sent_messages) == 1
         assert "Monthly limit exceeded" in sent_messages[0]
-        assert "Total Spend: $110.00 / $100.00 limit" in sent_messages[0]
+        assert "$110.00 / $100.00 limit" in sent_messages[0]
 
     def test_per_provider_limit_exceeded(self, monkeypatch, tmp_path, isolated_memory):
         """Alert fires for per-provider limit exceeded."""
@@ -583,7 +583,7 @@ class TestCheckBudgets:
             {"provider": "gemini", "cost": 2.00, "timestamp": f"{today}T11:00:00"},
         ]
 
-        monkeypatch.setattr(budget_monitor, "get_usage_history", lambda: history)
+        monkeypatch.setattr(ai_router, "get_usage_history", lambda: history)
         monkeypatch.setattr(budget_monitor, "_load_config", lambda: {
             "enabled": True,
             "daily_limit_usd": 1000.00,  # High total daily
@@ -593,6 +593,8 @@ class TestCheckBudgets:
                 "gemini": {"daily": 100.00}
             }
         })
+        monkeypatch.setattr(budget_monitor, "_load_state", lambda: {})
+        monkeypatch.setattr(budget_monitor, "_save_state", lambda s: None)
 
         sent_messages = []
         monkeypatch.setattr(budget_monitor, "send_message", lambda text: sent_messages.append(text))
@@ -610,13 +612,16 @@ class TestCheckBudgets:
             {"provider": "openrouter", "cost": 11.42, "timestamp": f"{today}T10:00:00"},
         ]
 
-        monkeypatch.setattr(budget_monitor, "get_usage_history", lambda: history)
+        monkeypatch.setattr(ai_router, "get_usage_history", lambda: history)
         monkeypatch.setattr(budget_monitor, "_load_config", lambda: {
             "enabled": True,
             "daily_limit_usd": 10.00,
             "monthly_limit_usd": 100.00,
             "per_provider_limits": {}
         })
+        state = {}
+        monkeypatch.setattr(budget_monitor, "_load_state", lambda: state)
+        monkeypatch.setattr(budget_monitor, "_save_state", lambda s: None)
 
         sent_messages = []
         monkeypatch.setattr(budget_monitor, "send_message", lambda text: sent_messages.append(text))
@@ -636,13 +641,15 @@ class TestCheckBudgets:
             {"provider": "openrouter", "cost": 11.42, "timestamp": f"{today}T10:00:00"},
         ]
 
-        monkeypatch.setattr(budget_monitor, "get_usage_history", lambda: history)
+        monkeypatch.setattr(ai_router, "get_usage_history", lambda: history)
         monkeypatch.setattr(budget_monitor, "_load_config", lambda: {
             "enabled": True,
             "daily_limit_usd": 10.00,
             "monthly_limit_usd": 100.00,
             "per_provider_limits": {}
         })
+        monkeypatch.setattr(budget_monitor, "_load_state", lambda: {})
+        monkeypatch.setattr(budget_monitor, "_save_state", lambda s: None)
 
         sent_messages = []
         monkeypatch.setattr(budget_monitor, "send_message", lambda text: sent_messages.append(text))
@@ -668,7 +675,7 @@ class TestAlertOnlyPolicy:
             {"provider": "openrouter", "cost": 100.00, "timestamp": f"{today}T10:00:00"},
         ]
 
-        monkeypatch.setattr(budget_monitor, "get_usage_history", lambda: history)
+        monkeypatch.setattr(ai_router, "get_usage_history", lambda: history)
         monkeypatch.setattr(budget_monitor, "_load_config", lambda: {
             "enabled": True,
             "daily_limit_usd": 10.00,

@@ -1720,6 +1720,39 @@ def api_cost_monthly(year: int = None, month: int = None):
 
     return get_monthly_summary(year=year, month=month)
 
+
+@app.get("/api/costs/export")
+def api_cost_export(days: int = 30, format: str = "json"):
+    """AI-5: Cost history export (JSON or CSV)."""
+    from core.ai.cost_tracker import get_cost_export
+    from fastapi.responses import PlainTextResponse
+
+    records = get_cost_export(days=days)
+
+    if format == "csv":
+        import csv
+        from io import StringIO
+
+        buf = StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "timestamp", "provider", "task_type", "cost_usd",
+            "cost_source", "duration_ms", "success", "description",
+        ])
+        for r in records:
+            writer.writerow([
+                r["timestamp"], r["provider"], r["task_type"],
+                r["cost_usd"], r["cost_source"], r["duration_ms"],
+                r["success"], r["description"],
+            ])
+        return PlainTextResponse(
+            buf.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=cost_export_{days}d.csv"},
+        )
+
+    return {"records": records, "count": len(records), "days": days}
+
 # ---- end V3 ----
 
 

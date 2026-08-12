@@ -2042,3 +2042,96 @@ def test_dashboard_includes_circuit_breaker_and_latency():
     assert dashboard["groq"]["circuit_breaker"]["consecutive_failures"] == 1
     assert dashboard["groq"]["latency"] is not None
     assert dashboard["groq"]["latency"]["last_duration_ms"] == 200
+
+
+# ── 18A-ai Phase 2: provider override ────────────────────────────────────
+
+
+def test_delegate_provider_override_routes_to_specified_provider(monkeypatch):
+    """When provider='local', delegate() tries ONLY 'local' and returns its result."""
+    # Disable all automated classification and rotation — we test the
+    # override path exclusively.
+    monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
+    monkeypatch.setattr(ai_router, "_candidates_for", lambda _: [])
+
+    # Mock the local provider to return a known response.
+    from core import ai_provider
+    original = ai_provider.get_provider("local")
+    mock_provider = dict(original)
+    mock_provider["available_fn"] = lambda: True
+    mock_provider["enabled"] = True
+
+    called_with = []
+
+    def fake_run(prompt, timeout=60, project_path=None):
+        called_with.append(prompt)
+        return "response from local"
+
+    mock_provider["run_text_task"] = fake_run
+    monkeypatch.setattr(ai_provider, "get_provider", lambda name: mock_provider if name == "local" else None)
+
+    # Disable health/quota/circuit checks that could block.
+    monkeypatch.setattr(ai_router.provider_health, "get_quota_snapshot", lambda _: None)
+    monkeypatch.setattr(ai_router.circuit_breaker, "is_open", lambda _: False)
+
+    result = ai_router.delegate("test prompt", provider="local")
+
+    assert result["provider"] == "local"
+    assert result["response"] == "response from local"
+    assert called_with == ["test prompt"]
+
+
+def test_delegate_provider_override_raises_when_provider_not_registered(monkeypatch):
+    """When provider='nonexistent', delegate() raises AllProvidersFailed immediately."""
+    monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
+
+    with pytest.raises(AllProvidersFailed) as exc_info:
+        ai_router.delegate("test", provider="nonexistent_provider_xyz")
+
+    assert "nonexistent_provider_xyz" in str(exc_info.value)
+    # attempts should contain the failure record
+    assert exc_info.value.attempts
+    assert exc_info.value.attempts[0]["provider"] == "nonexistent_provider_xyz"
+
+
+def test_delegate_provider_override_raises_when_provider_unavailable(monkeypatch):
+    """When the specified provider's available_fn returns False, delegate() raises."""
+    monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
+
+    from core import ai_provider
+    mock_provider = {
+        "run_text_task": lambda p, **kw: "should not be called",
+        "available_fn": lambda: False,
+        "enabled": True,
+        "capabilities": ["text_task"],
+    }
+    monkeypatch.setattr(ai_provider, "get_provider", lambda name: mock_provider if name == "fake_prov" else None)
+
+    with pytest.raises(AllProvidersFailed) as exc_info:
+        ai_router.delegate("test", provider="fake_prov")
+
+    assert "fake_prov" in str(exc_info.value)
+    assert exc_info.value.attempts[0]["error_type"] == "unavailable"
+
+
+def test_delegate_without_provider_override_unchanged(monkeypatch):
+    """When provider=None (default), behavior is identical to before."""
+    monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
+
+    from core import ai_provider
+    mock_provider = {
+        "run_text_task": lambda p, **kw: "auto-routed result",
+        "available_fn": lambda: True,
+        "enabled": True,
+        "capabilities": ["text_task"],
+    }
+    # _candidates_for returns a list; delegate() rotates and iterates.
+    monkeypatch.setattr(ai_router, "_candidates_for", lambda _: ["mock"])
+    monkeypatch.setattr(ai_provider, "get_provider", lambda name: mock_provider if name == "mock" else None)
+    monkeypatch.setattr(ai_router.provider_health, "get_quota_snapshot", lambda _: None)
+    monkeypatch.setattr(ai_router.circuit_breaker, "is_open", lambda _: False)
+
+    result = ai_router.delegate("test")  # no provider= kwarg
+
+    assert result["provider"] == "mock"
+    assert result["response"] == "auto-routed result"

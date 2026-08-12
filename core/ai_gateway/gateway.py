@@ -229,17 +229,27 @@ async def chat_completions(
     provider = _resolve_model(body.model)
     timeout = body.timeout or 60
 
+    # Unknown model → 400 before calling delegate()
+    if body.model and body.model != "auto" and provider is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "unknown_model",
+                "message": f"No provider registered for model '{body.model}'",
+            },
+        )
+
     start = time.time()
     try:
         if provider:
-            # Direct route to a specific provider
+            # Direct route — consumer picked a specific provider
             result = delegate(
                 prompt,
                 task_type=task_type,
                 timeout=timeout,
                 capability="text_task",
+                provider=provider,
             )
-            actual_provider = result["provider"]
         else:
             # Auto-route: classify + delegate
             result = delegate(
@@ -248,22 +258,32 @@ async def chat_completions(
                 timeout=timeout,
                 capability="text_task",
             )
-            actual_provider = result["provider"]
+        actual_provider = result["provider"]
     except AllProvidersFailed as exc:
         duration_ms = int((time.time() - start) * 1000)
+        # Distinguish: did the consumer ask for a specific provider?
+        if provider:
+            status_code = 502
+            error_detail = {
+                "error": "provider_failed",
+                "provider": provider,
+                "message": f"Provider '{provider}' failed to serve this request",
+            }
+        else:
+            status_code = 502
+            error_detail = {
+                "error": "all_providers_failed",
+                "message": "No available provider could serve this request",
+            }
         log_request(
             consumer=api_key["key_id"],
             model=body.model or "auto",
-            provider="(none)",
+            provider=provider or "(none)",
             duration_ms=duration_ms,
-            status_code=502,
+            status_code=status_code,
             error=str(exc)[:500],
         )
-        raise HTTPException(
-            status_code=502,
-            detail={"error": "all_providers_failed",
-                    "message": "No available provider could serve this request"},
-        )
+        raise HTTPException(status_code=status_code, detail=error_detail)
 
     duration_ms = int((time.time() - start) * 1000)
 
@@ -302,6 +322,16 @@ async def chat_completions_stream(
     model_id = body.model or "auto"
     request_id = f"kai-{uuid.uuid4().hex[:12]}"
 
+    # Unknown model → 400 before calling delegate()
+    if body.model and body.model != "auto" and provider is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "unknown_model",
+                "message": f"No provider registered for model '{body.model}'",
+            },
+        )
+
     # Run the delegate call once — streaming simulates chunking from this
     start = time.time()
     try:
@@ -310,6 +340,7 @@ async def chat_completions_stream(
             task_type=task_type,
             timeout=timeout,
             capability="text_task",
+            provider=provider,
         )
         actual_provider = result["provider"]
         response_text = result.get("response", "")
@@ -318,7 +349,7 @@ async def chat_completions_stream(
         log_request(
             consumer=api_key["key_id"],
             model=model_id,
-            provider="(none)",
+            provider=provider or "(none)",
             duration_ms=duration_ms,
             status_code=502,
             error=str(exc)[:500],
@@ -326,7 +357,10 @@ async def chat_completions_stream(
 
         async def error_stream():
             import json
-            error_data = json.dumps({"error": "all_providers_failed"})
+            if provider:
+                error_data = json.dumps({"error": "provider_failed", "provider": provider})
+            else:
+                error_data = json.dumps({"error": "all_providers_failed"})
             yield f"data: {error_data}\n\n"
             yield "data: [DONE]\n\n"
 

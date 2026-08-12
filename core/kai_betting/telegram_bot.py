@@ -20,13 +20,21 @@ from typing import Optional, Dict, Any, List, Callable
 
 import requests
 
-from core.kai_betting.db import get_db
+from core.kai_betting.db import get_db, parse_event_time, event_is_started
 from core.kai_betting.subscriptions import SubscriptionManager
 from core.kai_betting.performance import PerformanceTracker
 
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
+
+
+def _fmt_start_time(value: Optional[str]) -> str:
+    """Format an event_time string as a friendly start time (Ghana = UTC)."""
+    dt = parse_event_time(value)
+    if dt is None:
+        return ""
+    return dt.strftime("%a %b %d · %H:%M UTC")
 
 
 class BettingTelegramBot:
@@ -131,9 +139,15 @@ class BettingTelegramBot:
 
         with get_db() as db:
             query = """
-                SELECT p.*, s.key as sport_key, s.name as sport_name
+                SELECT p.*, s.key as sport_key, s.name as sport_name, s.icon as sport_icon,
+                       e.event_time, ht.name as home_team, at.name as away_team,
+                       l.name as league_name
                 FROM predictions p
                 JOIN sports s ON s.id = p.sport_id
+                LEFT JOIN events e ON e.id = p.event_id
+                LEFT JOIN teams ht ON ht.id = e.home_team_id
+                LEFT JOIN teams at ON at.id = e.away_team_id
+                LEFT JOIN leagues l ON l.id = e.league_id
                 WHERE p.status = 'published'
             """
             params: list = []
@@ -148,25 +162,42 @@ class BettingTelegramBot:
             elif quality_filter == "low":
                 query += " AND p.confidence < 50"
 
-            query += " ORDER BY p.confidence DESC LIMIT 10"
+            query += " ORDER BY e.event_time ASC, p.confidence DESC LIMIT 10"
 
             rows = db.execute(query, params).fetchall()
+
+        # Remove games that have already started
+        rows = [r for r in rows if not event_is_started(r["event_time"])]
 
         if not rows:
             return (
                 "📊 *Today's Picks*\n\n"
-                "_No published predictions yet. Check back soon or use `/subscribe` for premium early access._"
+                "_No upcoming predictions yet. Check back soon or use `/subscribe` for premium early access._"
             )
 
         lines = [f"📊 *Today's Picks* ({len(rows)})\n"]
         for i, row in enumerate(rows, 1):
-            emoji = "🟢" if row["confidence"] >= 70 else ("🟡" if row["confidence"] >= 50 else "🔴")
-            odds_str = f" @ {row['bookmaker_odds']:.2f}" if row["bookmaker_odds"] else ""
+            conf = row["confidence"] or 0
+            emoji = "🟢" if conf >= 70 else ("🟡" if conf >= 50 else "🔴")
+            odds = row["bookmaker_odds"]
+            odds_str = f"{odds:.2f}" if odds else "N/A"
+            home = row["home_team"] or "Home"
+            away = row["away_team"] or "Away"
+            league = row["league_name"] or ""
+            market = row["market_name"] or ""
+            selection = (row["selection"] or "").upper()
+            start = _fmt_start_time(row["event_time"])
+            reason = (row["reasoning"] or "").strip()
+
+            head = f"{i}. {emoji} *{home} vs {away}*"
+            if league:
+                head += f"\n   _{league}_"
             lines.append(
-                f"{i}. {emoji} {row['sport_name']} — {row['market_name']}\n"
-                f"   Selection: *{row['selection'].upper()}*{odds_str}\n"
-                f"   Confidence: {row['confidence']:.0f}% | Edge: {row['edge']:.1%}" if row['edge'] else
-                f"   Confidence: {row['confidence']:.0f}%"
+                head
+                + f"\n   🎯 {market} — *{selection}*"
+                + (f"\n   ⏰ {start}" if start else "")
+                + f"\n   📈 Odds: {odds_str} | 🔥 Conf: {conf:.0f}%"
+                + (f"\n   💬 {reason}" if reason else "")
             )
 
         return "\n".join(lines)
@@ -400,6 +431,9 @@ class BettingTelegramBot:
                 LIMIT ?
             """, (limit,)).fetchall()
 
+        # Remove games that have already started
+        rows = [r for r in rows if not event_is_started(r["event_time"])]
+
         if not rows:
             cls.send_raw(chat_id,
                 "🎯 *Kai Betting — Today's Picks*\n\n"
@@ -426,22 +460,24 @@ class BettingTelegramBot:
             market = row["market_name"] or ""
             selection = (row["selection"] or "").upper()
             sport_icon = row["sport_icon"] or "⚽"
+            start = _fmt_start_time(row["event_time"])
+            reason = (row["reasoning"] or "").strip()
 
             match_line = f"**{home} vs {away}**"
             if league:
                 match_line += f"\n{sport_icon} {league}"
-
-            pick_display = f"🎯 {market} — {selection}"
 
             lines.append(
                 f"*{i}⃣ {home} vs {away}*\n"
                 f"{sport_icon} {league}\n\n"
                 f"🎯 *{market}*\n"
                 f"Selection: *{selection}*\n"
-                f"📈 Odds: {odds_str}\n"
+                + (f"⏰ Start: {start}\n" if start else "")
+                + f"📈 Odds: {odds_str}\n"
                 f"🎲 Probability: {prob*100:.0f}%\n"
                 f"🔥 Confidence: {conf:.0f}%\n"
                 f"💎 Edge: {edge_str}"
+                + (f"\n💬 {reason}" if reason else "")
             )
 
         cls.send_raw(chat_id, "\n\n".join(lines))

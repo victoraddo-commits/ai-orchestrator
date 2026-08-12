@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS predictions (
 
     -- Odds & Probability
     bookmaker_odds REAL,              -- odds from bookmaker
+    line REAL,                        -- over/under or handicap line (e.g. 2.5)
     estimated_probability REAL NOT NULL, -- model's estimated probability 0-1
     implied_probability REAL,         -- 1 / bookmaker_odds
     edge REAL,                        -- estimated_probability - implied_probability
@@ -454,6 +455,9 @@ def init_db():
     with get_db() as conn:
         conn.executescript(SCHEMA_SQL)
 
+        # Migrate columns added after the initial schema version
+        _migrate_schema(conn)
+
         # Check schema version
         version_row = conn.execute(
             "SELECT value FROM betting_config WHERE key = 'schema_version'"
@@ -477,6 +481,42 @@ def init_db():
 
         conn.commit()
     return True
+
+
+def _migrate_schema(conn):
+    """Add columns introduced after the initial schema version.
+
+    CREATE TABLE IF NOT EXISTS won't add columns to an existing table,
+    so columns added later must be ALTERed in here. Idempotent.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(predictions)").fetchall()}
+    if "line" not in existing:
+        conn.execute("ALTER TABLE predictions ADD COLUMN line REAL")
+
+
+def parse_event_time(value) -> Optional[datetime]:
+    """Parse an ISO 8601 event_time string into an aware datetime, or None.
+
+    Handles trailing 'Z' (UTC) and naive timestamps by assuming UTC.
+    """
+    if not value:
+        return None
+    s = str(value).strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+def event_is_started(value) -> bool:
+    """True if the event's start time has already passed."""
+    dt = parse_event_time(value)
+    return dt is not None and dt <= datetime.now(timezone.utc)
 
 
 # ── Data Ingestion Helpers ──────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertTriangle, Clock } from 'lucide-react';
 
 const CONFIDENCE_COLORS = {
   high: 'text-emerald-400 bg-emerald-600/10 border-emerald-600/20',
@@ -12,30 +12,59 @@ function confidenceLevel(val) {
   return 'low';
 }
 
+function formatStartTime(value) {
+  if (!value) return '';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
 export default function PredictionCard({ prediction: p, showActions = false }) {
   const level = confidenceLevel(p.confidence);
   const confColor = CONFIDENCE_COLORS[level];
+  const hasTeams = !!(p.home_team && p.away_team);
+  const startTime = formatStartTime(p.event_time);
 
   return (
     <div className="card p-4 hover:border-surface-700 transition-colors">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          {/* Teams + start time */}
+          {hasTeams && (
+            <div className="font-semibold text-white text-lg leading-tight">
+              {p.home_team} <span className="text-surface-500 font-normal">vs</span> {p.away_team}
+            </div>
+          )}
+
+          <div className="flex items-center flex-wrap gap-2 mt-1">
             <span className="text-xs font-semibold text-brand-400 uppercase tracking-wider">
               {p.sport_key}
             </span>
-            <span className="text-xs text-surface-500">•</span>
-            <span className="text-xs text-surface-400">{p.market_name}</span>
-            {p.league_key && (
+            {(p.league_name || p.league_key) && (
               <>
                 <span className="text-xs text-surface-500">•</span>
-                <span className="text-xs text-surface-500">{p.league_key}</span>
+                <span className="text-xs text-surface-500">{p.league_name || p.league_key}</span>
+              </>
+            )}
+            {startTime && (
+              <>
+                <span className="text-xs text-surface-500">•</span>
+                <span className="text-xs text-emerald-400 flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {startTime}
+                </span>
               </>
             )}
           </div>
 
-          <div className="flex items-center gap-2 mt-1">
-            <span className="font-semibold text-white text-lg">
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-sm font-medium text-surface-200">
+              {p.market_name}
+            </span>
+            <span className="font-semibold text-white">
               {p.selection?.toUpperCase()}
             </span>
             {p.bookmaker_odds && (
@@ -43,10 +72,13 @@ export default function PredictionCard({ prediction: p, showActions = false }) {
                 @{p.bookmaker_odds.toFixed(2)}
               </span>
             )}
+            {p.line != null && !String(p.market_name || '').includes(String(p.line)) && (
+              <span className="text-xs font-mono text-surface-400">({p.line})</span>
+            )}
           </div>
 
           {p.reasoning && (
-            <p className="text-xs text-surface-500 mt-1.5 line-clamp-1">{p.reasoning}</p>
+            <p className="text-xs text-surface-500 mt-1.5">{p.reasoning}</p>
           )}
         </div>
 

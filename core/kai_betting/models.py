@@ -256,6 +256,11 @@ class PredictionResponse(BaseModel):
     published_at: Optional[str]
     created_at: str
     outcome: Optional[str] = None
+    line: Optional[float] = None
+    event_time: Optional[str] = None
+    home_team: Optional[str] = None
+    away_team: Optional[str] = None
+    league_name: Optional[str] = None
 
 
 class OddsGroupResponse(BaseModel):
@@ -379,6 +384,7 @@ class PredictionResult:
     tags: List[str] = field(default_factory=list)
     correlation_group: str = ""
     model_version: str = "1.0.0"
+    line: Optional[float] = None
 
     def __post_init__(self):
         if self.bookmaker_odds and self.bookmaker_odds > 0:

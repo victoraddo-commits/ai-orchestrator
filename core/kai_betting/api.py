@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 import bcrypt
 
-from core.kai_betting.db import get_db, init_db
+from core.kai_betting.db import get_db, init_db, event_is_started
 from core.kai_betting.models import (
     UserCreate, UserLogin, TelegramLink,
     PredictionRequest, BatchPredictionRequest, OddsGroupRequest,
@@ -309,16 +309,26 @@ async def list_predictions(
     status: Optional[str] = None,
     sport_key: Optional[str] = None,
     market_type: Optional[str] = None,
+    show_started: bool = False,
     limit: int = Query(default=50, le=200),
     offset: int = 0,
 ):
-    """List predictions with filters."""
+    """List predictions with filters.
+
+    By default, predictions whose game has already started are hidden,
+    so users only see upcoming picks. Pass show_started=true to see all.
+    """
     with get_db() as db:
         query = """
-            SELECT p.*, s.key as sport_key, l.key as league_key
+            SELECT p.*, s.key as sport_key, l.key as league_key, l.name as league_name,
+                   e.event_time, e.status as event_status,
+                   ht.name as home_team, at.name as away_team
             FROM predictions p
             JOIN sports s ON s.id = p.sport_id
-            LEFT JOIN leagues l ON l.id = p.league_id
+            LEFT JOIN events e ON e.id = p.event_id
+            LEFT JOIN leagues l ON l.id = e.league_id
+            LEFT JOIN teams ht ON ht.id = e.home_team_id
+            LEFT JOIN teams at ON at.id = e.away_team_id
             WHERE 1=1
         """
         params: list = []
@@ -333,11 +343,17 @@ async def list_predictions(
             query += " AND p.market_type = ?"
             params.append(market_type)
 
-        query += " ORDER BY p.created_at DESC LIMIT ? OFFSET ?"
+        query += " ORDER BY e.event_time ASC, p.created_at DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
         rows = db.execute(query, params).fetchall()
-        return APIResponse(success=True, data=[dict(r) for r in rows])
+        data = []
+        for r in rows:
+            d = dict(r)
+            if not show_started and event_is_started(d.get("event_time")):
+                continue
+            data.append(d)
+        return APIResponse(success=True, data=data)
 
 
 @router.get("/predictions/{prediction_id}", response_model=APIResponse)
@@ -345,10 +361,15 @@ async def get_prediction(prediction_id: int):
     """Get a single prediction by ID."""
     with get_db() as db:
         row = db.execute(
-            """SELECT p.*, s.key as sport_key, l.key as league_key
+            """SELECT p.*, s.key as sport_key, l.key as league_key, l.name as league_name,
+                      e.event_time, e.status as event_status,
+                      ht.name as home_team, at.name as away_team
                FROM predictions p
                JOIN sports s ON s.id = p.sport_id
-               LEFT JOIN leagues l ON l.id = p.league_id
+               LEFT JOIN events e ON e.id = p.event_id
+               LEFT JOIN leagues l ON l.id = e.league_id
+               LEFT JOIN teams ht ON ht.id = e.home_team_id
+               LEFT JOIN teams at ON at.id = e.away_team_id
                WHERE p.id = ?""",
             (prediction_id,)
         ).fetchone()
@@ -448,13 +469,18 @@ async def list_odds_groups(
     limit: int = Query(default=20, le=100),
     offset: int = 0,
 ):
-    """List odds groups."""
+    """List odds groups, each with its full selection details."""
     with get_db() as db:
         rows = db.execute(
             "SELECT * FROM odds_groups WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
             (status, limit, offset)
         ).fetchall()
-        return APIResponse(success=True, data=[dict(r) for r in rows])
+        data = []
+        for g in rows:
+            gd = dict(g)
+            gd["selections"] = _get_group_selections(db, g["id"])
+            data.append(gd)
+        return APIResponse(success=True, data=data)
 
 
 @router.get("/odds-groups/{group_id}", response_model=APIResponse)
@@ -465,17 +491,8 @@ async def get_odds_group(group_id: int):
         if not group:
             raise HTTPException(status_code=404, detail="Odds group not found")
 
-        selections = db.execute("""
-            SELECT p.*, s.key as sport_key, ogs.sort_order
-            FROM odds_group_selections ogs
-            JOIN predictions p ON p.id = ogs.prediction_id
-            JOIN sports s ON s.id = p.sport_id
-            WHERE ogs.odds_group_id = ?
-            ORDER BY ogs.sort_order
-        """, (group_id,)).fetchall()
-
         data = dict(group)
-        data["selections"] = [dict(s) for s in selections]
+        data["selections"] = _get_group_selections(db, group_id)
         return APIResponse(success=True, data=data)
 
 
@@ -739,6 +756,25 @@ async def update_preferences(user_id: int, req: UserPreferencesUpdate):
 
 
 # ── Helper ───────────────────────────────────────────────────────────────────
+
+def _get_group_selections(db, group_id: int) -> list:
+    """Return a group's selections with full team/event/league context."""
+    selections = db.execute("""
+        SELECT p.*, s.key as sport_key, l.key as league_key, l.name as league_name,
+               e.event_time, ht.name as home_team, at.name as away_team,
+               ogs.sort_order
+        FROM odds_group_selections ogs
+        JOIN predictions p ON p.id = ogs.prediction_id
+        JOIN sports s ON s.id = p.sport_id
+        LEFT JOIN events e ON e.id = p.event_id
+        LEFT JOIN leagues l ON l.id = e.league_id
+        LEFT JOIN teams ht ON ht.id = e.home_team_id
+        LEFT JOIN teams at ON at.id = e.away_team_id
+        WHERE ogs.odds_group_id = ?
+        ORDER BY ogs.sort_order
+    """, (group_id,)).fetchall()
+    return [dict(s) for s in selections]
+
 
 def _ensure_prediction_saved(db, result) -> int:
     """Save a prediction result to DB if not already saved, return its ID."""

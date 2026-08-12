@@ -194,6 +194,20 @@ MARKET_TEMPLATES: Dict[str, Dict[str, Any]] = {
 }
 
 
+# Markets that carry a numeric line (over/under total, handicap/spread).
+LINE_MARKETS = {
+    "over_under", "team_goals_home", "team_goals_away",
+    "ht_goals", "2h_goals", "handicap", "european_handicap",
+    "corners_over_under", "corners_handicap",
+}
+
+# Markets where the line is a goal/points total (selection is over/under).
+TOTAL_MARKETS = {
+    "over_under", "team_goals_home", "team_goals_away",
+    "ht_goals", "2h_goals", "corners_over_under",
+}
+
+
 # ── Prediction Engine ────────────────────────────────────────────────────────
 
 class PredictionEngine:
@@ -264,17 +278,23 @@ class PredictionEngine:
             selection=selection,
         )
 
-        # Build reasoning
-        market_display = market_info.get("name", market_type)
-        reasoning = (
-            f"Real odds: {bookmaker_odds:.2f} ({bookmaker_name or 'bookmaker'}) | "
-            f"Model: {model_prob:.1%} | Implied: {implied_prob:.1%}" if implied_prob else
-            f"Real odds: {bookmaker_odds:.2f} ({bookmaker_name or 'bookmaker'}) | "
-            f"Model: {model_prob:.1%}"
+        # Build market display — include the line for over/under & handicap
+        market_display = self._market_display(
+            market_info.get("name", market_type), market_type, selection, line
         )
 
-        if home_team and away_team:
-            reasoning += f" | {home_team} vs {away_team}"
+        # Build reasoning — a plain-English explanation of the pick
+        reasoning = self._build_reasoning(
+            market_type=market_type,
+            selection=selection,
+            home_team=home_team,
+            away_team=away_team,
+            bookmaker_odds=bookmaker_odds,
+            bookmaker_name=bookmaker_name,
+            model_prob=model_prob,
+            implied_prob=implied_prob,
+            line=line,
+        )
 
         # Tags
         tags = self._generate_tags(sport_key, market_type, confidence, risk_score, edge)
@@ -301,6 +321,7 @@ class PredictionEngine:
             tags=tags,
             correlation_group=corr_group,
             model_version="kai-betting-v2",
+            line=line,
         )
 
     def predict(
@@ -532,6 +553,51 @@ class PredictionEngine:
             "selections": ["home", "away"],
             "description": "Generic",
         }
+
+    @staticmethod
+    def _market_display(base_name: str, market_type: str,
+                        selection: str, line: Optional[float]) -> str:
+        """Human market label, including the line for over/under & handicap."""
+        if line is None or market_type not in LINE_MARKETS:
+            return base_name
+        if market_type in TOTAL_MARKETS:
+            return f"{selection.title()} {line:g}"
+        return f"{base_name} {line:g}"
+
+    @staticmethod
+    def _build_reasoning(market_type: str, selection: str, home_team: str,
+                         away_team: str, bookmaker_odds: float,
+                         bookmaker_name: Optional[str], model_prob: float,
+                         implied_prob: Optional[float],
+                         line: Optional[float]) -> str:
+        """Build a plain-English explanation of a pick (deterministic)."""
+        pick = selection
+        if line is not None and market_type in LINE_MARKETS:
+            pick = f"{selection} {line:g}"
+
+        parts: List[str] = []
+        if home_team and away_team:
+            parts.append(f"{home_team} vs {away_team}")
+        parts.append(f"Pick: {pick}")
+
+        if implied_prob is not None:
+            parts.append(f"model {model_prob:.1%} vs market {implied_prob:.1%}")
+        else:
+            parts.append(f"model {model_prob:.1%}")
+
+        if bookmaker_odds and bookmaker_odds > 1.0:
+            parts.append(f"odds {bookmaker_odds:.2f} ({bookmaker_name or 'bookmaker'})")
+
+        if implied_prob is not None:
+            edge = model_prob - implied_prob
+            if edge > 0.03:
+                parts.append(f"+{edge:.1%} value — model likes this more than the market")
+            elif edge < -0.03:
+                parts.append(f"{edge:.1%} — market prices this stronger than the model")
+            else:
+                parts.append("fairly priced against the market")
+
+        return " | ".join(parts)
 
     def _statistical_baseline(
         self,

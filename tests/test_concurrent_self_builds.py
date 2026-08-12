@@ -64,9 +64,9 @@ def _head(repo):
 
 
 def test_two_self_modifying_phases_run_in_parallel(isolated_roadmap, monkeypatch, tmp_path):
-    """advance_roadmap starts phase A on cycle 1. On cycle 2, with A still
-    non-terminal in its own isolated clone, phase B also starts -- planning
-    /generation /review are safe to run concurrently since K3."""
+    """advance_roadmap fills the concurrency cap in a single cycle: with
+    MAX_CONCURRENT_BUILDS=2 and three pending phases, A and B start together
+    (each in its own isolated sandbox), C stays pending until a slot frees."""
     workspace_root = tmp_path / "self-build-workspaces"
     workspace_root.mkdir()
     monkeypatch.setattr(roadmap_manager, "SELF_BUILD_WORKSPACE_ROOT", workspace_root)
@@ -88,52 +88,27 @@ def test_two_self_modifying_phases_run_in_parallel(isolated_roadmap, monkeypatch
     # them as parallelizable (K3-style clones, not raw SELF_PROJECT_PATH).
     created_paths = []
 
-    def fake_clone(include_plugin=False):
-        clone = workspace_root / f"clone-{len(created_paths)}"
+    def fake_sandbox(build_id, include_plugin=False):
+        clone = workspace_root / f"clone-{build_id}"
         clone.mkdir()
         created_paths.append(str(clone))
         return str(clone)
 
-    monkeypatch.setattr(roadmap_manager, "_create_isolated_self_clone", fake_clone)
+    monkeypatch.setattr(roadmap_manager, "_sandbox_create", fake_sandbox)
 
-    # Cycle 1: no in-flight phases, A should start.
-    result_1 = roadmap_manager.advance_roadmap()
-    assert result_1["action"] == "started_phase"
-    assert result_1["phase_id"] == "A"
-    assert roadmap_engine.get_phase("A")["status"] == "in_progress"
-    assert roadmap_engine.get_phase("B")["status"] == "pending"
-    a_build_id = result_1["build_id"]
+    # One cycle fills the cap: A and B start, C stays pending.
+    result = roadmap_manager.advance_roadmap()
 
-    # Stub the in-flight builds as non-terminal (planning/review) so the
-    # phase-processing loop doesn't finish them prematurely.
-    def stub_build(build_id):
-        # A stays in a non-terminal status; anything else answers with the
-        # normal builds store.
-        for b in build_manager.load_builds():
-            if b["id"] == build_id:
-                # Force each in-flight build to a non-terminal status.
-                if b["status"] not in ("COMPLETED", "FAILED", "ROLLED_BACK"):
-                    b["status"] = "WAITING_FOR_ARCHITECTURE_APPROVAL"
-                return b
-        return None
-
-    monkeypatch.setattr(roadmap_manager, "get_build", stub_build)
-
-    # Cycle 2: A is still active -- B should now start too (cap=2).
-    result_2 = roadmap_manager.advance_roadmap()
+    assert result["action"] == "started_phase"
     assert roadmap_engine.get_phase("A")["status"] == "in_progress"
     assert roadmap_engine.get_phase("B")["status"] == "in_progress"
     assert roadmap_engine.get_phase("C")["status"] == "pending"
 
     # Both builds have distinct isolated workspaces.
-    a_path = roadmap_engine.get_phase("A").get("build_id")
-    b_path = roadmap_engine.get_phase("B").get("build_id")
-    assert a_path != b_path
-    assert len({p for p in created_paths}) == len(created_paths)
-
-    # Cycle 3: cap reached (A and B both active), C stays pending.
-    result_3 = roadmap_manager.advance_roadmap()
-    assert roadmap_engine.get_phase("C")["status"] == "pending"
+    a_id = roadmap_engine.get_phase("A")["build_id"]
+    b_id = roadmap_engine.get_phase("B")["build_id"]
+    assert a_id != b_id
+    assert len(created_paths) == 2
 
 
 def test_advance_roadmap_returns_events_list_for_multiple_phases(isolated_roadmap, monkeypatch, tmp_path):
@@ -153,13 +128,13 @@ def test_advance_roadmap_returns_events_list_for_multiple_phases(isolated_roadma
     ])
     roadmap_manager.enable_autonomous_mode()
 
-    def stub(build_id):
-        if build_id == "b-x":
-            return {"id": "b-x", "status": "COMPLETED", "project_path": str(workspace_root / "cx")}
-        return {"id": "b-y", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL",
-                "project_path": str(workspace_root / "cy")}
-
-    monkeypatch.setattr(roadmap_manager, "get_build", stub)
+    # Seed both in-flight builds so the V3 stale-reference check (which
+    # reads builds.json via load_builds, not get_build) leaves them alone.
+    build_manager.save_builds([
+        {"id": "b-x", "status": "COMPLETED", "project_path": str(workspace_root / "cx")},
+        {"id": "b-y", "status": "WAITING_FOR_ARCHITECTURE_APPROVAL",
+         "project_path": str(workspace_root / "cy")},
+    ])
 
     result = roadmap_manager.advance_roadmap()
 
@@ -193,10 +168,12 @@ def test_exclusive_flag_prevents_new_starts_while_in_flight(isolated_roadmap, mo
     roadmap_manager.enable_autonomous_mode()
 
     (workspace_root / "cx").mkdir()
-    monkeypatch.setattr(
-        roadmap_manager, "get_build",
-        lambda bid: {"id": bid, "status": "GENERATING", "project_path": str(workspace_root / "cx")},
-    )
+    # Seed the in-flight build so the V3 stale-reference check leaves it
+    # alone (it reads builds.json, not get_build). The explicit
+    # "exclusive": true flag on X is what forces serialization here.
+    build_manager.save_builds([
+        {"id": "b-x", "status": "GENERATING", "project_path": str(workspace_root / "cx")},
+    ])
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda *a, **k: pytest.fail("must not start Y while an exclusive phase X is in flight"),
@@ -225,10 +202,12 @@ def test_exclusive_candidate_cannot_start_while_anything_else_is_in_flight(isola
     roadmap_manager.enable_autonomous_mode()
 
     (workspace_root / "cx").mkdir()
-    monkeypatch.setattr(
-        roadmap_manager, "get_build",
-        lambda bid: {"id": bid, "status": "GENERATING", "project_path": str(workspace_root / "cx")},
-    )
+    # Seed X's in-flight build (isolated clone under SELF_BUILD_WORKSPACE_ROOT)
+    # so the V3 stale-reference check leaves it alone and X counts as
+    # in-flight; Y's own "exclusive": true flag blocks it from starting.
+    build_manager.save_builds([
+        {"id": "b-x", "status": "GENERATING", "project_path": str(workspace_root / "cx")},
+    ])
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda *a, **k: pytest.fail("must not start exclusive Y while X is in flight"),
@@ -262,10 +241,11 @@ def test_build_using_self_project_path_directly_is_treated_as_exclusive(isolated
     roadmap_manager.enable_autonomous_mode()
 
     # X's build points at SELF_PROJECT_PATH directly -- an unsafe layout.
-    monkeypatch.setattr(
-        roadmap_manager, "get_build",
-        lambda bid: {"id": bid, "status": "GENERATING", "project_path": str(live_project)},
-    )
+    # Seed it in builds.json so the V3 stale-reference check leaves it
+    # alone; the unsafe project_path is what forces serialization here.
+    build_manager.save_builds([
+        {"id": "b-x", "status": "GENERATING", "project_path": str(live_project)},
+    ])
     monkeypatch.setattr(
         roadmap_manager, "create_build",
         lambda *a, **k: pytest.fail("must not start Y while X operates on SELF_PROJECT_PATH itself"),

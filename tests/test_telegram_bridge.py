@@ -861,15 +861,13 @@ def test_17k_shared_history_across_telegram_and_api(monkeypatch):
     import core.telegram_bridge as tb_module
 
     # Write a known message to history via the API's own save helper.
-    api_module._save_chat_history([
-        {"role": "user", "content": "prior API message"},
-        {"role": "assistant", "content": "prior API answer"},
-    ])
+    api_module._append_chat_message("user", "prior API message")
+    api_module._append_chat_message("assistant", "prior API answer")
 
-    # Confirm the same history is visible via _load_chat_history (shared store).
-    loaded = api_module._load_chat_history()
+    # Confirm the same history is visible via _get_chat_messages (shared store).
+    loaded = api_module._get_chat_messages()
     assert any(m["content"] == "prior API message" for m in loaded), \
-        "API-written message not visible via _load_chat_history"
+        "API-written message not visible via _get_chat_messages"
 
     # Now simulate a Telegram chat call: handle_kai_chat reads from that same
     # file. We stub the AI so no network call happens.
@@ -877,7 +875,7 @@ def test_17k_shared_history_across_telegram_and_api(monkeypatch):
 
     def capturing_handler(text, operator):
         # Read history INSIDE the call to prove it sees the prior API context.
-        h = api_module._load_chat_history()
+        h = api_module._get_chat_messages()
         history_seen_by_handler.extend(h)
         return {"matched": False, "response": "Telegram answer"}
 
@@ -929,7 +927,7 @@ def test_17k_real_shared_history_end_to_end(monkeypatch):
     assert resp.status_code == 200
 
     # Step 2: Confirm history was written.
-    history_before_tg = api_module._load_chat_history()
+    history_before_tg = api_module._get_chat_messages()
     user_msgs = [m for m in history_before_tg if m["role"] == "user"]
     assert any(m["content"] == "API question" for m in user_msgs), \
         "API question not persisted to kai_chat_history.json"
@@ -946,7 +944,7 @@ def test_17k_real_shared_history_end_to_end(monkeypatch):
     assert "AI answer" in result["reply"]
 
     # Step 4: The history now has BOTH the API message and the Telegram message.
-    history_after = api_module._load_chat_history()
+    history_after = api_module._get_chat_messages()
     all_user_msgs = [m["content"] for m in history_after if m["role"] == "user"]
     assert "API question" in all_user_msgs, "API question vanished from history after Telegram message"
     assert "Telegram question" in all_user_msgs, "Telegram question not saved to shared history"

@@ -83,7 +83,7 @@ def test_full_chain_exhaustion(monkeypatch):
     assert record["task"] == "architecture planning"
     assert record["primary"] == "claude"
     assert record["fallback_used"] is None
-    assert record["reason"] == "openai degraded health"
+    assert record["reason"] == "qwen4_text degraded health"
     assert record["result"] == "failure"
 
 

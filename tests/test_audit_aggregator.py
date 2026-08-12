@@ -473,7 +473,7 @@ class TestAuditEndpointIntegration:
         return TestClient(app)
 
     def test_get_audit_json(self, client):
-        response = client.get("/audit")
+        response = client.get("/audit/v2")
         assert response.status_code == 200
         data = response.json()
         assert "entries" in data
@@ -483,22 +483,22 @@ class TestAuditEndpointIntegration:
         assert isinstance(data["entries"], list)
 
     def test_get_audit_csv(self, client):
-        response = client.get("/audit?format=csv")
+        response = client.get("/audit/v2?format=csv")
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/csv")
 
     def test_get_audit_with_filters(self, client):
-        response = client.get("/audit?user=system&action=build_completed")
+        response = client.get("/audit/v2?user=system&action=build_completed")
         assert response.status_code == 200
         data = response.json()
         assert "entries" in data
 
     def test_get_audit_with_date_range(self, client):
-        response = client.get("/audit?start_date=2026-01-01&end_date=2027-01-01")
+        response = client.get("/audit/v2?start_date=2026-01-01&end_date=2027-01-01")
         assert response.status_code == 200
 
     def test_get_audit_pagination(self, client):
-        response = client.get("/audit?limit=5&offset=0")
+        response = client.get("/audit/v2?limit=5&offset=0")
         assert response.status_code == 200
         data = response.json()
         assert data["metadata"]["limit"] == 5
@@ -506,7 +506,7 @@ class TestAuditEndpointIntegration:
         assert len(data["entries"]) <= 5
 
     def test_audit_filter_case_insensitive(self, client):
-        response = client.get("/audit?user=SYSTEM")
+        response = client.get("/audit/v2?user=SYSTEM")
         assert response.status_code == 200
 
 

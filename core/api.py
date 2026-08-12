@@ -61,7 +61,8 @@ from core.ai.agent_registry import (
     record_benchmark, bootstrap_default_agents,
 )
 from core.ai import circuit_breaker
-from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles, PROVIDER_CONFIG_OVERRIDES, PROVIDER_CONFIG_OVERRIDES_FILE, ROLE_PROVIDERS, reload_provider_overrides
+from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles, ROLE_PROVIDERS
+from core import provider_config_editor
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals
 import core.kai.identity as kai_identity
@@ -1483,17 +1484,12 @@ def providers_dashboard_endpoint():
 
 @app.get("/providers/config")
 def get_provider_config():
-    """Return operator overrides + effective config for every role,
-    plus all registered providers for the UI to build dropdowns from."""
-    effective = {}
-    for role in ROLE_PROVIDERS:
-        effective[role] = PROVIDER_CONFIG_OVERRIDES.get(role) or ROLE_PROVIDERS[role]
-    return {
-        "overrides": PROVIDER_CONFIG_OVERRIDES,
-        "effective": effective,
-        "defaults": ROLE_PROVIDERS,
-        "providers": list_providers(),
-    }
+    """Return operator overrides with validation context (Phase 17U).
+
+    Shape: {schema_version, overrides: {fallback_order, max_concurrent_builds},
+    validation: {valid, errors, warnings}}.
+    """
+    return provider_config_editor.get_full_config()
 
 
 @app.put("/providers/config")
@@ -1501,44 +1497,27 @@ def update_provider_config(
     body: dict,
     operator: str = Depends(_require_write_capability("delegate.use")),
 ):
-    """Save provider role overrides. Body: {role: [provider_name, ...]}.
-    Validates every provider name against registered providers and rejects
-    unknown names.  Provider list order is the fallback priority for that
-    role — first = primary, last = last resort.
-
-    Omitted roles keep their hardcoded ROLE_PROVIDERS default; pass an
-    empty list [] to temporarily clear a role.  Passing a list that
-    exactly matches the default is a no-op (not stored as an override).
+    """Save operator overrides. Body: {fallback_order: {role: [provider, ...]},
+    max_concurrent_builds: N}.  Validates every provider name against the
+    registry and rejects unknown names with 422.
     """
-    all_providers = list_providers()
+    success, errors, warnings = provider_config_editor.save_overrides(body)
+    if not success:
+        raise HTTPException(status_code=422, detail={"errors": errors, "warnings": warnings})
 
-    overrides: dict[str, list[str]] = {}
-    for role, providers in body.items():
-        if not isinstance(providers, list):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Role '{role}': expected a list of provider names, got {type(providers).__name__}",
-            )
-        for name in providers:
-            if name not in all_providers:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unknown provider '{name}' in role '{role}'. "
-                    f"Registered providers: {', '.join(sorted(all_providers.keys()))}",
-                )
-        # Don't store overrides that match the default — a cleared override
-        # file means "use defaults for everything", not "persist copies".
-        defaults = ROLE_PROVIDERS.get(role)
-        if defaults and providers == defaults:
-            continue
-        overrides[role] = providers
+    overrides = provider_config_editor.load_overrides().get("overrides", {})
+    return {"saved": True, "overrides": overrides}
 
+
+@app.delete("/providers/config")
+def delete_provider_config(
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Reset all operator overrides back to the hardcoded defaults."""
     from core.memory import save as mem_save
 
-    mem_save(PROVIDER_CONFIG_OVERRIDES_FILE, overrides)
-    reload_provider_overrides()
-
-    return {"saved": True, "overrides": overrides}
+    mem_save(provider_config_editor.OVERRIDES_FILE, {"schema_version": 1, "overrides": {}})
+    return {"reset": True}
 
 
 # ---- V3: GPU & Pipeline endpoints ----
@@ -3452,7 +3431,7 @@ def builds_endpoint():
 
 @app.get("/builds/{build_id}")
 def build_endpoint(build_id: str):
-    result = get_build(build_id)
+    result = get_build(build_id, include_terminal=True)
 
     if result is None:
         raise HTTPException(status_code=404, detail="Build not found")

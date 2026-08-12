@@ -438,9 +438,12 @@ PROVIDER_CONFIG_OVERRIDES = _load_provider_overrides()
 
 def get_effective_providers(task_type: str) -> list[str]:
     """Return the effective provider list for a task_type:
-    operator overrides first, falling back to ROLE_PROVIDERS default."""
-    if task_type in PROVIDER_CONFIG_OVERRIDES:
-        return PROVIDER_CONFIG_OVERRIDES[task_type]
+    operator overrides (via core.provider_config_editor) first, falling back
+    to ROLE_PROVIDERS default."""
+    from core import provider_config_editor
+    override = provider_config_editor.get_fallback_order(task_type)
+    if override:
+        return override
     return ROLE_PROVIDERS.get(task_type, ["claude"])
 
 

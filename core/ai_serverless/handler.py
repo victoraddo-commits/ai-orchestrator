@@ -51,47 +51,36 @@ def handle_completion(
     start = time.monotonic()
 
     try:
-        # Route directly to a provider if specified, otherwise auto-route
+        # Validate provider if direct routing requested
         if model != "auto":
             from core.ai_provider import get_provider
 
-            provider = get_provider(model)
-            if provider is None or provider.get("run_text_task") is None:
+            provider_info = get_provider(model)
+            if provider_info is None or "text_task" not in provider_info.get("capabilities", []):
                 return _error_response(
                     f"Provider '{model}' not found or doesn't support text tasks",
                     status=400,
                 )
 
-            # Call within timeout safety window
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    provider["run_text_task"],
-                    prompt,
-                    timeout=VERCEL_TIMEOUT_SAFETY,
-                )
-                try:
-                    response_text = future.result(timeout=VERCEL_TIMEOUT_SAFETY)
-                except concurrent.futures.TimeoutError:
-                    return _error_response("Request timed out", status=504)
+        # Route via ai_router.delegate() for both paths
+        kwargs = {
+            "prompt": prompt,
+            "task_type": detected_type,
+            "capability": "text_task",
+            "return_attempts": True,
+        }
+        if model != "auto":
+            kwargs["provider"] = model
 
-            provider_used = model
-        else:
-            # Auto-route via ai_router
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(
-                    delegate,
-                    prompt,
-                    task_type=detected_type,
-                    capability="text_task",
-                    return_attempts=True,
-                )
-                try:
-                    result = future.result(timeout=VERCEL_TIMEOUT_SAFETY + 5)
-                    response_text = result["response"]
-                    provider_used = result["provider"]
-                    attempts = result.get("attempts", [])
-                except concurrent.futures.TimeoutError:
-                    return _error_response("Request timed out", status=504)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(delegate, **kwargs)
+            try:
+                result = future.result(timeout=VERCEL_TIMEOUT_SAFETY + 5)
+                response_text = result["response"]
+                provider_used = result["provider"]
+                attempts = result.get("attempts", [])
+            except concurrent.futures.TimeoutError:
+                return _error_response("Request timed out", status=504)
 
     except Exception as e:
         return _error_response(f"Provider error: {str(e)}", status=500)
@@ -135,11 +124,9 @@ def handle_health() -> dict:
 
     providers = {}
     for name, p in sorted(list_providers().items()):
-        if p.get("run_text_task"):
+        if "text_task" in p.get("capabilities", []):
             try:
-                available = p.get("enabled", True) and (
-                    p["available_fn"]() if callable(p.get("available_fn")) else True
-                )
+                available = p.get("enabled", True) and p.get("available", True)
             except Exception:
                 available = False
             providers[name] = {
@@ -148,12 +135,9 @@ def handle_health() -> dict:
                 "cost_tier": p.get("cost_tier", "unknown"),
             }
 
-    from core.ai.provider_health import get_health_summary
-
     return {
         "status": "healthy",
         "providers": providers,
-        "health": get_health_summary() if callable(get_health_summary) else {},
     }
 
 

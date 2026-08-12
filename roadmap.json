@@ -2558,7 +2558,7 @@
     {
       "id": "AI-4",
       "name": "AI-4: Serverless Endpoints",
-      "status": "failed",
+      "status": "completed",
       "priority": 4,
       "dependencies": [
         "AI-1"
@@ -2572,10 +2572,10 @@
         "Scale-to-zero confirmed working"
       ],
       "completed_at": "2026-08-07",
-      "completion_note": "core/ai_serverless/ with handler.py + vercel_handler.py. core/ai_serverless/ with handler.py + vercel_handler.py. Done.",
-      "completed": "2026-08-08",
+      "completion_note": "Fixed broken handle_health import, updated provider routing to use delegate() with provider= param. Added 13 serverless tests (handler + vercel). All tests pass.",
+      "completed": "2026-08-11",
       "build_id": "1b2ba544",
-      "failure_reason": "Build 1b2ba544 missing from builds.json (deleted or stale reference)"
+      "failure_reason": ""
     },
     {
       "id": "AI-5",

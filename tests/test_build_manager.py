@@ -222,7 +222,7 @@ def test_advance_builds_drives_deploying_to_completed_on_success(monkeypatch):
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "COMPLETED"
     assert updated["deployment"]["port"] == 32768
 
@@ -239,7 +239,7 @@ def test_advance_builds_drives_deploying_to_failed_on_unsuccessful_deploy(monkey
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "FAILED"
     assert "crashed" in updated["failure_reason"]
 
@@ -266,7 +266,9 @@ def test_advance_builds_restarts_stale_services_after_a_successful_self_modifyin
         # The build must already be persisted as COMPLETED before any
         # restart runs: restarting ai-orchestrator.service kills the very
         # process executing this, and the outcome must never be lost.
-        persisted = build_manager.get_build(b["id"])
+        # V3: after _persist_build + _record_if_terminal the build is
+        # archived on next load, so we need include_terminal=True.
+        persisted = build_manager.get_build(b["id"], include_terminal=True)
         restart_calls.append((b["id"], result, persisted["status"]))
         return [{"service": "ai-orchestrator-api.service", "restarted": True}]
 
@@ -300,7 +302,7 @@ def test_advance_builds_never_restarts_services_after_a_failed_deploy(monkeypatc
 
     build_manager.advance_builds()
 
-    assert build_manager.get_build(build["id"])["status"] == "FAILED"
+    assert build_manager.get_build(build["id"], include_terminal=True)["status"] == "FAILED"
     assert restart_calls == []
 
 
@@ -367,7 +369,7 @@ def test_advance_builds_never_redeploys_the_plugin_after_a_failed_deploy(monkeyp
 
     build_manager.advance_builds()
 
-    assert build_manager.get_build(build["id"])["status"] == "FAILED"
+    assert build_manager.get_build(build["id"], include_terminal=True)["status"] == "FAILED"
     assert redeploy_calls == []
 
 
@@ -422,7 +424,7 @@ def test_rollback_deployment_transitions_to_rolled_back(monkeypatch):
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "COMPLETED")
 
-    builds = build_manager.load_builds()
+    builds = build_manager.load_builds(include_terminal=True)
     for b in builds:
         if b["id"] == build["id"]:
             b["deployment"] = {"deployed": True, "remediation_id": "r1"}
@@ -443,7 +445,7 @@ def test_rollback_deployment_stores_rollback_info_on_the_build(monkeypatch):
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "COMPLETED")
 
-    builds = build_manager.load_builds()
+    builds = build_manager.load_builds(include_terminal=True)
     for b in builds:
         if b["id"] == build["id"]:
             b["deployment"] = {"deployed": True, "remediation_id": "r1"}
@@ -476,7 +478,7 @@ def test_rollback_deployment_records_root_cause_in_build_history(monkeypatch):
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj", template="fastapi")
     _force_status(build["id"], "COMPLETED")
 
-    builds = build_manager.load_builds()
+    builds = build_manager.load_builds(include_terminal=True)
     for b in builds:
         if b["id"] == build["id"]:
             b["deployment"] = {
@@ -537,7 +539,7 @@ def test_advance_builds_marks_planning_failed_when_bridge_errors(monkeypatch):
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "FAILED"
     assert "500" in updated["failure_reason"]
 
@@ -558,7 +560,7 @@ def test_advance_builds_marks_planning_failed_when_all_providers_fail(monkeypatc
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "FAILED"
     assert "usage limit reached" in updated["failure_reason"]
 
@@ -594,7 +596,7 @@ def test_generation_reporting_success_with_no_changes_is_treated_as_failure(monk
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "FAILED"
     assert "no changes" in updated["failure_reason"].lower()
 
@@ -746,7 +748,7 @@ def test_advance_builds_drives_generating_to_failed_on_unsuccessful_run(monkeypa
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "FAILED"
 
 
@@ -762,7 +764,7 @@ def test_advance_builds_leaves_terminal_state_builds_alone(monkeypatch):
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "COMPLETED"
 
 
@@ -928,7 +930,7 @@ def test_one_builds_crash_does_not_lose_the_other_builds_result(monkeypatch, tmp
 
     build_manager.advance_builds()
 
-    updated_a = build_manager.get_build(build_a["id"])
+    updated_a = build_manager.get_build(build_a["id"], include_terminal=True)
     updated_b = build_manager.get_build(build_b["id"])
 
     assert updated_a["status"] == "FAILED"
@@ -1640,7 +1642,7 @@ def test_three_consecutive_bad_plans_fail_the_build(monkeypatch):
 
     build_manager.advance_builds()
 
-    updated = build_manager.get_build(build["id"])
+    updated = build_manager.get_build(build["id"], include_terminal=True)
     assert updated["status"] == "FAILED"
     assert "3 consecutive unusable planning responses" in updated["failure_reason"]
 

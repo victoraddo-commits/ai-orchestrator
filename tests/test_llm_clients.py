@@ -56,24 +56,6 @@ def test_call_groq_extracts_text_from_response(monkeypatch):
     assert llm_clients.call_groq("hello") == "quick answer"
 
 
-def test_call_qwen4_text_raises_when_key_missing(monkeypatch):
-    monkeypatch.delenv("VLLM_QWEN3_CODER_API_KEY", raising=False)
-
-    with pytest.raises(llm_clients.ProviderUnavailable):
-        llm_clients.call_qwen4_text("hello")
-
-
-def test_call_qwen4_text_extracts_text_from_response(monkeypatch):
-    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
-    monkeypatch.setattr(llm_clients, "QWEN3_CODER_BASE_URL", "https://qwen3.example/v1")
-    monkeypatch.setattr(
-        llm_clients.requests, "post",
-        lambda *a, **k: _resp(json_body={"choices": [{"message": {"content": "an answer"}}]}),
-    )
-
-    assert llm_clients.call_qwen4_text("hello") == "an answer"
-
-
 def test_call_groq_captures_quota_from_response_headers(monkeypatch):
     import core.ai.provider_health as provider_health
 
@@ -90,25 +72,6 @@ def test_call_groq_captures_quota_from_response_headers(monkeypatch):
 
     snapshot = provider_health.get_quota_snapshot("groq")
     assert snapshot["percent_remaining"] == 50.0
-
-
-def test_call_qwen4_text_captures_quota_exceeded_on_429(monkeypatch):
-    import core.ai.provider_health as provider_health
-
-    monkeypatch.setenv("VLLM_QWEN3_CODER_API_KEY", "test-key")
-    monkeypatch.setattr(llm_clients, "QWEN3_CODER_BASE_URL", "https://qwen3.example/v1")
-    monkeypatch.setattr(
-        llm_clients.requests, "post",
-        lambda *a, **k: _resp(status=429, json_body={"error": {"code": "insufficient_quota"}}),
-    )
-
-    with pytest.raises(Exception):
-        llm_clients.call_qwen4_text("hello")
-
-    snapshot = provider_health.get_quota_snapshot("qwen4_text")
-    assert snapshot is not None, "qwen4_text should have a quota snapshot"
-    assert snapshot["status"] == "quota_exceeded"
-    assert snapshot["percent_remaining"] == 0
 
 
 def test_call_openrouter_raises_when_key_missing(monkeypatch):

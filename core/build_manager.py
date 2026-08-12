@@ -167,6 +167,16 @@ def load_builds(include_terminal=False):
         # Archive terminal builds we haven't archived yet
         _archive_terminal_builds(builds)
         builds = [b for b in builds if b.get("status") not in _EXCLUDED_STATUSES]
+    else:
+        # When including terminal builds, also merge in the archive
+        # so builds that were already archived are still findable.
+        archive = load(BUILDS_ARCHIVE_FILE)
+        if isinstance(archive, list):
+            # Deduplicate by ID — active builds take precedence
+            active_ids = {b.get("id") for b in builds}
+            for a in archive:
+                if a.get("id") not in active_ids:
+                    builds.append(a)
 
     return builds
 
@@ -278,8 +288,8 @@ def list_builds():
     return load_builds()
 
 
-def get_build(build_id):
-    for build in load_builds():
+def get_build(build_id, include_terminal=False):
+    for build in load_builds(include_terminal=include_terminal):
         if build.get("id") == build_id:
             return build
 
@@ -287,7 +297,7 @@ def get_build(build_id):
 
 
 def _update(build_id, mutate):
-    builds = load_builds()
+    builds = load_builds(include_terminal=True)
 
     for build in builds:
         if build.get("id") == build_id:
@@ -418,7 +428,7 @@ def reject_deploy(build_id, operator=None, note=None):
 
 
 def rollback_deployment(build_id):
-    build = get_build(build_id)
+    build = get_build(build_id, include_terminal=True)
     if build is None:
         return None
 
@@ -1217,9 +1227,17 @@ def _advance_one_build(build):
         # One build's crash must never lose track of another build's
         # concurrently-computed result inside the same pool.map call --
         # mark this build failed and persist it like any other outcome.
-        transition(build, "FAILED", BUILD_TRANSITIONS)
-        build["failure_reason"] = f"Unexpected error: {error}"
-        _record_if_terminal(build)
+        # Guard: if the build already reached a terminal state (e.g.
+        # COMPLETED via _run_deployment before restart_services threw),
+        # don't try to transition it away — just record the error.
+        if build.get("status") not in _EXCLUDED_STATUSES:
+            transition(build, "FAILED", BUILD_TRANSITIONS)
+            build["failure_reason"] = f"Unexpected error: {error}"
+            _record_if_terminal(build)
+        else:
+            # Build already in terminal state; log the ancillary failure
+            # but preserve the successful state transition.
+            build.setdefault("_ancillary_errors", []).append(str(error))
 
     _persist_build(build)
     return build

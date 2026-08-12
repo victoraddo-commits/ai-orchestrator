@@ -100,9 +100,15 @@ def auth_headers():
 def test_token_file_is_created_with_owner_only_permissions(tmp_path, monkeypatch):
     import stat
     import core.api as api_module
+    import core.bridge_auth
 
     token_path = tmp_path / "nested" / "api_token"
-    monkeypatch.setattr(api_module, "API_TOKEN_PATH", token_path)
+    # _load_api_token() uses API_TOKEN_PATH from core.bridge_auth (not api_module),
+    # so monkeypatch at the source module.
+    monkeypatch.setattr(core.bridge_auth, "API_TOKEN_PATH", token_path)
+    # _load_api_token() caches in _TOKEN_CACHE — clear it so it re-reads
+    # from the patched path instead of returning the cached token.
+    monkeypatch.setattr(core.bridge_auth, "_TOKEN_CACHE", None)
 
     api_module._load_api_token()
 
@@ -338,10 +344,13 @@ def test_delegate_endpoint_requires_auth():
 def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # qwen3_coder_text now leads "classification" (reasoning-model fallback
-    # fix deployed) — disable it so groq is the next candidate this test expects.
-    qwen = ai_provider.get_provider("qwen3_coder_text")
-    monkeypatch.setitem(qwen, "available_fn", lambda: False)
+    # PROVIDER_CONFIG_OVERRIDES["log_analysis"] starts with deepseek_native_flash
+    # and deepseek_native_pro. Disable them so groq is the first reachable
+    # candidate (after local/llama3 which the conftest already disables).
+    for name in ("deepseek_native_flash", "deepseek_native_pro", "qwen3_coder_text"):
+        p = ai_provider.get_provider(name)
+        if p is not None:
+            monkeypatch.setitem(p, "available_fn", lambda: False)
 
     groq = ai_provider.get_provider("groq")
     monkeypatch.setitem(groq, "enabled", True)  # re-enable from persisted state
@@ -363,10 +372,14 @@ def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
 def test_delegate_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # OpenCode providers removed 2026-08-10
-    for name in ("gemini", "geminix", "openrouter", "minimax", "deepseek", "claude", "deepseek_native_flash", "deepseek_native_pro", "qwen4_text"):
+    # Disable ALL providers in the planning chain so nothing is available.
+    # PROVIDER_CONFIG_OVERRIDES["planning"] includes local/llama3 (disabled
+    # by conftest) plus these. Guard against unregistered providers.
+    import core.ai.ai_router as ai_router
+    for name in ai_router.get_effective_providers("planning"):
         provider = ai_provider.get_provider(name)
-        monkeypatch.setitem(provider, "available_fn", lambda: False)
+        if provider is not None:
+            monkeypatch.setitem(provider, "available_fn", lambda: False)
 
     response = client.post(
         "/delegate",
@@ -608,18 +621,18 @@ def test_dashboard_endpoint_html_contains_expected_ui_elements():
     assert "Learning Summary" in html
 
 
-def test_root_endpoint_redirects_to_dashboard():
+def test_root_endpoint_redirects_to_command_center():
     response = client.get("/", follow_redirects=False)
 
     assert response.status_code == 307
-    assert response.headers["location"] == "/dashboard"
+    assert response.headers["location"] == "/command-center"
 
 
-def test_root_endpoint_redirect_follow_lands_on_dashboard():
+def test_root_endpoint_redirect_follow_lands_on_command_center():
     response = client.get("/", follow_redirects=True)
 
     assert response.status_code == 200
-    assert "Kai Dashboard" in response.text
+    assert "Kai Command Center" in response.text
 
 
 def test_dashboard_actions_go_through_proxy_not_directly():
@@ -958,11 +971,13 @@ def test_kai_chat_endpoint_approval_returns_no_pending_after_request_handled():
 
 def test_kai_chat_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
+    import core.ai.ai_router as ai_router
 
-    # OpenCode providers removed 2026-08-10
-    for name in ("deepseek_native_flash", "openrouter", "deepseek", "claude", "gemini", "geminix", "deepseek_native_pro", "qwen4_text"):
+    # Disable ALL providers so the chat endpoint can't delegate to any.
+    for name in ai_router.get_effective_providers("planning"):
         provider = ai_provider.get_provider(name)
-        monkeypatch.setitem(provider, "available_fn", lambda: False)
+        if provider is not None:
+            monkeypatch.setitem(provider, "available_fn", lambda: False)
 
     response = client.post(
         "/kai/chat",
@@ -1339,7 +1354,7 @@ def test_kai_chat_build_request_creates_a_real_build(monkeypatch):
 
     captured = {}
 
-    def fake_create_build(name, description, project_path, template=None):
+    def fake_create_build(name, description, project_path, template=None, **kwargs):
         captured.update(name=name, description=description, project_path=project_path, template=template)
         return {"id": "b-portfolio-1", "status": "REQUESTED"}
 
@@ -1372,7 +1387,7 @@ def test_kai_chat_build_request_does_not_block_on_generation(monkeypatch):
     )
     monkeypatch.setattr(
         api_module, "create_build",
-        lambda name, description, project_path, template=None: {"id": "b-fast", "status": "REQUESTED"},
+        lambda name, description, project_path, template=None, **kwargs: {"id": "b-fast", "status": "REQUESTED"},
     )
 
     def boom(*a, **kw):
@@ -1459,7 +1474,7 @@ def test_kai_chat_build_request_project_path_disambiguates_existing_directory(mo
     captured = {}
     monkeypatch.setattr(
         api_module, "create_build",
-        lambda name, description, project_path, template=None: captured.update(project_path=project_path) or {"id": "b-blog-2", "status": "REQUESTED"},
+        lambda name, description, project_path, template=None, **kwargs: captured.update(project_path=project_path) or {"id": "b-blog-2", "status": "REQUESTED"},
     )
 
     response = client.post("/kai/chat", json={"text": "build me a blog app"}, headers=auth_headers())
@@ -1482,7 +1497,7 @@ def test_kai_chat_build_request_rejects_unknown_template(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         api_module, "create_build",
-        lambda name, description, project_path, template=None: captured.update(template=template) or {"id": "b-w", "status": "REQUESTED"},
+        lambda name, description, project_path, template=None, **kwargs: captured.update(template=template) or {"id": "b-w", "status": "REQUESTED"},
     )
 
     response = client.post("/kai/chat", json={"text": "build me a widget app"}, headers=auth_headers())
@@ -1508,7 +1523,7 @@ def test_kai_chat_build_request_never_calls_approval_functions(monkeypatch):
     monkeypatch.setattr(api_module, "approve_deploy", fail_if_called)
     monkeypatch.setattr(
         api_module, "create_build",
-        lambda name, description, project_path, template=None: {"id": "b-safe", "status": "REQUESTED"},
+        lambda name, description, project_path, template=None, **kwargs: {"id": "b-safe", "status": "REQUESTED"},
     )
 
     response = client.post("/kai/chat", json={"text": "build me a service"}, headers=auth_headers())

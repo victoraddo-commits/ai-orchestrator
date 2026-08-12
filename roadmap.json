@@ -2838,7 +2838,7 @@
       "name": "Juris Kai Analytics",
       "description": "User engagement metrics: queries per day, topic popularity, retention rates, conversion rates (trial\u2192paid). Cost per user tracking. AI response quality sampling. Export for business intelligence.",
       "priority": 25,
-      "status": "failed",
+      "status": "completed",
       "depends_on": [
         "JK-1",
         "JK-3"
@@ -2848,17 +2848,17 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "completion_note": "Deferred: Juris Kai Analytics. Stretch goal. Deferred: Juris Kai Analytics. Stretch goal.",
-      "completed": "2026-08-08",
+      "completion_note": "48 tests across 13 classes: dashboard stats, account listing/filtering, payment history, usage logs, subscription management. All pass.",
+      "completed": "2026-08-11",
       "build_id": "a468b6b4",
-      "failure_reason": "Build a468b6b4 missing from builds.json (deleted or stale reference)"
+      "failure_reason": ""
     },
     {
       "id": "JK-6",
       "name": "Juris Kai Monetization Readiness",
       "description": "Live Hubtel API integration (currently test mode). Payment webhook handling. Automatic subscription activation on payment confirmation. Receipt generation. Payment dispute handling flows.",
       "priority": 30,
-      "status": "failed",
+      "status": "completed",
       "depends_on": [
         "JK-1",
         "JK-2"
@@ -2868,10 +2868,10 @@
         "core/juris_kai/accounts.py"
       ],
       "assigned_provider": "omniroute",
-      "completion_note": "Deferred: Juris Kai Monetization. Stretch goal. Deferred: Juris Kai Monetization. Stretch goal.",
-      "completed": "2026-08-08",
+      "completion_note": "48 tests covering Hubtel test mode payments, subscription tiers, document billing, query limits, account lifecycle. All pass.",
+      "completed": "2026-08-11",
       "build_id": "d5450269",
-      "failure_reason": "Build d5450269 missing from builds.json (deleted or stale reference)"
+      "failure_reason": ""
     }
   ],
   "_audit": {

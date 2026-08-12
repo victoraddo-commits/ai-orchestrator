@@ -227,11 +227,12 @@ class TestChatCompletions:
         resp = client.post("/v1/chat/completions",
                            json=body,
                            headers={"Authorization": valid_auth})
-        # unknown model → resolves to None → delegate auto-routes → 200 or 502
-        assert resp.status_code in (200, 502)
-        if resp.status_code == 502:
-            data = resp.json()
-            assert "detail" in data
+        # 18A-ai Phase 2: unknown model → 400 (not 502 — model validation
+        # happens before provider dispatch).
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data["detail"]["error"] == "unknown_model"
+        assert "nonexistent_provider_xyz" in data["detail"]["message"]
 
 
 # ---------------------------------------------------------------------------
@@ -758,3 +759,43 @@ class TestRevokeOtherKey:
         resp = client.get("/v1/models",
                           headers={"Authorization": f"Bearer {sacrificial_key}"})
         assert resp.status_code == 401
+
+
+# ── 18A-ai Phase 2: direct provider routing ─────────────────────────────
+
+
+class TestDirectProviderRouting:
+    """Verify /v1/chat/completions respects the model parameter."""
+
+    def test_unknown_model_returns_400(self, client, valid_auth):
+        """POST with model='nonexistent_provider_xyz' returns 400."""
+        resp = client.post("/v1/chat/completions",
+                           json={
+                               "model": "nonexistent_provider_xyz",
+                               "messages": [{"role": "user", "content": "test"}],
+                           },
+                           headers={"Authorization": valid_auth})
+        assert resp.status_code == 400
+        data = resp.json()
+        assert data["detail"]["error"] == "unknown_model"
+
+    def test_auto_model_still_auto_routes(self, client, valid_auth):
+        """POST with model='auto' still auto-routes (200 or 502)."""
+        resp = client.post("/v1/chat/completions",
+                           json={
+                               "model": "auto",
+                               "messages": [{"role": "user", "content": "Say hi"}],
+                           },
+                           headers={"Authorization": valid_auth})
+        assert resp.status_code in (200, 502)
+        if resp.status_code == 200:
+            assert resp.json()["provider"]  # some provider was used
+
+    def test_omitted_model_auto_routes(self, client, valid_auth):
+        """POST without a model field auto-routes (200 or 502)."""
+        resp = client.post("/v1/chat/completions",
+                           json={
+                               "messages": [{"role": "user", "content": "Say hi"}],
+                           },
+                           headers={"Authorization": valid_auth})
+        assert resp.status_code in (200, 502)

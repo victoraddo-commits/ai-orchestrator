@@ -2496,8 +2496,8 @@
         "Build pipeline integration"
       ],
       "completed_at": "2026-08-07",
-      "completion_note": "project_id in create_conversation() and get_conversations(). Fixed KEEP_RECENT_TURNS bug. Full CRUD in place.",
-      "completed": "2026-08-08",
+      "completion_note": "KaiChatRequest now accepts project_id and conversation_id. Stream chat endpoint creates project-scoped conversations and continues existing ones with ownership verification. 16 tests covering: project-scoped CRUD, conversation continuation, project switching, context persistence, title generation, and API model fields.",
+      "completed": "2026-08-11",
       "build_id": "6c2d9adf",
       "failure_reason": "Build 6c2d9adf missing from builds.json (deleted or stale reference)"
     },
@@ -2622,7 +2622,7 @@
     {
       "id": "AI-7",
       "name": "AI-7: Credential Vault (extends 17E-2)",
-      "status": "completed",
+      "status": "failed",
       "priority": 7,
       "dependencies": [
         "AI-1"
@@ -2639,7 +2639,7 @@
       "completion_note": "Added 33 tests (encrypt/decrypt, CRUD, rotation, migration, master key, health checks). Wired rotation check into orchestrator_cycle.py. Vault operational with AES-256-GCM, 2 credentials stored, migration run.",
       "completed": "2026-08-11",
       "build_id": "0d69b0b7",
-      "failure_reason": ""
+      "failure_reason": "Build 0d69b0b7 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "18D",

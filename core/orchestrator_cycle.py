@@ -50,12 +50,27 @@ def _safe_check_budget():
         info(f"budget check failed: {type(error).__name__}")
 
 
+def _safe_check_rotation():
+    """AI-7: Check for credential rotation needs and log (alert-only)."""
+    try:
+        from core.ai.credential_vault import check_rotation_needed
+        due = check_rotation_needed()
+        if due:
+            providers = [d["provider"] for d in due]
+            info(f"credential rotation due for: {', '.join(providers)}")
+    except Exception as error:
+        info(f"credential rotation check failed: {type(error).__name__}")
+
+
 def run_cycle():
 
     info("=== orchestrator cycle started ===")
 
     # 2026-08-07: GPU lifecycle/heartbeat/auto-recovery removed —
     # RunPod pods decommissioned.
+
+    # AI-7: Credential Vault rotation check
+    _safe_check_rotation()
 
     # TK-176d6efe: VPN failover — check WireGuard tunnel to Proxmox B and
     # attempt recovery if the tunnel is down.

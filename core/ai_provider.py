@@ -236,12 +236,15 @@ def _local_available():
     return llm_clients.check_ollama_available()
 
 
-def _llama_run_text_task(prompt, timeout=60, project_path=None):
+def _llama_run_text_task(prompt, timeout=120, project_path=None):
     """llama3.2:3b via ollama on Proxmox B — faster, lighter fallback.
 
     Deployed 2026-08-11 alongside qwen2.5:7b. Better format compliance
     (no markdown fences) but weaker at hallucination resistance and long
     context. Good for classification, quick lookups, low-latency tasks.
+
+    timeout bumped 60→120 (2026-08-12) to match qwen: under Proxmox B CPU
+    contention llama drops to ~5.8 t/s, so long responses can exceed 60s.
     """
     return llm_clients.call_ollama_llama(prompt, timeout=timeout)
 

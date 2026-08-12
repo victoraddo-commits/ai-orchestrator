@@ -512,7 +512,7 @@ def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
 OLLAMA_LLAMA_MODEL = "llama3.2:3b"
 
 
-def call_ollama_llama(prompt, model=OLLAMA_LLAMA_MODEL, timeout=60):
+def call_ollama_llama(prompt, model=OLLAMA_LLAMA_MODEL, timeout=120):
     """Call llama3.2:3b via ollama on Proxmox B — faster but less accurate.
 
     Deployed 2026-08-11 alongside qwen2.5:7b. llama3.2:3b is smaller (2.0GB),

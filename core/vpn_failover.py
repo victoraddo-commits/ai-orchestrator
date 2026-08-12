@@ -37,8 +37,8 @@ WG_INTERFACE = os.environ.get("VPN_FAILOVER_WG_IFACE", "wg-proxmox-b")
 WG_UP_TIMEOUT = int(os.environ.get("VPN_FAILOVER_WG_UP_TIMEOUT", "30"))
 
 # Probe target — must be a host reachable through the WG tunnel
-PROBE_HOST = os.environ.get("VPN_FAILOVER_PROBE_HOST", "10.8.0.5")
-PROBE_PORT = int(os.environ.get("VPN_FAILOVER_PROBE_PORT", "8006"))
+PROBE_HOST = os.environ.get("VPN_FAILOVER_PROBE_HOST", "10.250.0.2")
+PROBE_PORT = int(os.environ.get("VPN_FAILOVER_PROBE_PORT", "11434"))
 
 # Max recovery attempts per cycle (prevents thrashing)
 MAX_RECOVERY_ATTEMPTS = int(os.environ.get("VPN_FAILOVER_MAX_ATTEMPTS", "2"))
@@ -225,9 +225,10 @@ def attempt_recovery() -> list[dict]:
             "severity": "warning",
             "component": "vpn_failover",
             "message": (
-                "Proxmox B (10.8.0.5) is unreachable via DD-WRT WireGuard.  "
-                "interface configured — the tunnel is managed externally "
-                "(OPNsense).  Check the site-to-site VPN."
+                "Proxmox B (10.250.0.2) is unreachable via ZeroTier backbone.  "
+                "ZeroTier interface is managed by network-core-b LXC"
+                " — check network-core-b and ZeroTier Central."
+                " (Replaced old DD-WRT WireGuard path 2026-08-11.)"
             ),
             "health": health,
         })

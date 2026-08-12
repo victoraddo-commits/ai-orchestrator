@@ -17,7 +17,7 @@ from core.kai_betting.models import (
     PredictionResult, OddsGroupResult, RiskLevel,
 )
 from core.kai_betting.prediction_engine import PredictionEngine
-from core.kai_betting.db import get_db
+from core.kai_betting.db import get_db, event_is_started
 
 
 def _live_data_mode() -> bool:
@@ -159,14 +159,15 @@ class OddsEngine:
         market_types: Optional[List[str]],
         existing_predictions: Optional[List[int]],
     ) -> List[PredictionResult]:
-        """Get candidate predictions from the database."""
+        """Get candidate predictions from the database (upcoming games only)."""
         candidates: List[PredictionResult] = []
 
         with get_db() as db:
             query = """
-                SELECT p.*, s.key as sport_key
+                SELECT p.*, s.key as sport_key, e.event_time
                 FROM predictions p
                 JOIN sports s ON s.id = p.sport_id
+                LEFT JOIN events e ON e.id = p.event_id
                 WHERE p.status IN ('pending', 'approved', 'published')
                   AND p.confidence >= ?
                   AND p.risk_score <= ?
@@ -196,6 +197,9 @@ class OddsEngine:
             rows = db.execute(query, params).fetchall()
 
             for row in rows:
+                # Skip predictions whose game has already started
+                if event_is_started(row["event_time"]):
+                    continue
                 candidates.append(PredictionResult(
                     sport_key=row["sport_key"],
                     league_key=None,
@@ -213,6 +217,7 @@ class OddsEngine:
                     tags=row["tags"].split(",") if row["tags"] else [],
                     correlation_group=row["correlation_group"] or "",
                     model_version=row["model_version"] or "1.0.0",
+                    line=row["line"],
                 ))
 
         return candidates

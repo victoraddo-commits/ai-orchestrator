@@ -282,8 +282,11 @@ class TestOddsEngine:
         group = odds.generate(target_odds=50, risk_level="moderate", min_selections=3, max_selections=8)
         seen_groups = set()
         for sel in group.selections:
-            assert sel.correlation_group not in seen_groups, "Correlated selections in same group!"
-            seen_groups.add(sel.correlation_group)
+            # Empty correlation_group means "unknown correlation" and is
+            # deliberately NOT deduplicated by _build_group.
+            if sel.correlation_group:
+                assert sel.correlation_group not in seen_groups, "Correlated selections in same group!"
+                seen_groups.add(sel.correlation_group)
 
     def test_min_selections_respected(self):
         engine = PredictionEngine()

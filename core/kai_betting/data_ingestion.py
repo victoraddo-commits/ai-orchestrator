@@ -39,6 +39,62 @@ DEFAULT_QUALITY = {
 # The 2 bookmakers allowed on the free tier
 FREE_TIER_BOOKMAKERS = "Bet365,1xbet"
 
+# ── Major League Filter (SportyBet availability) ─────────────────────────────
+# SportyBet (sportybet.com) carries the top divisions + cups + African leagues,
+# but NOT the long tail of obscure lower divisions that Bet365 lists. We keep
+# picks restricted to leagues whose name/slug matches one of these keywords so
+# that users can actually find the game on SportyBet.
+
+MAJOR_LEAGUE_KEYWORDS = [
+    # Football — top European leagues
+    "premier league", "championship",
+    "la liga", "laliga", "primera divis", "segunda divis",
+    "serie a", "serie b",
+    "bundesliga",
+    "ligue 1", "ligue 2", "ligue1",
+    "eredivisie",
+    "primeira liga",
+    "super lig",
+    "pro league", "jupiler", "first division a",
+    # European cups
+    "champions league", "europa league", "conference league", "nations league",
+    # International
+    "world cup", "copa america", "africa cup", "afcon", "euro",
+    # Popular non-European leagues
+    "major league soccer", "mls", "liga mx", "campeonato", "brazil",
+    "argentina", "primera division",
+    "scottish premiership",
+    # African leagues
+    "ghana", "nigeria", "npl", "south africa", "premier soccer league",
+    "egypt", "morocco", "algeria", "tunisia", "kenya", "uganda", "tanzania",
+    "zambia", "congo", "ivory coast", "senegal",
+    # Basketball
+    "nba", "euroleague", "ncaa", "wnba", "nbl", "acb", "liga endesa",
+    # Tennis
+    "atp", "wta", "australian open", "roland garros", "wimbledon", "us open",
+    "grand slam", "masters", "davis cup",
+    # Baseball
+    "mlb", "npb", "kbo",
+    # Ice hockey
+    "nhl",
+    # American football
+    "nfl", "ncaa", "cfl",
+    # Rugby
+    "nrl", "six nations", "premiership rugby",
+]
+
+
+def _is_major_league(league_name: str, league_slug: str = "") -> bool:
+    """True if the league is one SportyBet is likely to carry.
+
+    Matches the league name (and slug) against the major-league keyword list.
+    Unknown/empty league names are treated as non-major (fail closed).
+    """
+    haystack = f"{league_name or ''} {league_slug or ''}".lower()
+    if not haystack.strip():
+        return False
+    return any(kw in haystack for kw in MAJOR_LEAGUE_KEYWORDS)
+
 
 def _is_live_data_mode(db) -> bool:
     """Check if LIVE_DATA_MODE is enabled."""
@@ -193,6 +249,7 @@ class DataIngestionManager:
         with get_db() as db:
             live_data = _is_live_data_mode(db)
             quality = self._load_quality_config(db)
+            major_only = self._config_bool("major_leagues_only", True)
 
             for slug in slugs:
                 kai_sport = SPORT_SLUG_MAP.get(slug)
@@ -216,6 +273,22 @@ class DataIngestionManager:
                 upcoming = [e for e in events
                            if e.get("status") in ("pending", "not_started", "upcoming", "open")]
                 total_events_fetched += len(upcoming)
+
+                # Restrict picks to leagues SportyBet carries (major leagues).
+                if major_only:
+                    major = [e for e in upcoming if _is_major_league(
+                        e.get("league", {}).get("name", ""),
+                        e.get("league", {}).get("slug", ""),
+                    )]
+                    if major:
+                        upcoming = major
+                    elif upcoming:
+                        # No major-league games for this sport right now — fall
+                        # back to whatever is available so we never go silent.
+                        logger.warning(
+                            f"major-league filter removed all {len(upcoming)} events "
+                            f"for {slug}; falling back to unfiltered"
+                        )
 
                 # Process each event
                 for evt in upcoming[:max_events]:
@@ -586,17 +659,23 @@ class DataIngestionManager:
         ).fetchone()
         db_event_id = event_row["id"] if event_row else None
 
-        # Check for existing prediction (dedup by event + market + selection)
+        line = mkt.get("line")
+        # SportyBet-friendly market name — includes the line for over/under
+        # (e.g. "Over 2.5 Goals") so users can find the exact market.
+        market_name = sportybet_display(result.market_type, result.selection, line)
+
+        # Check for existing prediction (dedup by event + market + selection + line)
         if db_event_id:
             existing = db.execute("""
                 SELECT id FROM predictions
-                WHERE event_id = ? AND market_type = ? AND selection = ?
+                WHERE event_id = ? AND market_type = ? AND selection = ? AND line IS ?
                 LIMIT 1
-            """, (db_event_id, result.market_type, result.selection)).fetchone()
+            """, (db_event_id, result.market_type, result.selection, line)).fetchone()
 
             if existing:
                 db.execute("""
                     UPDATE predictions SET
+                        market_name = ?, line = ?,
                         bookmaker_odds = ?, estimated_probability = ?,
                         implied_probability = ?, edge = ?,
                         confidence = ?, risk_score = ?, data_quality = ?,
@@ -604,6 +683,7 @@ class DataIngestionManager:
                         data_timestamp = datetime('now'), updated_at = datetime('now')
                     WHERE id = ?
                 """, (
+                    market_name, line,
                     result.bookmaker_odds, result.estimated_probability,
                     result.implied_probability, result.edge,
                     result.confidence, result.risk_score, result.data_quality,
@@ -616,14 +696,14 @@ class DataIngestionManager:
         cursor = db.execute("""
             INSERT INTO predictions (
                 event_id, sport_id, market_type, market_name, selection,
-                bookmaker_odds, estimated_probability, implied_probability, edge,
+                bookmaker_odds, line, estimated_probability, implied_probability, edge,
                 confidence, risk_score, data_quality, reasoning, tags,
                 correlation_group, model_version, status, data_timestamp
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', datetime('now'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', datetime('now'))
         """, (
             db_event_id, sport_id,
-            result.market_type, result.market_name, result.selection,
-            result.bookmaker_odds, result.estimated_probability,
+            result.market_type, market_name, result.selection,
+            result.bookmaker_odds, line, result.estimated_probability,
             result.implied_probability, result.edge,
             result.confidence, result.risk_score, result.data_quality,
             result.reasoning, ",".join(result.tags),
@@ -664,6 +744,18 @@ class DataIngestionManager:
                 ).fetchone()
                 if row and row["value"]:
                     return int(row["value"])
+        except Exception:
+            pass
+        return default
+
+    def _config_bool(self, key: str, default: bool) -> bool:
+        try:
+            with get_db() as db:
+                row = db.execute(
+                    "SELECT value FROM betting_config WHERE key = ?", (key,)
+                ).fetchone()
+                if row and row["value"]:
+                    return row["value"].strip().lower() in ("1", "true", "yes", "on")
         except Exception:
             pass
         return default

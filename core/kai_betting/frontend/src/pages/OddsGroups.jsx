@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Target, Shield, Flame, Zap, Diamond, ChevronDown, ChevronUp } from 'lucide-react';
+import { Target, Shield, Flame, Zap, Diamond, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { api } from '../lib/api';
+
+function formatStartTime(value) {
+  if (!value) return '';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  return dt.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
 
 const RISK_ICONS = {
   conservative: Shield,
@@ -83,22 +93,49 @@ export default function OddsGroups() {
                   </div>
                 </button>
                 {isExpanded && (
-                  <div className="border-t border-surface-800 px-4 py-3 space-y-2">
-                    {g.selections?.map((s, i) => (
-                      <div key={i} className="flex items-center justify-between text-sm">
-                        <div>
-                          <span className="text-surface-300">{s.sport_key}</span>
-                          <span className="text-surface-500 mx-2">•</span>
-                          <span className="text-surface-400">{s.market_name}</span>
+                  <div className="border-t border-surface-800 px-4 py-3 space-y-2.5">
+                    {g.selections?.map((s, i) => {
+                      const startTime = formatStartTime(s.event_time);
+                      const hasTeams = !!(s.home_team && s.away_team);
+                      return (
+                        <div key={i} className="flex items-center justify-between gap-3 text-sm">
+                          <div className="min-w-0">
+                            {hasTeams && (
+                              <div className="text-white font-medium truncate">
+                                {s.home_team} <span className="text-surface-500 font-normal">vs</span> {s.away_team}
+                              </div>
+                            )}
+                            <div className="flex items-center flex-wrap gap-x-2 text-xs">
+                              <span className="text-surface-300">{s.sport_key}</span>
+                              {(s.league_name || s.league_key) && (
+                                <>
+                                  <span className="text-surface-600">•</span>
+                                  <span className="text-surface-500">{s.league_name || s.league_key}</span>
+                                </>
+                              )}
+                            </div>
+                            <div className="text-surface-400 text-xs mt-0.5">
+                              {s.market_name}
+                            </div>
+                            {startTime && (
+                              <div className="text-emerald-400 text-xs flex items-center gap-1 mt-0.5">
+                                <Clock className="w-3 h-3" />
+                                {startTime}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 flex-shrink-0">
+                            <span className="text-white font-semibold">{s.selection?.toUpperCase()}</span>
+                            {s.bookmaker_odds && (
+                              <span className="font-mono text-brand-400">@{s.bookmaker_odds.toFixed(2)}</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-white font-semibold">{s.selection?.toUpperCase()}</span>
-                          {s.bookmaker_odds && (
-                            <span className="font-mono text-brand-400">@{s.bookmaker_odds.toFixed(2)}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
+                    {!g.selections?.length && (
+                      <p className="text-surface-500 text-sm">No selection details available.</p>
+                    )}
                   </div>
                 )}
               </div>

@@ -299,7 +299,9 @@ class TestSchedulerCoverage:
         for job_id in valid_jobs:
             with patch("core.klaus.scheduler.list_sources", return_value=[]), \
                  patch("core.klaus.scheduler.get_failed_sources", return_value=[]), \
-                 patch("core.klaus.scheduler.log_audit_event"):
+                 patch("core.klaus.scheduler.log_audit_event"), \
+                 patch("core.klaus.scheduler._run_government_source_discovery"), \
+                 patch("core.klaus.scheduler.verify_existing_documents"):
                 result = trigger_job_now(job_id)
                 assert result is True, f"Job {job_id} should trigger successfully"
 
@@ -332,7 +334,8 @@ class TestSchedulerCoverage:
 
         with patch("core.klaus.scheduler.list_sources", return_value=[]), \
              patch("core.klaus.scheduler.get_failed_sources", return_value=broken), \
-             patch("core.klaus.scheduler.log_audit_event"):
+             patch("core.klaus.scheduler.log_audit_event"), \
+             patch("core.klaus.scheduler._run_government_source_discovery"):
             monthly_full_refresh()  # Should not raise
 
         with patch("core.klaus.scheduler.get_failed_sources", return_value=[]), \

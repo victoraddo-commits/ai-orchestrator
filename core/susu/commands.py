@@ -166,7 +166,7 @@ def cmd_withdraw(chat_id, user_id, username, first_name):
     balance = models.get_user_balance(user_id)
     if balance <= 0:
         return "Your wallet balance is GHS 0.00. Nothing to withdraw."
-    return state.start_withdraw(chat_id, balance, user_id)"
+    return state.start_withdraw(chat_id, balance, user_id)
 
 
 def cmd_transactions(user_id):

@@ -226,7 +226,7 @@ def test_api_modules_endpoint_returns_json():
 def test_api_modules_has_modules_key():
     body = client.get("/api/modules").json()
     assert "modules" in body
-    assert isinstance(body["modules"], dict)
+    assert isinstance(body["modules"], list)
 
 
 def test_api_modules_auto_discovers_new_descriptor(tmp_path, monkeypatch):
@@ -250,8 +250,8 @@ def test_api_modules_auto_discovers_new_descriptor(tmp_path, monkeypatch):
         mr._module_registry._config_dir = str(mod_dir)
         mr._module_registry._modules = {}
         body = client.get("/api/modules").json()
-        assert "new-module" in body["modules"]
-        mod = body["modules"]["new-module"]
+        mod = next((m for m in body["modules"] if m["name"] == "new-module"), None)
+        assert mod is not None, f"new-module not found in {body['modules']}"
         assert mod["description"] == "Auto-discovered module"
         assert mod["version"] == "1.0.0"
         assert mod["capabilities"] == ["auto-discovery"]
@@ -261,7 +261,7 @@ def test_api_modules_auto_discovers_new_descriptor(tmp_path, monkeypatch):
         load_modules(old_dir)
 
 
-def test_api_modules_empty_directory_returns_empty_dict(tmp_path):
+def test_api_modules_empty_directory_returns_empty_list(tmp_path):
     mod_dir = tmp_path / "empty"
     mod_dir.mkdir()
 
@@ -273,7 +273,7 @@ def test_api_modules_empty_directory_returns_empty_dict(tmp_path):
         mr._module_registry._config_dir = str(mod_dir)
         mr._module_registry._modules = {}
         body = client.get("/api/modules").json()
-        assert body["modules"] == {}
+        assert body["modules"] == []
     finally:
         mr._module_registry._config_dir = old_dir
         mr._module_registry._modules = old_modules
@@ -296,7 +296,8 @@ def test_api_modules_malformed_json_handled_gracefully(tmp_path):
         mr._module_registry._config_dir = str(mod_dir)
         mr._module_registry._modules = {}
         body = client.get("/api/modules").json()
-        assert "valid" in body["modules"]
+        valid_mod = next((m for m in body["modules"] if m["name"] == "valid"), None)
+        assert valid_mod is not None, f"'valid' module not found in {body['modules']}"
         assert len(body["modules"]) == 1
     finally:
         mr._module_registry._config_dir = old_dir
@@ -311,7 +312,8 @@ def test_api_modules_returns_structured_module_data():
                     capabilities=["cap1", "cap2"],
                     dependencies=["dep1"])
     body = client.get("/api/modules").json()
-    mod = body["modules"]["structured"]
+    mod = next((m for m in body["modules"] if m["name"] == "structured"), None)
+    assert mod is not None, f"'structured' module not found"
     for field in ("name", "version", "description", "endpoints",
                   "capabilities", "dependencies"):
         assert field in mod, f"module missing field {field}"

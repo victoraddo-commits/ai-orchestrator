@@ -51,7 +51,7 @@ def test_provider_dashboard_queue_depth_counts_active_builds(isolated_memory, mo
         {"id": "b3", "name": "build-3", "status": "ARCHITECTURE_APPROVED", "generated_by": None},
         {"id": "b4", "name": "build-4", "status": "COMPLETED", "generated_by": None},
     ]
-    monkeypatch.setattr(build_manager, "load_builds", lambda: fake_builds)
+    monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
 
     dashboard = get_provider_dashboard()
 
@@ -65,7 +65,7 @@ def test_provider_dashboard_shows_current_job_when_generating(isolated_memory, m
     fake_builds = [
         {"id": "b1", "name": "Test App", "status": "GENERATING", "generated_by": "claude"},
     ]
-    monkeypatch.setattr(build_manager, "load_builds", lambda: fake_builds)
+    monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
 
     dashboard = get_provider_dashboard()
 
@@ -154,7 +154,7 @@ def test_scheduler_snapshot_waiting_builds(isolated_memory, monkeypatch):
         {"id": "b3", "name": "running-1", "status": "GENERATING", "created_at": "2026-01-01T00:02:00", "generated_by": "claude"},
         {"id": "b4", "name": "done-1", "status": "COMPLETED", "created_at": "2026-01-01T00:03:00"},
     ]
-    monkeypatch.setattr(build_manager, "load_builds", lambda: fake_builds)
+    monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
 
     snapshot = get_scheduler_snapshot()
 
@@ -168,7 +168,7 @@ def test_scheduler_snapshot_running_builds(isolated_memory, monkeypatch):
         {"id": "b1", "name": "gen-1", "status": "GENERATING", "created_at": "2026-01-01T00:00:00", "generated_by": "claude"},
         {"id": "b2", "name": "plan-1", "status": "PLANNING", "created_at": "2026-01-01T00:01:00"},
     ]
-    monkeypatch.setattr(build_manager, "load_builds", lambda: fake_builds)
+    monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
 
     snapshot = get_scheduler_snapshot()
 
@@ -181,7 +181,7 @@ def test_scheduler_snapshot_worker_assignments(isolated_memory, monkeypatch):
     fake_builds = [
         {"id": "b1", "name": "gen-1", "status": "GENERATING", "created_at": "2026-01-01T00:00:00", "generated_by": "claude"},
     ]
-    monkeypatch.setattr(build_manager, "load_builds", lambda: fake_builds)
+    monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
 
     snapshot = get_scheduler_snapshot()
 
@@ -189,7 +189,7 @@ def test_scheduler_snapshot_worker_assignments(isolated_memory, monkeypatch):
 
 
 def test_scheduler_snapshot_empty(isolated_memory, monkeypatch):
-    monkeypatch.setattr(build_manager, "load_builds", lambda: [])
+    monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: [])
 
     snapshot = get_scheduler_snapshot()
 

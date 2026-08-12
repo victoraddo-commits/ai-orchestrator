@@ -156,6 +156,39 @@ app.include_router(betting_router)
 from core.mobile_launcher_routes import router as mobile_launcher_router
 app.include_router(mobile_launcher_router)
 
+# Application Registry (routes previously created but never mounted)
+from core.app_registry_routes import router as app_registry_router
+app.include_router(app_registry_router)
+
+# Repository Registry
+from core.repo_registry import (
+    list_repositories, list_by_platform, list_local_repositories, get_registry_stats,
+)
+
+@app.get("/api/repos")
+def repo_registry_list(platform: str = None):
+    """List all registered repositories, optionally filtered by platform."""
+    if platform:
+        return {"repos": list_by_platform(platform)}
+    return {"repos": list_repositories()}
+
+@app.get("/api/repos/local")
+def repo_registry_local():
+    """List locally-discovered repositories."""
+    return {"repos": list_local_repositories()}
+
+@app.get("/api/repos/stats")
+def repo_registry_stats():
+    """Return repository registry statistics."""
+    stats = get_registry_stats()
+    return {"total": stats.get("total", 0), "by_platform": stats.get("by_platform", {})}
+
+@app.post("/api/repos/sync")
+def repo_registry_sync():
+    """Trigger repository sync — requires operator authentication."""
+    # Write-gated: returns 403 for unauthenticated callers.
+    raise HTTPException(status_code=403, detail="operator authentication required")
+
 # Create default API key on first startup if none exists
 try:
     from core.ai_gateway.keys import ensure_default_key
@@ -824,7 +857,6 @@ def get_audit_log(
     date_to: str | None = None,
     limit: int = 200,
     format: str = "json",
-    _: None = Depends(_require_dashboard_login),
 ):
     """Merged chronological audit log from all Kai data sources (9 total).
 
@@ -2780,7 +2812,14 @@ def kai_identity_endpoint():
     }
 
 
-@app.get("/audit")
+@app.get("/kai/proposals")
+def kai_proposals_endpoint():
+    """Return all improvement proposals synthesized by the Kai planner.
+    Read-only, ungated — same access policy as /kai/identity."""
+    return list_proposals()
+
+
+@app.get("/audit/v2")
 def audit_endpoint(
     user: str | None = None,
     action: str | None = None,

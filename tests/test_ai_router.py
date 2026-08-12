@@ -928,18 +928,14 @@ def test_delegate_text_task_records_null_cost(monkeypatch):
     # Plain chat-completion providers return a string -- no cost figure to
     # capture, so the entry must record null, never a token-count estimate.
     #
-    # Was pinned to mocking "gemini" available/succeeding, but gemini was
-    # removed from every ROLE_PROVIDERS list 2026-08-02 (see
-    # test_gemini_disabled_deepseek_native_flash_took_its_slot_2026_08_02)
-    # -- the mock was doing nothing, and this test only passed by accident
-    # (real network/credentials on whichever real candidate happened to be
-    # first). Mock the role's actual primary candidate directly instead of
-    # depending on ambient environment state.
+    # PROVIDER_CONFIG_OVERRIDES["planning"] starts with deepseek_native_pro
+    # (the actual primary, not deepseek_native_flash). Mock the primary
+    # candidate directly instead of depending on ambient environment state.
     import core.ai_provider as ai_provider
 
-    deepseek_native_flash = ai_provider.get_provider("deepseek_native_flash")
-    monkeypatch.setitem(deepseek_native_flash, "available_fn", lambda: True)
-    monkeypatch.setitem(deepseek_native_flash, "run_text_task", lambda p, timeout=60, project_path=None: "planned")
+    primary = ai_provider.get_provider("deepseek_native_pro")
+    monkeypatch.setitem(primary, "available_fn", lambda: True)
+    monkeypatch.setitem(primary, "run_text_task", lambda p, timeout=60, project_path=None: "planned")
 
     ai_router.delegate("Design an application architecture", task_type="planning")
 
@@ -1316,9 +1312,12 @@ def test_candidates_for_non_coding_roles_is_unchanged_and_unrotated():
     # FIXED_ORDER_TASK_TYPES (they were already, unchanged by the deepseek-primary
     # change). Log_analysis and documentation are NOT fixed-order — they go through
     # performance-weighted sorting. Skip those in this comparison.
+    # 2026-08-12: Compare against get_effective_providers(), not ROLE_PROVIDERS
+    # directly — operator overrides (PROVIDER_CONFIG_OVERRIDES) take precedence
+    # and may prepend entries like local/llama3.
     fixed_roles = ("architecture", "planning")
     for role in fixed_roles:
-        assert ai_router._candidates_for(role) == ai_router.ROLE_PROVIDERS[role]
+        assert ai_router._candidates_for(role) == ai_router.get_effective_providers(role)
 
 
 def test_delegate_does_not_double_rotate_the_coding_candidates(monkeypatch):

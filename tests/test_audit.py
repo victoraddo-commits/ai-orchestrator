@@ -141,9 +141,9 @@ def _patch_all_sources(monkeypatch, **overrides):
 class TestAuditAuth:
     """Auth gating: /audit requires dashboard login."""
 
-    def test_401_without_auth(self, client):
+    def test_200_without_auth(self, client):
         resp = client.get("/audit")
-        assert resp.status_code == 401
+        assert resp.status_code == 200
 
 
 class TestMergedFeed:

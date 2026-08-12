@@ -47,6 +47,20 @@ def isolated_law_documents(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def disable_local_and_llama3_providers(monkeypatch):
+    """Disable local/llama3 providers for ALL tests by default.
+
+    These providers have real run_text_task functions that connect to Ollama
+    on localhost and would hang every test that doesn't explicitly mock them.
+    Tests that need local/llama3 enable them explicitly in their own setup."""
+    import core.ai_provider as ai_provider
+    for name in ("local", "llama3"):
+        provider = ai_provider.get_provider(name)
+        if provider is not None:
+            monkeypatch.setitem(provider, "available_fn", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def isolated_cerebrum_feedback():
     """Reset cerebrum feedback store between tests to prevent state leakage."""
     try:

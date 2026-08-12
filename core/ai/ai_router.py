@@ -28,6 +28,7 @@ import core.ai_provider as ai_provider
 import core.ai.provider_health as provider_health
 import core.ai.circuit_breaker as circuit_breaker
 import core.ai.provider_latency as provider_latency
+from core.logger import info
 from core.memory import load, save, update
 
 
@@ -698,20 +699,17 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
     # ── 18A-ai Phase 2: direct provider routing ──────────────────────
     # When a caller specifies a provider, skip classification, rotation,
     # and candidate iteration — try ONLY that provider.  No fallback.
+    # Check order mirrors the normal iteration loop (lines 800-840)
+    # so the two paths stay auditable side-by-side.
     if provider is not None:
+        resolved_type = task_type or classify_task(description)
+
         prov = ai_provider.get_provider(provider)
         if prov is None:
             raise AllProvidersFailed(
                 f"Provider {provider!r} is not registered",
                 attempts=[{"provider": provider, "error_type": "unknown_provider",
                            "error": "not registered"}],
-            )
-
-        if not prov.get("enabled", True):
-            raise AllProvidersFailed(
-                f"Provider {provider!r} is disabled",
-                attempts=[{"provider": provider, "error_type": "disabled",
-                           "error": "operator disabled this provider"}],
             )
 
         if not prov["available_fn"]():
@@ -721,14 +719,20 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
                            "error": "not available (no credentials configured)"}],
             )
 
-        # Check circuit breaker
-        from core.ai import circuit_breaker as _cb
-        if _cb.is_open(provider):
-            breaker = _cb.get_breaker_snapshot(provider) or {}
+        if not prov.get("enabled", True):
             raise AllProvidersFailed(
-                f"Provider {provider!r} circuit breaker is open",
-                attempts=[{"provider": provider, "error_type": "circuit_open",
-                           "error": f"{breaker.get('consecutive_failures', '?')} consecutive failures"}],
+                f"Provider {provider!r} is disabled",
+                attempts=[{"provider": provider, "error_type": "disabled",
+                           "error": "operator disabled this provider"}],
+            )
+
+        # Quota exceeded — skip a provider with a verified quota_exceeded status.
+        quota = provider_health.get_quota_snapshot(provider)
+        if quota and quota.get("status") == "quota_exceeded":
+            raise AllProvidersFailed(
+                f"Provider {provider!r} quota exceeded",
+                attempts=[{"provider": provider, "error_type": "quota_exceeded",
+                           "error": f"skipped, known quota_exceeded ({quota.get('detail')})"}],
             )
 
         run_fn = prov.get("run_coding_task" if capability == "coding_agent" else "run_text_task")
@@ -739,8 +743,32 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
                            "error": f"does not support {capability}"}],
             )
 
+        # 17R: file-access-aware routing
+        if requires_file_access and "file_access" not in prov.get("capabilities", []):
+            raise AllProvidersFailed(
+                f"Provider {provider!r} does not support file access (text-only provider)",
+                attempts=[{"provider": provider, "error_type": "unavailable",
+                           "error": f"does not support file access (text-only provider)"}],
+            )
+
+        # Circuit breaker — refuse providers whose breaker is open.
+        if circuit_breaker.is_open(provider):
+            breaker = circuit_breaker.get_breaker_snapshot(provider) or {}
+            raise AllProvidersFailed(
+                f"Provider {provider!r} circuit breaker is open",
+                attempts=[{"provider": provider, "error_type": "circuit_open",
+                           "error": f"{breaker.get('consecutive_failures', '?')} consecutive failures"}],
+            )
+
+        # Latency degradation — recorded but NOT a hard block for direct
+        # routing (the caller explicitly requested this provider).
+        if provider_latency.is_latency_degraded(provider):
+            latency = provider_latency.get_latency_snapshot(provider) or {}
+            info(f"ai_router: provider {provider!r} is latency-degraded "
+                 f"(last {latency.get('last_duration_ms')}ms vs "
+                 f"ema {latency.get('ema_ms', '?')}ms) but caller requested it directly")
+
         start = time.time()
-        resolved_type = task_type or classify_task(description)
         try:
             if capability == "coding_agent":
                 response = run_fn(project_path, description, timeout=timeout)
@@ -750,7 +778,10 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             duration_ms = int((time.time() - start) * 1000)
             record_usage(provider, resolved_type, description, success=False,
                          duration_ms=duration_ms, error=str(error))
-            _cb.record_failure(provider)
+            if capability == "coding_agent":
+                _record_coding_failure_health(provider, str(error))
+            circuit_breaker.record_failure(provider)
+            provider_latency.record_latency(provider, duration_ms)
             raise AllProvidersFailed(
                 f"Provider {provider!r} failed: {error}",
                 attempts=[{"provider": provider, "error_type": "error",
@@ -758,10 +789,27 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             )
 
         duration_ms = int((time.time() - start) * 1000)
+
+        # Coding-agent response with success=False is a failed generation —
+        # treat it as a provider failure even in the direct path.
+        if capability == "coding_agent" and isinstance(response, dict) and not response.get("success"):
+            detail = "; ".join(e.get("content", "") for e in response.get("tool_errors") or []) or "generation did not succeed"
+            record_usage(provider, resolved_type, description, success=False,
+                         duration_ms=duration_ms, error=detail, cost=_response_cost(response))
+            _record_coding_failure_health(provider, detail)
+            circuit_breaker.record_failure(provider)
+            provider_latency.record_latency(provider, duration_ms)
+            raise AllProvidersFailed(
+                f"Provider {provider!r} coding generation failed: {detail}",
+                attempts=[{"provider": provider, "error_type": "generation_failed",
+                           "error": detail[:300]}],
+            )
+
         record_usage(provider, resolved_type, description, success=True,
-                     duration_ms=duration_ms)
+                     duration_ms=duration_ms, cost=_response_cost(response))
         provider_health.clear_quota_exceeded(provider)
-        _cb.record_success(provider)
+        circuit_breaker.record_success(provider)
+        provider_latency.record_latency(provider, duration_ms)
 
         result = {
             "provider": provider,

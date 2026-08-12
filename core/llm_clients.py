@@ -8,6 +8,7 @@ planning, docs, log analysis) the Phase 12J AI-team model assigns them.
 """
 
 import os
+import threading
 
 import requests
 
@@ -463,6 +464,14 @@ def call_gpuai_minimax(prompt, model=GPUAI_MINIMAX_MODEL, timeout=60, max_tokens
 OLLAMA_BASE_URL = "http://10.250.0.2:11434"
 OLLAMA_MODEL = "qwen2.5:7b"
 
+# ── Concurrency guard — prevents NVMe I/O saturation on Proxmox B ────
+# Benchmark 2026-08-11 proved: >6 concurrent ollama workers → NVMe saturation
+# → host crash. We cap at 4 (conservative) to leave headroom for the ZT agent,
+# SSH, and NFS. Both qwen and llama share this pool since ollama serializes
+# per-model anyway; the real limit is total I/O pressure on the Samsung 970 EVO.
+OLLAMA_MAX_CONCURRENT = 4
+_ollama_semaphore = threading.BoundedSemaphore(OLLAMA_MAX_CONCURRENT)
+
 
 def check_ollama_available(timeout=5):
     """Lightweight availability check — true if ollama is responding."""
@@ -485,15 +494,47 @@ def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
             f"Ollama ({OLLAMA_BASE_URL}) is not reachable — is Proxmox B online?"
         )
 
-    try:
-        response = requests.post(
-            f"{OLLAMA_BASE_URL}/api/generate",
-            json={"model": model, "prompt": prompt, "stream": False},
-            timeout=timeout,
+    with _ollama_semaphore:
+        try:
+            response = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={"model": model, "prompt": prompt, "stream": False},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("response", "")
+        except requests.RequestException as error:
+            provider_health.capture_provider_error("ollama_qwen", detail=str(error)[:300])
+            raise RuntimeError(f"ollama_qwen request failed: {type(error).__name__}") from None
+
+
+OLLAMA_LLAMA_MODEL = "llama3.2:3b"
+
+
+def call_ollama_llama(prompt, model=OLLAMA_LLAMA_MODEL, timeout=60):
+    """Call llama3.2:3b via ollama on Proxmox B — faster but less accurate.
+
+    Deployed 2026-08-11 alongside qwen2.5:7b. llama3.2:3b is smaller (2.0GB),
+    faster inference, and better at format compliance (no markdown fences).
+    Weaker at hallucination resistance and long-context extraction than qwen.
+    Good for simple classification, quick lookups, and low-latency tasks.
+    """
+    if not check_ollama_available():
+        raise ProviderUnavailable(
+            f"Ollama ({OLLAMA_BASE_URL}) is not reachable — is Proxmox B online?"
         )
-        response.raise_for_status()
-        data = response.json()
-        return data.get("response", "")
-    except requests.RequestException as error:
-        provider_health.capture_provider_error("ollama_qwen", detail=str(error)[:300])
-        raise RuntimeError(f"ollama_qwen request failed: {type(error).__name__}") from None
+
+    with _ollama_semaphore:
+        try:
+            response = requests.post(
+                f"{OLLAMA_BASE_URL}/api/generate",
+                json={"model": model, "prompt": prompt, "stream": False},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("response", "")
+        except requests.RequestException as error:
+            provider_health.capture_provider_error("ollama_llama", detail=str(error)[:300])
+            raise RuntimeError(f"ollama_llama request failed: {type(error).__name__}") from None

@@ -1479,8 +1479,10 @@ def test_openrouter_claude_disabled_deepseek_native_flash_took_its_slot_2026_08_
     # once the account's credit clears. 2026-08-07: architecture primary is
     # now deepseek_native_pro (deepseek_native_flash is second). Direct
     # "claude" is no longer in any chain (out of credit, fully removed).
+    # 2026-08-12: "local" (qwen2.5:7b) is now architecture's primary per
+    # operator directive (best local model = Kai main brain).
     candidates = ai_router.ROLE_PROVIDERS["architecture"]
-    assert candidates[0] == "deepseek_native_pro"
+    assert candidates[0] == "local"
     assert "openrouter_claude" not in candidates
 
 
@@ -1550,17 +1552,23 @@ def test_deepseek_native_flash_is_registered_as_text_task_provider():
     assert provider.get("run_coding_task") is None
 
 
-def test_deepseek_native_pro_is_primary_in_all_text_roles():
-    # 2026-08-09: deepseek_native_pro is PRIMARY for ALL text roles.
-    # Flash is second in all roles (or first for speed-priority roles).
-    assert ai_router.ROLE_PROVIDERS["architecture"][0] == "deepseek_native_pro"
-    assert ai_router.ROLE_PROVIDERS["planning"][0] == "deepseek_native_pro"
-    assert ai_router.ROLE_PROVIDERS["review"][0] == "deepseek_native_pro"
+def test_local_qwen_is_main_brain_primary_and_llama3_helps_utility_roles():
+    # 2026-08-12 operator directive: best local model (qwen2.5:7b, provider
+    # "local") is Kai's MAIN BRAIN -- primary for planning/architecture/review.
+    # The lighter llama3.2:3b (provider "llama3") HELPS with the quick utility
+    # roles: classification, log_analysis, documentation.
+    assert ai_router.ROLE_PROVIDERS["architecture"][0] == "local"
+    assert ai_router.ROLE_PROVIDERS["planning"][0] == "local"
+    assert ai_router.ROLE_PROVIDERS["review"][0] == "local"
 
-    # deepseek_native_flash is second in Pro-first roles
-    assert "deepseek_native_flash" in ai_router.ROLE_PROVIDERS["planning"]
-    # deepseek_native_flash comes after deepseek_native_pro in the chain
-    assert ai_router.ROLE_PROVIDERS["planning"].index("deepseek_native_flash") > 0
+    assert ai_router.ROLE_PROVIDERS["classification"][0] == "llama3"
+    assert ai_router.ROLE_PROVIDERS["log_analysis"][0] == "llama3"
+    assert ai_router.ROLE_PROVIDERS["documentation"][0] == "llama3"
+
+    # deepseek_native_pro remains the first cloud fallback behind the local
+    # main brain in the reasoning roles (availability-gated, not removed).
+    assert "deepseek_native_pro" in ai_router.ROLE_PROVIDERS["planning"]
+    assert ai_router.ROLE_PROVIDERS["planning"].index("deepseek_native_pro") > 0
 
 
 def test_deepseek_native_both_are_separate_from_openrouter_deepseek():

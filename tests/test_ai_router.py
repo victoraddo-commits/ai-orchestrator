@@ -2054,20 +2054,17 @@ def test_delegate_provider_override_routes_to_specified_provider(monkeypatch):
     monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
     monkeypatch.setattr(ai_router, "_candidates_for", lambda _: [])
 
-    # Mock the local provider to return a known response.
-    from core import ai_provider
-    original = ai_provider.get_provider("local")
-    mock_provider = dict(original)
-    mock_provider["available_fn"] = lambda: True
-    mock_provider["enabled"] = True
-
+    # Mock the local provider with an inline dict (no dependency on real
+    # registration) to return a known response.
+    import core.ai_provider as ai_provider
     called_with = []
 
-    def fake_run(prompt, timeout=60, project_path=None):
-        called_with.append(prompt)
-        return "response from local"
-
-    mock_provider["run_text_task"] = fake_run
+    mock_provider = {
+        "run_text_task": lambda p, **kw: called_with.append(p) or "response from local",
+        "available_fn": lambda: True,
+        "enabled": True,
+        "capabilities": ["text_task"],
+    }
     monkeypatch.setattr(ai_provider, "get_provider", lambda name: mock_provider if name == "local" else None)
 
     # Disable health/quota/circuit checks that could block.
@@ -2084,6 +2081,9 @@ def test_delegate_provider_override_routes_to_specified_provider(monkeypatch):
 def test_delegate_provider_override_raises_when_provider_not_registered(monkeypatch):
     """When provider='nonexistent', delegate() raises AllProvidersFailed immediately."""
     monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
+    # Disable candidate rotation so the test fails fast regardless of
+    # where the implementation places the provider check.
+    monkeypatch.setattr(ai_router, "_candidates_for", lambda _: [])
 
     with pytest.raises(AllProvidersFailed) as exc_info:
         ai_router.delegate("test", provider="nonexistent_provider_xyz")
@@ -2098,7 +2098,7 @@ def test_delegate_provider_override_raises_when_provider_unavailable(monkeypatch
     """When the specified provider's available_fn returns False, delegate() raises."""
     monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
 
-    from core import ai_provider
+    import core.ai_provider as ai_provider
     mock_provider = {
         "run_text_task": lambda p, **kw: "should not be called",
         "available_fn": lambda: False,
@@ -2118,7 +2118,7 @@ def test_delegate_without_provider_override_unchanged(monkeypatch):
     """When provider=None (default), behavior is identical to before."""
     monkeypatch.setattr(ai_router, "classify_task", lambda _: "planning")
 
-    from core import ai_provider
+    import core.ai_provider as ai_provider
     mock_provider = {
         "run_text_task": lambda p, **kw: "auto-routed result",
         "available_fn": lambda: True,

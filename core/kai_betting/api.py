@@ -6,10 +6,12 @@ Provides REST endpoints for predictions, odds groups, subscriptions, and admin.
 
 from __future__ import annotations
 
+import hmac
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Header, Request
 from pydantic import BaseModel
 import bcrypt
 
@@ -30,6 +32,8 @@ from core.kai_betting.odds_engine import OddsEngine
 from core.kai_betting.payments import BettingPaymentClient
 from core.kai_betting.subscriptions import SubscriptionManager
 from core.kai_betting.performance import PerformanceTracker
+from core.kai_betting.security import rate_limit, _auth_limiter
+from core.kai_betting.sessions import create_session, resolve_session, delete_session
 
 # ── Router ───────────────────────────────────────────────────────────────────
 
@@ -78,6 +82,55 @@ def get_perf_tracker() -> PerformanceTracker:
     return _perf_tracker
 
 
+def _strip_secrets(row: dict) -> dict:
+    """Remove sensitive columns (password_hash, etc.) before returning a user row."""
+    return {k: v for k, v in row.items() if k not in ("password_hash",)}
+
+
+async def require_webhook_secret(x_webhook_secret: Optional[str] = Header(default=None)):
+    """Gate the payment callback behind a shared secret set by the payment provider config.
+
+    Fails closed: if BETTING_WEBHOOK_SECRET isn't configured, the callback is
+    unreachable rather than accepting forged payment confirmations.
+    """
+    expected = os.environ.get("BETTING_WEBHOOK_SECRET", "")
+    if not expected or not x_webhook_secret or not hmac.compare_digest(x_webhook_secret, expected):
+        raise HTTPException(status_code=401, detail="Missing or invalid webhook secret")
+
+
+def _extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
+    """Return the raw token from an `Authorization: Bearer <token>` header, or None."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization[len("Bearer "):].strip()
+    return token or None
+
+
+async def require_session(authorization: Optional[str] = Header(default=None)) -> dict:
+    """Resolve Authorization: Bearer <token> to a user row. 401 if missing/invalid/expired."""
+    token = _extract_bearer_token(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing or invalid session token")
+    with get_db() as db:
+        user = resolve_session(db, token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Missing or invalid session token")
+    return _strip_secrets(dict(user))
+
+
+async def require_admin_session(user: dict = Depends(require_session)) -> dict:
+    """require_session, plus is_admin=1. 403 if the session is valid but not admin."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+def _require_owner_or_admin(path_user_id: int, session_user: dict) -> None:
+    """Raise 403 unless the session belongs to path_user_id or an admin."""
+    if session_user["id"] != path_user_id and not session_user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Not authorized for this user")
+
+
 # ── Health ───────────────────────────────────────────────────────────────────
 
 @router.get("/health")
@@ -110,8 +163,9 @@ async def register_user(req: UserLogin):
 
 
 @router.post("/auth/login", response_model=APIResponse)
-async def login_user(req: UserLogin):
-    """Login and return user data."""
+@rate_limit(max_requests=20, window_seconds=300, error_message="Too many login attempts. Please wait.", limiter=_auth_limiter)
+async def login_user(req: UserLogin, request: Request):
+    """Login, verify credentials, and issue a session token."""
     with get_db() as db:
         user = db.execute(
             "SELECT * FROM users WHERE email = ? AND is_active = 1",
@@ -126,7 +180,19 @@ async def login_user(req: UserLogin):
         )
         db.commit()
 
-        return APIResponse(success=True, data=dict(user))
+        token = create_session(db, user["id"])
+
+        return APIResponse(success=True, data={"user": _strip_secrets(dict(user)), "token": token})
+
+
+@router.post("/auth/logout", response_model=APIResponse)
+async def logout_user(authorization: Optional[str] = Header(default=None)):
+    """Invalidate the current session. No-op if the token is already missing/invalid."""
+    token = _extract_bearer_token(authorization)
+    if token:
+        with get_db() as db:
+            delete_session(db, token)
+    return APIResponse(success=True, data={"logged_out": True})
 
 
 # ── Sports ───────────────────────────────────────────────────────────────────
@@ -509,8 +575,9 @@ async def list_plans():
 
 
 @router.post("/subscriptions/purchase", response_model=APIResponse)
-async def purchase_subscription(user_id: int, req: SubscriptionPurchase):
+async def purchase_subscription(user_id: int, req: SubscriptionPurchase, user: dict = Depends(require_session)):
     """Initiate a subscription purchase."""
+    _require_owner_or_admin(user_id, user)
     mgr = get_subscription_mgr()
     result = mgr.purchase(
         user_id=user_id,
@@ -524,8 +591,9 @@ async def purchase_subscription(user_id: int, req: SubscriptionPurchase):
 
 
 @router.get("/subscriptions/{user_id}", response_model=APIResponse)
-async def get_user_subscription(user_id: int):
+async def get_user_subscription(user_id: int, user: dict = Depends(require_session)):
     """Get a user's current subscription."""
+    _require_owner_or_admin(user_id, user)
     with get_db() as db:
         sub = db.execute("""
             SELECT s.*, sp.key as plan_key, sp.name as plan_name
@@ -543,7 +611,7 @@ async def get_user_subscription(user_id: int):
 
 # ── Payments ─────────────────────────────────────────────────────────────────
 
-@router.post("/payments/callback", response_model=APIResponse)
+@router.post("/payments/callback", response_model=APIResponse, dependencies=[Depends(require_webhook_secret)])
 async def payment_callback(req: PaymentCallback):
     """Handle payment provider callback."""
     client = get_payment_client()
@@ -562,8 +630,10 @@ async def payment_callback(req: PaymentCallback):
 async def list_user_payments(
     user_id: int,
     limit: int = Query(default=20, le=100),
+    user: dict = Depends(require_session),
 ):
     """List a user's payments."""
+    _require_owner_or_admin(user_id, user)
     with get_db() as db:
         rows = db.execute(
             "SELECT * FROM payments WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
@@ -602,7 +672,7 @@ async def get_dashboard():
 
 # ── Admin ────────────────────────────────────────────────────────────────────
 
-@router.get("/admin/config", response_model=APIResponse)
+@router.get("/admin/config", response_model=APIResponse, dependencies=[Depends(require_admin_session)])
 async def get_config():
     """Get all config values (admin only)."""
     with get_db() as db:
@@ -610,7 +680,7 @@ async def get_config():
         return APIResponse(success=True, data={r["key"]: dict(r) for r in rows})
 
 
-@router.put("/admin/config", response_model=APIResponse)
+@router.put("/admin/config", response_model=APIResponse, dependencies=[Depends(require_admin_session)])
 async def update_config(req: ConfigUpdate):
     """Update a config value (admin only)."""
     with get_db() as db:
@@ -622,7 +692,7 @@ async def update_config(req: ConfigUpdate):
     return APIResponse(success=True, data={"key": req.key, "value": req.value})
 
 
-@router.get("/admin/users", response_model=APIResponse)
+@router.get("/admin/users", response_model=APIResponse, dependencies=[Depends(require_admin_session)])
 async def admin_list_users(
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
@@ -653,10 +723,10 @@ async def admin_list_users(
         params.extend([limit, offset])
 
         rows = db.execute(query, params).fetchall()
-        return APIResponse(success=True, data=[dict(r) for r in rows])
+        return APIResponse(success=True, data=[_strip_secrets(dict(r)) for r in rows])
 
 
-@router.get("/admin/audit", response_model=APIResponse)
+@router.get("/admin/audit", response_model=APIResponse, dependencies=[Depends(require_admin_session)])
 async def admin_audit_logs(
     entity_type: Optional[str] = None,
     limit: int = Query(default=100, le=1000),
@@ -684,7 +754,7 @@ class AdminUserUpdate(BaseModel):
     subscription_expires: Optional[str] = None
 
 
-@router.put("/admin/users/{user_id}", response_model=APIResponse)
+@router.put("/admin/users/{user_id}", response_model=APIResponse, dependencies=[Depends(require_admin_session)])
 async def admin_update_user(user_id: int, update: AdminUserUpdate):
     """Update user admin status or subscription (admin only)."""
     with get_db() as db:
@@ -706,14 +776,15 @@ async def admin_update_user(user_id: int, update: AdminUserUpdate):
         db.commit()
 
         user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-        return APIResponse(success=True, data=dict(user))
+        return APIResponse(success=True, data=_strip_secrets(dict(user)))
 
 
 # ── User Preferences ─────────────────────────────────────────────────────────
 
 @router.get("/preferences/{user_id}", response_model=APIResponse)
-async def get_preferences(user_id: int):
+async def get_preferences(user_id: int, user: dict = Depends(require_session)):
     """Get user notification preferences."""
+    _require_owner_or_admin(user_id, user)
     with get_db() as db:
         prefs = db.execute(
             "SELECT * FROM user_preferences WHERE user_id = ?", (user_id,)
@@ -731,8 +802,9 @@ async def get_preferences(user_id: int):
 
 
 @router.put("/preferences/{user_id}", response_model=APIResponse)
-async def update_preferences(user_id: int, req: UserPreferencesUpdate):
+async def update_preferences(user_id: int, req: UserPreferencesUpdate, user: dict = Depends(require_session)):
     """Update user notification preferences."""
+    _require_owner_or_admin(user_id, user)
     with get_db() as db:
         db.execute("""
             INSERT OR REPLACE INTO user_preferences (
@@ -777,7 +849,23 @@ def _get_group_selections(db, group_id: int) -> list:
 
 
 def _ensure_prediction_saved(db, result) -> int:
-    """Save a prediction result to DB if not already saved, return its ID."""
+    """Save a prediction result to DB if not already saved, return its ID.
+
+    Odds-group candidates come from OddsEngine._get_candidates(), which reads
+    existing rows out of the predictions table (already linked to their
+    event via event_id). If `result` carries a source_prediction_id, reuse
+    that row instead of inserting a copy — a fresh INSERT here never sets
+    event_id/league_id, which orphans the copy from the events table and
+    permanently blocks it from ever being settled, and repeated group
+    regeneration would otherwise re-duplicate the same prediction forever.
+    """
+    if result.source_prediction_id is not None:
+        existing = db.execute(
+            "SELECT id FROM predictions WHERE id = ?", (result.source_prediction_id,)
+        ).fetchone()
+        if existing:
+            return existing["id"]
+
     sport = db.execute("SELECT id FROM sports WHERE key = ?", (result.sport_key,)).fetchone()
     if not sport:
         sport_id = db.execute(

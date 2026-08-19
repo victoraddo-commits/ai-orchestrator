@@ -385,6 +385,7 @@ class PredictionResult:
     correlation_group: str = ""
     model_version: str = "1.0.0"
     line: Optional[float] = None
+    source_prediction_id: Optional[int] = None
 
     def __post_init__(self):
         if self.bookmaker_odds and self.bookmaker_odds > 0:

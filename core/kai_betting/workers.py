@@ -12,6 +12,7 @@ Scheduled tasks that run on the Kai orchestrator cycle:
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
@@ -91,6 +92,36 @@ class KaiBettingWorkers:
                 "error": str(e)[:200],
             }
 
+    def _check_zero_picks_alert(self, ingestion_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Alert on Telegram if games were available but zero predictions qualified.
+
+        generate_daily_predictions() can legitimately return zero picks when
+        every candidate event failed the quality/edge/odds filters or the
+        tier 1-3 league filter — that used to fail silently. This makes it
+        visible instead of assuming "no picks" means "no games".
+        """
+        events_with_odds = ingestion_result.get("events_with_odds", 0)
+        qualified = ingestion_result.get("qualified", 0)
+        if events_with_odds == 0 or qualified > 0:
+            return {"alerted": False}
+
+        chat_id = os.environ.get("BETTING_ADMIN_CHAT_ID", "").strip()
+        if not chat_id:
+            logger.warning(
+                "Zero qualified predictions from %d candidate events, but "
+                "BETTING_ADMIN_CHAT_ID is not set — cannot alert", events_with_odds
+            )
+            return {"alerted": False, "reason": "no_admin_chat_id"}
+
+        from core.kai_betting.telegram_bot import BettingTelegramBot
+        text = (
+            f"⚠️ Kai Betting: {events_with_odds} tier 1-3 game(s) had odds today, "
+            f"but 0 cleared the quality filters — no picks were published. "
+            f"Check odds-api.io coverage / quality_filters thresholds."
+        )
+        sent = BettingTelegramBot.send_raw(chat_id, text)
+        return {"alerted": sent}
+
     # ── Auto-Settlement ──────────────────────────────────────────────────────
 
     def auto_settle_finished(self) -> Dict[str, Any]:
@@ -145,6 +176,30 @@ class KaiBettingWorkers:
 
         logger.info(f"Auto-settled {settled} predictions")
         return {"settled": settled}
+
+    def expire_stale_predictions(self, max_age_hours: int = 48) -> Dict[str, Any]:
+        """Expire predictions that are too old to still be legitimately unsettled.
+
+        auto_settle_finished() only settles predictions whose event reaches
+        status='finished' with scores. A prediction whose event never gets
+        there (e.g. broken/empty event_time blocking event_is_started() and
+        cross-provider settlement matching) stays 'published' forever — and
+        keeps being sent as a "pick" by send_picks_to() indefinitely. Any
+        game is long over after max_age_hours, so treat still-unsettled
+        predictions past that age as stale rather than live.
+        """
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
+        with get_db() as db:
+            cursor = db.execute("""
+                UPDATE predictions SET status = 'expired', updated_at = datetime('now')
+                WHERE status IN ('pending', 'published', 'quality_check', 'approved')
+                  AND created_at < ?
+            """, (cutoff,))
+            expired = cursor.rowcount
+            db.commit()
+
+        logger.info(f"Expired {expired} stale unsettled predictions (>{max_age_hours}h old)")
+        return {"expired": expired}
 
     # ── Subscription Expiry ─────────────────────────────────────────────────
 
@@ -272,9 +327,16 @@ class KaiBettingWorkers:
         except Exception as e:
             results["settlement_error"] = str(e)
 
+        # Expire predictions too old to still be legitimately unsettled
+        try:
+            results["stale_expiry"] = self.expire_stale_predictions()
+        except Exception as e:
+            results["stale_expiry_error"] = str(e)
+
         # Generate daily predictions at configured time
         try:
             results["predictions"] = self.generate_daily_predictions()
+            results["zero_picks_alert"] = self._check_zero_picks_alert(results["predictions"])
         except Exception as e:
             results["predictions_error"] = str(e)
 

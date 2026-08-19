@@ -45,6 +45,18 @@ CREATE TABLE IF NOT EXISTS telegram_accounts (
     is_active INTEGER NOT NULL DEFAULT 1
 );
 
+-- Sessions (per-user login tokens)
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT UNIQUE NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+
 -- Sports & Leagues
 CREATE TABLE IF NOT EXISTS sports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -549,11 +561,15 @@ def upsert_team(conn, sport_id: int, name: str, short_name: str = "",
 
 def upsert_league(conn, sport_id: int, league_key: str, name: str,
                   country: str = "", tier: int = 1) -> int:
-    """Insert or get a league, returning its ID."""
+    """Insert or get a league, returning its ID. Keeps tier current on re-ingest."""
     conn.execute("""
         INSERT OR IGNORE INTO leagues (sport_id, key, name, country, tier)
         VALUES (?, ?, ?, ?, ?)
     """, (sport_id, league_key, name, country, tier))
+
+    conn.execute("""
+        UPDATE leagues SET tier = ? WHERE sport_id = ? AND key = ? AND tier != ?
+    """, (tier, sport_id, league_key, tier))
 
     row = conn.execute(
         "SELECT id FROM leagues WHERE sport_id = ? AND key = ?",

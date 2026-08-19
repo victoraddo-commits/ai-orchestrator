@@ -83,6 +83,9 @@ def get_client_key(request: Request) -> str:
         return f"user:{user_id}"
 
     # Get real IP through proxies
+    # NOTE: trusts X-Forwarded-For unconditionally — spoofable by any direct client.
+    # Acceptable for current LAN-only/homelab scale; needs a trusted-proxy allowlist
+    # before this app is exposed to untrusted networks at scale.
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -93,6 +96,7 @@ def rate_limit(
     max_requests: int = 100,
     window_seconds: int = 60,
     error_message: str = "Too many requests. Please wait.",
+    limiter: Optional[RateLimiter] = None,
 ):
     """Decorator for FastAPI endpoints to apply rate limiting.
 
@@ -101,7 +105,7 @@ def rate_limit(
         @router.post("/predictions/generate")
         async def generate_prediction(...): ...
     """
-    limiter = RateLimiter(max_requests=max_requests, window_seconds=window_seconds)
+    limiter = limiter or RateLimiter(max_requests=max_requests, window_seconds=window_seconds)
 
     def decorator(func):
         @wraps(func)

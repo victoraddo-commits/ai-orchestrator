@@ -388,48 +388,92 @@ class TestDataSourcesRegistry:
 class TestIngestionEventProcessing:
     """Verify event ingestion with mock data."""
 
-    def test_ingest_event_new(self, temp_db):
+    def test_ingest_event_v3_stores_tier(self, temp_db):
+        """_ingest_event_v3 resolves the league tier and passes it to upsert_league."""
         from core.kai_betting.data_ingestion import DataIngestionManager
         from core.kai_betting.db import get_db
         mgr = DataIngestionManager()
         evt = {
-            "id": "abc123",
-            "home_team": "Manchester United",
-            "away_team": "Liverpool",
-            "commence_time": "2026-08-15T19:00:00Z",
+            "id": "v3-1",
+            "home": "Real Madrid",
+            "away": "Barcelona",
+            "date": "2026-08-20T19:00:00Z",
+            "league": {"slug": "la-liga", "name": "La Liga"},
         }
         with get_db() as db:
-            result = mgr._ingest_event(db, sport_id=1, odds_key="soccer_epl", evt=evt)
-            assert result == 1  # new event
+            mgr._ingest_event_v3(db, sport_id=1, evt=evt)
+            row = db.execute(
+                "SELECT tier FROM leagues WHERE sport_id = 1 AND key = 'la-liga'"
+            ).fetchone()
+            assert row["tier"] == 1
 
-    def test_ingest_event_existing(self, temp_db):
+    def test_ingest_event_v3_unmatched_league_gets_sentinel_tier(self, temp_db):
+        """A league that doesn't match any keyword is stored as tier 99 (excluded)."""
         from core.kai_betting.data_ingestion import DataIngestionManager
         from core.kai_betting.db import get_db
         mgr = DataIngestionManager()
         evt = {
-            "id": "abc123",
-            "home_team": "Arsenal",
-            "away_team": "Chelsea",
-            "commence_time": "2026-08-16T19:00:00Z",
+            "id": "v3-2",
+            "home": "Village FC",
+            "away": "Hamlet United",
+            "date": "2026-08-20T19:00:00Z",
+            "league": {"slug": "obscure-sunday-league", "name": "Obscure Sunday League"},
         }
         with get_db() as db:
-            result1 = mgr._ingest_event(db, sport_id=1, odds_key="soccer_epl", evt=evt)
-            result2 = mgr._ingest_event(db, sport_id=1, odds_key="soccer_epl", evt=evt)
-            assert result1 == 1  # new
-            assert result2 == 0  # updated
+            mgr._ingest_event_v3(db, sport_id=1, evt=evt)
+            row = db.execute(
+                "SELECT tier FROM leagues WHERE sport_id = 1 AND key = 'obscure-sunday-league'"
+            ).fetchone()
+            assert row["tier"] == 99
 
-    def test_ingest_event_no_external_id(self, temp_db):
-        from core.kai_betting.data_ingestion import DataIngestionManager
-        from core.kai_betting.db import get_db
-        mgr = DataIngestionManager()
-        evt = {
-            "id": "",
-            "home_team": "Arsenal",
-            "away_team": "Chelsea",
-        }
-        with get_db() as db:
-            result = mgr._ingest_event(db, sport_id=1, odds_key="soccer_epl", evt=evt)
-            assert result == 0  # skipped
+
+# ── League Tier Resolution ──────────────────────────────────────────────────
+
+class TestLeagueTier:
+    """Verify _league_tier() resolves competitions to the correct tier."""
+
+    def test_tier1_top_flight(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("English Premier League") == 1
+        assert _league_tier("La Liga") == 1
+        assert _league_tier("Bundesliga") == 1
+
+    def test_tier1_continental_competition(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("UEFA Champions League") == 1
+        assert _league_tier("UEFA Europa League") == 1
+
+    def test_tier2_second_flight(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("Championship") == 2
+        assert _league_tier("Serie B") == 2
+
+    def test_tier2_beats_tier1_on_specificity(self):
+        """'2. Bundesliga' must resolve to tier 2, not tier 1 via the 'bundesliga' substring."""
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("2. Bundesliga") == 2
+
+    def test_tier3_lower_regional(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("League One") == 3
+        assert _league_tier("League Two") == 3
+
+    def test_unmatched_league_returns_none(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("Obscure Sunday League") is None
+
+    def test_empty_league_returns_none(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("") is None
+        assert _league_tier("", "") is None
+
+    def test_matches_via_slug_when_name_empty(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("", "mls") == 1
+
+    def test_is_case_insensitive(self):
+        from core.kai_betting.data_ingestion import _league_tier
+        assert _league_tier("BUNDESLIGA") == 1
 
 
 # ── Config Module Tests ────────────────────────────────────────────────────

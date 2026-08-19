@@ -10,6 +10,8 @@ With LIVE_DATA_MODE=true, synthetic/placeholder data is rejected.
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, List, Any, Set
 
@@ -39,61 +41,85 @@ DEFAULT_QUALITY = {
 # The 2 bookmakers allowed on the free tier
 FREE_TIER_BOOKMAKERS = "Bet365,1xbet"
 
-# ── Major League Filter (SportyBet availability) ─────────────────────────────
-# SportyBet (sportybet.com) carries the top divisions + cups + African leagues,
-# but NOT the long tail of obscure lower divisions that Bet365 lists. We keep
-# picks restricted to leagues whose name/slug matches one of these keywords so
-# that users can actually find the game on SportyBet.
+# ── League Tier Filter (SportyBet availability + pick quality) ───────────────
+# SportyBet (sportybet.com) carries the top 1-3 divisions + marquee cups/
+# continental competitions + major African leagues, but NOT the long tail of
+# obscure lower divisions or amateur/reserve leagues that Bet365 lists. Picks
+# are restricted to leagues that resolve to tier 1, 2, or 3 below, so users
+# can actually find the game on SportyBet and the pick pool stays credible.
+#
+# tier 1 = top flight of a country / marquee continental or international
+#          competition / the sport's premier professional league.
+# tier 2 = second flight of a country / major domestic cup or college league.
+# tier 3 = third flight of a country / lower-tier regional competition.
+#
+# Matched by substring against "<name> <slug>" (lowercased). Keywords are
+# checked longest-first so a specific match (e.g. "2. bundesliga", tier 2)
+# wins over a shorter generic one it contains (e.g. "bundesliga", tier 1).
+# Unmatched leagues resolve to None (fail closed — excluded, not tier 3).
 
-MAJOR_LEAGUE_KEYWORDS = [
-    # Football — top European leagues
-    "premier league", "championship",
-    "la liga", "laliga", "primera divis", "segunda divis",
-    "serie a", "serie b",
-    "bundesliga",
-    "ligue 1", "ligue 2", "ligue1",
-    "eredivisie",
-    "primeira liga",
-    "super lig",
-    "pro league", "jupiler", "first division a",
-    # European cups
-    "champions league", "europa league", "conference league", "nations league",
-    # International
-    "world cup", "copa america", "africa cup", "afcon", "euro",
-    # Popular non-European leagues
-    "major league soccer", "mls", "liga mx", "campeonato", "brazil",
-    "argentina", "primera division",
-    "scottish premiership",
-    # African leagues
-    "ghana", "nigeria", "npl", "south africa", "premier soccer league",
-    "egypt", "morocco", "algeria", "tunisia", "kenya", "uganda", "tanzania",
-    "zambia", "congo", "ivory coast", "senegal",
-    # Basketball
-    "nba", "euroleague", "ncaa", "wnba", "nbl", "acb", "liga endesa",
-    # Tennis
-    "atp", "wta", "australian open", "roland garros", "wimbledon", "us open",
-    "grand slam", "masters", "davis cup",
-    # Baseball
-    "mlb", "npb", "kbo",
-    # Ice hockey
-    "nhl",
-    # American football
-    "nfl", "ncaa", "cfl",
-    # Rugby
-    "nrl", "six nations", "premiership rugby",
+LEAGUE_TIER_KEYWORDS: List["tuple[str, int]"] = [
+    # ── Tier 1: top flights + marquee continental/international competitions ──
+    ("premier league", 1), ("premier soccer league", 1), ("npl", 1),
+    ("la liga", 1), ("laliga", 1), ("primera division", 1),
+    ("serie a", 1),
+    ("bundesliga", 1),
+    ("ligue 1", 1), ("ligue1", 1),
+    ("eredivisie", 1),
+    ("primeira liga", 1),
+    ("super lig", 1),
+    ("jupiler pro league", 1), ("first division a", 1),
+    ("champions league", 1), ("europa league", 1),
+    ("conference league", 1), ("nations league", 1),
+    ("world cup", 1), ("copa america", 1), ("africa cup", 1), ("afcon", 1), ("euro", 1),
+    ("major league soccer", 1), ("mls", 1),
+    ("liga mx", 1),
+    ("brasileirao", 1), ("campeonato brasileiro", 1),
+    ("primera division argentina", 1),
+    ("scottish premiership", 1),
+    ("ghana premier league", 1), ("nigeria professional football league", 1),
+    ("egypt premier league", 1), ("kenya premier league", 1),
+    ("uganda premier league", 1), ("tanzania premier league", 1),
+    ("zambia super league", 1),
+    ("nba", 1), ("euroleague", 1), ("wnba", 1),
+    ("atp", 1), ("wta", 1), ("australian open", 1), ("roland garros", 1),
+    ("wimbledon", 1), ("us open", 1), ("grand slam", 1), ("masters", 1), ("davis cup", 1),
+    ("mlb", 1), ("npb", 1), ("kbo", 1),
+    ("nhl", 1),
+    ("nfl", 1),
+    ("nrl", 1), ("six nations", 1), ("premiership rugby", 1),
+    # ── Tier 2: second flights + major cups + college leagues ──────────────────
+    ("championship", 2),
+    ("segunda division", 2), ("segunda divis", 2),
+    ("serie b", 2),
+    ("2. bundesliga", 2), ("2 bundesliga", 2),
+    ("ligue 2", 2),
+    ("first division b", 2),
+    ("ncaa", 2),
+    ("nbl", 2), ("acb", 2), ("liga endesa", 2),
+    ("cfl", 2),
+    # ── Tier 3: third flights + lower regional competitions ────────────────────
+    ("league one", 3), ("league two", 3),
+    ("third division", 3), ("regionalliga", 3), ("national league", 3),
 ]
 
+# Sorted longest-keyword-first so specific matches beat generic ones they contain.
+_LEAGUE_TIER_KEYWORDS_SORTED = sorted(LEAGUE_TIER_KEYWORDS, key=lambda kt: -len(kt[0]))
 
-def _is_major_league(league_name: str, league_slug: str = "") -> bool:
-    """True if the league is one SportyBet is likely to carry.
 
-    Matches the league name (and slug) against the major-league keyword list.
-    Unknown/empty league names are treated as non-major (fail closed).
+def _league_tier(league_name: str, league_slug: str = "") -> Optional[int]:
+    """Resolve a league to tier 1, 2, or 3, or None if it doesn't match.
+
+    Matches the league name (and slug) against LEAGUE_TIER_KEYWORDS.
+    Unknown/empty league names resolve to None (fail closed).
     """
     haystack = f"{league_name or ''} {league_slug or ''}".lower()
     if not haystack.strip():
-        return False
-    return any(kw in haystack for kw in MAJOR_LEAGUE_KEYWORDS)
+        return None
+    for keyword, tier in _LEAGUE_TIER_KEYWORDS_SORTED:
+        if keyword in haystack:
+            return tier
+    return None
 
 
 def _is_live_data_mode(db) -> bool:
@@ -170,7 +196,7 @@ class DataIngestionManager:
 
                 for evt in events:
                     try:
-                        count = self._ingest_event(db, sport_id, slug, evt)
+                        count = self._ingest_event_v3(db, sport_id, evt)
                         if count > 0:
                             total_new += 1
                         else:
@@ -195,8 +221,21 @@ class DataIngestionManager:
     def refresh_sync(self, with_odds: bool = True,
                      with_results: bool = True) -> Dict[str, Any]:
         """Fetch odds for upcoming events and generate predictions."""
+        # SportsGameOdds is a supplemental source with its own key/quota/
+        # interval — it must run regardless of whether the PRIMARY provider
+        # (Odds-API.io) is configured, so it's synced before the early
+        # return below rather than gated behind self.is_configured.
+        try:
+            sportsgameodds_result = self._sync_sportsgameodds()
+        except Exception as e:
+            logger.error(f"_sync_sportsgameodds failed: {e}", exc_info=True)
+            sportsgameodds_result = {"status": "error", "error": str(e)}
+
         if not self.is_configured:
-            return {"status": "skipped", "reason": "ODDS_API_IO_KEY not set"}
+            return {
+                "status": "skipped", "reason": "ODDS_API_IO_KEY not set",
+                "sportsgameodds": sportsgameodds_result,
+            }
 
         odds_result = {"status": "skipped", "reason": "within refresh interval"}
         results_result = {"status": "skipped", "reason": "within refresh interval"}
@@ -205,7 +244,13 @@ class DataIngestionManager:
                                           self._config_int("odds_interval_minutes", 60) * 60):
             odds_result = self._sync_odds_v3()
 
-        # Results sync still uses the legacy provider for now
+        # Results sync uses the legacy provider (odds_api) as primary, since
+        # its scores are keyed by the same external_id namespace the pending
+        # predictions' events live under. That provider has a single shared
+        # monthly quota though (500 free-tier requests), so when it's
+        # unconfigured or exhausted, fall back to SportsGameOdds' own
+        # (separate, larger) quota — matched by team names + kickoff time
+        # since the namespaces don't align. See _sync_results_fallback_sgo.
         if with_results and self._should_run("last_results_refresh",
                                              self._config_int("results_interval_minutes", 30) * 60):
             try:
@@ -214,9 +259,17 @@ class DataIngestionManager:
                 logger.error(f"_sync_results failed: {e}", exc_info=True)
                 results_result = {"status": "error", "error": str(e)}
 
+            if results_result.get("status") in ("skipped", "error"):
+                try:
+                    results_result["fallback"] = self._sync_results_fallback_sgo()
+                except Exception as e:
+                    logger.error(f"_sync_results_fallback_sgo failed: {e}", exc_info=True)
+                    results_result["fallback"] = {"status": "error", "error": str(e)}
+
         return {
             "odds": odds_result,
             "results": results_result,
+            "sportsgameodds": sportsgameodds_result,
         }
 
     def generate_todays_picks(self, limit: int = 10) -> List[Dict[str, Any]]:
@@ -274,21 +327,23 @@ class DataIngestionManager:
                            if e.get("status") in ("pending", "not_started", "upcoming", "open")]
                 total_events_fetched += len(upcoming)
 
-                # Restrict picks to leagues SportyBet carries (major leagues).
+                # Restrict picks to tier 1-3 leagues (SportyBet-carried divisions).
+                # Deliberately strict — no fallback to unfiltered/obscure leagues.
+                # A day with zero tier 1-3 games surfaces as zero picks, which
+                # generate_daily_predictions()'s zero-picks alert makes visible
+                # instead of silently substituting junk-league games.
                 if major_only:
-                    major = [e for e in upcoming if _is_major_league(
-                        e.get("league", {}).get("name", ""),
-                        e.get("league", {}).get("slug", ""),
-                    )]
-                    if major:
-                        upcoming = major
-                    elif upcoming:
-                        # No major-league games for this sport right now — fall
-                        # back to whatever is available so we never go silent.
-                        logger.warning(
-                            f"major-league filter removed all {len(upcoming)} events "
-                            f"for {slug}; falling back to unfiltered"
+                    tiered = [e for e in upcoming if (
+                        _league_tier(
+                            e.get("league", {}).get("name", ""),
+                            e.get("league", {}).get("slug", ""),
+                        ) or 99
+                    ) <= 3]
+                    if len(tiered) < len(upcoming):
+                        logger.info(
+                            f"tier filter kept {len(tiered)}/{len(upcoming)} events for {slug}"
                         )
+                    upcoming = tiered
 
                 # Process each event
                 for evt in upcoming[:max_events]:
@@ -317,8 +372,14 @@ class DataIngestionManager:
                         home = odds_data.get("home", evt.get("home", ""))
                         away = odds_data.get("away", evt.get("away", ""))
 
-                        # Upsert event into DB
-                        self._ingest_event_v3(db, sport_id, evt)
+                        # Upsert event into DB. Pass the already-resolved home/away
+                        # (and odds_data's date, which fetch_events' list response
+                        # can lack) so this doesn't fall back to placeholder names.
+                        self._ingest_event_v3(
+                            db, sport_id, evt,
+                            home_name=home, away_name=away,
+                            event_time=odds_data.get("date", evt.get("date", "")),
+                        )
 
                         # Extract all markets
                         markets = OddsAPIioSource.extract_markets(odds_data)
@@ -441,71 +502,71 @@ class DataIngestionManager:
 
     # ── Event Ingestion (v3 format) ──────────────────────────────────────────
 
-    def _ingest_event_v3(self, db, sport_id: int, evt: Dict[str, Any]) -> int:
-        """Upsert event from Odds-API.io v3 format. Returns 1 if new, 0 if updated."""
+    def _ingest_event_v3(self, db, sport_id: int, evt: Dict[str, Any],
+                          home_name: str = None, away_name: str = None,
+                          event_time: str = None) -> int:
+        """Upsert event from Odds-API.io v3 format. Returns 1 if new, 0 if updated.
+
+        home_name/away_name/event_time override evt's own fields when given.
+        fetch_events()'s list response omits home/away/date for some sports
+        (e.g. tennis); callers that already resolved these from the richer
+        per-event fetch_odds() response should pass them through here too,
+        instead of letting this fall back to evt's frequently-missing keys
+        and silently writing placeholder "Home"/"Away" team names.
+
+        When neither an override nor evt itself has real home/away/date data,
+        and the event already exists, keep its current team links and
+        event_time instead of overwriting them with the placeholder — this
+        method (via refresh_events()) runs on its own periodic cycle
+        independent of the odds sync that resolves real names, so without
+        this it would silently revert an already-correctly-named event back
+        to "Home"/"Away" the next time it ran without fresh odds data.
+        """
         external_id = str(evt.get("id", ""))
         if not external_id:
             return 0
 
-        home_name = evt.get("home", "Home")
-        away_name = evt.get("away", "Away")
-        event_time = evt.get("date", "")
+        resolved_home = home_name or evt.get("home")
+        resolved_away = away_name or evt.get("away")
+        resolved_time = event_time or evt.get("date")
         league_info = evt.get("league", {})
         league_slug = league_info.get("slug", "")
         league_name = league_info.get("name", league_slug)
 
-        # Upsert teams
-        home_id = upsert_team(db, sport_id, home_name)
-        away_id = upsert_team(db, sport_id, away_name)
-
-        # Upsert league
-        league_id = upsert_league(db, sport_id, league_slug, league_name) if league_slug else None
-
         existing = db.execute(
-            "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
+            "SELECT id, home_team_id, away_team_id, event_time "
+            "FROM events WHERE sport_id = ? AND external_id = ?",
             (sport_id, external_id)
         ).fetchone()
 
+        if resolved_home and resolved_away:
+            home_id = upsert_team(db, sport_id, resolved_home)
+            away_id = upsert_team(db, sport_id, resolved_away)
+        elif existing:
+            home_id = existing["home_team_id"]
+            away_id = existing["away_team_id"]
+        else:
+            home_id = upsert_team(db, sport_id, "Home")
+            away_id = upsert_team(db, sport_id, "Away")
+
+        if resolved_time:
+            final_time = resolved_time
+        elif existing:
+            final_time = existing["event_time"]
+        else:
+            final_time = ""
+
+        # Upsert league (tier: 1-3 known division, 99 = unclassified/excluded)
+        league_id = upsert_league(
+            db, sport_id, league_slug, league_name,
+            tier=_league_tier(league_name, league_slug) or 99,
+        ) if league_slug else None
+
         upsert_event(
             db, sport_id, external_id,
-            home_id, away_id, event_time,
+            home_id, away_id, final_time,
             league_id=league_id,
             status=evt.get("status", "scheduled"),
-        )
-
-        return 1 if existing is None else 0
-
-    # ── Legacy Event Ingestion ───────────────────────────────────────────────
-
-    def _ingest_event(self, db, sport_id: int, odds_key: str,
-                      evt: Dict[str, Any]) -> int:
-        """Upsert an event from The Odds API v4 format. Returns 1 if new."""
-        external_id = str(evt.get("id", ""))
-        if not external_id:
-            return 0
-
-        home_name = evt.get("home_team", "Home")
-        away_name = evt.get("away_team", "Away")
-        event_time = evt.get("commence_time", "")
-
-        home_id = upsert_team(db, sport_id, home_name)
-        away_id = upsert_team(db, sport_id, away_name)
-
-        league_key = odds_key.split("_", 1)[-1] if "_" in odds_key else odds_key
-        league_name = league_key.replace("_", " ").title()
-
-        existing = db.execute(
-            "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
-            (sport_id, external_id)
-        ).fetchone()
-
-        league_id = upsert_league(db, sport_id, league_key, league_name)
-
-        upsert_event(
-            db, sport_id, external_id,
-            home_id, away_id, event_time,
-            league_id=league_id,
-            status="scheduled",
         )
 
         return 1 if existing is None else 0
@@ -519,6 +580,8 @@ class DataIngestionManager:
         legacy = OddsAPISource()
         if not legacy.is_configured:
             return {"status": "skipped", "reason": "legacy ODDS_API_KEY not set"}
+        if not legacy.has_quota():
+            return {"status": "skipped", "reason": "legacy quota exhausted"}
 
         active_sports = self._get_active_sports()
         odds_keys: List[str] = []
@@ -604,6 +667,429 @@ class DataIngestionManager:
             "events_updated": total_updated,
             "predictions_settled": total_settled,
         }
+
+    def _sync_results_fallback_sgo(self) -> Dict[str, Any]:
+        """Settle PRIMARY-provider events using SportsGameOdds' finalized
+        results, when the legacy scores provider is unavailable or out of
+        quota.
+
+        SportsGameOdds and the primary provider (Odds-API.io / legacy
+        odds_api) use incompatible external_id namespaces, so a finished
+        SportsGameOdds event can't be looked up directly against the
+        pending predictions' events — it's matched by team names + kickoff
+        time instead (same fuzzy-match window used for ingest-time dedup,
+        see _is_duplicate_event), then settled via the matched PRIMARY
+        event's own sport_id/external_id.
+        """
+        from core.kai_betting.data_sources.sportsgameodds import (
+            SportsGameOddsSource, league_ids_for, kai_sport_for_league,
+            extract_result,
+        )
+
+        source = SportsGameOddsSource()
+        if not source.is_configured:
+            return {"status": "skipped", "reason": "SPORTSGAMEODDS_API_KEY not set"}
+
+        if not self._should_run(
+            "last_results_fallback_refresh",
+            self._config_int("results_fallback_interval_minutes", 60) * 60,
+        ):
+            return {"status": "skipped", "reason": "within refresh interval"}
+
+        active_sports = self._get_active_sports()
+        league_ids: List[str] = []
+        for kai_sport in active_sports:
+            for lid in league_ids_for(kai_sport):
+                if lid not in league_ids:
+                    league_ids.append(lid)
+
+        if not league_ids:
+            with get_db() as db:
+                self._mark_refreshed(db, "last_results_fallback_refresh")
+            return {"status": "skipped", "reason": "no matching leagues for active sports"}
+
+        # No odds needed for settlement — finished games often drop odds
+        # availability, so don't filter on it; just ask for finalized games.
+        # startsAfter is required: without it SGO returns every finalized
+        # event it has ever recorded (years back), none of which can match
+        # a currently-pending prediction. 10 days covers the longest a
+        # prediction's event could sit un-settled (events are ingested up
+        # to 7 days ahead of kickoff).
+        lookback = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%d")
+        events = source.fetch_events(
+            league_ids, odds_available=False, finalized=True, starts_after=lookback,
+        )
+
+        total_matched = 0
+        total_settled = 0
+        error_count = 0
+
+        with get_db() as db:
+            for evt in events:
+                try:
+                    result = extract_result(evt)
+                    if not result:
+                        continue
+
+                    kai_sport = kai_sport_for_league(evt.get("leagueID", ""))
+                    if not kai_sport:
+                        continue
+                    sport_row = db.execute(
+                        "SELECT id FROM sports WHERE key = ?", (kai_sport,)
+                    ).fetchone()
+                    if not sport_row:
+                        continue
+                    sport_id = sport_row["id"]
+
+                    teams = evt.get("teams", {})
+                    home_name = teams.get("home", {}).get("names", {}).get("long", "")
+                    away_name = teams.get("away", {}).get("names", {}).get("long", "")
+                    event_time = evt.get("status", {}).get("startsAt", "")
+                    if not home_name or not away_name:
+                        continue
+
+                    matched = self._find_matching_event(
+                        db, sport_id, home_name, away_name, event_time
+                    )
+                    if not matched:
+                        continue
+                    total_matched += 1
+
+                    db.execute("""
+                        UPDATE events SET status = 'finished',
+                        home_score = ?, away_score = ?, updated_at = datetime('now')
+                        WHERE id = ?
+                    """, (result["home_score"], result["away_score"], matched["id"]))
+
+                    total_settled += self._settle_event_predictions(
+                        db, sport_id, matched["external_id"],
+                        result["home_score"], result["away_score"],
+                    )
+                except Exception as e:
+                    logger.warning(f"results fallback (sportsgameodds) failed for event: {e}")
+                    error_count += 1
+
+            self._mark_refreshed(db, "last_results_fallback_refresh")
+
+        logger.info(
+            f"sync_results_fallback_sgo: {total_matched} matched, "
+            f"{total_settled} settled, {error_count} errors"
+        )
+        return {
+            "status": "ok",
+            "events_matched": total_matched,
+            "predictions_settled": total_settled,
+            "errors": error_count,
+        }
+
+    # ── SportsGameOdds Sync (supplemental, independent pipeline) ─────────────
+    # SportsGameOdds events are ingested as their own event rows (external_id
+    # = SportsGameOdds' own eventID) — never reconciled against odds_api_io/
+    # legacy rows, since those providers use incompatible ID schemes with no
+    # shared key. A team-name + kickoff-time dedup guard below prevents
+    # duplicate Telegram picks for the same real-world match; otherwise this
+    # is purely additive coverage.
+
+    def _sync_sportsgameodds(self) -> Dict[str, Any]:
+        """Supplemental sync from SportsGameOdds.
+
+        Independent of the primary provider: own API key, own quota, own
+        sync interval (default 4x/day — quota discipline, not every 300s
+        cycle). Ingests events+odds+results in a single call per league
+        batch, runs qualified markets through PredictionEngine, and settles
+        finished events using the same helpers the legacy pipeline uses.
+        """
+        from core.kai_betting.data_sources.sportsgameodds import (
+            SportsGameOddsSource, league_ids_for, kai_sport_for_league,
+            extract_markets, extract_result,
+        )
+        from core.kai_betting.data_sources.odds_api_io import market_is_predictable
+
+        source = SportsGameOddsSource()
+        if not source.is_configured:
+            return {"status": "skipped", "reason": "SPORTSGAMEODDS_API_KEY not set"}
+
+        if not self._should_run(
+            "last_sportsgameodds_refresh",
+            self._config_int("sportsgameodds_interval_minutes", 360) * 60,
+        ):
+            return {"status": "skipped", "reason": "within refresh interval"}
+
+        active_sports = self._get_active_sports()
+        league_ids: List[str] = []
+        for kai_sport in active_sports:
+            for lid in league_ids_for(kai_sport):
+                if lid not in league_ids:
+                    league_ids.append(lid)
+
+        if not league_ids:
+            with get_db() as db:
+                self._mark_refreshed(db, "last_sportsgameodds_refresh")
+            return {"status": "skipped", "reason": "no matching leagues for active sports"}
+
+        events = source.fetch_events(league_ids, odds_available=True)
+
+        total_new = 0
+        total_updated = 0
+        total_dedup_skipped = 0
+        total_settled = 0
+        predictions_generated = 0
+        qualified_count = 0
+        error_count = 0
+
+        with get_db() as db:
+            live_data = _is_live_data_mode(db)
+            quality = self._load_quality_config(db)
+
+            for evt in events:
+                try:
+                    kai_sport = kai_sport_for_league(evt.get("leagueID", ""))
+                    if not kai_sport:
+                        continue
+
+                    sport_row = db.execute(
+                        "SELECT id FROM sports WHERE key = ?", (kai_sport,)
+                    ).fetchone()
+                    if not sport_row:
+                        continue
+                    sport_id = sport_row["id"]
+
+                    ext_id = str(evt.get("eventID", ""))
+                    if not ext_id:
+                        continue
+
+                    teams = evt.get("teams", {})
+                    home_name = teams.get("home", {}).get("names", {}).get("long", "Home")
+                    away_name = teams.get("away", {}).get("names", {}).get("long", "Away")
+                    event_time = evt.get("status", {}).get("startsAt", "")
+
+                    # Skip if this event already exists under a different
+                    # provider's namespace (same teams, kickoff within ±3h).
+                    existing_id = db.execute(
+                        "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
+                        (sport_id, ext_id)
+                    ).fetchone()
+                    if not existing_id and self._is_duplicate_event(
+                        db, sport_id, home_name, away_name, event_time
+                    ):
+                        total_dedup_skipped += 1
+                        continue
+
+                    # _league_tier() keywords are space-separated (e.g.
+                    # "champions league") but SportsGameOdds leagueIDs use
+                    # underscores ("UEFA_CHAMPIONS_LEAGUE") — normalize or
+                    # every SGO league silently resolves to tier 99/excluded.
+                    league_id_raw = evt.get("leagueID", kai_sport)
+                    league_name = league_id_raw.replace("_", " ").title()
+                    is_new = self._ingest_event_sgo(
+                        db, sport_id, ext_id, home_name, away_name,
+                        event_time, league_id_raw, league_name,
+                    )
+                    if is_new:
+                        total_new += 1
+                    else:
+                        total_updated += 1
+
+                    # Settlement for finished events — same helper the
+                    # legacy pipeline uses, since results are keyed by this
+                    # same external_id (no fuzzy matching needed).
+                    result = extract_result(evt)
+                    if result:
+                        db.execute("""
+                            UPDATE events SET status = 'finished',
+                            home_score = ?, away_score = ?, updated_at = datetime('now')
+                            WHERE sport_id = ? AND external_id = ?
+                        """, (result["home_score"], result["away_score"], sport_id, ext_id))
+                        total_settled += self._settle_event_predictions(
+                            db, sport_id, ext_id, result["home_score"], result["away_score"]
+                        )
+                        continue  # finished events don't need fresh predictions
+                    if evt.get("status", {}).get("finalized"):
+                        continue  # finalized but no usable score — skip predictions too
+
+                    # Generate predictions from qualifying markets
+                    markets = extract_markets(evt)
+                    for mkt in markets:
+                        kai_market = mkt["market_type"]
+                        if not market_is_predictable(kai_market):
+                            continue
+                        try:
+                            result = self._engine.predict_with_odds(
+                                sport_key=kai_sport,
+                                market_type=kai_market,
+                                selection=mkt["selection"],
+                                home_team=home_name,
+                                away_team=away_name,
+                                bookmaker_odds=mkt["odds"],
+                                line=mkt.get("line"),
+                                bookmaker_name=mkt.get("bookmaker"),
+                            )
+                            predictions_generated += 1
+                            if self._passes_quality(result, quality, live_data):
+                                qualified_count += 1
+                                self._upsert_prediction_v3(
+                                    db, ext_id, sport_id,
+                                    {"id": ext_id}, result, mkt,
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"sportsgameodds prediction failed for {ext_id}/{kai_market}: {e}"
+                            )
+                            error_count += 1
+
+                except Exception as e:
+                    logger.warning(f"sportsgameodds ingest failed for event: {e}")
+                    error_count += 1
+
+            self._mark_refreshed(db, "last_sportsgameodds_refresh")
+
+        logger.info(
+            f"sync_sportsgameodds: {total_new} new, {total_updated} updated, "
+            f"{total_dedup_skipped} dedup-skipped, {total_settled} settled, "
+            f"{predictions_generated} predictions, {qualified_count} qualified, "
+            f"{error_count} errors"
+        )
+        return {
+            "status": "ok",
+            "new_events": total_new,
+            "updated_events": total_updated,
+            "dedup_skipped": total_dedup_skipped,
+            "predictions_settled": total_settled,
+            "predictions_generated": predictions_generated,
+            "qualified_predictions": qualified_count,
+            "errors": error_count,
+        }
+
+    def _ingest_event_sgo(self, db, sport_id: int, ext_id: str,
+                          home_name: str, away_name: str,
+                          event_time: str, league_id_raw: str,
+                          league_name: str) -> bool:
+        """Upsert a SportsGameOdds event. Returns True if newly created."""
+        home_id = upsert_team(db, sport_id, home_name)
+        away_id = upsert_team(db, sport_id, away_name)
+
+        league_id = upsert_league(
+            db, sport_id, f"sgo_{league_id_raw.lower()}", league_name,
+            tier=_league_tier(league_name) or 99,
+        )
+
+        existing = db.execute(
+            "SELECT id FROM events WHERE sport_id = ? AND external_id = ?",
+            (sport_id, ext_id)
+        ).fetchone()
+
+        upsert_event(
+            db, sport_id, ext_id,
+            home_id, away_id, event_time,
+            league_id=league_id,
+            status="scheduled",
+        )
+
+        return existing is None
+
+    def _is_duplicate_event(self, db, sport_id: int, home_name: str,
+                            away_name: str, event_time: str) -> bool:
+        """Check for an existing event (any provider) with matching team
+        names (case-insensitive) and kickoff within a +/-3 hour window —
+        guards against duplicate Telegram picks for the same real-world
+        match when more than one provider covers it.
+        """
+        if not event_time:
+            return False
+        try:
+            target = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return False
+
+        candidates = db.execute("""
+            SELECT e.event_time FROM events e
+            JOIN teams h ON e.home_team_id = h.id
+            JOIN teams a ON e.away_team_id = a.id
+            WHERE e.sport_id = ? AND LOWER(h.name) = LOWER(?) AND LOWER(a.name) = LOWER(?)
+        """, (sport_id, home_name, away_name)).fetchall()
+
+        for row in candidates:
+            try:
+                candidate_time = datetime.fromisoformat(
+                    (row["event_time"] or "").replace("Z", "+00:00")
+                )
+            except (ValueError, TypeError):
+                continue
+            if abs((candidate_time - target).total_seconds()) <= 3 * 3600:
+                return True
+        return False
+
+    @staticmethod
+    def _normalize_team_name(name: str) -> str:
+        """Fold a team name to a provider-agnostic comparison key.
+
+        Different providers spell the same club differently (accents,
+        periods, abbreviation punctuation) — e.g. "CF Montreal" vs
+        "CF Montréal", "D.C. United" vs "DC United". Strips diacritics
+        and punctuation so those collapse to the same key. Deliberately
+        does NOT strip suffixes like "SC"/"FC"/"B" — that would conflate
+        distinct clubs (e.g. "Orlando City SC" vs its reserve side
+        "Orlando City B").
+        """
+        if not name:
+            return ""
+        folded = unicodedata.normalize("NFKD", name)
+        folded = "".join(c for c in folded if not unicodedata.combining(c))
+        folded = folded.lower()
+        folded = re.sub(r"[.'’]", "", folded)
+        folded = re.sub(r"\s+", " ", folded).strip()
+        return folded
+
+    def _find_matching_event(self, db, sport_id: int, home_name: str,
+                             away_name: str, event_time: str):
+        """Find an existing, not-yet-finished event (any provider) with
+        matching team names and kickoff within a +/-3 hour window. Returns
+        the matched row (id, external_id) or None.
+
+        Team names are compared via _normalize_team_name rather than exact
+        LOWER() equality, since providers spell the same club differently.
+
+        Used to settle a PRIMARY-provider event using a supplemental
+        provider's result, since providers use incompatible external_id
+        namespaces — see _sync_results_fallback_sgo. Excludes already-
+        'finished' events so this doesn't repeatedly re-match (and
+        redundantly re-settle) events a provider's own native pipeline
+        already closed out.
+        """
+        if not event_time:
+            return None
+        try:
+            target = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            return None
+
+        target_home = self._normalize_team_name(home_name)
+        target_away = self._normalize_team_name(away_name)
+        if not target_home or not target_away:
+            return None
+
+        candidates = db.execute("""
+            SELECT e.id, e.external_id, e.event_time, h.name home_name, a.name away_name
+            FROM events e
+            JOIN teams h ON e.home_team_id = h.id
+            JOIN teams a ON e.away_team_id = a.id
+            WHERE e.sport_id = ? AND e.status != 'finished'
+        """, (sport_id,)).fetchall()
+
+        for row in candidates:
+            if self._normalize_team_name(row["home_name"]) != target_home:
+                continue
+            if self._normalize_team_name(row["away_name"]) != target_away:
+                continue
+            try:
+                candidate_time = datetime.fromisoformat(
+                    (row["event_time"] or "").replace("Z", "+00:00")
+                )
+            except (ValueError, TypeError):
+                continue
+            if abs((candidate_time - target).total_seconds()) <= 3 * 3600:
+                return row
+        return None
 
     # ── Quality Filters ──────────────────────────────────────────────────────
 

@@ -218,6 +218,7 @@ class OddsEngine:
                     correlation_group=row["correlation_group"] or "",
                     model_version=row["model_version"] or "1.0.0",
                     line=row["line"],
+                    source_prediction_id=row["id"],
                 ))
 
         return candidates

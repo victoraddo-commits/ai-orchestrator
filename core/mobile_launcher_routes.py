@@ -35,7 +35,7 @@ TILES = [
         "description": "AI Orchestrator overview & approvals",
         "icon": "brain-circuit",
         "color": "#16A34A",
-        "url": "/kai/dashboard",
+        "url": "/command-center",
         "type": "internal",
         "tags": ["ai", "core"],
     },
@@ -45,7 +45,7 @@ TILES = [
         "description": "Full ops control plane",
         "icon": "terminal",
         "color": "#3B82F6",
-        "url": "/kai/command-center",
+        "url": "/command-center",
         "type": "internal",
         "tags": ["ops", "core"],
     },
@@ -55,7 +55,7 @@ TILES = [
         "description": "System health & anomaly detection",
         "icon": "heart-pulse",
         "color": "#22C55E",
-        "url": "/kai/health",
+        "url": "/command-center",
         "type": "internal",
         "tags": ["monitoring", "core"],
     },
@@ -95,8 +95,8 @@ TILES = [
         "description": "Microfinance — groups, contributions, payouts",
         "icon": "landmark",
         "color": "#14B8A6",
-        "url": "/kai/susu",
-        "type": "internal",
+        "url": "http://susu.lan",
+        "type": "external",
         "tags": ["finance"],
     },
     {
@@ -135,7 +135,7 @@ TILES = [
         "description": "Ghana legal corpus search & analysis",
         "icon": "scale",
         "color": "#D97706",
-        "url": "/kai/juris",
+        "url": "/command-center#legal",
         "type": "internal",
         "tags": ["legal"],
     },
@@ -528,7 +528,7 @@ body {
 
   <!-- Quick Actions -->
   <div class="quick-actions">
-    <a href="/kai/health" class="quick-action">
+    <a href="/command-center" class="quick-action">
       <span class="qa-icon">🫀</span>Health Check
     </a>
     <a href="/kai/notifications" class="quick-action">
@@ -578,17 +578,17 @@ async function loadTiles(){
 function loadStaticTiles(){
   // Fallback tile data (same as TILES in Python)
   renderTiles([
-    {id:'kai-dashboard',name:'Kai Dashboard',description:'AI Orchestrator overview & approvals',icon:'brain-circuit',color:'#16A34A',url:'/kai/dashboard',type:'internal',status:'unknown',tags:['ai','core']},
-    {id:'command-center',name:'Command Center',description:'Full ops control plane',icon:'terminal',color:'#3B82F6',url:'/kai/command-center',type:'internal',status:'unknown',tags:['ops','core']},
-    {id:'health',name:'Health',description:'System health & anomaly detection',icon:'heart-pulse',color:'#22C55E',url:'/kai/health',type:'internal',status:'unknown',tags:['monitoring','core']},
+    {id:'kai-dashboard',name:'Kai Dashboard',description:'AI Orchestrator overview & approvals',icon:'brain-circuit',color:'#16A34A',url:'/command-center',type:'internal',status:'unknown',tags:['ai','core']},
+    {id:'command-center',name:'Command Center',description:'Full ops control plane',icon:'terminal',color:'#3B82F6',url:'/command-center',type:'internal',status:'unknown',tags:['ops','core']},
+    {id:'health',name:'Health',description:'System health & anomaly detection',icon:'heart-pulse',color:'#22C55E',url:'/command-center',type:'internal',status:'unknown',tags:['monitoring','core']},
     {id:'notifications',name:'Notifications',description:'Alerts, incidents & activity feed',icon:'bell',color:'#F59E0B',url:'/kai/notifications',type:'internal',status:'unknown',tags:['monitoring']},
     {id:'wireguard',name:'WireGuard',description:'VPN tunnel status & management',icon:'shield',color:'#8B5CF6',url:'/kai/wireguard/status',type:'internal',status:'unknown',tags:['network','core']},
     {id:'it-manager',name:'IT Manager',description:'HR platform — workers, payroll, shifts',icon:'users',color:'#EC4899',url:'http://192.168.99.11:8090',type:'external',status:'unknown',tags:['hr','production']},
-    {id:'susu',name:'Susu',description:'Microfinance — groups, contributions, payouts',icon:'landmark',color:'#14B8A6',url:'/kai/susu',type:'internal',status:'unknown',tags:['finance']},
+    {id:'susu',name:'Susu',description:'Microfinance — groups, contributions, payouts',icon:'landmark',color:'#14B8A6',url:'http://susu.lan',type:'external',status:'unknown',tags:['finance']},
     {id:'airdrop-hunter',name:'Airdrop Hunter',description:'Crypto airdrop monitor & alerts',icon:'rocket',color:'#F97316',url:'http://192.168.99.11:8092',type:'external',status:'unknown',tags:['crypto']},
     {id:'proxdash',name:'ProxDash',description:'Homelab dashboard & resource monitor',icon:'gauge',color:'#06B6D4',url:'http://192.168.1.114:8091',type:'external',status:'unknown',tags:['monitoring']},
     {id:'code-server',name:'Code Server',description:'VS Code in the browser',icon:'code',color:'#2563EB',url:'http://192.168.99.11:8443',type:'external',status:'unknown',tags:['dev']},
-    {id:'juris-kai',name:'Juris Kai',description:'Ghana legal corpus search & analysis',icon:'scale',color:'#D97706',url:'/kai/juris',type:'internal',status:'unknown',tags:['legal']},
+    {id:'juris-kai',name:'Juris Kai',description:'Ghana legal corpus search & analysis',icon:'scale',color:'#D97706',url:'/command-center#legal',type:'internal',status:'unknown',tags:['legal']},
     {id:'portfolio',name:'Portfolio',description:'Investment & asset tracker',icon:'chart-line',color:'#10B981',url:'http://192.168.99.11:3000',type:'external',status:'unknown',tags:['finance']},
   ]);
 }

@@ -9,7 +9,7 @@ from core.kai_betting.ai.client import (
     GPUAIClient, GPUAIUnavailableError, GPUAIInferenceError, GPUAIResponse,
     estimate_cost,
 )
-from core.kai_betting.ai.budget import BettingAIBudgetController
+from core.kai_betting.ai.budget import BettingAIBudgetController, summarize_daily_spend
 from core.kai_betting.ai.cache import InferenceCache, data_hash
 from core.kai_betting.ai.router import BettingAIRouter, AIRoutingResult
 from core.kai_betting.ai.prompts import MODELS, PROMPT_VERSION
@@ -82,6 +82,20 @@ def test_budget_limits(fresh_db):
         budget.record("qwen", 0.06, 100, 100, 500, "req-2")
         assert budget.over_budget()
         assert budget.spend_today() == pytest.approx(0.12)
+
+
+def test_summarize_daily_spend(fresh_db):
+    from core.kai_betting.db import get_db
+    with get_db() as conn:
+        budget = BettingAIBudgetController(conn)
+        budget.record("qwen", 0.01, 100, 100, 400, "r1")
+        budget.record("qwen", 0.02, 200, 200, 500, "r2")
+        budget.record("deepseek", 0.05, 300, 300, 800, "r3")
+        s = summarize_daily_spend(conn)
+    assert s["total"]["requests"] == 3
+    assert s["total"]["cost"] == pytest.approx(0.08)
+    assert s["by_model"]["qwen"]["requests"] == 2
+    assert s["by_model"]["deepseek"]["cost"] == pytest.approx(0.05)
 
 
 # ── Cache ────────────────────────────────────────────────────────────────────

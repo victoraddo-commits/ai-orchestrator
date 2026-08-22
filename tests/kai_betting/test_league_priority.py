@@ -132,6 +132,7 @@ def test_tennis_elite_city_named_accepted(name):
     ("Challenger - Astana", "challenger-astana"),
     ("ATP Challenger", "atp-challenger"),
     ("Junior - Wimbledon", "junior-wimbledon"),
+    ("WTA 125K - Philadelphia, USA", "wta-125k-philadelphia"),
 ])
 def test_tennis_low_level_rejected(name, slug):
     c = scope.classify_competition("tennis", name, slug)

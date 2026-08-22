@@ -156,6 +156,7 @@ _REJECT_NAME_KEYWORDS: tuple = (
     "u17", "u19", "u20", "u21", "u23",
     "college", "ncaa", "itf", "futures", "challenger",
     "qualif", "playoff", "play-off", "preliminary", "prelim",
+    "125k",  # WTA 125K sits below the approved WTA 500 tier
 )
 
 

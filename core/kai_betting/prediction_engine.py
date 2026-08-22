@@ -230,6 +230,7 @@ class PredictionEngine:
         bookmaker_odds: float = 0.0,
         line: Optional[float] = None,
         bookmaker_name: Optional[str] = None,
+        conn: Optional[Any] = None,
     ) -> PredictionResult:
         """Generate a prediction from REAL odds data.
 
@@ -281,7 +282,7 @@ class PredictionEngine:
         # Stage: AI enhancement (on-demand, graceful fallback)
         ai_prob, ai_reasoning = self._ai_enhancement(
             sport_key, market_type, home_team, away_team, selection,
-            model_prob, bookmaker_odds,
+            model_prob, bookmaker_odds, conn=conn,
         )
         if ai_prob is not None:
             model_prob = self._blend_probabilities(model_prob, ai_prob)
@@ -343,6 +344,7 @@ class PredictionEngine:
         event_external_id: Optional[str] = None,
         bookmaker_odds: Optional[float] = None,
         stats: Optional[Dict[str, Any]] = None,
+        conn: Optional[Any] = None,
     ) -> PredictionResult:
         """Run the prediction pipeline (legacy path — tests & synthetic only).
 
@@ -359,7 +361,7 @@ class PredictionEngine:
         # Stage 3: AI enhancement (attempt — graceful fallback)
         ai_prob, ai_reasoning = self._ai_enhancement(
             sport_key, market_type, home_team, away_team, selection, base_prob,
-            bookmaker_odds, stats,
+            bookmaker_odds, stats, conn=conn,
         )
 
         # Stage 4: Blend probabilities
@@ -717,6 +719,7 @@ class PredictionEngine:
         base_prob: float,
         bookmaker_odds: Optional[float] = None,
         stats: Optional[Dict[str, Any]] = None,
+        conn: Optional[Any] = None,
     ) -> Tuple[Optional[float], Optional[str]]:
         """Attempt serverless AI contextual analysis via the betting AI router.
 
@@ -751,7 +754,7 @@ class PredictionEngine:
             "stats": stats or {},
         }
         try:
-            result = BettingAIRouter().analyze(prediction, evidence)
+            result = BettingAIRouter().analyze(prediction, evidence, conn=conn)
         except Exception:
             return None, None
         if result.final_probability is not None:

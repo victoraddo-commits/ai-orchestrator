@@ -278,6 +278,16 @@ class PredictionEngine:
             selection=selection,
         )
 
+        # Stage: AI enhancement (on-demand, graceful fallback)
+        ai_prob, ai_reasoning = self._ai_enhancement(
+            sport_key, market_type, home_team, away_team, selection,
+            model_prob, bookmaker_odds,
+        )
+        if ai_prob is not None:
+            model_prob = self._blend_probabilities(model_prob, ai_prob)
+            if ai_reasoning:
+                reasoning = ai_reasoning
+
         # Build market display — include the line for over/under & handicap
         market_display = self._market_display(
             market_info.get("name", market_type), market_type, selection, line
@@ -348,7 +358,8 @@ class PredictionEngine:
 
         # Stage 3: AI enhancement (attempt — graceful fallback)
         ai_prob, ai_reasoning = self._ai_enhancement(
-            sport_key, market_type, home_team, away_team, selection, base_prob
+            sport_key, market_type, home_team, away_team, selection, base_prob,
+            bookmaker_odds, stats,
         )
 
         # Stage 4: Blend probabilities
@@ -704,14 +715,47 @@ class PredictionEngine:
         away_team: Optional[str],
         selection: str,
         base_prob: float,
+        bookmaker_odds: Optional[float] = None,
+        stats: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Optional[float], Optional[str]]:
-        """Attempt AI-powered contextual analysis.
+        """Attempt serverless AI contextual analysis via the betting AI router.
 
-        Tries to use Kai's AI router for reasoning. Falls back gracefully.
-        In production, this would call `core.ai.ai_router.delegate()`.
+        Delegates to core.kai_betting.ai.router.BettingAIRouter, which decides
+        whether AI is justified and runs the Qwen → DeepSeek → K3 escalation.
+        Falls back gracefully to the statistical model when AI is unavailable,
+        over budget, or the data is insufficient.
         """
-        # For now, return the base probability — AI enhancement is a future feature
-        # that requires real-time data feeds (injuries, form, weather, etc.)
+        from core.kai_betting.ai.router import BettingAIRouter
+        from types import SimpleNamespace
+
+        if not bookmaker_odds:
+            return None, None  # no real odds → data-quality gate, no AI spend
+
+        implied = 1.0 / bookmaker_odds if bookmaker_odds else None
+        edge = (base_prob - implied) if implied is not None else None
+        prediction = SimpleNamespace(
+            sport_key=sport_key,
+            market_type=market_type,
+            selection=selection,
+            bookmaker_odds=bookmaker_odds,
+            estimated_probability=base_prob,
+            implied_probability=implied,
+            edge=edge,
+            confidence=None,
+            risk_score=None,
+            data_quality=None,
+            league_key=None,
+        )
+        evidence = {
+            "teams": {"home": home_team, "away": away_team},
+            "stats": stats or {},
+        }
+        try:
+            result = BettingAIRouter().analyze(prediction, evidence)
+        except Exception:
+            return None, None
+        if result.final_probability is not None:
+            return result.final_probability, result.reasoning
         return None, None
 
     def _blend_probabilities(

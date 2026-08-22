@@ -116,6 +116,17 @@ def test_tennis_elite_accepted(slug):
     assert c.allowed, f"expected accepted: {slug}"
 
 
+@pytest.mark.parametrize("name", [
+    "ATP - Cincinnati, USA",
+    "ATP - Montreal, Canada",
+    "WTA - Cincinnati, USA",
+    "ATP - Winston Salem, USA",
+])
+def test_tennis_elite_city_named_accepted(name):
+    c = scope.classify_competition("tennis", name, "")
+    assert c.allowed, f"expected accepted: {name}"
+
+
 @pytest.mark.parametrize("name,slug", [
     ("ITF - Tianjin", "itf-tianjin"),
     ("Challenger - Astana", "challenger-astana"),

@@ -18,11 +18,20 @@ from core.kai_betting import scope
 
 
 def apply_scope(conn) -> Dict[str, Any]:
-    """Deactivate out-of-scope sports and leagues. Returns a summary."""
+    """Sync the DB to the approved scope (idempotent).
+
+    Activates approved sports/leagues and deactivates everything else, so a
+    later widening/tightening of the whitelist can be re-applied. Returns a
+    summary.
+    """
     sports = tuple(sorted(scope.APPROVED_SPORTS))
+    placeholders = ", ".join("?" * len(sports))
     conn.execute(
-        "UPDATE sports SET is_active = 0 WHERE key NOT IN (%s)"
-        % ", ".join("?" * len(sports)),
+        f"UPDATE sports SET is_active = 0 WHERE key NOT IN ({placeholders})",
+        sports,
+    )
+    conn.execute(
+        f"UPDATE sports SET is_active = 1 WHERE key IN ({placeholders})",
         sports,
     )
 
@@ -31,12 +40,23 @@ def apply_scope(conn) -> Dict[str, Any]:
         "FROM leagues l JOIN sports s ON s.id = l.sport_id"
     ).fetchall()
 
+    activated = 0
     disabled = 0
     for row in leagues:
         c = scope.classify_competition(row["sport_key"], row["name"], row["key"])
-        if not c.allowed:
-            conn.execute("UPDATE leagues SET is_active = 0 WHERE id = ?", (row["id"],))
-            disabled += 1
+        new_active = 1 if c.allowed else 0
+        current = conn.execute(
+            "SELECT is_active FROM leagues WHERE id = ?", (row["id"],)
+        ).fetchone()["is_active"]
+        if current != new_active:
+            conn.execute(
+                "UPDATE leagues SET is_active = ? WHERE id = ?",
+                (new_active, row["id"]),
+            )
+            if new_active:
+                activated += 1
+            else:
+                disabled += 1
 
     conn.commit()
 
@@ -49,6 +69,7 @@ def apply_scope(conn) -> Dict[str, Any]:
 
     return {
         "sports_disabled": sports_disabled,
+        "leagues_activated": activated,
         "leagues_disabled": disabled,
         "leagues_remaining_active": leagues_active,
     }

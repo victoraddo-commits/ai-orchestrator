@@ -39,3 +39,23 @@ def test_apply_scope_disables_out_of_scope_sports_and_leagues(fresh_db):
 
         assert result["sports_disabled"] == 7  # the 7 non-approved SPORT_SEEDS
         assert result["leagues_disabled"] == 2
+
+
+def test_apply_scope_reactivates_approved_leagues(fresh_db):
+    """An approved league that was previously deactivated is re-activated."""
+    with get_db() as db:
+        _seed_leagues(db)
+        # Simulate a prior deactivation (e.g. an earlier, stricter run).
+        db.execute("UPDATE leagues SET is_active = 0 WHERE key = 'epl'")
+        db.execute("UPDATE leagues SET is_active = 0 WHERE key = 'italy-serie-a'")
+        db.commit()
+
+        result = apply_scope(db)
+
+        assert result["leagues_activated"] == 2  # epl + italy-serie-a
+        assert db.execute(
+            "SELECT is_active FROM leagues WHERE key = 'epl'"
+        ).fetchone()["is_active"] == 1
+        assert db.execute(
+            "SELECT is_active FROM leagues WHERE key = 'italy-serie-a'"
+        ).fetchone()["is_active"] == 1

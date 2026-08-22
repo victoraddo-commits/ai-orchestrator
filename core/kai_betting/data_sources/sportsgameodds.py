@@ -34,23 +34,18 @@ logger = logging.getLogger(__name__)
 # EUROPA_LEAGUE, etc. all return success:false/empty) — this is the
 # platform's COMPLETE league catalog, not a curated subset.
 
+# Scope-reset: only the three approved sports remain. Football maps to UEFA
+# Champions League only (the platform has no EPL/La Liga/etc. and MLS is out
+# of scope); basketball maps to NBA only (college NCAAB is out of scope).
+# Baseball/ice-hockey/american-football were removed entirely.
 LEAGUE_ID_MAP: Dict[str, str] = {
     "football": "UEFA_CHAMPIONS_LEAGUE",  # soccer, in Kai's internal naming
     "soccer": "UEFA_CHAMPIONS_LEAGUE",
     "basketball": "NBA",
-    "baseball": "MLB",
-    "ice_hockey": "NHL",
-    "american_football": "NFL",
 }
 
-# A single Kai sport can map to more than one SportsGameOdds league
-# (e.g. basketball → NBA + NCAAB). Additional leagueIDs per Kai sport key.
-_EXTRA_LEAGUE_IDS: Dict[str, List[str]] = {
-    "football": ["MLS"],
-    "soccer": ["MLS"],
-    "basketball": ["NCAAB"],
-    "american_football": ["NCAAF"],
-}
+# A single Kai sport can map to more than one SportsGameOdds league.
+_EXTRA_LEAGUE_IDS: Dict[str, List[str]] = {}
 
 
 def league_ids_for(kai_sport: str) -> List[str]:

@@ -241,7 +241,9 @@ class TestDataIngestionManager:
             )
             db.commit()
         sports = mgr._get_active_sports()
-        assert sports == ["football", "baseball"]
+        # Scope reset: baseball is out of scope and filtered out, even if the
+        # config still lists it.
+        assert sports == ["football"]
 
     def test_should_run_never_run_before(self, temp_db):
         from core.kai_betting.data_ingestion import DataIngestionManager
@@ -430,33 +432,38 @@ class TestIngestionEventProcessing:
 # ── League Tier Resolution ──────────────────────────────────────────────────
 
 class TestLeagueTier:
-    """Verify _league_tier() resolves competitions to the correct tier."""
+    """Verify _league_tier() resolves competitions to the correct DB tier.
+
+    The scope reset made classification slug-anchored: S→1, A→2, T→3, and
+    anything out of scope → None (fail closed).
+    """
 
     def test_tier1_top_flight(self):
         from core.kai_betting.data_ingestion import _league_tier
-        assert _league_tier("English Premier League") == 1
-        assert _league_tier("La Liga") == 1
-        assert _league_tier("Bundesliga") == 1
+        assert _league_tier("Premier League", "epl") == 1
+        assert _league_tier("Spain La Liga", "spain_la_liga") == 1
+        assert _league_tier("Germany Bundesliga", "germany_bundesliga") == 1
 
-    def test_tier1_continental_competition(self):
+    def test_continental_competition_is_tournament_tier(self):
         from core.kai_betting.data_ingestion import _league_tier
-        assert _league_tier("UEFA Champions League") == 1
-        assert _league_tier("UEFA Europa League") == 1
+        assert _league_tier("UEFA Champions League", "") == 3
+        assert _league_tier("UEFA Europa League", "") == 3
 
     def test_tier2_second_flight(self):
         from core.kai_betting.data_ingestion import _league_tier
-        assert _league_tier("Championship") == 2
-        assert _league_tier("Serie B") == 2
+        assert _league_tier("Championship", "efl-championship") == 2
+        assert _league_tier("Serie B", "serie-b") == 2
 
-    def test_tier2_beats_tier1_on_specificity(self):
-        """'2. Bundesliga' must resolve to tier 2, not tier 1 via the 'bundesliga' substring."""
+    def test_second_division_beats_first_via_slug(self):
+        """'2. Bundesliga' (A-tier) must not be confused with 'Bundesliga' (S-tier)."""
         from core.kai_betting.data_ingestion import _league_tier
-        assert _league_tier("2. Bundesliga") == 2
+        assert _league_tier("2. Bundesliga", "2-bundesliga") == 2
+        assert _league_tier("Bundesliga", "bundesliga") == 1
 
-    def test_tier3_lower_regional(self):
+    def test_lower_divisions_out_of_scope(self):
         from core.kai_betting.data_ingestion import _league_tier
-        assert _league_tier("League One") == 3
-        assert _league_tier("League Two") == 3
+        assert _league_tier("League One", "england-league-one") is None
+        assert _league_tier("League Two", "england-league-two") is None
 
     def test_unmatched_league_returns_none(self):
         from core.kai_betting.data_ingestion import _league_tier
@@ -467,13 +474,13 @@ class TestLeagueTier:
         assert _league_tier("") is None
         assert _league_tier("", "") is None
 
-    def test_matches_via_slug_when_name_empty(self):
+    def test_out_of_scope_slug_returns_none(self):
         from core.kai_betting.data_ingestion import _league_tier
-        assert _league_tier("", "mls") == 1
+        assert _league_tier("", "mls") is None
 
     def test_is_case_insensitive(self):
         from core.kai_betting.data_ingestion import _league_tier
-        assert _league_tier("BUNDESLIGA") == 1
+        assert _league_tier("BUNDESLIGA", "BUNDESLIGA") == 1
 
 
 # ── Config Module Tests ────────────────────────────────────────────────────

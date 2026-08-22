@@ -134,7 +134,7 @@ class BettingAIRouter:
             return result
         result.tiers_run.append("qwen")
         result.qwen = qwen_resp.data
-        self._accumulate(result, qwen_resp)
+        self._accumulate(result, qwen_resp, budget)
 
         # ── Escalation: Qwen → DeepSeek. ────────────────────────────────────
         if self._escalate_to_deepseek(prediction, result.qwen):
@@ -147,11 +147,10 @@ class BettingAIRouter:
                 # DeepSeek failed: Qwen result stands if Kai's rules permit.
                 result.status = "qwen_only"
                 result.final_probability = self._coerce_float(result.qwen.get("prediction", {}).get("probability"))
-                self._record(budget, result)
                 return result
             result.tiers_run.append("deepseek")
             result.deepseek = ds_resp.data
-            self._accumulate(result, ds_resp)
+            self._accumulate(result, ds_resp, budget)
 
             # ── Escalation: DeepSeek → K3. ──────────────────────────────────
             if self._escalate_to_k3(prediction, result.qwen, result.deepseek):
@@ -168,11 +167,10 @@ class BettingAIRouter:
                 except GPUAIError:
                     # K3 is mandatory when we reach here but is unavailable.
                     result.status = "k3_required_but_unavailable"
-                    self._record(budget, result)
                     return result
                 result.tiers_run.append("k3")
                 result.k3 = k3_resp.data
-                self._accumulate(result, k3_resp)
+                self._accumulate(result, k3_resp, budget)
                 result.final_probability = self._coerce_float(result.k3.get("probability"))
                 result.final_decision = self._decision(result.k3.get("final_decision"))
                 result.status = "complete"
@@ -188,7 +186,6 @@ class BettingAIRouter:
             result.status = "qwen_only"
 
         result.reasoning = self._reasoning(result)
-        self._record(budget, result)
         self.cache.set(cache_key, self._cache_payload(result))
         return result
 
@@ -252,15 +249,16 @@ class BettingAIRouter:
         v = str(value or "").upper().strip()
         return v if v in ("BET", "PASS") else None
 
-    def _accumulate(self, result: AIRoutingResult, resp: Any) -> None:
+    def _accumulate(self, result: AIRoutingResult, resp: Any,
+                    budget: Optional[BettingAIBudgetController] = None) -> None:
         result.total_cost += resp.estimated_cost
         result.total_input_tokens += resp.input_tokens
         result.total_output_tokens += resp.output_tokens
-
-    def _record(self, budget: Optional[BettingAIBudgetController], result: AIRoutingResult) -> None:
-        # Spend is recorded per-call in client-land via budget.record; here we
-        # just aggregate — see the budget integration note below.
-        return
+        if budget is not None:
+            budget.record(
+                resp.model_key, resp.estimated_cost, resp.input_tokens,
+                resp.output_tokens, resp.latency_ms, resp.request_id,
+            )
 
     def _reasoning(self, result: AIRoutingResult) -> str:
         if result.k3:

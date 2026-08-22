@@ -182,3 +182,16 @@ def test_router_qwen_failure_falls_back():
     router = BettingAIRouter(client=client)
     result = router.analyze(_prediction())
     assert result.status == "fallback_statistical"
+
+
+def test_router_records_spend_into_budget(fresh_db):
+    from core.kai_betting.db import get_db
+    client = _FakeClient({
+        "qwen": {"prediction": {"probability": 0.6}, "confidence": 50.0, "deep_review": False},
+    })
+    router = BettingAIRouter(client=client)
+    with get_db() as conn:
+        result = router.analyze(_prediction(edge=0.01), conn=conn)
+        rows = conn.execute("SELECT COUNT(*) AS c FROM ai_usage").fetchone()["c"]
+    assert result.status == "qwen_only"
+    assert rows == 1  # Qwen tier spend recorded once

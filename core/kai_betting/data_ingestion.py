@@ -122,6 +122,43 @@ def _league_tier(league_name: str, league_slug: str = "") -> Optional[int]:
     return None
 
 
+# ── Marquee league priority ──────────────────────────────────────────────────
+# The tier filter alone admits a very long tail (221+ tier-1 leagues), and the
+# per-sport `upcoming[:max_events]` FIFO slice was silently drowning the top
+# European competitions out with minor leagues. Marquee leagues are surfaced
+# first in that window so EPL/La Liga/Serie A/Bundesliga/Ligue 1 (and the
+# Champions/Europa League) actually reach the pick pool.
+#
+# Matched on the league SLUG (unique + reliable; both hyphen and underscore
+# forms appear across providers) with an unambiguous-name fallback for the two
+# continental cups whose names contain no country marker.
+MARQUEE_LEAGUE_SLUGS: frozenset = frozenset({
+    # English Premier League
+    "epl", "england-premier-league", "premier-league",
+    # La Liga (Spain)
+    "spain-la-liga", "spain_la_liga", "la-liga", "laliga",
+    # Serie A (Italy)
+    "italy-serie-a", "italy_serie_a", "serie-a", "serie_a",
+    # Bundesliga (Germany)
+    "germany-bundesliga", "germany_bundesliga", "bundesliga",
+    # Ligue 1 (France)
+    "france-ligue-1", "france-ligue-one", "france_ligue_one", "ligue-1",
+    # Continental cups
+    "champions-league", "uefa-champions-league",
+    "europa-league", "uefa-europa-league",
+})
+
+MARQUEE_LEAGUE_NAMES: tuple = ("champions league", "europa league")
+
+
+def _is_marquee_league(league_name: str, league_slug: str = "") -> bool:
+    """True if this league is one of the top European competitions."""
+    if (league_slug or "").strip().lower() in MARQUEE_LEAGUE_SLUGS:
+        return True
+    name = (league_name or "").lower()
+    return any(k in name for k in MARQUEE_LEAGUE_NAMES)
+
+
 def _is_live_data_mode(db) -> bool:
     """Check if LIVE_DATA_MODE is enabled."""
     try:
@@ -333,17 +370,28 @@ class DataIngestionManager:
                 # generate_daily_predictions()'s zero-picks alert makes visible
                 # instead of silently substituting junk-league games.
                 if major_only:
-                    tiered = [e for e in upcoming if (
-                        _league_tier(
-                            e.get("league", {}).get("name", ""),
-                            e.get("league", {}).get("slug", ""),
-                        ) or 99
-                    ) <= 3]
+                    tiered: List[tuple] = []
+                    for event in upcoming:
+                        league = event.get("league") or {}
+                        name = league.get("name", "") or ""
+                        slug = league.get("slug", "") or ""
+                        tier = _league_tier(name, slug)
+                        if tier is None or tier > 3:
+                            continue
+                        key = (
+                            # Marquee leagues first, so the top European
+                            # competitions aren't crowded out of the FIFO slice.
+                            0 if _is_marquee_league(name, slug) else 1,
+                            tier,                        # then tier 1 < 2 < 3
+                            event.get("date", "") or "",  # then soonest kickoff
+                        )
+                        tiered.append((key, event))
+                    tiered.sort(key=lambda kv: kv[0])
                     if len(tiered) < len(upcoming):
                         logger.info(
                             f"tier filter kept {len(tiered)}/{len(upcoming)} events for {slug}"
                         )
-                    upcoming = tiered
+                    upcoming = [event for _, event in tiered]
 
                 # Process each event
                 for evt in upcoming[:max_events]:

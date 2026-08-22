@@ -1,67 +1,51 @@
-# AI Orchestrator
+# Kai Betting
 
-A self-operating monitoring/remediation system for a home-lab Proxmox + Docker
-environment. It observes, reasons about, and (with human approval) remediates
-infrastructure problems, verifying the outcome afterward and learning from it.
+AI sports prediction worker for the Kai platform. Runs a 300-second cycle that ingests
+sports data (Odds-API.io primary, The Odds API legacy), generates predictions and odds
+groups, and pushes daily picks to Telegram subscribers.
 
-Runs as a single systemd service (`ai-orchestrator.service`) polling every 300
-seconds, plus an optional read-only observability API.
+## Runtime
 
-## What it actually does today
-
-- Scans Proxmox (node, LXC containers, VMs, backups, network) and Docker
-  containers for problems every 5 minutes.
-- Turns findings into deduplicated, lifecycle-tracked incidents.
-- Reasons about incidents using severity, recurrence, and historical fix
-  success rate, and proposes a remediation action.
-- **Every proposed action requires human approval** via `approval_cli.py`
-  before anything executes. There is no autonomous execution today —
-  `AUTONOMOUS_MODE` in `core/config.py` is `False`. See `SECURITY.md`.
-- The only action wired to real execution is `docker restart <container>`.
-- Verifies whether the fix actually worked, and attempts an automatic
-  rollback if it didn't (see `ARCHITECTURE.md` for the current limits of
-  that).
-- Tracks which actions historically work, to inform future confidence.
-
-## Quick start
+Single process entry point:
 
 ```bash
-# service status / logs
-systemctl status ai-orchestrator
-journalctl -u ai-orchestrator -f
-
-# see what's pending approval
-python -m core.approval_cli list
-
-# approve or reject
-python -m core.approval_cli approve <id>
-python -m core.approval_cli reject <id>
-
-# run the test suite
-.venv/bin/python -m pytest
-
-# read-only dashboard API (not started as a service by default --
-# run manually when you want it)
-.venv/bin/uvicorn core.api:app --host 127.0.0.1 --port 8000
-curl localhost:8000/health
+python -m core.kai_betting.run_worker
 ```
 
-## Documentation
+### Environment
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) -- how the pieces fit together, the
-  five lifecycle objects, the memory layer.
-- [`OPERATIONS.md`](OPERATIONS.md) -- day-to-day running, approving actions,
-  deploying changes, troubleshooting.
-- [`SECURITY.md`](SECURITY.md) -- the action allowlist, dangerous-command
-  blocking, audit log, and the threat model this was actually designed
-  against.
-- [`DISASTER_RECOVERY.md`](DISASTER_RECOVERY.md) -- memory corruption
-  recovery, rollback, what happens if the service crashes.
+| Var | Purpose |
+|-----|---------|
+| `KAI_BETTING_DB` | SQLite database path (default `memory/kai_betting.db`) |
+| `ODDS_API_IO_KEY` | Odds-API.io v3 API key (primary data source) |
+| `ODDS_API_KEY` | The Odds API key — legacy events fallback, and currently the **sole source of final scores/settlement**: `_sync_results_legacy()` is the only code path that writes finished-game scores, and it no-ops entirely if this is unset |
+| `ODDS_API_PROVIDER` | Odds data provider override |
+| `SPORTSGAMEODDS_API_KEY` | SportsGameOdds API key (supplemental odds+results source; free tier covers MLB/MLS/NBA/NCAAB/NCAAF/NFL/NHL/UEFA Champions League only) |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token for daily pick notifications |
+| `BETTING_ADMIN_CHAT_ID` | Telegram chat ID that receives the zero-picks alert (fires when games had odds today but none cleared quality filters) |
+| `GPUAI_API_KEY` | GPU.ai serverless API key for the AI inference layer (never committed, never exposed to the frontend) |
+| `GPUAI_BASE_URL` | GPU.ai API base (default `https://api.gpu.ai/v1`) |
+| `GPUAI_DAILY_LIMIT` / `GPUAI_WEEKLY_LIMIT` / `GPUAI_MONTHLY_LIMIT` | AI inference budget ceilings (USD; daily default `3.0`, 0 = unlimited) |
 
-## Project status
+The AI layer (`core/kai_betting/ai/`) routes three on-demand models through one
+client — Qwen (`gpuai/qwen3.7-plus`), DeepSeek (`gpuai/deepseek-v4-pro`), Kimi K3
+(`gpuai/kimi-k3`) — escalating only candidates that justify deeper analysis. If
+`GPUAI_API_KEY` is unset the layer is a no-op and Kai falls back to the local
+statistical engine.
 
-Foundational lifecycle/safety work (roadmap phases 1-10) is complete and
-running in production on the live host. Not yet built: real actions beyond
-`restart_container` (resize, migrate VM, etc.), a full authentication system
-(deliberately out of scope for a single-operator box -- see `SECURITY.md`),
-and a persistent deployment of the observability API.
+### Docker
+
+```bash
+docker build -t kai-betting .
+docker run --rm -e KAI_BETTING_DB=/data/kai_betting.db -e ODDS_API_IO_KEY=... \
+  -e TELEGRAM_BOT_TOKEN=... -v "$PWD/data:/data" kai-betting
+```
+
+## Layout
+
+- `core/kai_betting/` — the application package (worker, engines, data sources, DB).
+- `core/kai_betting/frontend/` — React/Vite dashboard (dev-only, not part of the worker image).
+
+<!-- autodeploy verification -->
+
+<!-- autodeploy verification -->

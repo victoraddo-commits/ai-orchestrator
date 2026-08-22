@@ -90,3 +90,37 @@ class BettingAIBudgetController:
             "spend_week": self.spend_week(),
             "spend_month": self.spend_month(),
         }
+
+
+def summarize_daily_spend(conn) -> dict:
+    """Summarize today's GPU.ai spend from the ai_usage table.
+
+    Returns {total: {requests, input_tokens, output_tokens, cost, avg_latency_ms},
+              by_model: {model_key: {requests, cost}}}.
+    """
+    rows = conn.execute(
+        "SELECT model_key, COUNT(*) AS requests, "
+        "COALESCE(SUM(input_tokens),0) AS in_tok, "
+        "COALESCE(SUM(output_tokens),0) AS out_tok, "
+        "COALESCE(SUM(cost),0) AS cost, "
+        "COALESCE(AVG(latency_ms),0) AS avg_latency "
+        "FROM ai_usage WHERE created_at >= datetime('now', '-1 day') "
+        "GROUP BY model_key"
+    ).fetchall()
+
+    total = {"requests": 0, "input_tokens": 0, "output_tokens": 0,
+             "cost": 0.0, "avg_latency_ms": 0}
+    by_model = {}
+    for r in rows:
+        by_model[r["model_key"]] = {
+            "requests": r["requests"],
+            "cost": float(r["cost"]),
+        }
+        total["requests"] += r["requests"]
+        total["input_tokens"] += r["in_tok"]
+        total["output_tokens"] += r["out_tok"]
+        total["cost"] += float(r["cost"])
+        total["avg_latency_ms"] += float(r["avg_latency"])
+    if rows:
+        total["avg_latency_ms"] = round(total["avg_latency_ms"] / len(rows))
+    return {"total": total, "by_model": by_model}

@@ -430,6 +430,8 @@ class BettingTelegramBot:
                 LIMIT ?
             """, (limit,)).fetchall()
 
+            ai_footer = cls._ai_spend_footer(db)
+
         # Remove games that have already started
         rows = [r for r in rows if not event_is_started(r["event_time"])]
 
@@ -437,7 +439,7 @@ class BettingTelegramBot:
             cls.send_raw(chat_id,
                 "🎯 *Kai Betting — Today's Picks*\n\n"
                 "_No qualified picks available right now._\n"
-                "_Check back soon for real predictions._")
+                "_Check back soon for real predictions._" + ai_footer)
             return 0
 
         lines = [f"🎯 *Kai Betting — Today's Picks* ({len(rows)})\n"]
@@ -479,8 +481,27 @@ class BettingTelegramBot:
                 + (f"\n💬 {reason}" if reason else "")
             )
 
+        lines.append(ai_footer)
         cls.send_raw(chat_id, "\n\n".join(lines))
         return len(rows)
+
+    @staticmethod
+    def _ai_spend_footer(db) -> str:
+        """Format today's GPU.ai inference spend as a short Telegram footer."""
+        from core.kai_betting.ai.budget import summarize_daily_spend
+        s = summarize_daily_spend(db)
+        total = s["total"]
+        if not total["requests"]:
+            return ""
+        by_model = s["by_model"]
+        parts = [
+            f"{key}: {v['requests']} · ${v['cost']:.3f}"
+            for key, v in sorted(by_model.items())
+        ]
+        return (
+            f"\n\n🤖 *AI inference today*: {total['requests']} req · "
+            f"${total['cost']:.3f} ({', '.join(parts) if parts else '—'})"
+        )
 
     @classmethod
     def send_daily_notifications(cls) -> Dict[str, Any]:

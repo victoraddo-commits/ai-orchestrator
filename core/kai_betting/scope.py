@@ -92,15 +92,15 @@ _BASKETBALL: dict = {
 # where the slug is unreliable (tournaments, Grand Slams). Matched as a
 # substring of the lowercased league name.
 _FOOTBALL_NAMES: tuple = (
-    ("champions league", "T", 60),
-    ("europa league", "T", 60),
-    ("conference league", "T", 60),
+    ("uefa champions league", "T", 60),
+    ("uefa europa league", "T", 60),
+    ("uefa conference league", "T", 60),
     ("club world cup", "T", 60),
-    ("world cup", "T", 60),
+    ("fifa world cup", "T", 60),
     ("european championship", "T", 60),
     ("copa america", "T", 60),
     ("africa cup", "T", 60), ("afcon", "T", 60),
-    ("nations league", "T", 60),
+    ("uefa nations league", "T", 60),
 )
 
 _TENNIS_NAMES: tuple = (
@@ -115,7 +115,8 @@ _TENNIS_NAMES: tuple = (
 )
 
 _BASKETBALL_NAMES: tuple = (
-    ("fiba", "T", 60), ("olympic", "T", 60), ("eurobasket", "T", 60),
+    ("fiba world cup", "T", 60), ("fiba eurobasket", "T", 60),
+    ("olympic basketball", "T", 60),
 )
 
 _COMPETITIONS = {"football": _FOOTBALL, "tennis": _TENNIS, "basketball": _BASKETBALL}
@@ -150,6 +151,7 @@ _REJECT_NAME_KEYWORDS: tuple = (
     "u-17", "u-19", "u-20", "u-21", "u-23",
     "u17", "u19", "u20", "u21", "u23",
     "college", "ncaa", "itf", "futures", "challenger",
+    "qualif", "playoff", "play-off", "preliminary", "prelim",
 )
 
 

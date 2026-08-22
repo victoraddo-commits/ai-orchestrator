@@ -49,11 +49,15 @@ def test_football_approved_leagues_accepted(slug):
 
 
 @pytest.mark.parametrize("name", [
-    "UEFA Champions League", "UEFA Champions League, Qualification",
-    "UEFA Europa League", "UEFA Europa League, Playoff Round",
-    "UEFA Conference League", "FIFA Club World Cup",
-    "FIFA World Cup", "UEFA European Championship", "Copa América",
-    "Africa Cup of Nations", "AFCON", "UEFA Nations League",
+    "UEFA Champions League",
+    "UEFA Europa League",
+    "UEFA Conference League",
+    "FIFA Club World Cup",
+    "FIFA World Cup",
+    "UEFA European Championship",
+    "Copa América",
+    "Africa Cup of Nations", "AFCON",
+    "UEFA Nations League",
 ])
 def test_football_tournaments_accepted(name):
     c = scope.classify_competition("football", name, "")
@@ -79,6 +83,25 @@ def test_football_out_of_scope_rejected(name, slug):
     c = scope.classify_competition("football", name, slug)
     assert not c.allowed, f"expected rejected: {name}"
     assert c.reason == "OUT_OF_SCOPE_COMPETITION"
+
+
+@pytest.mark.parametrize("name", [
+    # Non-UEFA "Champions League" confederations must NOT leak in.
+    "AFC Champions League",
+    "CAF Champions League",
+    "OFC Champions League",
+    "International Clubs - AFC Champions League Elite, Qualification",
+    # Qualifiers / playoffs / preliminary rounds are out of scope.
+    "UEFA Champions League, Qualification",
+    "UEFA Europa League, Playoff Round",
+    "FIBA World Cup, African Qualifiers",
+    "EuroBasket, Pre-Qualifiers",
+])
+def test_non_uefa_tournaments_and_qualifiers_rejected(name):
+    c = scope.classify_competition("football", name, "")
+    assert not c.allowed, f"expected rejected (football): {name}"
+    c = scope.classify_competition("basketball", name, "")
+    assert not c.allowed, f"expected rejected (basketball): {name}"
 
 
 # ── Tennis ────────────────────────────────────────────────────────────────────

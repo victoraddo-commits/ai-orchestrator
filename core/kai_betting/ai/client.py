@@ -113,7 +113,6 @@ class GPUAIClient:
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "response_format": {"type": "json_object"},
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",

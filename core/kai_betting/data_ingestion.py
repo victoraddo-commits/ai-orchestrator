@@ -286,8 +286,8 @@ class DataIngestionManager:
                 for event in upcoming:
                     league = event.get("league") or {}
                     name = league.get("name", "") or ""
-                    slug = league.get("slug", "") or ""
-                    cls = scope.classify_competition(kai_sport, name, slug)
+                    league_slug = league.get("slug", "") or ""
+                    cls = scope.classify_competition(kai_sport, name, league_slug)
                     if not cls.allowed:
                         continue
                     key = (

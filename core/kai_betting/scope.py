@@ -112,6 +112,10 @@ _TENNIS_NAMES: tuple = (
     ("masters 1000", "3", 80), ("atp masters", "3", 80),
     ("wta 1000", "3", 80),
     ("atp 500", "4", 70), ("wta 500", "4", 70),
+    # The provider names ATP/WTA tour events by city ("ATP - Cincinnati, USA")
+    # rather than by tier, so a bare "atp"/"wta" catch-all admits the elite tour
+    # while the reject-list still excludes ITF / Challenger / Futures / juniors.
+    ("atp", "4", 70), ("wta", "4", 70),
 )
 
 _BASKETBALL_NAMES: tuple = (

@@ -364,6 +364,52 @@ CREATE TABLE IF NOT EXISTS performance_metrics (
 );
 
 CREATE INDEX IF NOT EXISTS idx_perf_period ON performance_metrics(period, period_start);
+
+CREATE TABLE IF NOT EXISTS ai_usage (
+    id             TEXT PRIMARY KEY,
+    model_key      TEXT NOT NULL,
+    cost           REAL NOT NULL DEFAULT 0.0,
+    input_tokens   INTEGER NOT NULL DEFAULT 0,
+    output_tokens  INTEGER NOT NULL DEFAULT 0,
+    latency_ms     INTEGER NOT NULL DEFAULT 0,
+    request_id     TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_created ON ai_usage(created_at);
+
+CREATE TABLE IF NOT EXISTS ai_prediction_records (
+    prediction_id         TEXT PRIMARY KEY,
+    event_id              TEXT,
+    sport                 TEXT,
+    competition           TEXT,
+    market                TEXT,
+    selection             TEXT,
+    odds                  REAL,
+    kai_probability       REAL,
+    qwen_probability      REAL,
+    deepseek_probability  REAL,
+    k3_probability        REAL,
+    final_probability     REAL,
+    market_probability    REAL,
+    estimated_edge        REAL,
+    confidence            REAL,
+    risk_score            REAL,
+    model_agreement       TEXT,
+    prediction_timestamp  TEXT NOT NULL DEFAULT (datetime('now')),
+    data_snapshot_id      TEXT,
+    prompt_version        TEXT,
+    model_versions        TEXT,
+    decision              TEXT,
+    result                TEXT,
+    profit_loss           REAL,
+    closing_odds          REAL,
+    gpuai_input_tokens    INTEGER NOT NULL DEFAULT 0,
+    gpuai_output_tokens   INTEGER NOT NULL DEFAULT 0,
+    gpuai_estimated_cost  REAL NOT NULL DEFAULT 0.0,
+    gpuai_latency_ms      INTEGER NOT NULL DEFAULT 0,
+    status                TEXT NOT NULL DEFAULT 'complete'
+);
+CREATE INDEX IF NOT EXISTS idx_ai_pred_records_ts ON ai_prediction_records(prediction_timestamp);
 """
 
 # ── Seed Data ────────────────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ import requests
 from core.kai_betting.db import get_db, parse_event_time, event_is_started
 from core.kai_betting.subscriptions import SubscriptionManager
 from core.kai_betting.performance import PerformanceTracker
+from core.kai_betting import scope
 
 logger = logging.getLogger(__name__)
 
@@ -130,9 +131,7 @@ class BettingTelegramBot:
 
         for part in parts[1:]:
             part_lower = part.lower()
-            if part_lower in ("football", "basketball", "tennis", "baseball",
-                              "ice_hockey", "american_football", "rugby",
-                              "volleyball", "handball", "cricket"):
+            if part_lower in scope.APPROVED_SPORTS:
                 sport_filter = part_lower
             elif part_lower in ("high", "medium", "low"):
                 quality_filter = part_lower

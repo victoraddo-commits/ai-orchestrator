@@ -24,6 +24,7 @@ from core.kai_betting.data_sources.odds_api_io import (
     market_is_predictable, sportybet_display,
 )
 from core.kai_betting.prediction_engine import PredictionEngine
+from core.kai_betting import scope
 
 logger = logging.getLogger(__name__)
 
@@ -41,122 +42,23 @@ DEFAULT_QUALITY = {
 # The 2 bookmakers allowed on the free tier
 FREE_TIER_BOOKMAKERS = "Bet365,1xbet"
 
-# ── League Tier Filter (SportyBet availability + pick quality) ───────────────
-# SportyBet (sportybet.com) carries the top 1-3 divisions + marquee cups/
-# continental competitions + major African leagues, but NOT the long tail of
-# obscure lower divisions or amateur/reserve leagues that Bet365 lists. Picks
-# are restricted to leagues that resolve to tier 1, 2, or 3 below, so users
-# can actually find the game on SportyBet and the pick pool stays credible.
-#
-# tier 1 = top flight of a country / marquee continental or international
-#          competition / the sport's premier professional league.
-# tier 2 = second flight of a country / major domestic cup or college league.
-# tier 3 = third flight of a country / lower-tier regional competition.
-#
-# Matched by substring against "<name> <slug>" (lowercased). Keywords are
-# checked longest-first so a specific match (e.g. "2. bundesliga", tier 2)
-# wins over a shorter generic one it contains (e.g. "bundesliga", tier 1).
-# Unmatched leagues resolve to None (fail closed — excluded, not tier 3).
-
-LEAGUE_TIER_KEYWORDS: List["tuple[str, int]"] = [
-    # ── Tier 1: top flights + marquee continental/international competitions ──
-    ("premier league", 1), ("premier soccer league", 1), ("npl", 1),
-    ("la liga", 1), ("laliga", 1), ("primera division", 1),
-    ("serie a", 1),
-    ("bundesliga", 1),
-    ("ligue 1", 1), ("ligue1", 1),
-    ("eredivisie", 1),
-    ("primeira liga", 1),
-    ("super lig", 1),
-    ("jupiler pro league", 1), ("first division a", 1),
-    ("champions league", 1), ("europa league", 1),
-    ("conference league", 1), ("nations league", 1),
-    ("world cup", 1), ("copa america", 1), ("africa cup", 1), ("afcon", 1), ("euro", 1),
-    ("major league soccer", 1), ("mls", 1),
-    ("liga mx", 1),
-    ("brasileirao", 1), ("campeonato brasileiro", 1),
-    ("primera division argentina", 1),
-    ("scottish premiership", 1),
-    ("ghana premier league", 1), ("nigeria professional football league", 1),
-    ("egypt premier league", 1), ("kenya premier league", 1),
-    ("uganda premier league", 1), ("tanzania premier league", 1),
-    ("zambia super league", 1),
-    ("nba", 1), ("euroleague", 1), ("wnba", 1),
-    ("atp", 1), ("wta", 1), ("australian open", 1), ("roland garros", 1),
-    ("wimbledon", 1), ("us open", 1), ("grand slam", 1), ("masters", 1), ("davis cup", 1),
-    ("mlb", 1), ("npb", 1), ("kbo", 1),
-    ("nhl", 1),
-    ("nfl", 1),
-    ("nrl", 1), ("six nations", 1), ("premiership rugby", 1),
-    # ── Tier 2: second flights + major cups + college leagues ──────────────────
-    ("championship", 2),
-    ("segunda division", 2), ("segunda divis", 2),
-    ("serie b", 2),
-    ("2. bundesliga", 2), ("2 bundesliga", 2),
-    ("ligue 2", 2),
-    ("first division b", 2),
-    ("ncaa", 2),
-    ("nbl", 2), ("acb", 2), ("liga endesa", 2),
-    ("cfl", 2),
-    # ── Tier 3: third flights + lower regional competitions ────────────────────
-    ("league one", 3), ("league two", 3),
-    ("third division", 3), ("regionalliga", 3), ("national league", 3),
-]
-
-# Sorted longest-keyword-first so specific matches beat generic ones they contain.
-_LEAGUE_TIER_KEYWORDS_SORTED = sorted(LEAGUE_TIER_KEYWORDS, key=lambda kt: -len(kt[0]))
-
+# ── Competition scope (approved sports/leagues) ──────────────────────────────────────
+# The tier filter now delegates to core.kai_betting.scope — a strict whitelist
+# of approved sports (football/tennis/basketball) and competitions (top-5
+# football leagues × 2 divisions + major tournaments, elite tennis, elite
+# basketball). Unmatched leagues are excluded (fail closed).
 
 def _league_tier(league_name: str, league_slug: str = "") -> Optional[int]:
-    """Resolve a league to tier 1, 2, or 3, or None if it doesn't match.
+    """Resolve a league to its DB tier, or None if out of scope.
 
-    Matches the league name (and slug) against LEAGUE_TIER_KEYWORDS.
-    Unknown/empty league names resolve to None (fail closed).
+    Kept for backward compatibility with the leagues.tier column. Iterates the
+    approved sports (their whitelists are disjoint) and returns the first match.
     """
-    haystack = f"{league_name or ''} {league_slug or ''}".lower()
-    if not haystack.strip():
-        return None
-    for keyword, tier in _LEAGUE_TIER_KEYWORDS_SORTED:
-        if keyword in haystack:
-            return tier
+    for sport in ("football", "tennis", "basketball"):
+        c = scope.classify_competition(sport, league_name, league_slug)
+        if c.allowed:
+            return scope.db_tier(c.tier)
     return None
-
-
-# ── Marquee league priority ──────────────────────────────────────────────────
-# The tier filter alone admits a very long tail (221+ tier-1 leagues), and the
-# per-sport `upcoming[:max_events]` FIFO slice was silently drowning the top
-# European competitions out with minor leagues. Marquee leagues are surfaced
-# first in that window so EPL/La Liga/Serie A/Bundesliga/Ligue 1 (and the
-# Champions/Europa League) actually reach the pick pool.
-#
-# Matched on the league SLUG (unique + reliable; both hyphen and underscore
-# forms appear across providers) with an unambiguous-name fallback for the two
-# continental cups whose names contain no country marker.
-MARQUEE_LEAGUE_SLUGS: frozenset = frozenset({
-    # English Premier League
-    "epl", "england-premier-league", "premier-league",
-    # La Liga (Spain)
-    "spain-la-liga", "spain_la_liga", "la-liga", "laliga",
-    # Serie A (Italy)
-    "italy-serie-a", "italy_serie_a", "serie-a", "serie_a",
-    # Bundesliga (Germany)
-    "germany-bundesliga", "germany_bundesliga", "bundesliga",
-    # Ligue 1 (France)
-    "france-ligue-1", "france-ligue-one", "france_ligue_one", "ligue-1",
-    # Continental cups
-    "champions-league", "uefa-champions-league",
-    "europa-league", "uefa-europa-league",
-})
-
-MARQUEE_LEAGUE_NAMES: tuple = ("champions league", "europa league")
-
-
-def _is_marquee_league(league_name: str, league_slug: str = "") -> bool:
-    """True if this league is one of the top European competitions."""
-    if (league_slug or "").strip().lower() in MARQUEE_LEAGUE_SLUGS:
-        return True
-    name = (league_name or "").lower()
-    return any(k in name for k in MARQUEE_LEAGUE_NAMES)
 
 
 def _is_live_data_mode(db) -> bool:
@@ -232,6 +134,18 @@ class DataIngestionManager:
                 sport_id = sport_row["id"]
 
                 for evt in events:
+                    # Competition filter — don't store KNOWN out-of-scope
+                    # leagues as active betting events. An empty/unknown league
+                    # is deferred (the list response can omit league for some
+                    # providers; the pick stage in _sync_odds_v3() re-checks it
+                    # with the richer per-event data).
+                    league = evt.get("league") or {}
+                    league_name = league.get("name", "")
+                    league_slug = league.get("slug", "")
+                    if (league_name or league_slug) and not scope.classify_competition(
+                        kai_sport, league_name, league_slug,
+                    ).allowed:
+                        continue
                     try:
                         count = self._ingest_event_v3(db, sport_id, evt)
                         if count > 0:
@@ -339,7 +253,6 @@ class DataIngestionManager:
         with get_db() as db:
             live_data = _is_live_data_mode(db)
             quality = self._load_quality_config(db)
-            major_only = self._config_bool("major_leagues_only", True)
 
             for slug in slugs:
                 kai_sport = SPORT_SLUG_MAP.get(slug)
@@ -364,34 +277,31 @@ class DataIngestionManager:
                            if e.get("status") in ("pending", "not_started", "upcoming", "open")]
                 total_events_fetched += len(upcoming)
 
-                # Restrict picks to tier 1-3 leagues (SportyBet-carried divisions).
-                # Deliberately strict — no fallback to unfiltered/obscure leagues.
-                # A day with zero tier 1-3 games surfaces as zero picks, which
-                # generate_daily_predictions()'s zero-picks alert makes visible
-                # instead of silently substituting junk-league games.
-                if major_only:
-                    tiered: List[tuple] = []
-                    for event in upcoming:
-                        league = event.get("league") or {}
-                        name = league.get("name", "") or ""
-                        slug = league.get("slug", "") or ""
-                        tier = _league_tier(name, slug)
-                        if tier is None or tier > 3:
-                            continue
-                        key = (
-                            # Marquee leagues first, so the top European
-                            # competitions aren't crowded out of the FIFO slice.
-                            0 if _is_marquee_league(name, slug) else 1,
-                            tier,                        # then tier 1 < 2 < 3
-                            event.get("date", "") or "",  # then soonest kickoff
-                        )
-                        tiered.append((key, event))
-                    tiered.sort(key=lambda kv: kv[0])
-                    if len(tiered) < len(upcoming):
-                        logger.info(
-                            f"tier filter kept {len(tiered)}/{len(upcoming)} events for {slug}"
-                        )
-                    upcoming = [event for _, event in tiered]
+                # Hard competition filter — reject anything outside the approved
+                # scope (top-5 football leagues + major tournaments, elite tennis,
+                # elite basketball). Out-of-scope events never reach the model.
+                # Sorted so the highest-priority competitions fill the FIFO
+                # max_events slice first.
+                tiered: List[tuple] = []
+                for event in upcoming:
+                    league = event.get("league") or {}
+                    name = league.get("name", "") or ""
+                    slug = league.get("slug", "") or ""
+                    cls = scope.classify_competition(kai_sport, name, slug)
+                    if not cls.allowed:
+                        continue
+                    key = (
+                        -cls.priority,               # highest priority first
+                        event.get("date", "") or "",  # then soonest kickoff
+                    )
+                    tiered.append((key, event))
+                tiered.sort(key=lambda kv: kv[0])
+                if len(tiered) < len(upcoming):
+                    logger.info(
+                        f"competition filter kept {len(tiered)}/{len(upcoming)} "
+                        f"events for {slug}"
+                    )
+                upcoming = [event for _, event in tiered]
 
                 # Process each event
                 for evt in upcoming[:max_events]:
@@ -923,10 +833,10 @@ class DataIngestionManager:
                         total_dedup_skipped += 1
                         continue
 
-                    # _league_tier() keywords are space-separated (e.g.
-                    # "champions league") but SportsGameOdds leagueIDs use
-                    # underscores ("UEFA_CHAMPIONS_LEAGUE") — normalize or
-                    # every SGO league silently resolves to tier 99/excluded.
+                    # SportsGameOdds leagueIDs use underscores
+                    # ("UEFA_CHAMPIONS_LEAGUE"); normalize to a space-separated
+                    # name so scope.classify_competition()'s name fallback can
+                    # match it (otherwise it would resolve to tier 99/excluded).
                     league_id_raw = evt.get("leagueID", kai_sport)
                     league_name = league_id_raw.replace("_", " ").title()
                     is_new = self._ingest_event_sgo(
@@ -1018,7 +928,7 @@ class DataIngestionManager:
 
         league_id = upsert_league(
             db, sport_id, f"sgo_{league_id_raw.lower()}", league_name,
-            tier=_league_tier(league_name) or 99,
+            tier=_league_tier(league_name, league_id_raw) or 99,
         )
 
         existing = db.execute(
@@ -1300,8 +1210,13 @@ class DataIngestionManager:
                 "SELECT value FROM betting_config WHERE key = 'active_sports_for_sync'"
             ).fetchone()
             if row and row["value"]:
-                return [s.strip() for s in row["value"].split(",") if s.strip()]
-        return ["football", "basketball", "tennis"]
+                active = [s.strip() for s in row["value"].split(",") if s.strip()]
+            else:
+                active = ["football", "basketball", "tennis"]
+        # Hard scope: only football/tennis/basketball are ever processed, even
+        # if the config is broadened. Everything else is rejected before any
+        # API call.
+        return [s for s in active if scope.sport_allowed(s)]
 
     def _sports_to_slugs(self, kai_sports: List[str]) -> List[str]:
         """Convert Kai sport keys to Odds-API.io slugs."""

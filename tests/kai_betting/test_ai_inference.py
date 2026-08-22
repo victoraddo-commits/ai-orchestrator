@@ -195,3 +195,21 @@ def test_router_records_spend_into_budget(fresh_db):
         rows = conn.execute("SELECT COUNT(*) AS c FROM ai_usage").fetchone()["c"]
     assert result.status == "qwen_only"
     assert rows == 1  # Qwen tier spend recorded once
+
+
+def test_router_budget_exhausted_blocks_inference(fresh_db):
+    from core.kai_betting.db import get_db
+    client = _FakeClient({
+        "qwen": {"prediction": {"probability": 0.6}, "confidence": 50.0, "deep_review": False},
+    })
+    router = BettingAIRouter(client=client)
+    with get_db() as conn:
+        # Seed $4.00 of spend today (exceeds the default $3.00 daily limit).
+        conn.execute(
+            "INSERT INTO ai_usage (id, model_key, cost, request_id, created_at) "
+            "VALUES ('seed', 'qwen', 4.0, 'seed-req', datetime('now'))"
+        )
+        conn.commit()
+        result = router.analyze(_prediction(edge=0.01), conn=conn)
+    assert result.status == "budget_exhausted"
+    assert client.calls == []  # no model invoked

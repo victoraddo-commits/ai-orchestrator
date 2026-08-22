@@ -359,6 +359,7 @@ class DataIngestionManager:
                                     bookmaker_odds=mkt["odds"],
                                     line=mkt.get("line"),
                                     bookmaker_name=mkt.get("bookmaker"),
+                                    conn=db,
                                 )
 
                                 total_predictions += 1
@@ -881,6 +882,7 @@ class DataIngestionManager:
                                 bookmaker_odds=mkt["odds"],
                                 line=mkt.get("line"),
                                 bookmaker_name=mkt.get("bookmaker"),
+                                conn=db,
                             )
                             predictions_generated += 1
                             if self._passes_quality(result, quality, live_data):

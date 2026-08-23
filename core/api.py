@@ -61,7 +61,7 @@ from core.ai.agent_registry import (
     record_benchmark, bootstrap_default_agents,
 )
 from core.ai import circuit_breaker
-from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, chat as ai_chat, remove_provider_from_roles, ROLE_PROVIDERS
+from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, NoCapableWorkerError, chat as ai_chat, remove_provider_from_roles, ROLE_PROVIDERS
 from core import provider_config_editor
 from core.kai.commands import dispatch as kai_dispatch
 from core.kai.planner import gather_signals, list_proposals

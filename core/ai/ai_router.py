@@ -356,6 +356,22 @@ class AllProvidersFailed(Exception):
         self.attempts = attempts or []
 
 
+# Workforce gate (2026-08-22): registry-based admission control. Imported here
+# — AFTER AllProvidersFailed is defined — because gate.py itself subclasses it;
+# placing this above the class would create a circular-import failure that
+# silently disabled the gate. Failure to import leaves routing untouched.
+try:
+    from core.workforce.gate import (
+        filter_candidates as _gate_filter_candidates,
+        NoCapableWorkerError,
+    )
+except Exception:  # pragma: no cover
+    _gate_filter_candidates = None
+
+    class NoCapableWorkerError(AllProvidersFailed):
+        """Fallback when the workforce gate is unavailable."""
+
+
 def classify_task(description):
     text = description.lower()
 
@@ -774,6 +790,16 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
                            "error": f"{breaker.get('consecutive_failures', '?')} consecutive failures"}],
             )
 
+        # Workforce gate: refuse registry-dead/paused/ineligible workers even
+        # on direct routing (caller intent does not override health/policy).
+        if _gate_filter_candidates is not None:
+            _, denials = _gate_filter_candidates([provider], capability)
+            if denials:
+                raise AllProvidersFailed(
+                    f"Provider {provider!r} denied by workforce gate",
+                    attempts=denials,
+                )
+
         # Latency degradation — recorded but NOT a hard block for direct
         # routing (the caller explicitly requested this provider).
         if provider_latency.is_latency_degraded(provider):
@@ -858,6 +884,21 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
 
     def record_failure(name, error_type, detail):
         attempts.append({"provider": name, "error_type": error_type, "error": detail})
+
+    # Workforce gate: strip dead/paused/ineligible workers before iteration;
+    # if nothing survives, fail fast with a typed error so build_manager can
+    # back off instead of burning timeouts.
+    gate_denials = []
+    if _gate_filter_candidates is not None:
+        candidates, gate_denials = _gate_filter_candidates(
+            candidates, capability)
+        if not candidates:
+            raise NoCapableWorkerError(
+                "all candidate providers denied by workforce gate",
+                attempts=gate_denials or [
+                    {"provider": c, "error_type": "policy_denied",
+                     "error": "denied"} for c in candidates],
+            )
 
     for name in candidates:
         provider = ai_provider.get_provider(name)

@@ -44,11 +44,15 @@ def _discover_role_task_types() -> dict:
         except OSError:
             continue
         for line in source.splitlines():
-            line = line.strip()
-            if line.startswith("task_type="):
-                discovered[name] = [
-                    line.split("=", 1)[1].strip().strip('"\'')
-                ]
+            # Real source is e.g. `return delegate(description,
+            # task_type="planning", **kwargs)` — match anywhere in the line.
+            marker = "task_type="
+            idx = line.find(marker)
+            if idx != -1:
+                value = line[idx + len(marker):].strip()
+                # take the first quoted token: "planning", ...
+                if value[:1] in "\"'":
+                    discovered[name] = [value[1:].split(value[0])[0]]
                 break
     return discovered
 

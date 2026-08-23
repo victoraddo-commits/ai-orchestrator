@@ -167,6 +167,16 @@ def run_cycle():
             info("advance_builds timed out after 900s — cycle continues, builds still in flight")
             builds = load_builds()
 
+    # Workforce starvation detection (2026-08-22 spec §2) — safe, alerting +
+    # bounded concurrency boost only.
+    try:
+        from core.workforce.starvation import detect as _detect_starvation
+        starve_events = _detect_starvation(builds or [])
+        for evt in starve_events:
+            info(f"workforce: {evt['action']} build={evt.get('name')}")
+    except Exception as error:
+        info(f"starvation detection failed: {type(error).__name__}")
+
     # After this cycle's builds have been advanced as far as they can go
     # without a human, flag any that are now stuck waiting -- this is the
     # only point where "stuck" is actually knowable (right after advancing).

@@ -1069,6 +1069,15 @@ def get_worker_details():
         quota = quota_data.get(name, {}) if isinstance(quota_data, dict) else {}
         quota_status = quota.get("status", "ok") if isinstance(quota, dict) else "ok"
 
+        # Workforce registry overlay (2026-08-22): identity/permissions/
+        # limits/health come from the registry when the worker is registered.
+        reg = None
+        try:
+            from core.workforce import registry as _registry
+            reg = _registry.get(f"provider:{name}")
+        except Exception:
+            reg = None
+
         workers[name] = {
             "name": name,
             "description": info.get("description", ""),
@@ -1083,6 +1092,12 @@ def get_worker_details():
             "current_task": current_build,
             "queue_depth": queue_depth,
             "avg_duration_ms": avg_duration,
+            "registry_status": reg.status if reg else "unregistered",
+            "environment": reg.environment if reg else "production",
+            "permissions": reg.permissions if reg else {},
+            "limits": reg.limits if reg else {},
+            "consecutive_failures": (reg.health or {}).get("consecutive_failures", 0) if reg else 0,
+            "temporary": reg.temporary if reg else False,
         }
 
     return workers

@@ -62,9 +62,26 @@ def _safe_check_rotation():
         info(f"credential rotation check failed: {type(error).__name__}")
 
 
+def _sync_workforce():
+    """Register/sync all worker classes in the workforce registry. Guarded:
+    registry problems must never break the cycle."""
+    try:
+        from core.workforce.bootstrap import run_full_sync
+        from core.build_manager import MAX_CONCURRENT_BUILDS
+        counts = run_full_sync(max_concurrent_builds=MAX_CONCURRENT_BUILDS)
+        if any(counts.values()):
+            info(f"workforce sync: {counts}")
+    except Exception as error:
+        info(f"workforce sync failed: {type(error).__name__}")
+
+
 def run_cycle():
 
     info("=== orchestrator cycle started ===")
+
+    # Workforce registry sync FIRST (2026-08-22 spec §1): identity records
+    # must exist before any delegate gate / starvation check this cycle.
+    _sync_workforce()
 
     # 2026-08-07: GPU lifecycle/heartbeat/auto-recovery removed —
     # RunPod pods decommissioned.

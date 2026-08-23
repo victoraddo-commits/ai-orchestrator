@@ -835,6 +835,13 @@ def _run_generation(build):
             capability="coding_agent",
         )
     except Exception as error:
+        from core.workforce.gate import NoCapableWorkerError
+        if isinstance(error, NoCapableWorkerError):
+            # Workforce gate denied every candidate (all dead/paused/
+            # ineligible). Back off and retry later instead of failing —
+            # the workers should recover; killing the build helps nobody.
+            _handle_provider_exhaustion(build["id"], error)
+            return
         # delegate() already tried every candidate coding-capable provider
         # (Claude, then OpenCode) before raising -- a genuine every-provider
         # failure, not just "Claude is busy".
@@ -1036,6 +1043,51 @@ def _run_deployment(build):
 
 # ---- V3: Timeout & stale-reference detection ----
 
+# Workforce (2026-08-22): provider-exhaustion backoff. When the delegate gate
+# denies every candidate (NoCapableWorkerError), the build waits for worker
+# recovery instead of dying instantly; escapes to FAILED after N cycles.
+WORKFORCE_MAX_RETRIES = 5
+WORKFORCE_BASE_BACKOFF_SECONDS = 120
+
+
+def _handle_provider_exhaustion(build_id, error):
+    """NoCapableWorkerError handler: exponential backoff instead of instant
+    FAILED — the workforce gate denies transiently-dead workers; the build
+    should wait for recovery, not die. Escapes to FAILED after
+    WORKFORCE_MAX_RETRIES consecutive exhaustions."""
+    retry_count = 0
+
+    def mutate(build):
+        nonlocal retry_count
+        retry_count = int(build.get("_retry_count", 0)) + 1
+        if retry_count >= WORKFORCE_MAX_RETRIES:
+            build["status"] = "FAILED"
+            build["failure_reason"] = (
+                f"workforce exhausted: no capable provider after "
+                f"{retry_count} backoff cycles ({error})")
+            _record_if_terminal(build)
+        else:
+            build["_retry_count"] = retry_count
+            build["_next_retry_at"] = (
+                time.time() + WORKFORCE_BASE_BACKOFF_SECONDS * (2 ** (retry_count - 1)))
+    _update(build_id, mutate)
+    from core.logger import info
+    info(f"build {build_id[:8]}: provider exhaustion backoff #{retry_count}")
+
+
+def _mark_worker_degraded(provider_name, reason):
+    """Timeout/recovery hook: reflect worker failure into the registry."""
+    if not provider_name:
+        return
+    try:
+        from core.workforce import registry
+        if registry.get(f"provider:{provider_name}") is not None:
+            registry.update_status(f"provider:{provider_name}", "degraded",
+                                   reason=reason, increment_failures=True)
+    except Exception:
+        pass
+
+
 def _check_timeouts(builds):
     """Auto-fail builds stuck beyond their timeout. Returns list of events."""
     now = time.time()
@@ -1058,6 +1110,9 @@ def _check_timeouts(builds):
                             f"V3 timeout: stuck in GENERATING for {int(elapsed)}s "
                             f"(limit: {GENERATING_TIMEOUT_SECONDS}s)"
                         )
+                        _mark_worker_degraded(
+                            build.get("generated_by"),
+                            f"generating timeout after {int(elapsed)}s")
                         _record_if_terminal(build)
                         _persist_build(build)
                         events.append({
@@ -1083,6 +1138,9 @@ def _check_timeouts(builds):
                             f"V3 timeout: stuck in DEPLOYING for {int(elapsed)}s "
                             f"(limit: {DEPLOYING_TIMEOUT_SECONDS}s)"
                         )
+                        _mark_worker_degraded(
+                            build.get("generated_by"),
+                            f"deploying timeout after {int(elapsed)}s")
                         _record_if_terminal(build)
                         _persist_build(build)
                         events.append({
@@ -1274,6 +1332,13 @@ def advance_builds():
     # before roadmap-spawned builds. Sort ensures priority builds occupy the
     # first pool worker slots.
     pass2.sort(key=lambda b: (0 if b.get("priority") else 1, b.get("updated", "")))
+
+    # Workforce backoff: skip builds waiting out a provider-exhaustion delay.
+    now_ts = time.time()
+    pass1 = [b for b in pass1
+             if not b.get("_next_retry_at") or b["_next_retry_at"] <= now_ts]
+    pass2 = [b for b in pass2
+             if not b.get("_next_retry_at") or b["_next_retry_at"] <= now_ts]
 
     # Pass 1 runs FIRST and uses all available workers — deployment and
     # code review complete fast, so pool them fully.

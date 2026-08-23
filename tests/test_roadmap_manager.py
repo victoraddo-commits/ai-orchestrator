@@ -830,3 +830,51 @@ def test_self_build_gate_marker_excludes_only_third_party_api_tests_not_local_se
     assert "test_call_openrouter_against_real_api" not in collected
     assert "test_openrouter_claude_sonnet_coding_path_against_real_api" not in collected
     assert "test_call_gemini_against_real_api" not in collected
+
+
+# ---- V3 stale-reference sweep must not demote completed phases ----
+
+@pytest.fixture
+def stale_check_env(tmp_path, monkeypatch):
+    """Isolate ROADMAP_PATH and the builds/archive files the sweep reads."""
+    roadmap_path = tmp_path / "roadmap.json"
+    monkeypatch.setattr(roadmap_engine, "ROADMAP_PATH", roadmap_path)
+    return roadmap_path
+
+
+def _write_phases(path, phases):
+    path.write_text(json.dumps({"schema_version": 1, "phases": phases}))
+
+
+def test_stale_sweep_skips_completed_phase_with_missing_build(stale_check_env):
+    """A completed phase must never be re-failed just because its build_id
+    no longer resolves — completion is terminal and historically true."""
+    from core.build_manager import check_stale_roadmap_references
+
+    _write_phases(stale_check_env, [
+        {"id": "AI-7", "status": "completed", "build_id": "purged-build",
+         "completed": "2026-08-11"},
+    ])
+
+    check_stale_roadmap_references()
+
+    phase = roadmap_engine.load_roadmap()["phases"][0]
+    assert phase["status"] == "completed"
+    assert "failure_reason" not in phase
+
+
+def test_stale_sweep_still_fails_in_progress_phase_with_missing_build(stale_check_env):
+    """The sweep's original purpose holds: an in_progress phase whose build
+    vanished must be failed so the pipeline can advance."""
+    from core.build_manager import check_stale_roadmap_references
+
+    _write_phases(stale_check_env, [
+        {"id": "19G", "status": "in_progress", "build_id": "vanished"},
+    ])
+
+    events = check_stale_roadmap_references()
+
+    phase = roadmap_engine.load_roadmap()["phases"][0]
+    assert phase["status"] == "failed"
+    assert "missing from builds.json" in phase["failure_reason"]
+    assert events[0]["action"] == "stale_reference_failed"

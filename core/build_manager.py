@@ -1169,8 +1169,11 @@ def _check_timeouts(builds):
 def check_stale_roadmap_references():
     """V3: validate all roadmap phases reference existing builds.
 
-    If a phase's build_id points to a build not in builds.json, fail the
-    phase so the next phase can continue.
+    If an IN-PROGRESS phase's build_id points to a build not in builds.json,
+    fail the phase so the next phase can continue. Terminal statuses are
+    skipped: a completed/failed phase's completion is historically true and
+    must not be re-litigated by a purged build record (2026-08-23 archive
+    purge briefly demoted 6 completed phases this way).
     """
     from core.roadmap_engine import load_roadmap, update_phase
 
@@ -1187,7 +1190,11 @@ def check_stale_roadmap_references():
     events = []
     for phase in load_roadmap().get("phases", []):
         bid = phase.get("build_id")
-        if bid and bid not in build_ids:
+        if (
+            bid
+            and phase.get("status") == "in_progress"
+            and bid not in build_ids
+        ):
             update_phase(
                 phase["id"],
                 status="failed",

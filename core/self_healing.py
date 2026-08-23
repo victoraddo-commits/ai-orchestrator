@@ -137,6 +137,13 @@ def run_self_healing():
 
     actions = []
 
+    # 0. Workforce registry reconciliation (2026-08-22 spec §2): probe
+    # degraded/dead workers, revive recovered ones, escalate the rest.
+    try:
+        reconcile_worker_health()
+    except Exception:
+        pass
+
     # 1. Detect and fix stuck builds
     stuck = _detect_stuck_builds()
     for build in stuck:
@@ -170,3 +177,59 @@ def run_self_healing():
         })
 
     return actions
+
+
+# ── Workforce reconciliation (2026-08-22 spec §2 recovery flow) ──────────
+
+_ESCALATED_KEY = "workforce_escalated"
+
+
+def _probe_provider_available(worker_id: str) -> bool:
+    """True when the underlying provider answers its availability probe."""
+    from core.workforce import registry
+    record = registry.get(worker_id)
+    if record is None or record.kind != "provider":
+        return False
+    try:
+        import core.ai_provider as ai_provider
+        prov = ai_provider.get_provider(worker_id.split(":", 1)[1])
+        return bool(prov and prov.get("available_fn") and prov["available_fn"]())
+    except Exception:
+        return False
+
+
+def _notify_operator(message: str) -> None:
+    try:
+        from core.notifications import NotificationManager
+        NotificationManager.enqueue(
+            severity="important", title="Kai workforce",
+            body=message, source="workforce_reconcile")
+    except Exception:
+        pass  # notification failure must never break healing
+
+
+def _with_metadata(worker, extra: dict):
+    import copy
+    updated = copy.deepcopy(worker)
+    updated.metadata.update(extra)
+    return updated
+
+
+def reconcile_worker_health() -> dict:
+    """Cycle step: for every degraded/dead registry worker, probe the real
+    provider. Recovered → revive(idle). Still down → escalate ONCE (flag in
+    metadata until it revives). Returns counts for the cycle summary."""
+    from core.workforce import registry
+    counts = {"revived": 0, "escalated": 0}
+    for worker in registry.list_workers(status="dead") + \
+            registry.list_workers(status="degraded"):
+        if _probe_provider_available(worker.worker_id):
+            registry.revive(worker.worker_id)
+            counts["revived"] += 1
+        elif not worker.metadata.get(_ESCALATED_KEY):
+            registry.register(_with_metadata(worker, {_ESCALATED_KEY: True}))
+            _notify_operator(
+                f"Kai workforce: worker {worker.worker_id} still "
+                f"{worker.status} ({worker.health.get('last_reason')})")
+            counts["escalated"] += 1
+    return counts

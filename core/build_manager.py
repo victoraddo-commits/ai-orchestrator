@@ -103,6 +103,17 @@ def _detect_dedicated_gpu_providers():
 MAX_CONCURRENT_BUILDS = _detect_dedicated_gpu_providers()
 
 
+def _effective_max_concurrent() -> int:
+    """MAX_CONCURRENT_BUILDS plus any active starvation boost, capped at
+    base + HARD_CEILING_EXTRA. Falls back to base on any registry trouble."""
+    base = MAX_CONCURRENT_BUILDS
+    try:
+        from core.workforce.starvation import current_boost, HARD_CEILING_EXTRA
+        return min(base + current_boost(), base + HARD_CEILING_EXTRA)
+    except Exception:
+        return base
+
+
 # Deliberately a separate store from approval_queue.json -- that queue is
 # swept every cycle by remediation_runner.process(), which calls
 # execute_action() (docker-restart only) on every approved request
@@ -1348,10 +1359,11 @@ def advance_builds():
 
         # Use remaining capacity for each pass
         active_count = len([b for b in builds if b.get("status") in _RUNNING_STATUSES])
-        available = max(1, MAX_CONCURRENT_BUILDS - active_count)
+        effective = _effective_max_concurrent()
+        available = max(1, effective - active_count)
         batch = batch[:available]
 
-        with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_BUILDS) as pool:
+        with ThreadPoolExecutor(max_workers=effective) as pool:
             list(pool.map(_advance_one_build, batch))
 
     # V3: cleanup sandboxes for terminal builds

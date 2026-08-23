@@ -275,14 +275,22 @@ class TestPodRoutingV3:
         # not the rotating front.
         assert "gpuai_minimax" not in CODING_ROTATING_FRONT
 
-    def test_deepseek_native_pro_is_review_primary(self):
+    # 2026-08-12 operator directive: local qwen2.5:7b (Ollama on Proxmox B) is
+    # Kai's main brain -- primary for planning/architecture/review. The old
+    # deepseek_native_pro-primary assertions predate that change.
+    def test_local_is_review_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["review"][0] == "deepseek_native_pro"
+        assert ROLE_PROVIDERS["review"][0] == "local"
 
-    def test_deepseek_native_pro_is_architecture_primary(self):
+    def test_local_is_architecture_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["architecture"][0] == "deepseek_native_pro"
+        assert ROLE_PROVIDERS["architecture"][0] == "local"
 
-    def test_deepseek_native_pro_is_planning_primary(self):
+    def test_local_is_planning_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["planning"][0] == "deepseek_native_pro"
+        assert ROLE_PROVIDERS["planning"][0] == "local"
+
+    def test_deepseek_native_pro_stays_in_fallback_chains(self):
+        from core.ai.ai_router import ROLE_PROVIDERS
+        for role in ("review", "architecture", "planning"):
+            assert "deepseek_native_pro" in ROLE_PROVIDERS[role]

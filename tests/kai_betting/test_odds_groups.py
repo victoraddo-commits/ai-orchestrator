@@ -45,8 +45,10 @@ def test_ensure_prediction_saved_reuses_existing_row_with_source_id(fresh_db):
         sport_id = db.execute("SELECT id FROM sports WHERE key = 'basketball'").fetchone()["id"]
         home_id = upsert_team(db, sport_id, "Home FC")
         away_id = upsert_team(db, sport_id, "Away FC")
+        # Far-future start so event_is_started() never filters it out
+        # (a hard-coded 2026 date became stale and silently dropped the row).
         event_id = upsert_event(db, sport_id, "ext-1", home_id, away_id,
-                                 "2026-08-20T18:00:00Z")
+                                 "2099-01-01T18:00:00Z")
         pred_id = _insert_real_prediction(db, event_id, sport_id)
 
         result = _make_result(source_prediction_id=pred_id)
@@ -65,8 +67,10 @@ def test_ensure_prediction_saved_does_not_duplicate_across_repeated_calls(fresh_
         sport_id = db.execute("SELECT id FROM sports WHERE key = 'basketball'").fetchone()["id"]
         home_id = upsert_team(db, sport_id, "Home FC")
         away_id = upsert_team(db, sport_id, "Away FC")
+        # Far-future start so event_is_started() never filters it out
+        # (a hard-coded 2026 date became stale and silently dropped the row).
         event_id = upsert_event(db, sport_id, "ext-1", home_id, away_id,
-                                 "2026-08-20T18:00:00Z")
+                                 "2099-01-01T18:00:00Z")
         pred_id = _insert_real_prediction(db, event_id, sport_id)
 
         result = _make_result(source_prediction_id=pred_id)
@@ -83,8 +87,10 @@ def test_ensure_prediction_saved_preserves_event_id(fresh_db):
         sport_id = db.execute("SELECT id FROM sports WHERE key = 'basketball'").fetchone()["id"]
         home_id = upsert_team(db, sport_id, "Home FC")
         away_id = upsert_team(db, sport_id, "Away FC")
+        # Far-future start so event_is_started() never filters it out
+        # (a hard-coded 2026 date became stale and silently dropped the row).
         event_id = upsert_event(db, sport_id, "ext-1", home_id, away_id,
-                                 "2026-08-20T18:00:00Z")
+                                 "2099-01-01T18:00:00Z")
         pred_id = _insert_real_prediction(db, event_id, sport_id)
 
         result = _make_result(source_prediction_id=pred_id)
@@ -99,8 +105,10 @@ def test_get_candidates_carries_source_prediction_id(fresh_db):
         sport_id = db.execute("SELECT id FROM sports WHERE key = 'basketball'").fetchone()["id"]
         home_id = upsert_team(db, sport_id, "Home FC")
         away_id = upsert_team(db, sport_id, "Away FC")
+        # Far-future start so event_is_started() never filters it out
+        # (a hard-coded 2026 date became stale and silently dropped the row).
         event_id = upsert_event(db, sport_id, "ext-1", home_id, away_id,
-                                 "2026-08-20T18:00:00Z")
+                                 "2099-01-01T18:00:00Z")
         pred_id = _insert_real_prediction(db, event_id, sport_id)
 
     engine = OddsEngine()

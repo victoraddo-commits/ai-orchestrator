@@ -214,9 +214,12 @@ class TestTilesAPI:
         resp = client.get("/mobile/tiles")
         data = resp.json()
 
+        # Invariant: internal tiles are same-origin relative paths (never
+        # absolute/external). Tiles may point at /kai/*, /mobile, or other
+        # API-served pages like /command-center.
         for tile in data["tiles"]:
             if tile["type"] == "internal":
-                assert tile["url"].startswith("/kai/") or tile["url"].startswith("/mobile")
+                assert tile["url"].startswith("/")
 
     def test_each_tile_has_color_and_description(self, client):
         resp = client.get("/mobile/tiles")

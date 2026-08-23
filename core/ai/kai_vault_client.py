@@ -18,11 +18,11 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Default routes through the persistent SSH tunnel (kai-vault-tunnel.service,
-# 127.0.0.1:18120 -> CT107 192.168.1.117:8120): CT107's port has no DNAT rule
-# on network-core-b, so 192.168.1.117 is not directly reachable from this LXC.
-# If a DNAT rule for 8120 is ever added to CT102 (10.250.0.2), switch to it.
-VAULT_URL = os.environ.get("VAULT_URL", "http://127.0.0.1:18120")
+# Direct to kai-vault on Proxmox B CT107 via the network-core-a transit route
+# (192.168.1.0/24 via 10.250.0.2 over ZeroTier). Restored 2026-08-23 after the
+# zt-route-b.service boot race took nc-a's route down; before that fix this
+# default was an SSH tunnel endpoint (127.0.0.1:18120).
+VAULT_URL = os.environ.get("VAULT_URL", "http://192.168.1.117:8120")
 VAULT_TOKEN_FILE = os.environ.get(
     "VAULT_TOKEN_FILE", "/root/.credentials/ai-orchestrator-vault-token")
 VAULT_TIMEOUT = float(os.environ.get("VAULT_TIMEOUT", "5"))

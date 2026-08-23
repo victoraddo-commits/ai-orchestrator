@@ -435,6 +435,14 @@ def migrate_plaintext_keys() -> dict:
 
 def get_vault_status() -> dict:
     """Return vault health and configuration."""
+    global _MASTER_KEY, _MASTER_KEY_SOURCE
+    # Resolve the master key lazily so the reported source reflects reality.
+    # Before this, a fresh process reported the module default "none" until
+    # the first encrypt/decrypt ran — which once read as an ephemeral-key
+    # risk in the 2026-08-22 ecosystem audit when the key was actually
+    # persisted at memory/vault_master_key (0600).
+    if _MASTER_KEY is None:
+        _load_master_key()
     return {
         "encryption": "AES-256-GCM" if _HAS_CRYPTO else "unavailable",
         "master_key_source": _MASTER_KEY_SOURCE,

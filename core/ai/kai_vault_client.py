@@ -18,7 +18,11 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-VAULT_URL = os.environ.get("VAULT_URL", "http://192.168.1.117:8120")
+# Default routes through the persistent SSH tunnel (kai-vault-tunnel.service,
+# 127.0.0.1:18120 -> CT107 192.168.1.117:8120): CT107's port has no DNAT rule
+# on network-core-b, so 192.168.1.117 is not directly reachable from this LXC.
+# If a DNAT rule for 8120 is ever added to CT102 (10.250.0.2), switch to it.
+VAULT_URL = os.environ.get("VAULT_URL", "http://127.0.0.1:18120")
 VAULT_TOKEN_FILE = os.environ.get(
     "VAULT_TOKEN_FILE", "/root/.credentials/ai-orchestrator-vault-token")
 VAULT_TIMEOUT = float(os.environ.get("VAULT_TIMEOUT", "5"))

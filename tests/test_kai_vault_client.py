@@ -22,8 +22,11 @@ def test_fetch_secret_none_on_non_200():
 
 
 def test_no_token_means_no_vault_source():
+    # Point VAULT_TOKEN_FILE at a path that cannot exist (module global is
+    # resolved at import, so patch the attribute, not the env). Asserting on
+    # the RETURN value would echo a real token into output if this ever fails.
     with mock.patch.dict(kvc.os.environ, {"VAULT_BEARER_TOKEN": ""}), \
-         mock.patch.object(kvc.os.path, "isfile", return_value=False):
+         mock.patch.object(kvc, "VAULT_TOKEN_FILE", "/nonexistent/vault-token"):
         assert kvc.load_token() is None
         assert kvc.fetch_for_provider("gpuai") is None
 

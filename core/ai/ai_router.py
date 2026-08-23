@@ -995,7 +995,7 @@ def get_worker_details():
     depth. Reuses existing usage history and provider health data."""
     history = get_usage_history()
     providers = ai_provider.list_providers()
-    quota_data = provider_health.get_all_snapshots() or {}
+    quota_data = provider_health.get_all_quota_snapshots() or {}
 
     from core.build_manager import load_builds as _load_builds
     all_builds = []

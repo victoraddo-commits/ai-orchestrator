@@ -187,27 +187,43 @@ def store_credential(provider: str, api_key: str, api_base: str = "",
 
 
 def retrieve_credential(provider: str) -> Optional[dict]:
-    """Retrieve and decrypt a provider's credential.
+    """Retrieve a provider's credential.
 
-    Returns the same shape as secrets.get_secret() but with the actual
-    plaintext api_key decrypted from the vault.
+    Source order (add-only, 2026-08-22): kai-vault machine plane first;
+    local AES-GCM store as fallback when the vault has no value or is
+    unreachable. The returned dict gains a "source" key for auditing —
+    values themselves are never logged anywhere.
     """
     stored = _secrets_store.get_secret(provider)
-    if stored is None:
-        return None
+    plaintext_key = None
+    source = "local-vault"
 
-    encrypted_key = stored["api_key"]
+    if stored is not None:
+        encrypted_key = stored["api_key"]
+        try:
+            plaintext_key = decrypt(encrypted_key)
+        except Exception:
+            # Key might already be plaintext (pre-vault migration)
+            plaintext_key = encrypted_key
+
     try:
-        plaintext_key = decrypt(encrypted_key)
+        from core.ai.kai_vault_client import fetch_for_provider
+        vault_value = fetch_for_provider(provider)
+        if vault_value:
+            plaintext_key = vault_value
+            source = "kai-vault"
     except Exception:
-        # Key might already be plaintext (pre-vault migration)
-        plaintext_key = encrypted_key
+        pass  # vault trouble never blocks credential resolution
+
+    if plaintext_key is None:
+        return None
 
     return {
         "api_key": plaintext_key,
-        "api_base": stored.get("api_base", ""),
-        "models": stored.get("models", []),
-        "created_at": stored.get("created_at"),
+        "api_base": (stored or {}).get("api_base", ""),
+        "models": (stored or {}).get("models", []),
+        "created_at": (stored or {}).get("created_at"),
+        "source": source,
     }
 
 

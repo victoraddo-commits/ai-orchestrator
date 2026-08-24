@@ -180,14 +180,85 @@ def cmd_cr_reject(args):
 
 
 _MONEY_RE = re.compile(
-    r"^/?(?:money\s+)?(?P<cmd>pending|treasury|ops|cr|pay)\b(?P<rest>.*)$",
+    r"^/?(?:money\s+)?(?P<cmd>pending|treasury|ops|cr|pay|wallets|payouts|risk|menu)\b(?P<rest>.*)$",
     re.IGNORECASE,
 )
+
+_MENU = (
+    "🤖 KAI bot — command menu\n"
+    "\n"
+    "💰 Money:\n"
+    "/pending — capital requests awaiting your approval\n"
+    "/treasury — balances + pnl overview\n"
+    "/ops — operation status table\n"
+    "/risk — recent risk events\n"
+    "cr approve <id> [amt] — approve (+ execute)\n"
+    "cr approve <id> 0.5 — partial approval\n"
+    "cr reject <id> — reject request\n"
+    "cr exec <id> — execute an already-approved request\n"
+    "\n"
+    "👛 Payouts & wallets:\n"
+    "/wallets — your registered withdrawal wallets + funding address\n"
+    "/payouts — recent payouts + status\n"
+    "\n"
+    "Everything else: just chat with Kai normally."
+)
+
+
+def cmd_wallets():
+    code, d = _api("GET", "/wallets")
+    if code == 0:
+        return f"⚠️ Money Center unreachable: {d.get('error', 'network')}"
+    lines = ["👛 Registered withdrawal wallets:"]
+    for w in d.get("wallets", []):
+        state = "DISABLED" if w.get("disabled") else "active"
+        lines.append(f"  #{w['id']} {w.get('label')} ({w.get('chain')}) [{state}]\n     {w.get('address')}")
+    f = d.get("funding") or {}
+    evm = ((f.get("addresses") or {}).get("evm") or {})
+    if evm.get("address"):
+        lines.append("\n📥 Funding (send capital here):")
+        lines.append(f"  EVM: {evm['address']} ({', '.join(evm.get('assets', []))})")
+    if not len(d.get("wallets", [])) and not evm:
+        return "No wallets registered yet. Add them in the dashboard Wallet tab."
+    return "\n".join(lines)
+
+
+def cmd_payouts():
+    code, d = _api("GET", "/payouts")
+    if code == 0:
+        return f"⚠️ Money Center unreachable: {d.get('error', 'network')}"
+    rows = d.get("payouts", [])
+    if not rows:
+        return "✅ No payouts yet."
+    lines = ["💸 Recent payouts:"]
+    for p in rows[:10]:
+        lines.append(f"  #{p['id']} {_fmt_usd(p.get('amount'))} → {(p.get('dest_address') or '')[:14]}… [{p.get('status')}] {p.get('from_treasury')}")
+    return "\n".join(lines)
+
+
+def cmd_risk():
+    code, d = _api("GET", "/risk/events")
+    if code == 0:
+        return f"⚠️ Money Center unreachable: {d.get('error', 'network')}"
+    rows = d.get("events", d) if isinstance(d, dict) else d
+    rows = [r for r in (rows or []) if isinstance(r, dict)]
+    open_rows = [r for r in rows if not r.get("resolved_at")]
+    if not open_rows:
+        return "✅ No unresolved risk events."
+    lines = ["⚠️ Unresolved risk events:"]
+    for r in open_rows[:10]:
+        sev = str(r.get("severity", "?")).upper()
+        lines.append(f"  [{sev}] {r.get('kind', '?')} · {r.get('operation_slug', '')}: {str(r.get('detail', ''))[:90]}")
+    return "\n".join(lines)
 
 
 def handle_money_command(text):
     """Return a reply string if `text` is a money command, else None."""
-    m = _MONEY_RE.match(text.strip())
+    stripped = text.strip()
+    lowered = lowered_case = stripped.lower()
+    if lowered in ("/menu", "/start", "/help"):
+        return _MENU
+    m = _MONEY_RE.match(stripped)
     if not m:
         return None
     cmd = m.group("cmd").lower()
@@ -198,6 +269,14 @@ def handle_money_command(text):
         return cmd_treasury()
     if cmd == "ops":
         return cmd_ops()
+    if cmd == "wallets":
+        return cmd_wallets()
+    if cmd == "payouts":
+        return cmd_payouts()
+    if cmd == "risk":
+        return cmd_risk()
+    if cmd == "menu":
+        return _MENU
     if cmd == "cr":
         sub = rest.split(None, 1)
         action = sub[0].lower() if sub else ""

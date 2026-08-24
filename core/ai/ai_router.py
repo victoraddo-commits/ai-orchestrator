@@ -258,12 +258,19 @@ ROLE_PROVIDERS = {
     # falls straight through to the cloud chain below -- local is a live
     # primary, never a hard dependency. Coding is untouched: neither local
     # model registers a run_coding_task.
-    "planning": ["local", "deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "architecture": ["local", "deepseek_native_pro", "gemini", "geminix", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "log_analysis": ["llama3", "local", "deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["llama3", "local", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "groq", "claude"],
-    "review": ["local", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
-    "classification": ["llama3", "local", "deepseek_native_flash", "deepseek_native_pro", "groq", "omniroute_deepseek_flash", "gemini", "geminix", "claude"],
+    # 2026-08-23: DeepSeek (native + via OmniRoute) demoted below the
+    # verified-live providers -- BOTH deepseek billing accounts are 402
+    # Insufficient Balance (live-verified), so as primaries they burned a
+    # failover attempt on every call. Operator directive 2026-08-23: keep
+    # all entries in place, reorder only; restore original order once the
+    # accounts are funded. gemini/geminix/openrouter live-probed OK;
+    # local/llama3 availability-gated on Ollama.
+    "planning": ["local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "architecture": ["local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "log_analysis": ["llama3", "local", "groq", "gemini", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
+    "documentation": ["llama3", "local", "gemini", "groq", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
+    "review": ["local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "classification": ["llama3", "local", "groq", "gemini", "geminix", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -277,13 +284,15 @@ ROLE_PROVIDERS = {
 # fixed-order treatment for from day one -- not a claim that evidence
 # already backs this ordering, since it's brand new.
 LAW_TUTOR_ROLE_PROVIDERS = {
-    # 2026-08-09: DeepSeek PRIMARY per operator directive.
-    "law_document": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "geminix", "omniroute_deepseek_flash", "claude"],
-    "law_case_analysis": ["deepseek_native_pro", "deepseek_native_flash", "claude", "omniroute_deepseek_flash"],
-    "law_teaching": ["deepseek_native_pro", "deepseek_native_flash", "claude"],
-    "law_exam": ["deepseek_native_pro", "claude"],
-    "law_flashcards": ["deepseek_native_flash", "groq", "claude"],
-    "law_chat": ["deepseek_native_flash", "groq", "claude"],
+    # 2026-08-23: deepseek demoted below live providers (402 unfunded, see
+    # ROLE_PROVIDERS note). Order restores to the 2026-08-09 arrangement
+    # when funded.
+    "law_document": ["gemini", "geminix", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "law_case_analysis": ["gemini", "claude", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash"],
+    "law_teaching": ["gemini", "claude", "deepseek_native_pro", "deepseek_native_flash"],
+    "law_exam": ["gemini", "claude", "deepseek_native_pro"],
+    "law_flashcards": ["groq", "gemini", "claude", "deepseek_native_flash"],
+    "law_chat": ["groq", "gemini", "claude", "deepseek_native_flash"],
     # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
     "law_document_vision": ["gpuai_gemma", "claude"],
 }
@@ -296,13 +305,14 @@ LAW_TUTOR_ROLE_PROVIDERS = {
 # Flashcard generation - needs structured output and organization
 # General legal chat - needs quick responses and conversational ability
 JURIS_KAI_ROLE_PROVIDERS = {
-    # 2026-08-09: DeepSeek PRIMARY per operator directive.
-    "juris_legal_teaching": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "groq"],
-    "juris_case_analysis": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "omniroute_deepseek_flash"],
-    "juris_research": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "geminix", "omniroute_deepseek_flash"],
-    "juris_argument_construction": ["deepseek_native_pro", "deepseek_native_flash", "gemini", "groq"],
-    "juris_flashcards": ["deepseek_native_flash", "deepseek_native_pro", "groq"],
-    "juris_chat": ["deepseek_native_flash", "deepseek_native_pro", "groq", "gemini"],
+    # 2026-08-23: deepseek demoted below live providers (402 unfunded, see
+    # ROLE_PROVIDERS note).
+    "juris_legal_teaching": ["gemini", "groq", "deepseek_native_pro", "deepseek_native_flash"],
+    "juris_case_analysis": ["gemini", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash"],
+    "juris_research": ["gemini", "geminix", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash"],
+    "juris_argument_construction": ["gemini", "groq", "deepseek_native_pro", "deepseek_native_flash"],
+    "juris_flashcards": ["groq", "deepseek_native_flash", "deepseek_native_pro"],
+    "juris_chat": ["groq", "gemini", "deepseek_native_flash", "deepseek_native_pro"],
     # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
     "juris_document_vision": ["gpuai_gemma"],
 }
@@ -311,7 +321,16 @@ ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
 # 2026-08-09: Legal module coding — deepseek via OmniRoute primary, opencode_claude fallback.
-ROLE_PROVIDERS["legal_coding"] = ["omniroute_deepseek_coding", "claude"]
+# 2026-08-23: claude leads while OmniRoute/DeepSeek is unfunded (402) —
+# restore deepseek to front when the account is topped up.
+ROLE_PROVIDERS["legal_coding"] = ["claude", "omniroute_deepseek_coding"]
+
+# 2026-08-23 (coding role): omniroute_deepseek_coding demoted below claude
+# for the same funding reason. NOTE: claude's own model path still resolves
+# through CloudCLI/Claude Code settings → ds/deepseek-v4-pro via OmniRoute
+# (operator chose "leave as is" 2026-08-23), so the coding chain remains
+# down until DeepSeek is funded. Honest state; no config pretense.
+ROLE_PROVIDERS["coding"] = ["claude", "omniroute_deepseek_coding", "omniroute", "gpuai_minimax"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -394,7 +413,10 @@ def classify_task(description):
 # 2026-08-09: DeepSeek (via OmniRoute) is primary coding agent per operator
 # directive. omniroute_deepseek_coding routes through OmniRoute's
 # auto/best-coding model which prefers DeepSeek models.
-CODING_ROTATING_FRONT = ["omniroute_deepseek_coding"]
+# 2026-08-23: front rotation emptied while OmniRoute/DeepSeek is unfunded —
+# a rotating front member that 402s on every call just burns failover time.
+# Restore to ["omniroute_deepseek_coding"] when the account is topped up.
+CODING_ROTATING_FRONT = []
 
 # --- Purge disabled providers from all routing on import ---
 # Reads memory/provider_state.json and removes any provider whose persisted
@@ -967,6 +989,13 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error))
             if capability == "coding_agent":
                 _record_coding_failure_health(name, str(error))
+            # 2026-08-23: billing/quota markers are capability-agnostic —
+            # a 402 Insufficient Balance means the NEXT attempt skips this
+            # provider regardless of task type (previously only coding
+            # failures fed the quota snapshot, so text roles re-burned a
+            # failover attempt on every call while an account was unfunded).
+            if any(marker in str(error).lower() for marker in _QUOTA_EXCEEDED_MARKERS):
+                provider_health.capture_quota_exceeded(name, detail=str(error))
             # 17R: record circuit breaker failure and latency on every error
             circuit_breaker.record_failure(name)
             provider_latency.record_latency(name, duration_ms)

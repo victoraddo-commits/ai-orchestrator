@@ -568,6 +568,9 @@ body {
 
   <!-- Quick Actions -->
   <div class="quick-actions">
+    <a href="#" onclick="startVoice(event)" class="quick-action" id="voice-btn">
+      <span class="qa-icon">🎙️</span>Talk to Kai
+    </a>
     <a href="/command-center" class="quick-action">
       <span class="qa-icon">🫀</span>Health Check
     </a>
@@ -679,6 +682,72 @@ document.getElementById('search').addEventListener('input',function(e){
     h.classList.toggle('hidden',allHidden);
   });
 });
+
+// ── Voice (JARVIS P6/P17): hold-to-talk → /kai/voice/chat ──
+let _mediaStream=null, _recorder=null, _chunks=[];
+async function startVoice(e){
+  if(e)e.preventDefault();
+  try{
+    _mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    _chunks=[];
+    _recorder=new MediaRecorder(_mediaStream);
+    _recorder.ondataavailable=x=>_chunks.push(x.data);
+    _recorder.onstop=async()=>{
+      _mediaStream.getTracks().forEach(t=>t.stop());
+      const blob=new Blob(_chunks,{type:'audio/webm'});
+      document.getElementById('voice-btn').innerHTML='<span class="qa-icon">🧠</span>Kai is thinking…';
+      try{
+        // convert webm→wav via AudioContext decode for the brain API
+        const arr=await blob.arrayBuffer();
+        const ac=new (window.AudioContext||window.webkitAudioContext)();
+        const buf=await ac.decodeAudioData(arr);
+        const wav=encodeWav(buf);
+        const b64=btoa(String.fromCharCode(...new Uint8Array(wav)));
+        const r=await fetch('/kai/voice/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({audio:b64})});
+        const d=await r.json();
+        if(d.response){
+          document.getElementById('voice-btn').innerHTML='<span class="qa-icon">💬</span>'+d.response.slice(0,60);
+          if(d.audio_base64){playWav(d.audio_base64);}
+        }else{
+          document.getElementById('voice-btn').innerHTML='<span class="qa-icon">🎙️</span>'+(d.transcript?'heard: '+d.transcript.slice(0,40):'no response');
+        }
+      }catch(err){
+        document.getElementById('voice-btn').innerHTML='<span class="qa-icon">⚠️</span>Voice error';
+      }
+      setTimeout(()=>{document.getElementById('voice-btn').innerHTML='<span class="qa-icon">🎙️</span>Talk to Kai';},6000);
+    };
+    document.getElementById('voice-btn').innerHTML='<span class="qa-icon">🔴</span>Listening… tap to send';
+    _recorder.start();
+    // auto-stop after 8s or on second tap
+    document.getElementById('voice-btn').onclick=(ev)=>{ev.preventDefault();if(_recorder.state==='recording')_recorder.stop();};
+    setTimeout(()=>{if(_recorder&&_recorder.state==='recording')_recorder.stop();},8000);
+  }catch(err){
+    alert('Microphone unavailable: '+err.message);
+  }
+}
+function encodeWav(audioBuffer){
+  const numCh=1,sr=16000;
+  const src=audioBuffer.getChannelData(0);
+  // downsample naive
+  const ratio=Math.max(1,Math.floor(audioBuffer.sampleRate/sr));
+  const len=Math.floor(src.length/ratio);
+  const buffer=new ArrayBuffer(44+len*2);
+  const view=new DataView(buffer);
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)view.setUint8(o+i,s.charCodeAt(i));};
+  w(0,'RIFF');view.setUint32(4,36+len*2,true);w(8,'WAVE');w(12,'fmt ');
+  view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,numCh,true);
+  view.setUint32(24,audioBuffer.sampleRate/ratio,true);view.setUint32(28,(audioBuffer.sampleRate/ratio)*numCh*2,true);
+  view.setUint16(32,numCh*2,true);view.setUint16(34,16,true);w(36,'data');view.setUint32(40,len*2,true);
+  let o=44;
+  for(let i=0;i<len;i++){const v=Math.max(-1,Math.min(1,src[i*ratio]));view.setInt16(o,v<0?v*0x8000:v*0x7FFF,true);o+=2;}
+  return buffer;
+}
+function playWav(b64){
+  const bin=atob(b64);const bytes=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+  const blob=new Blob([bytes],{type:'audio/wav'});
+  new Audio(URL.createObjectURL(blob)).play();
+}
 
 // ── Notification badge ──
 async function updateNotifs(){

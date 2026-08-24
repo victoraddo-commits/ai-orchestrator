@@ -3200,6 +3200,67 @@ def handle_kai_chat(text: str, operator: str) -> dict:
     return reply
 
 
+# ── JARVIS P6: Voice surface (STT/TTS router, local-first) ─────────────────
+from fastapi import File as _File, UploadFile as _UploadFile
+from fastapi.responses import Response as _Response
+
+
+@app.post("/kai/voice/transcribe")
+async def kai_voice_transcribe(file: _UploadFile = _File(...)):
+    """Audio → text via the voice router (local-first provider selection)."""
+    from core.voice_router import transcribe
+    data = await file.read()
+    result = transcribe(data, filename=file.filename or "audio.wav")
+    if not result.get("ok"):
+        raise HTTPException(status_code=503, detail=result.get("error", "voice unavailable"))
+    return result
+
+
+class _SpeakBody(BaseModel):
+    text: str
+
+
+@app.post("/kai/voice/speak")
+def kai_voice_speak(body: _SpeakBody):
+    """Text → WAV audio via the voice router."""
+    from core.voice_router import speak
+    result = speak(body.text)
+    if not result.get("ok"):
+        raise HTTPException(status_code=503, detail=result.get("error", "voice unavailable"))
+    return _Response(content=result["audio"], media_type="audio/wav")
+
+
+class _VoiceChatBody(BaseModel):
+    # full voice round: transcribe → chat → speak; returns text + audio
+    audio: str  # base64-encoded wav
+
+
+@app.post("/kai/voice/chat")
+async def kai_voice_chat(body: _VoiceChatBody):
+    import base64 as _b64
+    from core.voice_router import transcribe, speak
+    try:
+        audio = _b64.b64decode(body.audio)
+    except Exception:
+        raise HTTPException(400, "audio must be base64 wav")
+    tr = transcribe(audio)
+    if not tr.get("ok"):
+        raise HTTPException(503, tr.get("error", "transcribe unavailable"))
+    text = tr.get("text", "")
+    if not text:
+        return {"transcript": "", "response": "", "audio": None}
+    reply = handle_kai_chat(text, operator="voice")
+    response_text = str(reply.get("response") or reply.get("result") or "")
+    sp = speak(response_text[:1000])
+    return {
+        "transcript": text,
+        "stt_provider": tr.get("provider"),
+        "response": response_text,
+        "audio_base64": (_b64.b64encode(sp["audio"]).decode() if sp.get("ok") else None),
+        "tts_ok": sp.get("ok", False),
+    }
+
+
 @app.post("/kai/chat")
 def kai_chat_endpoint(
     body: KaiChatRequest,

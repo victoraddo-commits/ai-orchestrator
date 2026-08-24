@@ -848,6 +848,8 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
       <a class="nav-item" href="#money" data-hash="money"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span class="label">Money</span></a>
       <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
+      <a class="nav-item" href="#missions" data-hash="missions"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">Missions</span></a>
+      <a class="nav-item" href="#executive" data-hash="executive"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="label">Executive</span></a>
       <div class="sidebar-section-label">Infrastructure</div>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
       <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
@@ -968,6 +970,8 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 
       <!-- AI WORKFORCE -->
       <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-missions"><div id="missions-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-executive"><div id="executive-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-money"><div id="money-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
@@ -1270,13 +1274,72 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
 document.querySelectorAll('.nav-item').forEach(el=>{el.addEventListener('click',e=>{e.preventDefault();location.hash=el.dataset.hash;});});
 $('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 $('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')$('login-pass').focus();});
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: MISSIONS (JARVIS P11) + EXECUTIVE (P10)
+// ═══════════════════════════════════════════════════════════════════
+async function loadMissions() {
+  const el=$('missions-content');
+  try{
+    const [ms,gs]=await Promise.all([api('/kai/tools/missions'),api('/kai/tools/executive')]);
+    const goals=await api('/kai/tools').then(t=>Promise.all([])).catch(()=>null);
+    let html='<h3>Missions</h3>';
+    const rows=(ms.missions||[]);
+    if(!rows.length){html+='<p class="empty">No missions yet. Ask Kai in chat: "create a mission to…"</p>';}
+    else{
+      html+='<table><thead><tr><th>ID</th><th>Objective</th><th>Status</th><th>Progress</th><th></th></tr></thead><tbody>';
+      for(const m of rows.slice(0,15)){
+        const st=(m.status||'').toLowerCase();
+        const bdg=st==='done'?'ok':st.includes('fail')||st==='cancelled'?'bad':st==='running'?'warn':'info';
+        const canCancel=['running','planned'].includes(st);
+        html+=`<tr><td style="font-size:0.68rem">${esc(m.id)}</td><td>${esc(m.objective)}</td><td><span class="badge ${bdg}">${esc(m.status)}</span></td><td>${m.progress_pct||0}%</td>`;
+        html+=`<td>${canCancel?`<button class="btn btn-sm" onclick="cancelMission('${esc(m.id)}')">Stop</button>`:''}</td></tr>`;}
+      html+='</tbody></table>';}
+    // approvals needing review
+    if(gs.counts && gs.counts.approvals_pending>0){
+      html+=`<h3>Approvals <span class="badge warn">${gs.counts.approvals_pending} pending</span></h3>`;
+      html+='<table><thead><tr><th>Action</th><th>Reason</th><th></th></tr></thead><tbody>';
+      for(const a of (gs.needs_attention||[]).filter(x=>x.severity==='approval').slice(0,10)){
+        html+=`<tr><td>${esc(a.action)}</td><td style="font-size:0.68rem">${esc(a.detail)}</td><td>-</td></tr>`;}
+      html+='</tbody></table>';
+      html+='<p style="font-size:0.7rem;color:var(--fg-muted)">Review via Telegram ("cr approve &lt;id&gt;") or /approvals endpoint.</p>';}
+    el.innerHTML=html;
+  }catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+window.cancelMission=async function(id){
+  if(!confirm('Cancel mission '+id+'?'))return;
+  try{await api(`/kai/tools/kai.missions.cancel/execute`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({args:{mission_id:id,reason:'operator cancelled from Command Center'}})});loadMissions();}
+  catch(e){alert('Cancel failed: '+e.message);}
+};
+async function loadExecutive() {
+  const el=$('executive-content');
+  try{
+    const p=await api('/kai/tools/executive');
+    let html=`<h3>What matters now <span class="badge ${p.counts.critical?'bad':p.counts.attention?'warn':'ok'}">${p.counts.critical} critical · ${p.counts.attention} attention · ${p.counts.watch} watching</span></h3>`;
+    if(p.critical&&p.critical.length){
+      html+='<h4>🚨 Critical</h4><table><tbody>';
+      p.critical.forEach(x=>{html+=`<tr><td><span class="badge bad">${esc(x.label||x.entity)}</span></td><td>${esc(x.status||x.detail||'')}</td></tr>`;});
+      html+='</tbody></table>';}
+    if(p.needs_attention&&p.needs_attention.length){
+      html+='<h4>⚠️ Needs attention</h4><table><tbody>';
+      p.needs_attention.forEach(x=>{html+=`<tr><td style="font-size:0.72rem">${esc(x.detail||x.entity)}</td></tr>`;});
+      html+='</tbody></table>';}
+    if(!((p.critical||[]).length)&&!((p.needs_attention||[]).length))html+='<p class="empty">✅ Everything important is under control.</p>';
+    // recent briefings
+    try{const b=await api('/kai/tools/briefings?limit=5');if(b.briefings&&b.briefings.length){
+      html+='<h4>Recent briefings</h4><ul style="font-size:0.72rem;color:var(--fg-muted)">';
+      b.briefings.forEach(x=>{html+=`<li>${esc((x.ts||'').slice(0,16).replace('T',' '))} — ${x.counts?(x.counts.critical+'C/'+x.counts.attention+'A'):'-'}</li>`;});
+      html+='</ul>';}}catch{}
+    el.innerHTML=html;
+  }catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
 
 // ── Status Bar ────────────────────────────────────────────────────
 async function updateStatusBar() {

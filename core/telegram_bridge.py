@@ -736,6 +736,16 @@ def route_inbound_reply(message, pending_builds=None):
         except Exception as _money_exc:
             return {"routed": True, "action": "money_command",
                     "reply": f"Money command error: {_money_exc}"}
+        # Enhancement commands (/enhancements, enable/disable <key>)
+        try:
+            from core.enhancement_commands import handle_enhancement_command
+            _enh_reply = handle_enhancement_command(_money_text)
+            if _enh_reply is not None:
+                return {"routed": True, "action": "enhancement_command",
+                        "reply": _enh_reply}
+        except Exception as _money_exc:
+            return {"routed": True, "action": "money_command",
+                    "reply": f"Money command error: {_money_exc}"}
 
     if pending_builds is None:
         replied_build = _build_from_reply_to(message)

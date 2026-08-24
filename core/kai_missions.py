@@ -290,3 +290,140 @@ def _goal_progress(goal: dict) -> int:
         if m:
             pcts.append(progress(m))
     return round(sum(pcts) / len(pcts)) if pcts else 0
+
+
+# --- recurring missions (audit follow-up 2026-08-24) --------------------------
+# A scheduled mission template re-materializes as a fresh mission on its
+# cadence. Schedules live in memory/kai_mission_schedules.json; the
+# orchestrator cycle checks them hourly (same stamp-gate as proactive).
+
+SCHEDULES_PATH = _MEMORY_DIR / "kai_mission_schedules.json"
+
+
+def create_schedule(name: str, objective: str, tasks: list[dict],
+                    interval_hours: float = 24.0, auto_execute: bool = True,
+                    requires_review: bool = False) -> dict:
+    """Define a recurring mission. Each run creates a NEW mission instance
+    (history preserved); auto_execute runs it immediately after creation.
+    requires_review=False means a successful run marks itself done without
+    an operator gate — use only for SAFE-only task plans."""
+    from core.kai_tools.registry import REGISTRY
+    for t in tasks:
+        if not t.get("tool_id") or REGISTRY.get(t["tool_id"]) is None:
+            raise ValueError(f"unknown tool '{t.get('tool_id')}'")
+        if requires_review is False:
+            spec = REGISTRY.get(t["tool_id"])["spec"]
+            if spec.risk != "safe":
+                raise ValueError(
+                    f"auto-executing schedules may only contain SAFE tools "
+                    f"('{t['tool_id']}' is {spec.risk}) — set requires_review=True "
+                    f"to gate this schedule through approval")
+    try:
+        with open(SCHEDULES_PATH) as fh:
+            schedules = json.load(fh).get("schedules", [])
+    except Exception:
+        schedules = []
+    sched = {
+        "id": f"sched-{uuid.uuid4().hex[:8]}",
+        "name": name,
+        "objective": objective,
+        "tasks": tasks,
+        "interval_hours": interval_hours,
+        "auto_execute": auto_execute,
+        "requires_review": requires_review,
+        "last_run": None,
+        "mission_ids": [],
+        "enabled": True,
+        "created_at": _now(),
+    }
+    schedules.append(sched)
+    tmp = SCHEDULES_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"schema_version": 1, "schedules": schedules}))
+    os.replace(tmp, SCHEDULES_PATH)
+    return sched
+
+
+def list_schedules() -> list:
+    try:
+        with open(SCHEDULES_PATH) as fh:
+            return json.load(fh).get("schedules", [])
+    except Exception:
+        return []
+
+
+def due_schedules() -> list:
+    now = datetime.now(timezone.utc)
+    out = []
+    for s in list_schedules():
+        if not s.get("enabled"):
+            continue
+        last = s.get("last_run")
+        if not last:
+            out.append(s)
+            continue
+        try:
+            elapsed = (now - datetime.fromisoformat(last)).total_seconds() / 3600
+            if elapsed >= s["interval_hours"]:
+                out.append(s)
+        except Exception:
+            out.append(s)
+    return out
+
+
+def run_due_schedules(max_runs: int = 3) -> dict:
+    """Materialize + execute all due schedules. Called from orchestrator cycle.
+    last_run is persisted per-run so a crash can't cause re-runs."""
+    results = {"ran": [], "skipped": 0}
+    try:
+        with open(SCHEDULES_PATH) as fh:
+            all_scheds = json.load(fh).get("schedules", [])
+    except Exception:
+        return results
+    now = datetime.now(timezone.utc)
+    ran_count = 0
+    dirty = False
+    for s in all_scheds:
+        if not s.get("enabled"):
+            continue
+        last = s.get("last_run")
+        due = False
+        if not last:
+            due = True
+        else:
+            try:
+                due = (now - datetime.fromisoformat(last)).total_seconds() / 3600 >= s["interval_hours"]
+            except Exception:
+                due = True
+        if not due:
+            continue
+        if ran_count >= max_runs:
+            results["skipped"] += 1
+            continue
+        ran_count += 1
+        try:
+            m = create_mission(
+                f"[scheduled] {s['name']}", s["tasks"],
+                requires_review=s.get("requires_review", False))
+            if s.get("auto_execute", True):
+                execute_mission(m["id"], operator="kai-schedule")
+            got = get_mission(m["id"])
+            if not s.get("requires_review", False) and got["progress_pct"] == 100 \
+               and got["status"] == "verifying":
+                verify_mission(m["id"], approved=True, operator="kai-schedule",
+                               note="auto-approved: SAFE-only recurring mission")
+            s["last_run"] = _now()
+            s.setdefault("mission_ids", []).append(m["id"])
+            dirty = True
+            results["ran"].append({"schedule": s["id"], "name": s["name"],
+                                   "mission": m["id"],
+                                   "status": get_mission(m["id"])["status"]})
+        except Exception as e:
+            results["ran"].append({"schedule": s.get("id"), "name": s.get("name"),
+                                   "error": str(e)})
+            s["last_run"] = _now()   # failed runs also count as run — no hot loops
+            dirty = True
+    if dirty:
+        tmp = SCHEDULES_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"schema_version": 1, "schedules": all_scheds}))
+        os.replace(tmp, SCHEDULES_PATH)
+    return results

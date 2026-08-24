@@ -36,13 +36,14 @@ def _req_always_on_audio() -> tuple[bool, str]:
         # registered as always-on? (device registry kind='voice_client')
         from core.device_registry import list_devices
         devices = list_devices() if callable(list_devices) else []
-        voice_clients = [d for d in devices if isinstance(d, dict)
-                         and d.get("kind") == "voice_client"]
+        voice_clients = [d for d in devices if isinstance(d, dict) and (
+            d.get("kind") == "voice_client"
+            or "wake_word" in (d.get("capabilities") or []))]
         if voice_clients:
             return True, f"{len(voice_clients)} voice client device(s) registered"
-        return False, ("requires an always-on microphone device (phone app with "
-                       "'wake word' enabled, or desktop agent). No voice client "
-                       "registered yet.")
+        return False, ("requires a device with the wake_word capability "
+                       "(register your phone with capabilities=['wake_word'] "
+                       "once you want always-on listening)")
     except Exception as e:
         return False, f"cannot check devices: {type(e).__name__}"
 

@@ -57,3 +57,27 @@ def test_concurrent_mission_cap(isolated):
         km.start_mission(mid)
     with pytest.raises(ValueError, match="concurrent"):
         km.create_mission("one too many", _plan())
+
+
+def test_schedule_lifecycle(tmp_path, monkeypatch):
+    from core.kai_tools import builtin  # noqa: F401
+    from core import kai_missions as km
+    monkeypatch.setattr(km, "SCHEDULES_PATH", tmp_path / "schedules.json")
+    monkeypatch.setattr(km, "MISSIONS_PATH", tmp_path / "missions.json")
+    s = km.create_schedule("daily sweep", "check health",
+                           [{"tool_id": "kai.system.health"}],
+                           interval_hours=24, requires_review=False)
+    assert s["enabled"] and s["last_run"] is None
+    due = km.due_schedules()
+    assert len(due) == 1                      # never run → due
+    res = km.run_due_schedules()
+    assert len(res["ran"]) == 1
+    st = km.list_schedules()[0]
+    assert st["last_run"] is not None         # persisted
+    assert km.due_schedules() == []           # not due again
+    # SAFE-only enforcement for auto schedules
+    import pytest
+    with pytest.raises(ValueError, match="may only contain SAFE tools"):
+        km.create_schedule("bad", "x", [{"tool_id": "kai.docker.container_action",
+                                         "args": {"container": "c", "action": "restart"}}],
+                           requires_review=False)

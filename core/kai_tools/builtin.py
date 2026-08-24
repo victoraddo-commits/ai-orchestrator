@@ -12,7 +12,7 @@ from __future__ import annotations
 import base64
 import json
 
-from core.kai_tools.registry import SAFE, CONTROLLED, ToolSpec, tool
+from core.kai_tools.registry import SAFE, CONTROLLED, HIGH_RISK, ToolSpec, tool
 
 
 def _read_json(path, default):
@@ -443,3 +443,66 @@ def workers_delegate(task: str, task_type: str = "planning") -> dict:
     response = result.get("response", result)
     return {"response": str(response)[:6000],
             "provider": result.get("provider") or result.get("provider_used")}
+
+
+# --- kai.selfimprove.* : JARVIS P21 ----------------------------------------------
+# Controlled self-improvement (§32): KAI proposes → human reviews → existing
+# build pipeline executes in sandbox → verify → deploy. KAI never edits its
+# own production code directly; the build pipeline's approval gates + rollback
+# are the enforcement mechanism.
+
+@tool(ToolSpec(
+    id="kai.selfimprove.propose", name="Propose improvement",
+    description="File a self-improvement proposal for operator review. No code changes happen until approved through a build.",
+    risk=CONTROLLED, tags=["self-improvement"],
+    inputs={"title": "str", "rationale": "str", "change_summary": "str"}))
+def selfimprove_propose(title: str, rationale: str, change_summary: str) -> dict:
+    from core.kai.planner import save_proposals, load_proposals
+    import uuid
+    proposals = load_proposals()
+    prop = {
+        "id": f"prop-{uuid.uuid4().hex[:8]}",
+        "title": title[:200],
+        "rationale": rationale[:2000],
+        "change_summary": change_summary[:2000],
+        "status": "proposed",
+        "source": "kai-self-improvement",
+        "created_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat(),
+    }
+    proposals.append(prop)
+    save_proposals(proposals)
+    return {"id": prop["id"], "status": prop["status"],
+            "note": "awaiting review — nothing changes until approved and built"}
+
+
+@tool(ToolSpec(
+    id="kai.selfimprove.proposals", name="List improvement proposals",
+    description="Self-improvement proposals and their review status.",
+    risk=SAFE, tags=["self-improvement"]))
+def selfimprove_list(status: str | None = None) -> dict:
+    from core.kai.planner import list_proposals
+    rows = [p for p in list_proposals() if isinstance(p, dict)]
+    rows = [p for p in rows if p.get("source") == "kai-self-improvement"]
+    if status:
+        rows = [p for p in rows if p.get("status") == status]
+    return {"count": len(rows), "proposals": rows[-20:][::-1]}
+
+
+@tool(ToolSpec(
+    id="kai.emergency.stop", name="EMERGENCY STOP",
+    description="Stop everything: pause scheduler, block all tool execution, cancel running missions.",
+    risk=HIGH_RISK, timeout_s=60.0, tags=["emergency", "security"]))
+def emergency_stop(reason: str = "operator requested") -> dict:
+    # Even though HIGH_RISK forces approval, once approved this runs.
+    from core.kai_emergency import emergency_stop as stop
+    return stop(operator="operator", reason=reason)
+
+
+@tool(ToolSpec(
+    id="kai.emergency.resume", name="Resume after stop",
+    description="Clear emergency stop: re-enable tools + scheduler.",
+    risk=CONTROLLED, timeout_s=30.0, tags=["emergency"]))
+def emergency_resume() -> dict:
+    from core.kai_emergency import emergency_resume as resume
+    return resume()

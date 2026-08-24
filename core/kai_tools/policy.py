@@ -69,6 +69,20 @@ def request_approval(tool_id: str, args: dict, reason: str) -> str | None:
 def execute(tool_id: str, args: dict | None = None, *, operator: str = "system",
             reason: str = "") -> ToolResult:
     """Policy-gated tool execution. This is THE entrypoint other layers use."""
+    # JARVIS P22: emergency stop refuses EVERYTHING (§52)
+    try:
+        from core.kai_emergency import is_stopped, check_rate
+        if is_stopped():
+            return ToolResult(tool_id, ok=False, executed=False,
+                              error="EMERGENCY STOP active — all tool execution refused. "
+                                    "Use emergency_resume to restore.")
+        allowed, remaining = check_rate(operator)
+        if not allowed:
+            return ToolResult(tool_id, ok=False, executed=False,
+                              error=f"rate limit exceeded for {operator} "
+                                    f"({30}/min) — slow down")
+    except ImportError:
+        pass  # emergency module absent (fresh checkout) — degrade gracefully
     entry = REGISTRY.get(tool_id)
     if entry is None:
         return ToolResult(tool_id, False, error=f"unknown tool '{tool_id}'")

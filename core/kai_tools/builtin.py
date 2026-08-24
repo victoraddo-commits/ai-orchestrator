@@ -605,3 +605,36 @@ def voice_stream(audio_b64: str) -> dict:
             "kai.enhancements.enable('streaming_voice')")
     from core.voice_router import transcribe_stream
     return transcribe_stream(b64.b64decode(audio_b64))
+
+
+# --- kai.wireguard.* : peer creation via ProxDash (HIGH_RISK: network access grant) ---
+
+@tool(ToolSpec(
+    id="kai.wireguard.create_peer", name="Create WireGuard peer",
+    description="Generate a new WG peer on the home firewall and return its config (QR-ready). HIGH RISK: grants network access.",
+    risk=HIGH_RISK, timeout_s=90.0, tags=["network", "wireguard"],
+    inputs={"server": "ddwrt|opnsense", "label": "str"}))
+def wireguard_create_peer(server: str, label: str) -> dict:
+    """Creates a peer through ProxDash's API using an app session created
+    from PROXDASH_APP_USER/PROXDASH_APP_PASSWORD env (stored in .env, never
+    sent to devices). Returns the raw client config for QR display."""
+    import os, requests
+    base = os.environ.get("PROXDASH_URL", "http://192.168.1.114:8091")
+    user = os.environ.get("PROXDASH_APP_USER", "")
+    pw = os.environ.get("PROXDASH_APP_PASSWORD", "")
+    if not user or not pw:
+        raise RuntimeError("ProxDash credentials missing — set PROXDASH_APP_USER/PROXDASH_APP_PASSWORD in orchestrator .env")
+    s = requests.Session()
+    r = s.post(f"{base}/api/auth/login", json={"username": user, "password": pw}, timeout=15)
+    if r.status_code != 200:
+        raise RuntimeError(f"proxdash login failed: {r.status_code}")
+    r2 = s.post(f"{base}/api/peers", json={"server": server, "label": label}, timeout=60)
+    if r2.status_code != 200:
+        raise RuntimeError(f"peer create failed: {r2.text[:200]}")
+    data = r2.json()
+    # never return private key material into logs; return config only in the
+    # tool result (which is shown once to the approving operator)
+    cfg = data.get("config") or data.get("clientConfig") or data
+    return {"created": True, "label": label,
+            "config_text": str(cfg)[:4000],
+            "note": "show as QR once; config contains a private key"}

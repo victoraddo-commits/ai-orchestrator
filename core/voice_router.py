@@ -69,3 +69,32 @@ def speak(text: str) -> dict:
         except Exception as e:
             return {"ok": False, "error": f"local TTS failed: {e}"}
     return {"ok": False, "error": "no voice provider available"}
+
+
+def transcribe_stream(pcm16_bytes: bytes) -> dict:
+    """Chunked PCM16 16k mono → NDJSON partials + final. Requires the
+    'streaming_voice' enhancement to be ENABLED (capability check upstream)."""
+    if _probe_local():
+        try:
+            import requests
+            r = requests.post(f"{VOICE_SERVER_URL}/transcribe_stream",
+                              files={"file": ("chunk.pcm", pcm16_bytes, "audio/pcm")},
+                              timeout=120, stream=True)
+            partials, final = [], ""
+            for line in r.iter_lines(decode_unicode=True):
+                if not line:
+                    continue
+                import json as _json
+                try:
+                    evt = _json.loads(line)
+                except Exception:
+                    continue
+                if evt.get("type") == "partial":
+                    partials.append(evt.get("text", ""))
+                elif evt.get("type") == "final":
+                    final = evt.get("text", final)
+            return {"ok": True, "final": final, "partials": partials,
+                    "provider": "local-whisper-stream"}
+        except Exception as e:
+            return {"ok": False, "error": f"stream failed: {e}"}
+    return {"ok": False, "error": "voice server unavailable"}

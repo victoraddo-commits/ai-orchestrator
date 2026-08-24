@@ -506,3 +506,102 @@ def emergency_stop(reason: str = "operator requested") -> dict:
 def emergency_resume() -> dict:
     from core.kai_emergency import emergency_resume as resume
     return resume()
+
+
+# --- kai.enhancements.* : hardware-gated optional capabilities -------------------
+
+@tool(ToolSpec(
+    id="kai.enhancements.status", name="Enhancement status",
+    description="Optional capabilities (wake word, streaming voice, Home Assistant, telephony): enabled × requirements = state.",
+    risk=SAFE, tags=["enhancements"]))
+def enhancements_status() -> dict:
+    from core.kai_enhancements import status
+    return {"enhancements": status()}
+
+
+@tool(ToolSpec(
+    id="kai.enhancements.enable", name="Enable enhancement",
+    description="Opt into an enhancement. Can enable BEFORE hardware exists — auto-activates when requirements are met.",
+    risk=CONTROLLED, tags=["enhancements"],
+    inputs={"key": "wake_word|streaming_voice|home_assistant|telephony"}))
+def enhancements_enable(key: str) -> dict:
+    from core.kai_enhancements import enable
+    return enable(key)
+
+
+@tool(ToolSpec(
+    id="kai.enhancements.disable", name="Disable enhancement",
+    description="Turn an optional capability off.",
+    risk=CONTROLLED, tags=["enhancements"],
+    inputs={"key": "str"}))
+def enhancements_disable(key: str) -> dict:
+    from core.kai_enhancements import disable
+    return disable(key)
+
+
+# --- kai.home.* : Home Assistant control (§46) — gated by enhancement ----------
+
+def _home_gate() -> None:
+    from core.kai_enhancements import capability_available
+    if not capability_available("kai.home.control"):
+        raise RuntimeError(
+            "Home Assistant integration is DISABLED/BLOCKED — enable it via "
+            "kai.enhancements.enable (requires HA_BASE_URL + HA_TOKEN in .env)")
+
+
+@tool(ToolSpec(
+    id="kai.home.devices", name="List HA devices",
+    description="Home Assistant: list lights/switches/sensors/climate entities.",
+    risk=SAFE, timeout_s=30.0, tags=["home"]))
+def home_devices() -> dict:
+    _home_gate()
+    import requests, os
+    url = os.environ["HA_BASE_URL"].rstrip("/")
+    r = requests.get(f"{url}/api/states", headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+                     timeout=10)
+    domains = {}
+    for e in r.json():
+        d = e["entity_id"].split(".")[0]
+        if d in ("light", "switch", "sensor", "climate", "binary_sensor", "camera"):
+            domains.setdefault(d, []).append(e["entity_id"])
+    return {"domains": {k: len(v) for k, v in sorted(domains.items())},
+            "entities": {k: v[:20] for k, v in sorted(domains.items())}}
+
+
+@tool(ToolSpec(
+    id="kai.home.set_state", name="Control HA device",
+    description="Turn a light/switch on/off, set climate temperature. CONTROLLED.",
+    risk=CONTROLLED, timeout_s=30.0, tags=["home"],
+    inputs={"entity_id": "str", "action": "turn_on|turn_off|set_temp", "value": "any"}))
+def home_set_state(entity_id: str, action: str, value=None) -> dict:
+    _home_gate()
+    import requests, os
+    url = os.environ["HA_BASE_URL"].rstrip("/")
+    domain = entity_id.split(".")[0]
+    service = {"turn_on": "turn_on", "turn_off": "turn_off"}.get(action)
+    payload = {"entity_id": entity_id}
+    if action == "set_temp" and domain == "climate":
+        service = "set_temperature"
+        payload["temperature"] = float(value)
+    elif not service:
+        raise ValueError(f"unsupported action '{action}'")
+    r = requests.post(f"{url}/api/services/{domain}/{service}",
+                      headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+                      json=payload, timeout=10)
+    return {"entity_id": entity_id, "action": action, "ok": r.status_code in (200, 201)}
+
+
+@tool(ToolSpec(
+    id="kai.voice.stream_transcribe", name="Streaming transcription",
+    description="Realtime-style partial transcription of PCM16 16k audio. Requires 'streaming_voice' enhancement ENABLED.",
+    risk=SAFE, timeout_s=150.0, tags=["voice"],
+    inputs={"audio_b64": "str (base64 PCM16 16k mono)"}))
+def voice_stream(audio_b64: str) -> dict:
+    import base64 as b64
+    from core.kai_enhancements import capability_available
+    if not capability_available("kai.voice.streaming"):
+        raise RuntimeError(
+            "streaming_voice enhancement is DISABLED — enable via "
+            "kai.enhancements.enable('streaming_voice')")
+    from core.voice_router import transcribe_stream
+    return transcribe_stream(b64.b64decode(audio_b64))

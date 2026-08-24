@@ -135,3 +135,29 @@ def mission_verify(mission_id: str, request: Request, body: dict = None):
     body = body or {}
     return verify_mission(mission_id, bool(body.get("approved")),
                           note=str(body.get("note", "")))
+
+
+@router.get("/enhancements")
+def enhancements_status():
+    from core.kai_enhancements import status
+    return {"enhancements": status()}
+
+
+@router.post("/enhancements/{key}/enable")
+def enhancements_enable(key: str, request: Request):
+    _authorize(request)
+    from core.kai_enhancements import enable
+    r = enable(key)
+    if not r.get("ok"):
+        raise HTTPException(404, r.get("error", "unknown"))
+    return r
+
+
+@router.post("/enhancements/{key}/disable")
+def enhancements_disable(key: str, request: Request):
+    _authorize(request)
+    from core.kai_enhancements import disable
+    r = disable(key)
+    if not r.get("ok"):
+        raise HTTPException(404, r.get("error", "unknown"))
+    return r

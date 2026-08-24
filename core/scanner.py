@@ -12,6 +12,10 @@ def scan():
         "scan_time": datetime.now().isoformat(),
         "hostname": inventory["hostname"],
         "docker": inventory.get("docker", {}),
+        # JARVIS P13 audit fix 2026-08-24: pass host metrics through —
+        # health_observatory extracts snapshot["host"]["cpu_percent"] etc.
+        # but scan() dropped the key, so host_*_pct series were all-zero.
+        "host": inventory.get("host", {}),
         "proxmox": proxmox_status()
     }
 

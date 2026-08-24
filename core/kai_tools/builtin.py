@@ -209,3 +209,46 @@ def world_refresh() -> dict:
 def world_impact(entity_id: str) -> dict:
     from core.world_model import impact_of
     return impact_of(entity_id)
+
+
+# --- kai.executive.* : JARVIS P10 ---------------------------------------------
+
+@tool(ToolSpec(
+    id="kai.executive.prioritize", name="What matters now",
+    description="Executive prioritization: critical / needs-attention / watch, aggregated from world+costs+approvals.",
+    risk=SAFE, tags=["executive"]))
+def executive_prioritize() -> dict:
+    from core.kai_executive import prioritize
+    return prioritize()
+
+
+@tool(ToolSpec(
+    id="kai.executive.briefing", name="Generate briefing",
+    description="Executive briefing (facts only) — optionally delivered to Telegram.",
+    risk=SAFE, timeout_s=60.0, tags=["executive"],
+    inputs={"kind": "auto|morning|evening|infrastructure|security", "send": "bool"}))
+def executive_briefing(kind: str = "auto", send: bool = False) -> dict:
+    from core.kai_executive import run_briefing
+    return {"text": run_briefing(kind=kind, send=bool(send))}
+
+
+@tool(ToolSpec(
+    id="kai.memory.remember_decision", name="Record decision",
+    description="Store a structured decision record (what/why/alternatives).",
+    risk=CONTROLLED, tags=["memory"],
+    inputs={"decision": "str", "reason": "str", "alternatives": "list?"}))
+def remember_decision(decision: str, reason: str, alternatives=None) -> dict:
+    from core.kai_executive import remember_decision as rd
+    rec = rd(decision, reason, alternatives=alternatives)
+    return {"stored": True, "ts": rec.get("ts")}
+
+
+@tool(ToolSpec(
+    id="kai.memory.failures", name="Failure memory",
+    description="Recent failure records; verified_only filters to confirmed lessons.",
+    risk=SAFE, tags=["memory"],
+    inputs={"verified_only": "bool"}))
+def failure_memory(verified_only: bool = False) -> dict:
+    from core.kai_executive import recent_failures
+    rows = recent_failures(limit=15, verified_only=verified_only)
+    return {"count": len(rows), "failures": rows}

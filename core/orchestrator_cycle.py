@@ -203,6 +203,24 @@ def run_cycle():
     # (alert-only: no automatic provider disabling)
     _safe_check_budget()
 
+    # JARVIS P13: proactive/predictive engine — hourly, not every cycle.
+    # Persists predictions to memory/kai_predictions.json; only warn/critical
+    # findings reach notifications (dedupe + rate limiting upstream).
+    try:
+        import time as _p13time
+        from core.memory import MEMORY_DIR
+        stamp = MEMORY_DIR / ".proactive_last_run"
+        now_s = _p13time.time()
+        last = stamp.read_text().strip() if stamp.exists() else "0"
+        if now_s - float(last or 0) >= 3600:
+            from core.kai_proactive import run_cycle
+            result = run_cycle(notify_threshold="warn")
+            info(f"proactive cycle: {len(result['predictions'])} prediction(s), "
+                 f"{result['actionable']} actionable")
+            stamp.write_text(str(now_s))
+    except Exception as error:
+        info(f"proactive cycle failed: {type(error).__name__}")
+
 
     remediation = process()
 

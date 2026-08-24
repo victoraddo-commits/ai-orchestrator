@@ -24,8 +24,18 @@ def discover_node_inventory(node):
         return inv
     inv["reachable"] = True
 
+    # The PVE nodename is NOT necessarily our friendly alias (e.g. alias
+    # 'pve-b' vs actual nodename 'pve') — resolve the real one from the API,
+    # preferring an online node.  JARVIS P4 fix 2026-08-24: B-side inventory
+    # was silently empty because we queried nodes/pve-b/... (404 → []).
+    pve_node_name = None
+    if isinstance(node_info, list) and node_info:
+        online = [n for n in node_info if n.get("status") == "online"]
+        pve_node_name = (online or node_info)[0].get("node")
+    pve_node_name = pve_node_name or node["name"]
+
     # Containers
-    containers = _api_get(node, f"nodes/{node['name']}/lxc") or []
+    containers = _api_get(node, f"nodes/{pve_node_name}/lxc") or []
     inv["containers"] = []
     for c in containers:
         inv["containers"].append({
@@ -37,7 +47,7 @@ def discover_node_inventory(node):
         })
 
     # VMs
-    vms = _api_get(node, f"nodes/{node['name']}/qemu") or []
+    vms = _api_get(node, f"nodes/{pve_node_name}/qemu") or []
     inv["vms"] = []
     for v in vms:
         inv["vms"].append({
@@ -48,7 +58,7 @@ def discover_node_inventory(node):
         })
 
     # Storage
-    storage = _api_get(node, f"nodes/{node['name']}/storage") or []
+    storage = _api_get(node, f"nodes/{pve_node_name}/storage") or []
     inv["storage"] = []
     for s in storage:
         inv["storage"].append({
@@ -59,7 +69,7 @@ def discover_node_inventory(node):
         })
 
     # Network interfaces
-    network = _api_get(node, f"nodes/{node['name']}/network") or []
+    network = _api_get(node, f"nodes/{pve_node_name}/network") or []
     inv["network"] = []
     for n in network:
         inv["network"].append({
@@ -68,7 +78,7 @@ def discover_node_inventory(node):
         })
 
     # Backups
-    backups = _api_get(node, f"nodes/{node['name']}/storage/local/backup") or []
+    backups = _api_get(node, f"nodes/{pve_node_name}/storage/local/backup") or []
     inv["backups"] = []
     for b in backups:
         inv["backups"].append({

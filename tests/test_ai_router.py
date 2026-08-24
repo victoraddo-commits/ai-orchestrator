@@ -1186,12 +1186,14 @@ def test_classification_role_falls_back_to_claude_when_groq_has_no_credentials(m
 
 
 def test_delegate_documentation_task_includes_omniroute_deepseek_flash(monkeypatch):
-    # 2026-08-09: documentation = deepseek_native_flash, deepseek_native_pro,
-    # omniroute_deepseek_flash, groq, claude.
-    # Disable all before omniroute_deepseek_flash.
+    # 2026-08-23 update: documentation = llama3, local, gemini, groq,
+    # deepseek_native_flash, deepseek_native_pro, omniroute_deepseek_flash,
+    # claude (deepseek demoted below live providers while unfunded — see
+    # ROLE_PROVIDERS note). Disable all before omniroute_deepseek_flash.
     import core.ai_provider as ai_provider
 
-    for n in ("deepseek_native_flash", "deepseek_native_pro", "groq",
+    for n in ("llama3", "local", "gemini", "groq",
+              "deepseek_native_flash", "deepseek_native_pro",
               "gpuai_minimax"):
         p = ai_provider.get_provider(n)
         if p:
@@ -1249,51 +1251,63 @@ def test_openrouter_billed_coding_routes_disabled_2026_08_02(role):
 # See ROLE_PROVIDERS["coding"]'s comment and ai_router.CODING_ROTATING_FRONT.
 
 CODING_FIXED_TAIL = [
-    "claude",
+    "omniroute_deepseek_coding",
     "omniroute",
     "gpuai_minimax",
 ]
 
 
-def test_coding_rotating_front_is_omniroute_deepseek_2026_08_09():
-    # 2026-08-09 operator directive: DeepSeek is PRIMARY across ALL roles.
-    # omniroute_deepseek_coding (DeepSeek via OmniRoute gateway) is the sole
-    # member of the rotating front group and primary coding provider.
-    assert ai_router.CODING_ROTATING_FRONT == ["omniroute_deepseek_coding"]
-    assert ai_router.ROLE_PROVIDERS["coding"][:1] == ai_router.CODING_ROTATING_FRONT
-    # Coding chain has omniroute ahead of gpuai_minimax.
+def test_coding_front_is_claude_while_deepseek_unfunded_2026_08_23():
+    # 2026-08-23: OmniRoute/DeepSeek billing is 402 (both the gateway route
+    # and native). Operator directive: demote-but-keep — deepseek entries
+    # stay in every list, ordered below live providers. claude leads coding;
+    # CODING_ROTATING_FRONT is empty so no front member burns a failover
+    # attempt per call. Restore the 2026-08-09 arrangement (front =
+    # ["omniroute_deepseek_coding"], deepseek first everywhere) once funded.
+    assert ai_router.CODING_ROTATING_FRONT == []
     coding = ai_router.ROLE_PROVIDERS["coding"]
-    assert "omniroute" in coding
-    assert coding.index("omniroute") < coding.index("gpuai_minimax")
+    assert coding[0] == "claude"
+    # Demoted-but-present: omniroute_deepseek_coding stays in the chain,
+    # ahead of gpuai_minimax.
+    assert "omniroute_deepseek_coding" in coding
+    assert coding.index("omniroute_deepseek_coding") < coding.index("gpuai_minimax")
 
 
 def test_candidates_for_coding_rotates_only_the_alt_claude_front_group():
+    # 2026-08-23: empty front group → candidates are exactly ROLE_PROVIDERS
+    # (front/tail split is by CODING_ROTATING_FRONT membership, so the tail
+    # here is the full list).
     candidates = ai_router._candidates_for("coding")
 
     assert len(candidates) == len(ai_router.ROLE_PROVIDERS["coding"])
-    assert candidates[:1] == ai_router.CODING_ROTATING_FRONT
-    assert candidates[1:] == CODING_FIXED_TAIL
+    assert candidates[:len(ai_router.CODING_ROTATING_FRONT)] == ai_router.CODING_ROTATING_FRONT
+    assert candidates[len(ai_router.CODING_ROTATING_FRONT):] == ai_router.ROLE_PROVIDERS["coding"]
 
 
 def test_candidates_for_coding_front_order_rotates_while_the_tail_never_changes():
-    # With a single-member front group, "rotation" is a no-op -- every call
-    # returns the same order. The tail must still never change.
+    # With an EMPTY front group (2026-08-23 unfunded-deepseek demotion),
+    # "rotation" is a no-op and the whole list is the stable tail. Note the
+    # tail is the full ROLE_PROVIDERS["coding"] list in this state (the
+    # front/tail split filters by CODING_ROTATING_FRONT membership), so
+    # compare against that rather than CODING_FIXED_TAIL.
     fronts, tails = [], []
     for _ in range(4):
         candidates = ai_router._candidates_for("coding")
-        fronts.append(candidates[:1])
-        tails.append(candidates[1:])
+        fronts.append(candidates[:len(ai_router.CODING_ROTATING_FRONT)])
+        tails.append(candidates[len(ai_router.CODING_ROTATING_FRONT):])
 
     front = ai_router.CODING_ROTATING_FRONT
     assert all(f == front for f in fronts)
-    assert all(tail == CODING_FIXED_TAIL for tail in tails)
+    expected_tail = [n for n in ai_router.ROLE_PROVIDERS["coding"]]
+    assert all(tail == expected_tail for tail in tails)
 
 
 def test_direct_claude_is_never_first_for_coding():
-    # The whole point of 13M's coding order: the direct Claude/Anthropic
-    # subscription is a last-resort fallback, never the first attempt.
-    for _ in range(6):
-        assert ai_router._candidates_for("coding")[0] != "claude"
+    # 2026-08-23: superseded — with the deepseek front demoted (unfunded),
+    # claude IS coding's first candidate by operator directive. The 13M
+    # invariant this test protected returns when DeepSeek is funded and the
+    # 2026-08-09 order is restored; kept as documentation of that history.
+    assert ai_router.ROLE_PROVIDERS["coding"][0] == "claude"
 
 
 def test_candidates_for_coding_respects_an_overridden_role_list(monkeypatch):
@@ -1353,16 +1367,12 @@ def test_delegate_does_not_double_rotate_the_coding_candidates(monkeypatch):
 
 
 def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_front_routes_are_down(monkeypatch):
-    # 2026-08-09: coding chain = omniroute_deepseek_coding (front) -> omniroute ->
-    # omniroute_deepseek_coding -> claude -> omniroute -> gpuai_minimax.
+    # 2026-08-23: coding chain = claude -> omniroute_deepseek_coding ->
+    # omniroute -> gpuai_minimax (empty front group while deepseek unfunded).
     import core.ai_provider as ai_provider
 
-    # Disable the front + first several tail entries, leaving fallback last.
-    disable_order = ai_router.CODING_ROTATING_FRONT + [
-        "omniroute", "gpuai_minimax",
-        "gpuai_minimax", "claude",
-    ]
-    for name in disable_order:
+    # Disable everything ahead of gpuai_minimax, leaving it as the fallback.
+    for name in ("claude", "omniroute_deepseek_coding", "omniroute"):
         p = ai_provider.get_provider(name)
         if p:
             monkeypatch.setitem(p, "available_fn", lambda: False)
@@ -1381,9 +1391,10 @@ def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_front_routes
 
     assert result["provider"] == "gpuai_minimax"
     attempted_before = [a["provider"] for a in result["attempts"]]
-    assert attempted_before[:1] == ai_router.CODING_ROTATING_FRONT
-    # fallback is reached after the front + tail entries ahead of it
-    assert "gpuai_minimax" not in [a["provider"] for a in result["attempts"]]  # it succeeded, not failed
+    # 2026-08-23: claude leads (empty front group) — the disabled entries
+    # ahead of the fallback are exactly the rest of the chain.
+    assert attempted_before == ["claude", "omniroute_deepseek_coding", "omniroute"]
+    assert "gpuai_minimax" not in attempted_before  # it succeeded, not failed
 
 
 def test_delegate_coding_falls_all_the_way_to_fallback_when_front_routes_are_down(monkeypatch):
@@ -1428,26 +1439,29 @@ def test_delegate_coding_raises_all_providers_failed_when_every_candidate_is_dow
 
 
 def test_delegate_coding_always_picks_the_sole_front_candidate(monkeypatch):
-    # 2026-08-07: gpuai_minimax is CODING_ROTATING_FRONT's sole member --
-    # with nothing else to rotate across, every call lands on the same
-    # provider (Fable 5 via OpenCode Zen, separate billing, healthy).
+    # 2026-08-23: front group is empty while deepseek is unfunded; the
+    # equivalent stability invariant — every call lands on the same healthy
+    # first candidate — is asserted against claude as coding's lead.
     import core.ai_provider as ai_provider
 
-    front = ai_router.CODING_ROTATING_FRONT
-    for name in front:
-        provider = ai_provider.get_provider(name)
-        monkeypatch.setitem(provider, "available_fn", lambda: True)
-        monkeypatch.setitem(
-            provider, "run_coding_task",
-            lambda project_path, instruction, n=name, **kwargs: {"success": True, "response_text": f"from {n}", "files_changed": [], "commits": [], "tool_errors": []},
-        )
+    for name in ("omniroute_deepseek_coding", "omniroute", "gpuai_minimax"):
+        p = ai_provider.get_provider(name)
+        if p:
+            monkeypatch.setitem(p, "available_fn", lambda: False)
+
+    provider = ai_provider.get_provider("claude")
+    monkeypatch.setitem(provider, "available_fn", lambda: True)
+    monkeypatch.setitem(
+        provider, "run_text_task",
+        lambda p, timeout=60, project_path=None: "from claude",
+    )
 
     seen = [
-        ai_router.delegate("Implement", task_type="coding", project_path="/proj", capability="coding_agent")["provider"]
+        ai_router.delegate("Implement", task_type="coding")["provider"]
         for _ in range(4)
     ]
 
-    assert seen == [front[0]] * 4
+    assert seen == ["claude"] * 4
 
 
 @pytest.mark.parametrize("role", ["planning", "log_analysis", "documentation", "review"])
@@ -1486,14 +1500,16 @@ def test_openrouter_claude_disabled_deepseek_native_flash_took_its_slot_2026_08_
     assert "openrouter_claude" not in candidates
 
 
-@pytest.mark.parametrize("role", ["documentation", "law_case_analysis", "law_teaching"])
+@pytest.mark.parametrize("role", [])
 def test_gemini_was_never_routed_to_these_roles(role):
-    # Unlike planning/architecture/review/classification/law_document below,
-    # gemini was never a candidate here (documentation/law_case_analysis/
-    # law_teaching have their own designated primaries -- deepseek_native_flash/
-    # claude/openai respectively) -- so its 2026-08-02 disable-then-re-enable
-    # cycle never touched these lists at all.
-    candidates = ai_router.ROLE_PROVIDERS[role]
+    # 2026-08-23: parametrize list emptied. This guard existed because gemini
+    # had never been a candidate for documentation/law_case_analysis/
+    # law_teaching as of the 2026-08-02 disable-re-enable cycle. The
+    # 2026-08-23 unfunded-deepseek demotion added gemini to those lists as a
+    # live provider ahead of the 402 entries, so the historical guard no
+    # longer applies. Kept (with no params) so the history in this comment
+    # isn't lost; re-add roles here if gemini must be excluded again.
+    candidates = ai_router.ROLE_PROVIDERS[role] if role else []
     assert "gemini" not in candidates
 
 
@@ -1834,36 +1850,46 @@ def test_latency_degradation_syncs_to_provider_health():
 def test_delegate_demotion_tries_healthy_before_degraded(monkeypatch):
     # 17R: when multiple candidates exist, healthy ones are tried before
     # latency-degraded ones (demotion, not exclusion).
-    # log_analysis order: deepseek_native_flash, groq, omniroute_deepseek_flash.
+    # 2026-08-23 log_analysis order: llama3, local, groq, gemini,
+    # deepseek_native_flash, ... (deepseek demoted below live providers).
     import core.ai.provider_latency as pl
     import core.ai_provider as ai_provider
 
-    # Mark groq as latency-degraded.
+    # Disable providers ahead of gemini so the pair under test is reachable.
+    for n in ("llama3", "local"):
+        p = ai_provider.get_provider(n)
+        if p:
+            monkeypatch.setitem(p, "available_fn", lambda: False)
+
+    # Mark gemini as latency-degraded.
     for d in (100, 100, 100, 100):
-        pl.record_latency("groq", d)
-    pl.record_latency("groq", 5000)
+        pl.record_latency("gemini", d)
+    pl.record_latency("gemini", 5000)
 
-    assert pl.is_latency_degraded("groq") is True
+    assert pl.is_latency_degraded("gemini") is True
 
-    # Disable omniroute_deepseek_flash so fallback stops before it.
-    monkeypatch.setitem(ai_provider.get_provider("omniroute_deepseek_flash"), "available_fn", lambda: False)
+    # Disable everything after gemini so fallback stops at it.
+    for n in ("deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash"):
+        p = ai_provider.get_provider(n)
+        if p:
+            monkeypatch.setitem(p, "available_fn", lambda: False)
 
-    dnf = ai_provider.get_provider("deepseek_native_flash")
-    monkeypatch.setitem(dnf, "available_fn", lambda: True)
-    monkeypatch.setitem(dnf, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "deepseek_native_flash healthy primary")
+    gemini = ai_provider.get_provider("gemini")
+    monkeypatch.setitem(gemini, "available_fn", lambda: True)
+    monkeypatch.setitem(gemini, "run_text_task",
+                        lambda p, timeout=60, project_path=None: "gemini degraded last resort")
 
     groq = ai_provider.get_provider("groq")
     monkeypatch.setitem(groq, "available_fn", lambda: True)
     monkeypatch.setitem(groq, "run_text_task",
-                        lambda p, timeout=60, project_path=None: "groq degraded last resort")
+                        lambda p, timeout=60, project_path=None: "groq healthy primary")
 
-    # deepseek_native_flash (healthy) should be tried before groq (degraded)
+    # groq (healthy) should be tried before gemini (degraded)
     result = ai_router.delegate("Analyze Docker error log", task_type="log_analysis",
                                 return_attempts=True)
 
-    assert result["provider"] == "deepseek_native_flash"
-    assert result["response"] == "deepseek_native_flash healthy primary"
+    assert result["provider"] == "groq"
+    assert result["response"] == "groq healthy primary"
 
 
 # --- 17R.4: Circuit-breaker with 60-second cooldown -------------------------
@@ -1953,12 +1979,12 @@ def test_delegate_skips_circuit_open_provider(monkeypatch):
 
     assert cb.is_open("groq") is True
 
-    # 2026-08-09: log_analysis = deepseek_native_flash -> deepseek_native_pro ->
-    # groq -> omniroute_deepseek_flash -> claude.
-    # Disable everything before groq (both deepseek providers) and between groq
-    # and omniroute_deepseek_flash so the circuit-open skip reaches the right fallback.
-    for n in ("deepseek_native_flash", "deepseek_native_pro",
-              "gpuai_minimax"):
+    # 2026-08-23: log_analysis = llama3 -> local -> groq -> gemini ->
+    # deepseek_native_flash -> ... (deepseek demoted while unfunded).
+    # Disable everything before groq and between groq and
+    # omniroute_deepseek_flash so the circuit-open skip reaches the right fallback.
+    for n in ("llama3", "local", "gemini",
+              "deepseek_native_flash", "deepseek_native_pro"):
         p = ai_provider.get_provider(n)
         if p:
             monkeypatch.setitem(p, "available_fn", lambda: False)

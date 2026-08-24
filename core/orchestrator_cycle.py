@@ -217,6 +217,14 @@ def run_cycle():
             result = run_cycle(notify_threshold="warn")
             info(f"proactive cycle: {len(result['predictions'])} prediction(s), "
                  f"{result['actionable']} actionable")
+            # recurring missions share the same hourly gate
+            try:
+                from core.kai_missions import run_due_schedules
+                sched = run_due_schedules()
+                if sched["ran"]:
+                    info(f"scheduled missions ran: {sched['ran']}")
+            except Exception as error:
+                info(f"scheduled missions failed: {type(error).__name__}")
             stamp.write_text(str(now_s))
     except Exception as error:
         info(f"proactive cycle failed: {type(error).__name__}")

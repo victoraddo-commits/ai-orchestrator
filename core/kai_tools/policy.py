@@ -85,7 +85,9 @@ def execute(tool_id: str, args: dict | None = None, *, operator: str = "system",
         pass  # emergency module absent (fresh checkout) — degrade gracefully
     entry = REGISTRY.get(tool_id)
     if entry is None:
-        return ToolResult(tool_id, False, error=f"unknown tool '{tool_id}'")
+        # §62: never hallucinate capabilities — unknown tool is a hard refusal
+        return ToolResult(tool_id, ok=False, executed=False,
+                          error=f"unknown tool '{tool_id}' — no such capability exists")
     spec = entry["spec"]
     args = dict(args or {})
 

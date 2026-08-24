@@ -95,3 +95,33 @@ def test_audit_records_risk_class(isolated_policy):
     policy.execute("kai.costs.summary", {"days": 1})
     rec = json.loads((isolated_policy / "tool_audit.jsonl").read_text().strip().splitlines()[-1])
     assert rec["risk"] == SAFE
+
+
+def test_world_model_impact(isolated_policy, monkeypatch):
+    from core import world_model
+    monkeypatch.setattr(world_model, "WORLD_PATH", isolated_policy / "world.json")
+    # inject a minimal snapshot instead of live collection
+    world_model._save({
+        "schema_version": 1, "updated_at": "t",
+        "entities": {"ct:104": {"type": "lxc", "status": "running"},
+                     "svc:npm": {"type": "service"}},
+        "edges": [{"src": "svc:npm", "dst": "ct:104", "kind": "runs_on"}],
+        "changes_since_previous": [],
+    })
+    imp = world_model.impact_of("ct:104")
+    assert imp["impacted_count"] == 1
+    assert imp["impacted"][0]["entity"] == "svc:npm"
+
+
+def test_world_model_state_query(isolated_policy, monkeypatch):
+    from core import world_model
+    monkeypatch.setattr(world_model, "WORLD_PATH", isolated_policy / "world2.json")
+    world_model._save({
+        "schema_version": 1, "updated_at": "t",
+        "entities": {"host:x": {"type": "proxmox_node", "status": "online"}},
+        "edges": [], "counts": {"entities": 1, "by_type": {"proxmox_node": 1}},
+    })
+    st = world_model.get_state()
+    assert st["entities"] == 1
+    e = world_model.get_state("host:x")
+    assert e["entity"]["status"] == "online"

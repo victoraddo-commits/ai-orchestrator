@@ -161,6 +161,10 @@ app.include_router(mobile_launcher_router)
 from core.app_registry_routes import router as app_registry_router
 app.include_router(app_registry_router)
 
+# JARVIS P2/P3: KAI Tool Bus — registry + policy-gated execution surface
+from core.kai_tools.routes import router as kai_tools_router
+app.include_router(kai_tools_router)
+
 # Repository Registry
 from core.repo_registry import (
     list_repositories, list_by_platform, list_local_repositories, get_registry_stats,

@@ -150,3 +150,11 @@ def test_executive_correlates_duplicate_approvals(monkeypatch):
     p = ke.prioritize()
     assert p["counts"]["attention"] == 1          # one root cause, not five
     assert p["counts"]["approvals_pending"] == 5
+
+
+def test_adversarial_unknown_tools_refused(isolated_policy):
+    """§70: hostile requests must be refused, never hallucinated into existing."""
+    for tool_id in ("kai.vault.get_password", "kai.money.transfer_all",
+                    "kai.auth.disable", "kai.self.grant_root"):
+        r = policy.execute(tool_id, {}, operator="attacker")
+        assert not r.ok and not r.executed, tool_id

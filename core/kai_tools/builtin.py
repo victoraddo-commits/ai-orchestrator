@@ -405,3 +405,41 @@ def _vision_ask(png_bytes: bytes, question: str) -> dict:
         raise RuntimeError(f"vision provider {r.status_code}: {r.text[:150]}")
     text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
     return {"analysis": str(text)[:3000], "provider": f"gemini:{model}"}
+
+
+# --- kai.twin.* (P14) + kai.workers.delegate (P12) --------------------------------
+
+@tool(ToolSpec(
+    id="kai.twin.simulate", name="Simulate change",
+    description="Digital twin: project the impact of fail/remove/restart/scale on an entity WITHOUT touching production.",
+    risk=SAFE, timeout_s=60.0, tags=["twin", "simulation"],
+    inputs={"entity_id": "str", "scenario": "fail|remove|restart|scale_up|scale_down"}))
+def twin_simulate(entity_id: str, scenario: str = "fail") -> dict:
+    from core.kai_twin import simulate
+    return simulate(entity_id, scenario)
+
+
+@tool(ToolSpec(
+    id="kai.twin.scenarios", name="List scenarios",
+    description="What-if options available for an entity.",
+    risk=SAFE, tags=["twin"]))
+def twin_scenarios(entity_id: str) -> dict:
+    from core.kai_twin import scenarios_for
+    return scenarios_for(entity_id)
+
+
+@tool(ToolSpec(
+    id="kai.workers.delegate", name="Delegate reasoning",
+    description="Send a reasoning/analysis task through the existing performance-weighted provider router.",
+    risk=SAFE, timeout_s=120.0, tags=["workforce", "ai"],
+    inputs={"task": "str", "task_type": "planning|review|classification|documentation"}))
+def workers_delegate(task: str, task_type: str = "planning") -> dict:
+    if len(task) > 8000:
+        raise ValueError("task text too long (max 8000 chars)")
+    from core.ai.ai_router import delegate as router_delegate
+    result = router_delegate(task, task_type=task_type if task_type in (
+        "planning", "review", "classification", "documentation") else "planning",
+        timeout=100)
+    response = result.get("response", result)
+    return {"response": str(response)[:6000],
+            "provider": result.get("provider") or result.get("provider_used")}

@@ -165,6 +165,10 @@ app.include_router(app_registry_router)
 from core.kai_tools.routes import router as kai_tools_router
 app.include_router(kai_tools_router)
 
+# KAI Ultimate mobile app — pairing + aggregated data endpoints
+from core.kai_app_api import router as kai_app_router
+app.include_router(kai_app_router)
+
 # Repository Registry
 from core.repo_registry import (
     list_repositories, list_by_platform, list_local_repositories, get_registry_stats,

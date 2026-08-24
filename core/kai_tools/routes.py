@@ -106,3 +106,17 @@ def world_refresh_endpoint(request: Request):
 def world_impact(entity_id: str):
     from core.world_model import impact_of
     return impact_of(entity_id)
+
+
+@router.get("/executive")
+def executive_now():
+    from core.kai_executive import prioritize
+    return prioritize()
+
+
+@router.get("/briefings")
+def briefings_list(limit: int = 10):
+    from core.kai_executive import _load, BRIEFINGS_PATH
+    rows = _load(BRIEFINGS_PATH)[-limit:][::-1]
+    return {"count": len(rows), "briefings": [
+        {"kind": b.get("kind"), "ts": b.get("ts"), "counts": b.get("counts")} for b in rows]}

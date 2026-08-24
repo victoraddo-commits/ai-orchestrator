@@ -125,3 +125,28 @@ def test_world_model_state_query(isolated_policy, monkeypatch):
     assert st["entities"] == 1
     e = world_model.get_state("host:x")
     assert e["entity"]["status"] == "online"
+
+
+def test_executive_memory_roundtrip(tmp_path, monkeypatch):
+    from core import kai_executive as ke
+    monkeypatch.setattr(ke, "DECISIONS_PATH", tmp_path / "d.json")
+    monkeypatch.setattr(ke, "FAILURES_PATH", tmp_path / "f.json")
+    ke.remember_decision("Use P40 for inference", reason="cost/perf", alternatives=["T4"])
+    ke.remember_failure("restart x", cause="timeout", lesson="backoff first")  # unverified
+    ds = ke.recent_decisions()
+    assert ds[0]["decision"].startswith("Use P40")
+    all_f = ke.recent_failures()
+    ver_f = ke.recent_failures(verified_only=True)
+    assert len(all_f) == 1 and len(ver_f) == 0  # speculative ≠ verified
+
+
+def test_executive_correlates_duplicate_approvals(monkeypatch):
+    from core import kai_executive as ke
+    monkeypatch.setattr(ke, "_world_changes", lambda: [])
+    monkeypatch.setattr(ke, "_disk_signals", lambda: [])
+    monkeypatch.setattr(ke, "_pending_approvals", lambda: [
+        {"id": str(i), "action": "restart_container",
+         "reason": "Repeated critical incident: backup errors"} for i in range(5)])
+    p = ke.prioritize()
+    assert p["counts"]["attention"] == 1          # one root cause, not five
+    assert p["counts"]["approvals_pending"] == 5

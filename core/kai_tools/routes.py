@@ -76,3 +76,33 @@ def exec_tool(tool_id: str, body: ToolExecBody, request: Request):
         "error": result.error,
         "approval_id": result.approval_id,
     }
+
+
+@router.get("/world")
+def world_summary():
+    from core.world_model import get_state
+    return get_state()
+
+
+@router.get("/world/{entity_id:path}")
+def world_entity(entity_id: str):
+    from core.world_model import get_state
+    st = get_state(entity_id)
+    if st.get("entity") is None:
+        raise HTTPException(404, f"unknown entity '{entity_id}'")
+    return st
+
+
+@router.post("/world/refresh")
+def world_refresh_endpoint(request: Request):
+    _authorize(request)  # refresh is read-only collection but auth-gate it anyway
+    from core.world_model import build_snapshot
+    snap = build_snapshot()
+    return {"updated_at": snap.get("updated_at"), **(snap.get("counts") or {}),
+            "changes": snap.get("changes_since_previous", [])}
+
+
+@router.get("/impact/{entity_id:path}")
+def world_impact(entity_id: str):
+    from core.world_model import impact_of
+    return impact_of(entity_id)

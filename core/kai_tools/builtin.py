@@ -177,3 +177,35 @@ def service_restart(unit: str) -> dict:
     import subprocess
     r = subprocess.run(["systemctl", "restart", unit], capture_output=True, text=True, timeout=55)
     return {"unit": unit, "rc": r.returncode, "output": (r.stderr or "").strip()[-300:]}
+
+
+# --- kai.world.* : JARVIS P4 world model -------------------------------------
+
+@tool(ToolSpec(
+    id="kai.world.state", name="World state",
+    description="World Model summary: entity counts by type + recent changes.",
+    risk=SAFE, tags=["world"]))
+def world_state() -> dict:
+    from core.world_model import get_state
+    return get_state()
+
+
+@tool(ToolSpec(
+    id="kai.world.refresh", name="Refresh world model",
+    description="Re-collect live entities from proxmox/docker/workforce and diff vs previous snapshot.",
+    risk=SAFE, timeout_s=120.0, tags=["world"]))
+def world_refresh() -> dict:
+    from core import world_model
+    snap = world_model.build_snapshot()
+    return {"updated_at": snap.get("updated_at"), **(snap.get("counts") or {}),
+            "changes": snap.get("changes_since_previous", [])[:20]}
+
+
+@tool(ToolSpec(
+    id="kai.world.impact", name="Failure impact analysis",
+    description="If a component fails, what transitively depends on it? Dependency-graph traversal.",
+    risk=SAFE, tags=["world"],
+    inputs={"entity_id": "str e.g. ct:104 | svc:npm-ct104 | host:pve-b"}))
+def world_impact(entity_id: str) -> dict:
+    from core.world_model import impact_of
+    return impact_of(entity_id)

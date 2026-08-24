@@ -95,9 +95,19 @@ TILES = [
         "description": "Microfinance — groups, contributions, payouts",
         "icon": "landmark",
         "color": "#14B8A6",
-        "url": "http://susu.lan",
+        "url": "http://192.168.1.111:8050",
         "type": "external",
         "tags": ["finance"],
+    },
+    {
+        "id": "kai-betting",
+        "name": "Kai Betting",
+        "description": "Sports betting engine — picks, EV gate, sessions",
+        "icon": "trophy",
+        "color": "#DC2626",
+        "url": "http://192.168.1.111:8096",
+        "type": "external",
+        "tags": ["betting", "production"],
     },
     {
         "id": "airdrop-hunter",
@@ -165,9 +175,19 @@ TILES = [
         "description": "Passkey login, secrets, identity, audit",
         "icon": "shield-check",
         "color": "#7C3AED",
-        "url": "https://vault.local",
+        "url": "https://vault.sso.deerude.com",
         "type": "external",
         "tags": ["identity", "security", "core"],
+    },
+    {
+        "id": "deerude",
+        "name": "Deerude",
+        "description": "Public site — ventures & careers portal",
+        "icon": "globe",
+        "color": "#0EA5E9",
+        "url": "https://deerude.com",
+        "type": "external",
+        "tags": ["web", "public"],
     },
 ]
 
@@ -577,6 +597,8 @@ const ICONS = {
   'code': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
   'scale': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>',
   'chart-line': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>',
+  'trophy': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
+  'globe': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>',
 };
 
 // ── Clock ──
@@ -604,14 +626,16 @@ function loadStaticTiles(){
     {id:'notifications',name:'Notifications',description:'Alerts, incidents & activity feed',icon:'bell',color:'#F59E0B',url:'/kai/notifications',type:'internal',status:'unknown',tags:['monitoring']},
     {id:'wireguard',name:'WireGuard',description:'VPN tunnel status & management',icon:'shield',color:'#8B5CF6',url:'/kai/wireguard/status',type:'internal',status:'unknown',tags:['network','core']},
     {id:'it-manager',name:'IT Manager',description:'HR platform — workers, payroll, shifts',icon:'users',color:'#EC4899',url:'http://192.168.99.11:8090',type:'external',status:'unknown',tags:['hr','production']},
-    {id:'susu',name:'Susu',description:'Microfinance — groups, contributions, payouts',icon:'landmark',color:'#14B8A6',url:'http://susu.lan',type:'external',status:'unknown',tags:['finance']},
+    {id:'susu',name:'Susu',description:'Microfinance — groups, contributions, payouts',icon:'landmark',color:'#14B8A6',url:'http://192.168.1.111:8050',type:'external',status:'unknown',tags:['finance']},
+    {id:'kai-betting',name:'Kai Betting',description:'Sports betting engine — picks, EV gate, sessions',icon:'trophy',color:'#DC2626',url:'http://192.168.1.111:8096',type:'external',status:'unknown',tags:['betting','production']},
     {id:'airdrop-hunter',name:'Airdrop Hunter',description:'Crypto airdrop monitor & alerts',icon:'rocket',color:'#F97316',url:'http://192.168.99.11:8092',type:'external',status:'unknown',tags:['crypto']},
     {id:'proxdash',name:'ProxDash',description:'Homelab dashboard & resource monitor',icon:'gauge',color:'#06B6D4',url:'http://192.168.1.114:8091',type:'external',status:'unknown',tags:['monitoring']},
     {id:'code-server',name:'Code Server',description:'VS Code in the browser',icon:'code',color:'#2563EB',url:'http://192.168.99.11:8443',type:'external',status:'unknown',tags:['dev']},
     {id:'juris-kai',name:'Juris Kai',description:'Ghana legal corpus search & analysis',icon:'scale',color:'#D97706',url:'/command-center#legal',type:'internal',status:'unknown',tags:['legal']},
     {id:'portfolio',name:'Portfolio',description:'Investment & asset tracker',icon:'chart-line',color:'#10B981',url:'http://192.168.99.11:3000',type:'external',status:'unknown',tags:['finance']},
     {id:'money-center',name:'Money Center',description:'KAI Money Ecosystem — treasury, operations, KAI account',icon:'banknote',color:'#059669',url:'http://192.168.1.118:8095',type:'external',status:'unknown',tags:['money','production']},
-    {id:'kai-vault',name:'Kai Vault',description:'Passkey login, secrets, identity, audit',icon:'shield-check',color:'#7C3AED',url:'https://vault.local',type:'external',status:'unknown',tags:['identity','security','core']},
+    {id:'kai-vault',name:'Kai Vault',description:'Passkey login, secrets, identity, audit',icon:'shield-check',color:'#7C3AED',url:'https://vault.sso.deerude.com',type:'external',status:'unknown',tags:['identity','security','core']},
+    {id:'deerude',name:'Deerude',description:'Public site — ventures & careers portal',icon:'globe',color:'#0EA5E9',url:'https://deerude.com',type:'external',status:'unknown',tags:['web','public']},
   ]);
 }
 

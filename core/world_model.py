@@ -42,6 +42,9 @@ STATIC_EDGES = [
     {"src": "host:pve-b", "dst": "ct:107", "kind": "hosts", "note": "kai-vault"},
     {"src": "host:pve-b", "dst": "ct:108", "kind": "hosts", "note": "kai-money"},
     {"src": "host:pve-b", "dst": "ct:109", "kind": "hosts", "note": "kai-android-factory"},
+    {"src": "host:pve-b", "dst": "ct:110", "kind": "hosts", "note": "kai-browser sandbox"},
+    {"src": "svc:kai-browser", "dst": "ct:110", "kind": "runs_on"},
+    {"src": "app:android-factory", "dst": "ct:109", "kind": "runs_on"},
     # network-core dependencies (ZeroTier backbone per network-architecture rebuild)
     {"src": "host:pve-b", "dst": "service:zerotier-backbone", "kind": "transit",
      "note": "A<->B transit via ZT through network-core LXCs"},
@@ -154,11 +157,13 @@ def collect_entities() -> dict:
         ("svc:kai-notify", "KAI Notify hub (CT108 :8094)", None),
     ]:
         entities.setdefault(sid, {"type": "service", "label": label, "status": "unknown"})
+    entities.setdefault("svc:kai-browser", {"type": "service", "label": "KAI Browser Sandbox (CT110 :8140)", "status": "unknown"})
     for aid, label in [
         ("app:kai-brain", "KAI Orchestrator"), ("app:kai-money", "Money Center"),
         ("app:kai-vault", "Kai Vault"), ("app:susu", "SUSU"), ("app:kai-betting", "Kai Betting"),
         ("app:it-manager", "IT Manager"), ("app:proxdash", "ProxDash"),
         ("app:deerude-site", "Deerude site"), ("app:kai-android-factory", "Android Factory"),
+        ("app:android-factory", "Android Factory app layer"),
     ]:
         entities.setdefault(aid, {"type": "application", "label": label, "status": "unknown"})
     entities.setdefault("device:s23-ultra", {"type": "device", "label": "S23 Ultra", "status": "unknown"})

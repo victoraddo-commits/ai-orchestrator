@@ -252,3 +252,28 @@ def failure_memory(verified_only: bool = False) -> dict:
     from core.kai_executive import recent_failures
     rows = recent_failures(limit=15, verified_only=verified_only)
     return {"count": len(rows), "failures": rows}
+
+
+# --- kai.proactive.* : JARVIS P13 ---------------------------------------------
+
+@tool(ToolSpec(
+    id="kai.proactive.run", name="Proactive check",
+    description="Observe → predict cycle: trend-based predictions w/ confidence, world-model detections.",
+    risk=SAFE, timeout_s=90.0, tags=["proactive"]))
+def proactive_run() -> dict:
+    from core.kai_proactive import run_cycle
+    return run_cycle(notify_threshold="warn")
+
+
+@tool(ToolSpec(
+    id="kai.proactive.predictions", name="Prediction history",
+    description="Recent predictions/detections from the proactive engine.",
+    risk=SAFE, tags=["proactive"]))
+def proactive_history() -> dict:
+    import json
+    try:
+        with open("/project/ai-orchestrator/memory/kai_predictions.json") as fh:
+            rows = json.load(fh).get("records", [])
+        return {"count": len(rows), "predictions": rows[-15:][::-1]}
+    except FileNotFoundError:
+        return {"count": 0, "predictions": []}

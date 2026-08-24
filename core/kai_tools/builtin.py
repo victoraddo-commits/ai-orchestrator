@@ -9,6 +9,7 @@ operations need wrapping; the class exists and is enforced from day one.
 
 from __future__ import annotations
 
+import base64
 import json
 
 from core.kai_tools.registry import SAFE, CONTROLLED, ToolSpec, tool
@@ -331,3 +332,76 @@ def goals_list() -> dict:
     from core.kai_missions import list_goals
     rows = list_goals()
     return {"count": len(rows), "goals": rows}
+
+
+# --- kai.browser.* + kai.vision.* : JARVIS P7/P9 --------------------------------
+
+BROWSER_URL = "http://192.168.1.120:8140"
+
+
+def _browser_post(path: str, payload: dict, timeout_s: float = 45.0) -> dict:
+    import requests
+    r = requests.post(f"{BROWSER_URL}{path}", json=payload, timeout=timeout_s)
+    if r.status_code != 200:
+        err = r.json().get("detail", r.status_code)
+        raise RuntimeError(f"browser {path}: {err}")
+    return r.json()
+
+
+@tool(ToolSpec(
+    id="kai.browser.navigate", name="Browse page",
+    description="Navigate to a URL in the sandboxed headless browser and extract text.",
+    risk=SAFE, timeout_s=60.0, tags=["browser"],
+    inputs={"url": "str", "session": "str? (named sessions keep cookies)"}))
+def browser_navigate(url: str, session: str | None = None) -> dict:
+    return _browser_post("/navigate", {"url": url, "session": session})
+
+
+@tool(ToolSpec(
+    id="kai.browser.act", name="Browser actions",
+    description="Click/type/press steps on a page in a NAMED session (stateful cookies).",
+    risk=CONTROLLED, timeout_s=90.0, tags=["browser"],
+    inputs={"session": "str", "url": "str?", "steps": "list"}))
+def browser_act(session: str, url: str | None = None, steps: list | None = None) -> dict:
+    return _browser_post("/act", {"session": session, "url": url,
+                                  "steps": steps or []}, timeout_s=80.0)
+
+
+@tool(ToolSpec(
+    id="kai.vision.analyze_url", name="Look at webpage",
+    description="Screenshot a URL and analyze it with the vision model — 'what is wrong with this page?'",
+    risk=SAFE, timeout_s=120.0, tags=["vision", "browser"],
+    inputs={"url": "str", "question": "str?"}))
+def vision_analyze_url(url: str, question: str = "Describe this page and note anything unusual.") -> dict:
+    shot = _browser_post("/screenshot", {"url": url}, timeout_s=60.0)
+    png = base64.b64decode(shot["png_base64"])
+    return {"url": url, **_vision_ask(png, question), "screenshot_bytes": len(png)}
+
+
+def _vision_ask(png_bytes: bytes, question: str) -> dict:
+    """Vision via Gemini native generateContent with inline_data (multimodal
+    part array). Falls back to a text-only description error honestly."""
+    import os as _os
+    key = _os.environ.get("GEMINI_API_KEY", "")
+    if not key:
+        try:
+            from core.ai.secrets import get_api_key
+            key = get_api_key("gemini") or ""
+        except Exception:
+            pass
+    if not key:
+        raise RuntimeError("no vision provider configured (GEMINI_API_KEY missing)")
+    import requests as _rq
+    from core.ai.secrets import get_api_key as _gak
+    model = "gemini-flash-lite-latest"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    body = {"contents": [{"parts": [
+        {"text": question},
+        {"inline_data": {"mime_type": "image/png",
+                         "data": base64.b64encode(png_bytes).decode()}},
+    ]}]}
+    r = _rq.post(url, params={"key": key}, json=body, timeout=90)
+    if r.status_code != 200:
+        raise RuntimeError(f"vision provider {r.status_code}: {r.text[:150]}")
+    text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return {"analysis": str(text)[:3000], "provider": f"gemini:{model}"}

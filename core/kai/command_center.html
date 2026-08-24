@@ -1751,12 +1751,36 @@ async function loadMoney(){
       html+=moneyCard('Distributed Cash','$'+Number(kp.total_distributed_cash??0).toLocaleString(),'actually paid out');
       html+='</div>';
     }
+    // KAI account (ME-Ultimate C) — KAI's own treasury
+    const ka=d.kai_account&&!d.kai_account.error&&d.kai_account.exists?d.kai_account:null;
+    if(ka){
+      html+='<h3>KAI Account</h3><div class="grid-stats">';
+      html+=moneyCard('KAI Balance','$'+Number(ka.balance??0).toLocaleString(),'$'+Number(ka.earned_balance??0).toLocaleString()+' earned');
+      html+='</div>';
+      const trs=ka.profit_transfers||[];
+      if(trs.length){
+        html+='<table class="data-table"><thead><tr><th>When</th><th>From</th><th>Amount</th><th>Reason</th></tr></thead><tbody>';
+        for(const t of trs.slice(0,5)){
+          html+=`<tr><td>${esc(String(t.ts||'').slice(0,16).replace('T',' '))}</td><td>${esc(t.from_treasury)}</td><td>$${Number(t.amount).toLocaleString()}</td><td>${esc((t.reason||'').slice(0,50))}</td></tr>`;
+        }
+        html+='</tbody></table>';
+      }
+    }
     // Operations table
     const ops=Array.isArray(d.operations)?d.operations:[];
     if(ops.length){
       html+='<h3>Operations</h3><table class="data-table"><thead><tr><th>Operation</th><th>Status</th><th>Mode</th></tr></thead><tbody>';
       for(const o of ops){
         html+=`<tr><td>${esc(o.name||o.slug)}</td><td>${esc(o.status||'—')}</td><td>${esc(o.mode||'—')}</td></tr>`;
+      }
+      html+='</tbody></table>';
+    }
+    // KAI audit reports (ME-Ultimate D)
+    const ka2=d.kai_audit&&!d.kai_audit.error?d.kai_audit:[];
+    if(Array.isArray(ka2)&&ka2.length){
+      html+='<h3>KAI Profit Audits</h3><table class="data-table"><thead><tr><th>When</th><th>Scope</th><th>Net</th><th>Anomalies</th><th>Summary</th></tr></thead><tbody>';
+      for(const r of ka2.slice(0,5)){
+        html+=`<tr><td>${esc(String(r.ts||r.day||'').slice(0,16).replace('T',' '))}</td><td>${esc(r.scope||'all')}</td><td>$${Number(r.total_net??0).toLocaleString()}</td><td>${r.anomalies?'⚠ '+r.anomalies:'✓'}</td><td>${esc((r.summary||'').slice(0,60))}</td></tr>`;
       }
       html+='</tbody></table>';
     }

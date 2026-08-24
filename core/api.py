@@ -2699,6 +2699,8 @@ def command_center_money():
         ("treasury", "/treasury/summary"),
         ("operations", "/operations"),
         ("kai_position", "/kai/position"),
+        ("kai_account", "/kai/account"),
+        ("kai_audit", "/kai/audit/reports"),
         ("risk_events", "/risk/events?status=open&limit=20"),
         ("decisions", "/decisions?limit=15"),
     ):

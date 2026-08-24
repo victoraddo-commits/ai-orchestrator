@@ -846,6 +846,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <div class="sidebar-section-label">Management</div>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
+      <a class="nav-item" href="#money" data-hash="money"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span class="label">Money</span></a>
       <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
       <div class="sidebar-section-label">Infrastructure</div>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
@@ -967,6 +968,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 
       <!-- AI WORKFORCE -->
       <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-money"><div id="money-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
       <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading…</span></div></section>
@@ -1141,7 +1143,7 @@ const S = {
 };
 const SK = 'kai_command_session_v3';
 const PANEL_TITLES = {
-  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce',
+  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', money:'money',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
   'kai-chat':'Kai Chat', devices:'Devices'
@@ -1268,7 +1270,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -1719,6 +1721,68 @@ async function loadWorkforce(){
     html+='</div>';$('ai-workforce-content').innerHTML=html;}
   catch(e){$('ai-workforce-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: MONEY (ME-13) — read-only executive view of the ecosystem
+// ═══════════════════════════════════════════════════════════════════
+function moneyCard(label, value, sub){
+  return `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${value}</div>${sub?`<div class="stat-sub">${esc(sub)}</div>`:''}</div>`;
+}
+async function loadMoney(){
+  try{
+    const d=await api('/api/command-center/money');
+    let html='';
+    // Treasury headline — honest errors surfaced per section (§54)
+    const tr=d.treasury&&!d.treasury.error?d.treasury:null;
+    if(tr){
+      html+='<div class="grid-stats">';
+      html+=moneyCard('Total Ecosystem Capital','$'+Number(tr.total_ecosystem_capital??0).toLocaleString());
+      html+=moneyCard('Available for Allocation','$'+Number(tr.available_for_allocation??0).toLocaleString());
+      html+=moneyCard('Deployed in Operations','$'+Number(tr.deployed_in_operations??0).toLocaleString());
+      html+='</div>';
+    } else {
+      html+=`<p class="empty">Treasury unavailable${d.treasury&&d.treasury.error?': '+esc(JSON.stringify(d.treasury.error)):''}</p>`;
+    }
+    // KAI position
+    const kp=d.kai_position&&!d.kai_position.error?d.kai_position:null;
+    if(kp){
+      html+='<h3>KAI Position</h3><div class="grid-stats">';
+      html+=moneyCard('KAI Accrued (paper)','$'+Number(kp.total_accrued??0).toLocaleString(),'share of op P&L, not cash');
+      html+=moneyCard('Distributed Cash','$'+Number(kp.total_distributed_cash??0).toLocaleString(),'actually paid out');
+      html+='</div>';
+    }
+    // Operations table
+    const ops=Array.isArray(d.operations)?d.operations:[];
+    if(ops.length){
+      html+='<h3>Operations</h3><table class="data-table"><thead><tr><th>Operation</th><th>Status</th><th>Mode</th></tr></thead><tbody>';
+      for(const o of ops){
+        html+=`<tr><td>${esc(o.name||o.slug)}</td><td>${esc(o.status||'—')}</td><td>${esc(o.mode||'—')}</td></tr>`;
+      }
+      html+='</tbody></table>';
+    }
+    // Open risk events
+    const risk=d.risk_events&&(Array.isArray(d.risk_events)?d.risk_events:d.risk_events.events)||[];
+    if(risk.length){
+      html+='<h3>Open Risk Events</h3><ul>';
+      for(const r of risk.slice(0,8)){
+        html+=`<li>[${esc(r.severity||'?')}] ${esc(r.kind||r.description||'risk event')}</li>`;
+      }
+      html+='</ul>';
+    }
+    // Recent decisions
+    const dec=Array.isArray(d.decisions)?d.decisions:(d.decisions&&d.decisions.decisions)||[];
+    if(dec.length){
+      html+='<h3>Recent Decisions</h3><table class="data-table"><thead><tr><th>When</th><th>Operation</th><th>Decision</th><th>Reason</th></tr></thead><tbody>';
+      for(const x of dec.slice(0,10)){
+        html+=`<tr><td>${esc((x.created_at||'').slice(0,16).replace('T',' '))}</td><td>${esc(x.operation_slug||'')}</td><td>${esc(x.decision||'')}</td><td>${esc((x.reason||'').slice(0,80))}</td></tr>`;
+      }
+      html+='</tbody></table>';
+    }
+    $('money-content').innerHTML=html||'<p class="empty">No money data available yet</p>';
+  }
+  catch(e){$('money-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
 async function toggleProvider(name, enable){
   try{
     const d=await api(`/providers/${name}/toggle`,{method:'PUT',body:JSON.stringify({enabled:enable})});

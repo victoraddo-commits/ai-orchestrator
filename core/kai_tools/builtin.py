@@ -277,3 +277,57 @@ def proactive_history() -> dict:
         return {"count": len(rows), "predictions": rows[-15:][::-1]}
     except FileNotFoundError:
         return {"count": 0, "predictions": []}
+
+
+# --- kai.missions.* : JARVIS P11 ------------------------------------------------
+
+@tool(ToolSpec(
+    id="kai.missions.create", name="Create mission",
+    description="Plan a mission: ordered tool tasks, executed through the policy gate. Missions never spawn missions.",
+    risk=CONTROLLED, timeout_s=60.0, tags=["missions"],
+    inputs={"objective": "str", "tasks": "list[{tool_id,args?,description?}]", "goal_id": "str?"}))
+def mission_create(objective: str, tasks: list, goal_id: str | None = None) -> dict:
+    from core.kai_missions import create_mission
+    m = create_mission(objective, tasks, goal_id=goal_id)
+    return {"id": m["id"], "status": m["status"], "tasks": len(m["tasks"])}
+
+
+@tool(ToolSpec(
+    id="kai.missions.execute", name="Execute mission",
+    description="Run a planned mission's tasks sequentially through the policy gate. Stops on failure/blocked.",
+    risk=CONTROLLED, timeout_s=300.0, tags=["missions"],
+    inputs={"mission_id": "str"}))
+def mission_execute(mission_id: str) -> dict:
+    from core.kai_missions import execute_mission
+    return execute_mission(mission_id)
+
+
+@tool(ToolSpec(
+    id="kai.missions.list", name="List missions",
+    description="All missions with status + progress.",
+    risk=SAFE, tags=["missions"]))
+def mission_list(status: str | None = None) -> dict:
+    from core.kai_missions import list_missions
+    rows = list_missions(status)
+    return {"count": len(rows), "missions": rows}
+
+
+@tool(ToolSpec(
+    id="kai.missions.cancel", name="Cancel mission",
+    description="Cancel a running/planned mission; pending tasks become blocked.",
+    risk=CONTROLLED, tags=["missions"],
+    inputs={"mission_id": "str", "reason": "str"}))
+def mission_cancel(mission_id: str, reason: str = "operator requested") -> dict:
+    from core.kai_missions import cancel_mission
+    m = cancel_mission(mission_id, reason)
+    return {"id": m["id"], "status": m["status"]}
+
+
+@tool(ToolSpec(
+    id="kai.goals.list", name="List goals",
+    description="Active goals with computed progress from their missions.",
+    risk=SAFE, tags=["missions"]))
+def goals_list() -> dict:
+    from core.kai_missions import list_goals
+    rows = list_goals()
+    return {"count": len(rows), "goals": rows}

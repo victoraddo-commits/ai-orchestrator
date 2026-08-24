@@ -719,6 +719,24 @@ def route_inbound_reply(message, pending_builds=None):
     chat_id = str((message.get("chat") or {}).get("id", ALLOWED_CHAT_ID))
     send_typing(chat_id=chat_id)
 
+    # Money Ecosystem commands (/pending, treasury, cr approve N, …) route
+    # before build matching — explicit money syntax always wins; a bare
+    # "approve" still falls through to the software-factory matcher.
+    _money_text = (message.get("text") or "").strip()
+    if _money_text:
+        try:
+            from core.money_commands import handle_money_command
+            _money_reply = handle_money_command(_money_text)
+            if _money_reply is not None:
+                return {
+                    "routed": True,
+                    "action": "money_command",
+                    "reply": _money_reply,
+                }
+        except Exception as _money_exc:
+            return {"routed": True, "action": "money_command",
+                    "reply": f"Money command error: {_money_exc}"}
+
     if pending_builds is None:
         replied_build = _build_from_reply_to(message)
         if replied_build is not None:

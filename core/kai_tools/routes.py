@@ -120,3 +120,18 @@ def briefings_list(limit: int = 10):
     rows = _load(BRIEFINGS_PATH)[-limit:][::-1]
     return {"count": len(rows), "briefings": [
         {"kind": b.get("kind"), "ts": b.get("ts"), "counts": b.get("counts")} for b in rows]}
+
+
+@router.get("/missions")
+def missions_list(status: str | None = None):
+    from core.kai_missions import list_missions
+    return {"count": 0, "missions": list_missions(status)}
+
+
+@router.post("/missions/{mission_id}/verify")
+def mission_verify(mission_id: str, request: Request, body: dict = None):
+    _authorize(request)
+    from core.kai_missions import verify_mission
+    body = body or {}
+    return verify_mission(mission_id, bool(body.get("approved")),
+                          note=str(body.get("note", "")))

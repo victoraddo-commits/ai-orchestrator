@@ -850,6 +850,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
       <a class="nav-item" href="#missions" data-hash="missions"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">Missions</span></a>
       <a class="nav-item" href="#executive" data-hash="executive"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="label">Executive</span></a>
+      <a class="nav-item" href="#enhancements" data-hash="enhancements"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></span><span class="label">Enhancements</span></a>
       <div class="sidebar-section-label">Infrastructure</div>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
       <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
@@ -972,6 +973,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-missions"><div id="missions-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-executive"><div id="executive-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-enhancements"><div id="enhancements-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-money"><div id="money-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
@@ -1274,7 +1276,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -1340,6 +1342,32 @@ async function loadExecutive() {
     el.innerHTML=html;
   }catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
+
+async function loadEnhancements() {
+  const el=$('enhancements-content');
+  try{
+    const r=await api('/kai/tools/enhancements');
+    let html='<h3>Optional capabilities <span style="font-size:0.7rem;color:var(--fg-muted)">(hardware-gated — enable anytime, auto-activates when hardware appears)</span></h3>';
+    const icons={ENABLED:'✅',BLOCKED:'⏸',DISABLED:'⭕'};
+    for(const [key,info] of Object.entries(r.enhancements||{})){
+      const bdg=info.state==='ENABLED'?'ok':info.state==='BLOCKED'?'warn':'info';
+      html+=`<div class="spread" style="padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px">
+        <div><strong>${icons[info.state]||''} ${esc(info.name)}</strong>
+        <span class="badge ${bdg}" style="margin-left:6px">${esc(info.state)}</span>
+        <div style="font-size:0.7rem;color:var(--fg-muted);margin-top:3px">${esc(info.description)} <em>(${esc(info.spec)})</em></div>`;
+      if((info.missing||[]).length) html+=`<div style="font-size:0.68rem;color:var(--warn);margin-top:3px">needs: ${esc(info.missing[0])}</div>`;
+      html+=`</div><div>${info.user_enabled
+        ? `<button class="btn btn-sm" onclick="setEnhancement('${key}','disable')">Disable</button>`
+        : `<button class="btn btn-sm btn-primary" onclick="setEnhancement('${key}','enable')">Enable</button>`}</div>
+      </div>`;
+    }
+    el.innerHTML=html;
+  }catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+window.setEnhancement=async function(key,action){
+  try{await api(`/kai/tools/enhancements/${key}/${action}`, {method:'POST'}); loadEnhancements();}
+  catch(e){alert('Failed: '+e.message);}
+};
 
 // ── Status Bar ────────────────────────────────────────────────────
 async function updateStatusBar() {

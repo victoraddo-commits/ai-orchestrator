@@ -161,3 +161,15 @@ def enhancements_disable(key: str, request: Request):
     if not r.get("ok"):
         raise HTTPException(404, r.get("error", "unknown"))
     return r
+
+
+@router.get("/factory/status")
+def factory_status():
+    from core.kai_tools.builtin import factory_status as _fs
+    return _fs()
+
+
+@router.get("/factory/reports")
+def factory_reports(limit: int = 3):
+    from core.kai_tools.builtin import factory_reports as _fr
+    return _fr(limit=min(max(limit, 1), 10))

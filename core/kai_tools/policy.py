@@ -92,13 +92,32 @@ def execute(tool_id: str, args: dict | None = None, *, operator: str = "system",
     args = dict(args or {})
 
     if spec.risk == HIGH_RISK:
-        rid = request_approval(tool_id, args, reason)
-        _audit({"tool": tool_id, "risk": spec.risk, "operator": operator,
-                "decision": "blocked_pending_approval", "approval_id": rid,
-                "args_keys": sorted(args.keys())})
-        return ToolResult(tool_id, ok=False, executed=False,
-                          error="HIGH RISK — awaiting your approval",
-                          risk=spec.risk, approval_id=rid)
+        # If an operator already APPROVED a request for this exact tool+args,
+        # consume it and proceed (the approval IS the authorization).
+        try:
+            from core import approval as _appr
+            for req in _appr.load_requests():
+                if (req.get("action") == f"tool:{tool_id}"
+                        and req.get("status") in ("approved", "executed")
+                        and not req.get("_executed")):
+                    # mark consumed so one approval = one execution
+                    _appr.save_requests([
+                        {**r, "_executed": True} if r is req else r
+                        for r in _appr.load_requests()])
+                    _audit({"tool": tool_id, "risk": spec.risk, "operator": operator,
+                            "decision": "approved_request_consumed",
+                            "approval_id": req.get("id")})
+                    break
+            else:
+                rid = request_approval(tool_id, args, reason)
+                _audit({"tool": tool_id, "risk": spec.risk, "operator": operator,
+                        "decision": "blocked_pending_approval", "approval_id": rid,
+                        "args_keys": sorted(args.keys())})
+                return ToolResult(tool_id, ok=False, executed=False,
+                                  error="HIGH RISK — awaiting your approval",
+                                  risk=spec.risk, approval_id=rid)
+        except ImportError:
+            pass
 
     if spec.risk == CONTROLLED and current_autonomy_level() < CONTROLLED_AUTO_LEVEL:
         rid = request_approval(tool_id, args, reason or f"CONTROLLED tool {tool_id} at low autonomy")

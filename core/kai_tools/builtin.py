@@ -607,34 +607,192 @@ def voice_stream(audio_b64: str) -> dict:
     return transcribe_stream(b64.b64decode(audio_b64))
 
 
-# --- kai.wireguard.* : peer creation via ProxDash (HIGH_RISK: network access grant) ---
+# --- kai.wireguard.* : peer creation via direct DD-WRT telnet (A-side) --------
+
+def _ddwrt_telnet(command: str) -> str:
+    """Run a command on DD-WRT via telnet. Runs from THIS host (A-side) —
+    CT104/B-side cannot reach 192.168.99.66 (routing asymmetry)."""
+    import os, telnetlib
+    host = os.environ.get("DDWRT_HOST", "192.168.99.66")
+    port = int(os.environ.get("DDWRT_TELNET_PORT", "23"))
+    user = os.environ.get("DDWRT_USER", "root")
+    pw = os.environ.get("DDWRT_PASSWORD", "")
+    if not pw:
+        raise RuntimeError("DDWRT_PASSWORD missing from orchestrator .env")
+    tn = telnetlib.Telnet(host, port, timeout=15)
+    tn.read_until(b"login:", timeout=10)
+    tn.write(user.encode() + b"\n")
+    tn.read_until(b"Password:", timeout=10)
+    tn.write(pw.encode() + b"\n")
+    tn.expect([rb"#\s*$", rb"\$\s*$"], timeout=10)
+    tn.write(command.encode() + b"\n")
+    out = tn.expect([rb"#\s*$", rb"\$\s*$"], timeout=15)[2].decode(errors="replace")
+    tn.write(b"exit\n")
+    tn.close()
+    # strip the echoed command from the output
+    return out.replace(command, "").strip()
+
 
 @tool(ToolSpec(
     id="kai.wireguard.create_peer", name="Create WireGuard peer",
-    description="Generate a new WG peer on the home firewall and return its config (QR-ready). HIGH RISK: grants network access.",
-    risk=HIGH_RISK, timeout_s=90.0, tags=["network", "wireguard"],
-    inputs={"server": "ddwrt|opnsense", "label": "str"}))
+    description="Generate a new WG peer on the home DD-WRT router and return its config (QR-ready). HIGH RISK: grants network access.",
+    risk=HIGH_RISK, timeout_s=300.0, tags=["network", "wireguard"],
+    inputs={"server": "ddwrt", "label": "str"}))
 def wireguard_create_peer(server: str, label: str) -> dict:
-    """Creates a peer through ProxDash's API using an app session created
-    from PROXDASH_APP_USER/PROXDASH_APP_PASSWORD env (stored in .env, never
-    sent to devices). Returns the raw client config for QR display."""
-    import os, requests
-    base = os.environ.get("PROXDASH_URL", "http://192.168.1.114:8091")
-    user = os.environ.get("PROXDASH_APP_USER", "")
-    pw = os.environ.get("PROXDASH_APP_PASSWORD", "")
-    if not user or not pw:
-        raise RuntimeError("ProxDash credentials missing — set PROXDASH_APP_USER/PROXDASH_APP_PASSWORD in orchestrator .env")
-    s = requests.Session()
-    r = s.post(f"{base}/api/auth/login", json={"username": user, "password": pw}, timeout=15)
-    if r.status_code != 200:
-        raise RuntimeError(f"proxdash login failed: {r.status_code}")
-    r2 = s.post(f"{base}/api/peers", json={"server": server, "label": label}, timeout=60)
-    if r2.status_code != 200:
-        raise RuntimeError(f"peer create failed: {r2.text[:200]}")
-    data = r2.json()
-    # never return private key material into logs; return config only in the
-    # tool result (which is shown once to the approving operator)
-    cfg = data.get("config") or data.get("clientConfig") or data
-    return {"created": True, "label": label,
-            "config_text": str(cfg)[:4000],
-            "note": "show as QR once; config contains a private key"}
+    import os, subprocess, re
+    if server != "ddwrt":
+        raise ValueError("only ddwrt supported")
+    if not re.match(r"^[A-Za-z0-9 ._\-]{1,64}$", label):
+        raise ValueError("invalid label")
+    iface = os.environ.get("DDWRT_WG_INTERFACE", "wg0")
+    subnet = os.environ.get("DDWRT_WG_SUBNET", "10.8.0.0/24")
+    endpoint = os.environ.get("DDWRT_WG_ENDPOINT", "")
+    if not endpoint:
+        raise RuntimeError("DDWRT_WG_ENDPOINT missing from .env")
+
+    # 1. generate client keypair (local, private stays local until config)
+    kp = subprocess.run(["wg", "genkey"], capture_output=True, text=True)
+    if kp.returncode != 0:
+        raise RuntimeError("wg tool not installed on orchestrator host")
+    priv = kp.stdout.strip()
+    pub = subprocess.run(["wg", "pubkey"], input=priv, capture_output=True, text=True).stdout.strip()
+
+    # 2. next free IP: query existing peers from DD-WRT
+    show = _ddwrt_telnet(f"wg show {iface} allowed-ips")
+    used = set(re.findall(r"(\d+\.\d+\.\d+\.\d+)/", show))
+    base_net, prefix = subnet.split("/")
+    octets = base_net.split(".")
+    free_ip = None
+    for i in range(2, 255):
+        cand = f"{octets[0]}.{octets[1]}.{octets[2]}.{i}"
+        if cand not in used:
+            free_ip = cand
+            break
+    if not free_ip:
+        raise RuntimeError("subnet exhausted")
+
+    # 3. add peer on DD-WRT (live) + persist in nvram rc_startup
+    _ddwrt_telnet(f"wg set {iface} peer {pub} allowed-ips {free_ip}/32")
+    _ddwrt_telnet(
+        f"nvram set rc_startup=\"$(nvram get rc_startup)\nwg set {iface} peer {pub} allowed-ips {free_ip}/32\""
+    )
+    _ddwrt_telnet("nvram commit")
+
+    # 4. server public key for the client config
+    srv_pub = _ddwrt_telnet(f"wg show {iface} public-key")
+
+    config_text = (
+        f"[Interface]\n"
+        f"PrivateKey = {priv}\n"
+        f"Address = {free_ip}/32\n"
+        f"DNS = 192.168.99.254\n\n"
+        f"[Peer]\n"
+        f"PublicKey = {srv_pub}\n"
+        f"Endpoint = {endpoint}\n"
+        f"AllowedIPs = 0.0.0.0/0\n"
+        f"PersistentKeepalive = 25"
+    )
+    return {"created": True, "label": label, "address": free_ip,
+            "config_text": config_text,
+            "note": "config contains a private key — show as QR once, never store"}
+
+
+# --- kai.enhancements.* : hardware-gated optional capabilities -------------------
+
+@tool(ToolSpec(
+    id="kai.enhancements.status", name="Enhancement status",
+    description="Optional capabilities (wake word, streaming voice, Home Assistant, telephony): enabled × requirements = state.",
+    risk=SAFE, tags=["enhancements"]))
+def enhancements_status() -> dict:
+    from core.kai_enhancements import status
+    return {"enhancements": status()}
+
+
+@tool(ToolSpec(
+    id="kai.enhancements.enable", name="Enable enhancement",
+    description="Opt into an enhancement. Can enable BEFORE hardware exists — auto-activates when requirements are met.",
+    risk=CONTROLLED, tags=["enhancements"],
+    inputs={"key": "wake_word|streaming_voice|home_assistant|telephony"}))
+def enhancements_enable(key: str) -> dict:
+    from core.kai_enhancements import enable
+    return enable(key)
+
+
+@tool(ToolSpec(
+    id="kai.enhancements.disable", name="Disable enhancement",
+    description="Turn an optional capability off.",
+    risk=CONTROLLED, tags=["enhancements"],
+    inputs={"key": "str"}))
+def enhancements_disable(key: str) -> dict:
+    from core.kai_enhancements import disable
+    return disable(key)
+
+
+# --- kai.home.* : Home Assistant control (§46) — gated by enhancement ----------
+
+def _home_gate() -> None:
+    from core.kai_enhancements import capability_available
+    if not capability_available("kai.home.control"):
+        raise RuntimeError(
+            "Home Assistant integration is DISABLED/BLOCKED — enable it via "
+            "kai.enhancements.enable (requires HA_BASE_URL + HA_TOKEN in .env)")
+
+
+@tool(ToolSpec(
+    id="kai.home.devices", name="List HA devices",
+    description="Home Assistant: list lights/switches/sensors/climate entities.",
+    risk=SAFE, timeout_s=30.0, tags=["home"]))
+def home_devices() -> dict:
+    _home_gate()
+    import requests, os
+    url = os.environ["HA_BASE_URL"].rstrip("/")
+    r = requests.get(f"{url}/api/states", headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+                     timeout=10)
+    domains = {}
+    for e in r.json():
+        d = e["entity_id"].split(".")[0]
+        if d in ("light", "switch", "sensor", "climate", "binary_sensor", "camera"):
+            domains.setdefault(d, []).append(e["entity_id"])
+    return {"domains": {k: len(v) for k, v in sorted(domains.items())},
+            "entities": {k: v[:20] for k, v in sorted(domains.items())}}
+
+
+@tool(ToolSpec(
+    id="kai.home.set_state", name="Control HA device",
+    description="Turn a light/switch on/off, set climate temperature. CONTROLLED.",
+    risk=CONTROLLED, timeout_s=30.0, tags=["home"],
+    inputs={"entity_id": "str", "action": "turn_on|turn_off|set_temp", "value": "any"}))
+def home_set_state(entity_id: str, action: str, value=None) -> dict:
+    _home_gate()
+    import requests, os
+    url = os.environ["HA_BASE_URL"].rstrip("/")
+    domain = entity_id.split(".")[0]
+    service = {"turn_on": "turn_on", "turn_off": "turn_off"}.get(action)
+    payload = {"entity_id": entity_id}
+    if action == "set_temp" and domain == "climate":
+        service = "set_temperature"
+        payload["temperature"] = float(value)
+    elif not service:
+        raise ValueError(f"unsupported action '{action}'")
+    r = requests.post(f"{url}/api/services/{domain}/{service}",
+                      headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+                      json=payload, timeout=10)
+    return {"entity_id": entity_id, "action": action, "ok": r.status_code in (200, 201)}
+
+
+@tool(ToolSpec(
+    id="kai.voice.stream_transcribe", name="Streaming transcription",
+    description="Realtime-style partial transcription of PCM16 16k audio. Requires 'streaming_voice' enhancement ENABLED.",
+    risk=SAFE, timeout_s=150.0, tags=["voice"],
+    inputs={"audio_b64": "str (base64 PCM16 16k mono)"}))
+def voice_stream(audio_b64: str) -> dict:
+    import base64 as b64
+    from core.kai_enhancements import capability_available
+    if not capability_available("kai.voice.streaming"):
+        raise RuntimeError(
+            "streaming_voice enhancement is DISABLED — enable via "
+            "kai.enhancements.enable('streaming_voice')")
+    from core.voice_router import transcribe_stream
+    return transcribe_stream(b64.b64decode(audio_b64))
+
+

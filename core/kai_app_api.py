@@ -166,3 +166,58 @@ async def app_missions(dev: dict = Depends(_require_device)):
 async def app_enhancements(dev: dict = Depends(_require_device)):
     from core.kai_enhancements import status
     return {"enhancements": status()}
+
+
+@router.get("/wg/peers")
+async def app_wg_peers(dev: dict = Depends(_require_device)):
+    """Live WG peer list from DD-WRT (via the tool's telnet path)."""
+    import os
+    os.chdir("/project/ai-orchestrator")
+    from core.kai_tools import builtin
+    from core.kai_tools.registry import run_tool
+    # show peers = SAFE read; reuse the telnet helper directly
+    try:
+        show = builtin._ddwrt_telnet("wg show wg0 peers")
+        return {"ok": True, "raw": show[:2000]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+class WgCreateBody(BaseModel):
+    label: str
+
+
+@router.post("/wg/create")
+async def app_wg_create(body: WgCreateBody, dev: dict = Depends(_require_device)):
+    """Create a peer: files the HIGH_RISK request → operator approves (Telegram/CC)
+    → app polls the result. Returns the approval id for tracking."""
+    from core.kai_tools.policy import request_approval
+    rid = request_approval("kai.wireguard.create_peer",
+                           {"server": "ddwrt", "label": body.label},
+                           f"KAI App ({dev.get('device_id')}): create WG peer '{body.label}'")
+    return {"ok": rid is not None, "approval_id": rid,
+            "note": "operator must approve; app polls /wg/result"}
+
+
+@router.post("/wg/execute/{approval_id}")
+async def app_wg_execute(approval_id: str, dev: dict = Depends(_require_device)):
+    """After operator approval, execute the pending peer creation and return
+    the config. The approval must exist and be approved/executed."""
+    import asyncio
+    from core.kai_tools import policy
+    # find the approved request to confirm authorization
+    from core import approval as appr
+    req = next((r for r in appr.load_requests()
+                if r.get("id") == approval_id
+                and r.get("status") in ("approved", "executed")
+                and "wireguard" in str(r.get("action", ""))), None)
+    if not req:
+        raise HTTPException(403, "no approved wireguard request with that id")
+    result = policy.execute("kai.wireguard.create_peer",
+                            {"server": "ddwrt", "label": req.get("reason", "peer")[-30:]},
+                            operator=f"app:{dev.get('device_id')}",
+                            reason=f"approved request {approval_id}")
+    if result.ok:
+        return {"ok": True, "config_text": result.data.get("config_text", ""),
+                "address": result.data.get("address")}
+    return {"ok": False, "error": result.error}

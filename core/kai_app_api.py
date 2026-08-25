@@ -145,7 +145,7 @@ async def app_home(dev: dict = Depends(_require_device)):
     from core.world_model import get_state
     p = prioritize()
     w = get_state()
-    return {"executive": p, "world": w}
+    return {"executive": p, "world": w, "data_trust": _data_age_minutes()}
 
 
 @router.get("/proxmox")
@@ -247,3 +247,27 @@ async def pair_last_code():
     if now - ts > PAIRING_TTL_S:
         raise HTTPException(404, "code expired")
     return {"code": code}
+
+
+def _data_age_minutes() -> dict:
+    """§28 data-trust: how old is each major data source?"""
+    from datetime import datetime, timezone
+    out = {}
+    now = datetime.now(timezone.utc)
+    try:
+        import json
+        with open("/project/ai-orchestrator/memory/world_model.json") as fh:
+            wm = json.load(fh)
+        ts = datetime.fromisoformat(wm.get("updated_at"))
+        out["world_model"] = round((now - ts).total_seconds() / 60)
+    except Exception:
+        out["world_model"] = None
+    try:
+        import sqlite3
+        c = sqlite3.connect("/project/ai-orchestrator/memory/health_observatory.db")
+        row = c.execute("SELECT MAX(timestamp) FROM health_metrics").fetchone()[0]
+        ts = datetime.fromisoformat(row)
+        out["health_metrics"] = round((now - ts).total_seconds() / 60)
+    except Exception:
+        out["health_metrics"] = None
+    return out

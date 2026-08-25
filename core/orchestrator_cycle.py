@@ -217,6 +217,13 @@ def run_cycle():
             result = run_cycle(notify_threshold="warn")
             info(f"proactive cycle: {len(result['predictions'])} prediction(s), "
                  f"{result['actionable']} actionable")
+            # world model refresh shares the same hourly gate (§27/§28 freshness)
+            try:
+                from core.world_model import build_snapshot
+                build_snapshot()
+                info("world model refreshed")
+            except Exception as error:
+                info(f"world model refresh failed: {type(error).__name__}")
             # recurring missions share the same hourly gate
             try:
                 from core.kai_missions import run_due_schedules

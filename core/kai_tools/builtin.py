@@ -796,3 +796,55 @@ def voice_stream(audio_b64: str) -> dict:
     return transcribe_stream(b64.b64decode(audio_b64))
 
 
+
+
+# --- kai.factory.* : Android App Factory observability ---------------------------
+
+FACTORY_HOST = "192.168.1.119"
+
+def _factory_ssh(cmd: str, timeout: int = 25) -> str:
+    import subprocess
+    r = subprocess.run(["ssh", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=no",
+                        f"root@{FACTORY_HOST}", cmd], capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError(f"factory ssh failed: {r.stderr.strip()[:200]}")
+    return r.stdout
+
+
+@tool(ToolSpec(
+    id="kai.factory.status", name="Factory status",
+    description="Android App Factory health: disk, emulator state, projects, latest artifacts.",
+    risk=SAFE, timeout_s=40.0, tags=["factory"]))
+def factory_status() -> dict:
+    disk = _factory_ssh("df -h / | tail -1 | awk '{print $5}'").strip()
+    mem = _factory_ssh("free -h | awk '/Mem:/{print $3\"/\"$2}'").strip()
+    emu = "running" if _factory_ssh("ps aux | grep -c [e]mulator").strip() != "0" else "stopped"
+    projects = _factory_ssh("ls /opt/factory/projects | tr '\n' ' '").strip()
+    latest = _factory_ssh("ls -t /opt/factory/artifacts/kai-ultimate 2>/dev/null | head -1").strip()
+    return {"disk_used": disk, "memory": mem, "emulator": emu,
+            "projects": projects, "latest_artifact": latest}
+
+
+@tool(ToolSpec(
+    id="kai.factory.build", name="Factory build",
+    description="Run the full factory pipeline (build/test/scan/emulator/AAB) on a project.",
+    risk=CONTROLLED, timeout_s=900.0, tags=["factory"],
+    inputs={"project": "str"}))
+def factory_build(project: str) -> dict:
+    out = _factory_ssh(f"/opt/factory/pipeline-v2.sh /opt/factory/projects/{project} 2>&1", timeout=840)
+    ok = "PIPELINE-PASS" in out
+    art = [l for l in out.splitlines() if l.startswith(("PIPELINE-PASS:", "PIPELINE-FAIL:"))]
+    return {"ok": ok, "report": out[-1500:], "artifacts": art[0].split(":",1)[1] if art else ""}
+
+
+@tool(ToolSpec(
+    id="kai.factory.reports", name="Factory reports",
+    description="Recent build reports from the factory.",
+    risk=SAFE, timeout_s=30.0, tags=["factory"]))
+def factory_reports(limit: int = 5) -> dict:
+    out = _factory_ssh(f"ls -t /opt/factory/artifacts/*/*/report.md 2>/dev/null | head -{min(limit,10)}")
+    reports = []
+    for p in out.strip().splitlines():
+        content = _factory_ssh(f"cat {p} 2>/dev/null | head -20")
+        reports.append({"path": p, "content": content})
+    return {"count": len(reports), "reports": reports}

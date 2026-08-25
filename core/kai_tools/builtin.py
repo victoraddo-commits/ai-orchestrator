@@ -857,3 +857,37 @@ def factory_reports(limit: int = 5) -> dict:
         content = _factory_ssh(f"cat {p} 2>/dev/null | head -20")
         reports.append({"path": p, "content": content})
     return {"count": len(reports), "reports": reports}
+
+
+# --- kai.evolution.* : Self-Evolution Engine ------------------------------------
+
+@tool(ToolSpec(
+    id="kai.evolution.status", name="Evolution status",
+    description="Self-evolution state: changes today vs budget, recent proposals, risk levels.",
+    risk=SAFE, tags=["evolution"]))
+def evolution_status() -> dict:
+    from core.kai_evolution import status
+    return status()
+
+
+@tool(ToolSpec(
+    id="kai.evolution.propose", name="Propose self-change",
+    description="File a self-evolution proposal: risk-classified, anti-loop protected, snapshot taken. LOW risk at high autonomy may auto-approve; else human.",
+    risk=CONTROLLED, tags=["evolution"],
+    inputs={"title": "str", "target": "str", "reason": "str", "change_summary": "str"}))
+def evolution_propose(title: str, target: str, reason: str, change_summary: str) -> dict:
+    from core.kai_evolution import propose_change
+    return propose_change(title, target, reason, change_summary)
+
+
+@tool(ToolSpec(
+    id="kai.evolution.result", name="Record evolution result",
+    description="Record deployed/rolled_back/failed for an evolution change; failures become lessons.",
+    risk=CONTROLLED, tags=["evolution"],
+    inputs={"change_id": "str", "result": "deployed|rolled_back|failed", "detail": "str"}))
+def evolution_result(change_id: str, result: str, detail: str = "") -> dict:
+    if result not in ("deployed", "rolled_back", "failed"):
+        raise ValueError("result must be deployed|rolled_back|failed")
+    from core.kai_evolution import record_result
+    record_result(change_id, result, detail)
+    return {"recorded": True}

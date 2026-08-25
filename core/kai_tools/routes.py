@@ -173,3 +173,9 @@ def factory_status():
 def factory_reports(limit: int = 3):
     from core.kai_tools.builtin import factory_reports as _fr
     return _fr(limit=min(max(limit, 1), 10))
+
+
+@router.get("/evolution/status")
+def evolution_status():
+    from core.kai_evolution import status
+    return status()

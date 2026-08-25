@@ -811,18 +811,27 @@ def _factory_ssh(cmd: str, timeout: int = 25) -> str:
     return r.stdout
 
 
+_factory_status_cache = {"ts": 0.0, "data": None}
+
 @tool(ToolSpec(
     id="kai.factory.status", name="Factory status",
     description="Android App Factory health: disk, emulator state, projects, latest artifacts.",
     risk=SAFE, timeout_s=40.0, tags=["factory"]))
 def factory_status() -> dict:
+    import time
+    now = time.time()
+    if now - _factory_status_cache["ts"] < 60 and _factory_status_cache["data"]:
+        return _factory_status_cache["data"]
     disk = _factory_ssh("df -h / | tail -1 | awk '{print $5}'").strip()
     mem = _factory_ssh("free -h | awk '/Mem:/{print $3\"/\"$2}'").strip()
     emu = "running" if _factory_ssh("ps aux | grep -c [e]mulator").strip() != "0" else "stopped"
     projects = _factory_ssh("ls /opt/factory/projects | tr '\n' ' '").strip()
     latest = _factory_ssh("ls -t /opt/factory/artifacts/kai-ultimate 2>/dev/null | head -1").strip()
-    return {"disk_used": disk, "memory": mem, "emulator": emu,
+    data = {"disk_used": disk, "memory": mem, "emulator": emu,
             "projects": projects, "latest_artifact": latest}
+    _factory_status_cache["ts"] = now
+    _factory_status_cache["data"] = data
+    return data
 
 
 @tool(ToolSpec(

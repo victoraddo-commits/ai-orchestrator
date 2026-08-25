@@ -850,7 +850,8 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
       <a class="nav-item" href="#missions" data-hash="missions"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">Missions</span></a>
       <a class="nav-item" href="#executive" data-hash="executive"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="label">Executive</span></a>
-      <a class="nav-item" href="#enhancements" data-hash="enhancements"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></span><span class="label">Enhancements</span></a>
+      <a class="nav-item" href="#enhancements" data-hash="enhancements">
+      <a class="nav-item" href="#factory" data-hash="factory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20M4 20V8l6 4V8l6 4V4h6v16"/></svg></span><span class="label">Factory</span></a><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></span><span class="label">Enhancements</span></a>
       <div class="sidebar-section-label">Infrastructure</div>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
       <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
@@ -974,6 +975,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <section class="panel" id="panel-missions"><div id="missions-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-executive"><div id="executive-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-enhancements"><div id="enhancements-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-factory"><div id="factory-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-money"><div id="money-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
@@ -1276,7 +1278,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -1367,6 +1369,39 @@ async function loadEnhancements() {
 window.setEnhancement=async function(key,action){
   try{await api(`/kai/tools/enhancements/${key}/${action}`, {method:'POST'}); loadEnhancements();}
   catch(e){alert('Failed: '+e.message);}
+};
+
+async function loadFactory() {
+  const el=$('factory-content');
+  try{
+    const s=await api('/kai/tools/factory/status');
+    let html='<h3>Android App Factory</h3>';
+    html+=`<div class="spread"><span>Disk</span><span class="badge ${parseInt(s.disk_used)>80?'bad':'ok'}">${esc(s.disk_used)}</span></div>`;
+    html+=`<div class="spread"><span>Memory</span><span>${esc(s.memory)}</span></div>`;
+    html+=`<div class="spread"><span>Emulator</span><span class="badge ${s.emulator==='running'?'ok':'info'}">${esc(s.emulator)}</span></div>`;
+    html+=`<div class="spread"><span>Projects</span><span>${esc(s.projects)}</span></div>`;
+    html+=`<div class="spread"><span>Latest artifact</span><span style="font-size:0.7rem">${esc(s.latest_artifact)}</span></div>`;
+    html+=`<div style="margin-top:10px"><button class="btn btn-primary" onclick="factoryBuild()">▶ Run full pipeline</button></div>`;
+    html+='<h4 style="margin-top:14px">Recent reports</h4><div id="factory-reports"><span class="loading">loading…</span></div>';
+    el.innerHTML=html;
+    try{
+      const r=await api('/kai/tools/factory/reports?limit=3');
+      let rh='';
+      (r.reports||[]).forEach(rep=>{
+        const pass=rep.content.includes('PIPELINE-PASS');
+        rh+=`<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin:6px 0;font-size:0.7rem;white-space:pre-wrap;max-height:120px;overflow:auto">${esc(rep.content.slice(0,400))}</div>`;
+      });
+      $('factory-reports').innerHTML=rh||'<p class="empty">No reports yet</p>';
+    }catch{}
+  }catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+window.factoryBuild=async function(){
+  if(!confirm('Run the full factory pipeline (build+test+scan+emulator+AAB)?'))return;
+  $('factory-content').innerHTML='<span class="loading">Pipeline running — this takes 2-4 minutes…</span>';
+  try{
+    const r=await api('/kai/tools/factory/build/execute',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({args:{project:'kai-ultimate'}})});
+    loadFactory();
+  }catch(e){alert('Build failed: '+e.message);loadFactory();}
 };
 
 // ── Status Bar ────────────────────────────────────────────────────

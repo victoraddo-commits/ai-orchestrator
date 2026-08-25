@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 import time
 from typing import Optional
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/kai/app", tags=["kai-app"])
 
 # pairing code store: code_hash -> {device_fp, expires, used}
 _PAIRINGS: dict[str, dict] = {}
+_LAST_CODES: list = []  # (raw_code, ts) — dev/test only, gated by KAI_PAIRING_DEBUG
 PAIRING_TTL_S = 600
 
 
@@ -78,6 +80,13 @@ async def pair_request(body: PairRequest):
         "fp": fp, "expires": now + PAIRING_TTL_S,
         "meta": {"name": body.device_name or "unnamed", "platform": body.platform},
     }
+    # dev/test ring buffer (KAI_PAIRING_DEBUG=1 only) for automated emulator tests
+    try:
+        if os.environ.get("KAI_PAIRING_DEBUG") == "1":
+            _LAST_CODES.append((code, now))
+            del _LAST_CODES[:-5]
+    except NameError:
+        pass
     sent = _telegram_send(
         f"🔐 KAI App pairing requested\n"
         f"Device: {body.device_name or 'unknown'} ({body.platform})\n"
@@ -221,3 +230,20 @@ async def app_wg_execute(approval_id: str, dev: dict = Depends(_require_device))
         return {"ok": True, "config_text": result.data.get("config_text", ""),
                 "address": result.data.get("address")}
     return {"ok": False, "error": result.error}
+
+
+@router.get("/pair/last-code")
+async def pair_last_code():
+    """DEV/TEST ONLY — returns the most recent unused pairing code.
+    Gated by KAI_PAIRING_DEBUG=1 in the orchestrator env; never enabled in prod."""
+    import os
+    if os.environ.get("KAI_PAIRING_DEBUG") != "1":
+        raise HTTPException(403, "disabled")
+    now = time.time()
+    # codes are hashed in _PAIRINGS; keep a parallel raw-code ring buffer at request time
+    if not _LAST_CODES:
+        raise HTTPException(404, "no codes issued")
+    code, ts = _LAST_CODES[-1]
+    if now - ts > PAIRING_TTL_S:
+        raise HTTPException(404, "code expired")
+    return {"code": code}

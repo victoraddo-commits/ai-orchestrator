@@ -47,7 +47,7 @@ async def _require_device(
     device_id = find_device_by_token(token)
     if not device_id:
         raise HTTPException(401, "invalid or revoked device token")
-    return {"device_id": device_id}
+    return {"device_id": device_id, "label": device_id}
 
 
 # --- operator-side: create a pairing code (capability-gated) ------------------
@@ -271,3 +271,97 @@ def _data_age_minutes() -> dict:
     except Exception:
         out["health_metrics"] = None
     return out
+
+
+class VisionBody(BaseModel):
+    image_b64: str
+    question: str = "Describe this image and note anything unusual."
+
+
+@router.post("/vision")
+async def app_vision(body: VisionBody, dev: dict = Depends(_require_device)):
+    """KAI EYES: analyze an image (camera capture or screenshot) through the
+    vision model. Uses the same Gemini path as kai.vision.analyze_url."""
+    import base64 as b64
+    try:
+        png = b64.b64decode(body.image_b64)
+    except Exception:
+        raise HTTPException(400, "image_b64 must be base64")
+    if len(png) < 100:
+        raise HTTPException(400, "image too small")
+    if len(png) > 8_000_000:
+        raise HTTPException(400, "image too large (max 8MB)")
+    from core.kai_tools.builtin import _vision_ask
+    result = _vision_ask(png, body.question)
+    return {"ok": True, **result}
+
+
+@router.get("/capabilities")
+async def app_capabilities(dev: dict = Depends(_require_device)):
+    """§50 universal capability registry — what can JARVIS do right now?
+    Derived from the live tool bus (risk classes + descriptions)."""
+    from core.kai_tools.registry import describe_all
+    tools = describe_all()
+    by_category = {}
+    for t in tools:
+        cat = t["id"].split(".")[1] if t["id"].count(".") >= 1 else "core"
+        by_category.setdefault(cat, []).append({
+            "id": t["id"], "name": t.get("name"), "risk": t.get("risk"),
+            "description": t.get("description", "")[:120]})
+    return {"total": len(tools), "categories": by_category,
+            "note": "CONTROLLED/HIGH_RISK require approval per policy"}
+
+
+@router.get("/briefing")
+async def app_briefing(dev: dict = Depends(_require_device), send: bool = False):
+    """§47: 'JARVIS, catch me up' — executive briefing (facts only)."""
+    from core.kai_executive import run_briefing
+    text = run_briefing(kind="on-demand", send=bool(send))
+    return {"briefing": text}
+
+
+@router.get("/spend")
+async def app_spend(days: int = 30, dev: dict = Depends(_require_device)):
+    """Real AI spend for the app's Jarvis tab — cost tracker summary."""
+    from core.ai.cost_tracker import get_cost_summary
+    return get_cost_summary(max(1, min(days, 90)))
+
+
+class EmergencyBody(BaseModel):
+    reason: str = ""
+
+
+@router.post("/emergency/stop")
+async def app_emergency_stop(body: EmergencyBody, dev: dict = Depends(_require_device)):
+    """Kill switch from the phone — same path as the CC emergency panel:
+    tool switch + scheduler pause + running-mission cancel. Audited with
+    the device label so the log shows WHERE the stop came from."""
+    from core.kai_emergency import check_rate, stopped_info, emergency_stop
+    allowed, retry_after = check_rate(dev.get("label", "mobile"))
+    if not allowed:
+        raise HTTPException(429, f"rate limited, retry in {retry_after}s")
+    result = emergency_stop(operator=f"mobile:{dev.get('label', '?')}",
+                            reason=body.reason or "app emergency stop")
+    return {"ok": True, **result}
+
+
+@router.post("/emergency/resume")
+async def app_emergency_resume(dev: dict = Depends(_require_device)):
+    from core.kai_emergency import emergency_resume
+    result = emergency_resume(operator=f"mobile:{dev.get('label', '?')}")
+    return {"ok": True, **result}
+
+
+@router.get("/emergency/status")
+async def app_emergency_status(dev: dict = Depends(_require_device)):
+    from core.kai_emergency import stopped_info
+    info = stopped_info()
+    paused = False
+    try:
+        from core.scheduler import SCHEDULER_PAUSE_FILE
+        paused = SCHEDULER_PAUSE_FILE.exists()
+    except Exception:
+        pass
+    return {"stopped": bool(info.get("stopped")), "scheduler_paused": paused,
+            "by": info.get("by"), "reason": info.get("reason"), "at": info.get("at")}
+

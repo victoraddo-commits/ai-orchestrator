@@ -327,6 +327,28 @@ async def app_spend(days: int = 30, dev: dict = Depends(_require_device)):
     return get_cost_summary(max(1, min(days, 90)))
 
 
+@router.get("/terminal")
+async def app_terminal(dev: dict = Depends(_require_device)):
+    """Terminal join: returns the phone-reachable ttyd URL + basic-auth
+    credential. Credential lives on disk (0600) and is only ever handed to
+    a PAIRED device over the WireGuard-only relay chain."""
+    import os as _os
+    cred_path = "/etc/default/kai-terminal-cred"
+    if not _os.path.exists(cred_path):
+        raise HTTPException(503, "terminal service not configured")
+    cred = open(cred_path).read().strip()
+    if ":" not in cred:
+        raise HTTPException(503, "terminal credential malformed")
+    # phone-facing entry is the proxmox-b socat relay (WG/LAN reachable);
+    # derive it from whatever host the app already talks to.
+    from urllib.parse import urlparse
+    # Config lives client-side; we can only return the path + creds and let
+    # the app build the absolute URL from its own baseUrl host. The relay
+    # listens on port 8001 of the SAME host that relays :8000 -> API.
+    return {"ok": True, "port": 8001, "credential": cred,
+            "path": "/", "note": "open http://<server-host>:8001 in-app; basic auth"}
+
+
 class EmergencyBody(BaseModel):
     reason: str = ""
 

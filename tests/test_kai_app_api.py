@@ -80,3 +80,33 @@ def test_app_endpoints_require_device_token():
     for path in ("/kai/app/spend", "/kai/app/emergency/status"):
         resp = client.get(path)
         assert resp.status_code == 401
+
+
+def test_terminal_endpoint_returns_credential(paired_device, isolated_memory, monkeypatch, tmp_path):
+    cred_file = tmp_path / "kai-terminal-cred"
+    cred_file.write_text("kai:abc123\n")
+    import builtins
+    real_open = builtins.open
+
+    def fake_open(path, *a, **kw):
+        if str(path) == "/etc/default/kai-terminal-cred":
+            return open(cred_file, *a, **kw)
+        return real_open(path, *a, **kw)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+    resp = client.get("/kai/app/terminal", headers=paired_device)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True and body["port"] == 8001
+    assert body["credential"] == "kai:abc123"
+
+
+def test_terminal_endpoint_requires_token():
+    assert client.get("/kai/app/terminal").status_code == 401
+
+
+def test_terminal_endpoint_503_when_unconfigured(paired_device, isolated_memory, monkeypatch):
+    import os
+    monkeypatch.setattr(os.path, "exists", lambda p: False if "kai-terminal-cred" in str(p) else os.path.exists(p))
+    resp = client.get("/kai/app/terminal", headers=paired_device)
+    assert resp.status_code == 503

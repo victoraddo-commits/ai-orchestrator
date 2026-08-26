@@ -277,3 +277,71 @@ def test_call_openrouter_deepseek_v4_flash_against_real_api():
         "Reply with exactly the single word: pong", model="deepseek/deepseek-v4-flash"
     )
     assert "pong" in result.lower()
+
+
+# ── 2026-08-26: per-call token usage capture (cost tracker feed) ──────────
+
+def test_pop_last_usage_returns_none_when_nothing_captured():
+    assert llm_clients.pop_last_usage() is None
+
+
+def test_call_groq_captures_openai_usage_block(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setattr(
+        llm_clients.requests, "post",
+        lambda *a, **k: _resp(json_body={
+            "choices": [{"message": {"content": "hi"}}],
+            "usage": {"prompt_tokens": 120, "completion_tokens": 45},
+        }),
+    )
+
+    assert llm_clients.call_groq("hello") == "hi"
+    assert llm_clients.pop_last_usage() == {"prompt_tokens": 120, "completion_tokens": 45}
+    # Popping clears it -- a second pop must not replay the stale numbers.
+    assert llm_clients.pop_last_usage() is None
+
+
+def test_call_gemini_captures_usage_metadata(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        llm_clients.requests, "post",
+        lambda *a, **k: _resp(json_body={
+            "candidates": [{"content": {"parts": [{"text": "gemini hi"}]}}],
+            "usageMetadata": {"promptTokenCount": 200, "candidatesTokenCount": 30},
+        }),
+    )
+
+    assert llm_clients.call_gemini("hello") == "gemini hi"
+    assert llm_clients.pop_last_usage() == {"prompt_tokens": 200, "completion_tokens": 30}
+
+
+def test_call_ollama_qwen_captures_eval_counts(monkeypatch):
+    class FakeOllamaResp:
+        status_code = 200
+        def json(self):
+            return {
+                "response": "local answer",
+                "prompt_eval_count": 88,
+                "eval_count": 21,
+            }
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(llm_clients, "check_ollama_available", lambda: True)
+    monkeypatch.setattr(llm_clients.requests, "post", lambda *a, **k: FakeOllamaResp())
+
+    assert llm_clients.call_ollama_qwen("hello") == "local answer"
+    assert llm_clients.pop_last_usage() == {"prompt_tokens": 88, "completion_tokens": 21}
+
+
+def test_response_without_usage_leaves_capture_empty(monkeypatch):
+    # Providers that omit the usage block must NOT fabricate zero-token
+    # entries -- pop stays None and record_usage records usage=None.
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setattr(
+        llm_clients.requests, "post",
+        lambda *a, **k: _resp(json_body={"choices": [{"message": {"content": "hi"}}]}),
+    )
+
+    llm_clients.call_groq("hello")
+    assert llm_clients.pop_last_usage() is None

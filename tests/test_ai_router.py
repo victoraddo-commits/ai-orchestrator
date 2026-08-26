@@ -2168,3 +2168,70 @@ def test_delegate_without_provider_override_unchanged(monkeypatch):
 
     assert result["provider"] == "mock"
     assert result["response"] == "auto-routed result"
+
+
+# ── 2026-08-26: token usage threading into usage history ─────────────────
+
+def test_delegate_records_provider_usage_in_history_entry(monkeypatch):
+    # The success-path record_usage call must pick up the usage block
+    # captured by llm_clients during run_fn, so cost_tracker can estimate
+    # real spend instead of recording $0 for every entry.
+    import core.ai_provider as ai_provider
+    import core.llm_clients as llm_clients
+
+    primary = ai_provider.get_provider("deepseek_native_flash")
+    monkeypatch.setitem(primary, "available_fn", lambda: True)
+    monkeypatch.setitem(primary, "run_text_task", lambda p, timeout=60, project_path=None: "answered")
+
+    for name in ("gemini", "openrouter", "deepseek", "minimax", "gpuai_minimax",
+                 "deepseek_native_pro", "geminix", "omniroute_deepseek_flash"):
+        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
+
+    monkeypatch.setattr(ai_router, "ROLE_PROVIDERS", {
+        **ai_router.ROLE_PROVIDERS,
+        "planning": ["deepseek_native_flash"],
+    })
+
+    def fake_run(p, timeout=60, project_path=None):
+        llm_clients._last_call_usage.value = {"prompt_tokens": 500, "completion_tokens": 120}
+        return "answered"
+
+    monkeypatch.setitem(primary, "run_text_task", fake_run)
+
+    result = ai_router.delegate("Design an application architecture")
+
+    assert result["provider"] == "deepseek_native_flash"
+    history = ai_router.get_usage_history()
+    entry = history[-1]
+    assert entry["success"] is True
+    assert entry["usage"] == {"prompt_tokens": 500, "completion_tokens": 120}
+    # Threaded capture must be consumed, not left dangling for the next call.
+    assert llm_clients.pop_last_usage() is None
+
+
+def test_delegate_failure_with_captured_usage_still_records_it(monkeypatch):
+    import core.ai_provider as ai_provider
+    import core.llm_clients as llm_clients
+
+    def boom(p, timeout=60, project_path=None):
+        llm_clients._last_call_usage.value = {"prompt_tokens": 300, "completion_tokens": 0}
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(ai_router, "_candidates_for", lambda _: ["mock"])
+    mock_provider = {
+        "name": "mock",
+        "enabled": True,
+        "available_fn": lambda: True,
+        "capabilities": ["text_task"],
+        "run_text_task": boom,
+    }
+    monkeypatch.setattr(ai_provider, "get_provider", lambda name: mock_provider if name == "mock" else None)
+    monkeypatch.setattr(ai_router.provider_health, "get_quota_snapshot", lambda _: None)
+    monkeypatch.setattr(ai_router.circuit_breaker, "is_open", lambda _: False)
+
+    with pytest.raises(ai_router.AllProvidersFailed):
+        ai_router.delegate("test")
+
+    history = ai_router.get_usage_history()
+    failed_entry = [e for e in history if not e["success"]][-1]
+    assert failed_entry["usage"] == {"prompt_tokens": 300, "completion_tokens": 0}

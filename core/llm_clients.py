@@ -15,6 +15,39 @@ import requests
 import core.ai.provider_health as provider_health
 
 
+# ── Per-call token usage capture (cost tracker feed) ─────────────────────────
+# Every provider response carries a token-usage block, but each API shapes it
+# differently: OpenAI-compatible /v1 uses "usage", Gemini uses "usageMetadata",
+# and ollama's native /api/generate reports eval counts. The 13W contract keeps
+# client return values as plain text strings, so instead of changing every
+# return shape the capture happens here in one place -- _post_json stashes the
+# usage dict for the current call on a thread-local (delegate() runs each
+# provider attempt on its own thread), and ai_router.record_usage picks it up
+# via pop_last_usage() right after run_fn returns. Ollama clients stash their
+# own counts since they bypass _post_json. Nothing here fabricates numbers:
+# absent usage data simply leaves the thread-local empty.
+_last_call_usage = threading.local()
+
+
+def _capture_openai_usage(data):
+    """Stash OpenAI-shape {"usage": {prompt_tokens, completion_tokens}}."""
+    usage = data.get("usage") if isinstance(data, dict) else None
+    if isinstance(usage, dict):
+        _last_call_usage.value = {
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+        }
+
+
+def pop_last_usage():
+    """Return this thread's last captured usage dict, or None; clears it."""
+    value = getattr(_last_call_usage, "value", None)
+    _last_call_usage.value = None
+    if isinstance(value, dict) and (value.get("prompt_tokens") or value.get("completion_tokens")):
+        return value
+    return None
+
+
 # gemini-2.0-flash and gemini-2.0-flash-lite both return 429 RESOURCE_EXHAUSTED
 # (limit: 0) on this account's free tier -- confirmed live. gemini-flash-lite-latest
 # is the model this key actually has real generateContent quota for.
@@ -135,7 +168,9 @@ def _post_json(provider_key, url, **kwargs):
 
         provider_health.capture_from_response_headers(provider_key, response.headers)
 
-        return response.json()
+        data = response.json()
+        _capture_openai_usage(data)
+        return data
     except requests.RequestException as error:
         message = f"{provider_key} request failed: {type(error).__name__}"
         if detail:
@@ -153,6 +188,15 @@ def call_gemini(prompt, model=GEMINI_DEFAULT_MODEL, timeout=60):
         json={"contents": [{"parts": [{"text": prompt}]}]},
         timeout=timeout,
     )
+    usage_metadata = data.get("usageMetadata") or {}
+    if usage_metadata:
+        # Gemini's generateContent response reports counts in camelCase
+        # usageMetadata, not the OpenAI "usage" block -- translate so the
+        # cost tracker sees the same shape from every client.
+        _last_call_usage.value = {
+            "prompt_tokens": int(usage_metadata.get("promptTokenCount") or 0),
+            "completion_tokens": int(usage_metadata.get("candidatesTokenCount") or 0),
+        }
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
@@ -170,6 +214,12 @@ def call_geminix(prompt, model=GEMINI_DEFAULT_MODEL, timeout=60):
         json={"contents": [{"parts": [{"text": prompt}]}]},
         timeout=timeout,
     )
+    usage_metadata = data.get("usageMetadata") or {}
+    if usage_metadata:
+        _last_call_usage.value = {
+            "prompt_tokens": int(usage_metadata.get("promptTokenCount") or 0),
+            "completion_tokens": int(usage_metadata.get("candidatesTokenCount") or 0),
+        }
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
@@ -503,6 +553,12 @@ def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
             )
             response.raise_for_status()
             data = response.json()
+            # ollama's native /api/generate reports token counts as
+            # prompt_eval_count/eval_count (not an OpenAI usage block).
+            _last_call_usage.value = {
+                "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                "completion_tokens": int(data.get("eval_count") or 0),
+            }
             return data.get("response", "")
         except requests.RequestException as error:
             provider_health.capture_provider_error("ollama_qwen", detail=str(error)[:300])
@@ -534,6 +590,10 @@ def call_ollama_llama(prompt, model=OLLAMA_LLAMA_MODEL, timeout=120):
             )
             response.raise_for_status()
             data = response.json()
+            _last_call_usage.value = {
+                "prompt_tokens": int(data.get("prompt_eval_count") or 0),
+                "completion_tokens": int(data.get("eval_count") or 0),
+            }
             return data.get("response", "")
         except requests.RequestException as error:
             provider_health.capture_provider_error("ollama_llama", detail=str(error)[:300])

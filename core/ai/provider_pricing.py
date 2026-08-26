@@ -52,6 +52,54 @@ PRICING = {
             "output_per_million": 15.00,
         },
     },
+    # 2026-08-26: entries below close the calls_unknown gap -- every
+    # provider the router can actually reach now has a pricing row, so
+    # cost_tracker estimation never silently lands at $0/unknown.
+    # local models are free (self-hosted ollama on Proxmox B).
+    "local": {
+        "qwen2.5:7b": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    "llama3": {
+        "llama3.2:3b": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    # OpenRouter bills per-model; the rotation list spans cheap paid models,
+    # so these are documented approximations of each model's published rate.
+    # gpt-4o-mini is exact ($0.15/$0.60 per M); deepseek-v4-flash/pro match
+    # the native DeepSeek rates already listed above; z-ai/glm-5 and gpt-5
+    # use conservative ballpark rates until a real invoice pins them down.
+    "openrouter": {
+        "openai/gpt-4o-mini": {"input_per_million": 0.15, "output_per_million": 0.60},
+        "deepseek/deepseek-v4-flash": {"input_per_million": 0.14, "output_per_million": 0.28},
+        "deepseek/deepseek-v4-pro": {"input_per_million": 0.42, "output_per_million": 0.84},
+        "z-ai/glm-5": {"input_per_million": 0.50, "output_per_million": 2.00},
+        "openai/gpt-5": {"input_per_million": 1.25, "output_per_million": 10.00},
+    },
+    # OmniRoute aggregates upstreams behind auto/ routes; best-fast typically
+    # resolves to minimax-m2.5-class mid-tier models. Ballpark approximation
+    # -- omniroute's own gateway logs remain the authoritative spend source.
+    "omniroute": {
+        "auto/best-fast": {"input_per_million": 0.30, "output_per_million": 1.20},
+    },
+    "gpuai_minimax": {
+        "gpuai/minimax-m3": {"input_per_million": 0.30, "output_per_million": 1.20},
+    },
+    "minimax": {
+        "MiniMax-M2": {"input_per_million": 0.30, "output_per_million": 1.20},
+    },
+    # GPU.ai serverless Gemma 4 31B -- mid-tier open-weight rates.
+    "gpuai_gemma": {
+        "gpuai/gemma-4-31b-it": {"input_per_million": 0.20, "output_per_million": 0.80},
+    },
+    # OmniRoute-named DeepSeek slots -- same published DeepSeek V4 Flash
+    # rates as deepseek_native_flash (the gateway just re-bills upstream).
+    "omniroute_deepseek_flash": {
+        "ds/deepseek-v4-flash": {"input_per_million": 0.14, "output_per_million": 0.28},
+    },
+    # Coding route through OmniRoute's auto backend -- same ballpark as the
+    # generic omniroute row until gateway logs pin the actual upstream mix.
+    "omniroute_deepseek_coding": {
+        "auto/coding": {"input_per_million": 0.30, "output_per_million": 1.20},
+    },
 }
 
 

@@ -387,3 +387,38 @@ async def app_emergency_status(dev: dict = Depends(_require_device)):
     return {"stopped": bool(info.get("stopped")), "scheduler_paused": paused,
             "by": info.get("by"), "reason": info.get("reason"), "at": info.get("at")}
 
+
+
+class AdbPortReport(BaseModel):
+    adb_port: int
+
+
+@router.post("/device/report-port")
+async def app_report_port(body: AdbPortReport, dev: dict = Depends(_require_device)):
+    """Port monitor: the phone reports its current wireless-debugging port
+    whenever it changes. We relay it to the operator's Telegram so claude-code
+    can `adb connect` any time without asking."""
+    port = max(1024, min(65535, int(body.adb_port)))
+    label = dev.get("label", "?")
+    from core.telegram_bridge import send_message as tg
+    try:
+        tg(f"📱 adb port update — {label}: 10.8.0.8:{port}\n(connect: adb connect 10.8.0.8:{port})")
+        relayed = True
+    except Exception:
+        relayed = False
+    # also persist for polling
+    import json as _json
+    path = "/project/ai-orchestrator/memory/adb_ports.json"
+    try:
+        data = _json.load(open(path)) if _os_path_exists(path) else {}
+    except Exception:
+        data = {}
+    data[label] = {"port": port, "ip": "10.8.0.8", "updated": int(time.time())}
+    with open(path, "w") as fh:
+        fh.write(_json.dumps(data))
+    return {"ok": True, "relayed": relayed}
+
+
+def _os_path_exists(p: str) -> bool:
+    import os
+    return os.path.exists(p)

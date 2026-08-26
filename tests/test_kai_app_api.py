@@ -110,3 +110,28 @@ def test_terminal_endpoint_503_when_unconfigured(paired_device, isolated_memory,
     monkeypatch.setattr(os.path, "exists", lambda p: False if "kai-terminal-cred" in str(p) else os.path.exists(p))
     resp = client.get("/kai/app/terminal", headers=paired_device)
     assert resp.status_code == 503
+
+
+def test_report_port_roundtrip(paired_device, isolated_memory, monkeypatch, tmp_path):
+    sent = []
+    import core.telegram_bridge as tb
+    monkeypatch.setattr(tb, "send_message", lambda text: sent.append(text))
+    import core.kai_app_api as kap
+    monkeypatch.setattr(kap, "_os_path_exists", lambda p: False)
+    # redirect the ports file into tmp
+    monkeypatch.setattr("builtins.open", _open_redirect(tmp_path / "adb_ports.json"))
+    resp = client.post("/kai/app/device/report-port", headers=paired_device,
+                       json={"adb_port": 41234})
+    assert resp.status_code == 200 and resp.json()["ok"] is True
+    assert sent and "41234" in sent[0]
+
+
+def _open_redirect(target):
+    import builtins
+    real_open = builtins.open
+
+    def fake_open(path, *a, **kw):
+        if "adb_ports.json" in str(path):
+            return real_open(target, *a, **kw)
+        return real_open(path, *a, **kw)
+    return fake_open

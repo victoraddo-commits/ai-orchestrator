@@ -25,6 +25,7 @@ import time
 from datetime import datetime
 
 import core.ai_provider as ai_provider
+import core.llm_clients as llm_clients
 import core.ai.provider_health as provider_health
 import core.ai.circuit_breaker as circuit_breaker
 import core.ai.provider_latency as provider_latency
@@ -632,13 +633,17 @@ def get_usage_history():
     return load(USAGE_HISTORY_FILE) or []
 
 
-def record_usage(provider, task_type, description, success, duration_ms, error=None, cost=None):
+def record_usage(provider, task_type, description, success, duration_ms, error=None, cost=None, usage=None):
     history = get_usage_history()
 
     # 13W: cost is the *provider-reported* figure only (e.g. OpenCode's
     # step_finish events, which carry OpenRouter/Zen's real billed cost).
     # Providers that don't report one record null -- a number is never
-    # estimated/fabricated from token counts here.
+    # estimated/fabricated from token counts HERE. What does ride along now
+    # is the provider-reported token `usage` block (2026-08-26): captured by
+    # llm_clients from each API response and popped after run_fn returns, so
+    # cost_tracker.get_cost_summary() can estimate real spend from actual
+    # token counts instead of falling back to $0/unknown for every entry.
     entry = {
         "provider": provider,
         "task_type": task_type,
@@ -647,6 +652,7 @@ def record_usage(provider, task_type, description, success, duration_ms, error=N
         "duration_ms": duration_ms,
         "error": error,
         "cost": cost,
+        "usage": usage,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -839,7 +845,8 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         except Exception as error:
             duration_ms = int((time.time() - start) * 1000)
             record_usage(provider, resolved_type, description, success=False,
-                         duration_ms=duration_ms, error=str(error))
+                         duration_ms=duration_ms, error=str(error),
+                         usage=llm_clients.pop_last_usage())
             if capability == "coding_agent":
                 _record_coding_failure_health(provider, str(error))
             circuit_breaker.record_failure(provider)
@@ -857,7 +864,8 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         if capability == "coding_agent" and isinstance(response, dict) and not response.get("success"):
             detail = "; ".join(e.get("content", "") for e in response.get("tool_errors") or []) or "generation did not succeed"
             record_usage(provider, resolved_type, description, success=False,
-                         duration_ms=duration_ms, error=detail, cost=_response_cost(response))
+                         duration_ms=duration_ms, error=detail, cost=_response_cost(response),
+                         usage=llm_clients.pop_last_usage())
             _record_coding_failure_health(provider, detail)
             circuit_breaker.record_failure(provider)
             provider_latency.record_latency(provider, duration_ms)
@@ -868,7 +876,8 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             )
 
         record_usage(provider, resolved_type, description, success=True,
-                     duration_ms=duration_ms, cost=_response_cost(response))
+                     duration_ms=duration_ms, cost=_response_cost(response),
+                     usage=llm_clients.pop_last_usage())
         provider_health.clear_quota_exceeded(provider)
         circuit_breaker.record_success(provider)
         provider_latency.record_latency(provider, duration_ms)
@@ -986,7 +995,7 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
                 response = run_fn(description, timeout=timeout, project_path=project_path)
         except Exception as error:
             duration_ms = int((time.time() - start) * 1000)
-            record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error))
+            record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error), usage=llm_clients.pop_last_usage())
             if capability == "coding_agent":
                 _record_coding_failure_health(name, str(error))
             # 2026-08-23: billing/quota markers are capability-agnostic —
@@ -1013,7 +1022,7 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             detail = "; ".join(e.get("content", "") for e in response.get("tool_errors") or []) or "generation did not succeed"
             # A failed generation still incurred whatever cost the provider
             # reported for it -- record that too.
-            record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail, cost=_response_cost(response))
+            record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=detail, cost=_response_cost(response), usage=llm_clients.pop_last_usage())
             _record_coding_failure_health(name, detail)
             # 17R: record circuit breaker failure and latency
             circuit_breaker.record_failure(name)
@@ -1021,7 +1030,7 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             record_failure(name, _classify_failure_reason(name, detail), detail)
             continue
 
-        record_usage(name, resolved_type, description, success=True, duration_ms=duration_ms, cost=_response_cost(response))
+        record_usage(name, resolved_type, description, success=True, duration_ms=duration_ms, cost=_response_cost(response), usage=llm_clients.pop_last_usage())
         # A real success is the strongest signal a stale/wrong quota_exceeded
         # verdict is out of date -- clear it immediately rather than waiting
         # out provider_health.QUOTA_EXCEEDED_EXPIRY_SECONDS.

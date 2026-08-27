@@ -38,7 +38,7 @@ WG_UP_TIMEOUT = int(os.environ.get("VPN_FAILOVER_WG_UP_TIMEOUT", "30"))
 
 # Probe target — must be a host reachable through the WG tunnel
 PROBE_HOST = os.environ.get("VPN_FAILOVER_PROBE_HOST", "10.250.0.2")
-PROBE_PORT = int(os.environ.get("VPN_FAILOVER_PROBE_PORT", "11434"))
+PROBE_PORT = int(os.environ.get("VPN_FAILOVER_PROBE_PORT", "8006"))
 
 # Max recovery attempts per cycle (prevents thrashing)
 MAX_RECOVERY_ATTEMPTS = int(os.environ.get("VPN_FAILOVER_MAX_ATTEMPTS", "2"))
@@ -54,21 +54,27 @@ def _proxmox_b_is_reachable() -> bool:
     First checks the cached VPN status (populated by collect_node_health).
     If the cache is empty (e.g. first cycle after restart), falls back to
     a quick TCP check of the probe host.
+
+    Note: we only trust a positive (True) cached result — if the cache says
+    False we still try the TCP probe, since API auth failures (401) are
+    recorded as reachable=False in the cache but the host IS reachable.
     """
     vpn = get_vpn_status("pve-b")
     status = vpn.get("pve-b", {})
-    if status:
-        return status.get("reachable", False)
+    if status and status.get("reachable"):
+        return True
 
-    # Cache empty — do a quick TCP reachability probe (no auth needed).
+    # Cache miss or False — do a quick TCP reachability probe (no auth needed).
     import socket
     try:
-        sock = socket.create_connection((PROBE_HOST, PROBE_PORT), timeout=5)
+        sock = socket.create_connection((PROBE_HOST, PROBE_PORT), timeout=10)
         sock.close()
         # Populate the cache so subsequent calls don't probe again.
         _cache_set_reachable(True)
+        info(f"vpn_failover: {PROBE_HOST}:{PROBE_PORT} reachable via TCP")
         return True
-    except OSError:
+    except OSError as e:
+        info(f"vpn_failover: {PROBE_HOST}:{PROBE_PORT} TCP failed: {e}")
         _cache_set_reachable(False)
         return False
 
@@ -130,11 +136,12 @@ def check_tunnel_health() -> dict:
         {ok: bool, interface: str|None, wg_up: bool, proxmox_reachable: bool,
          recovery_needed: bool, checked_at: iso8601}
     """
+    _reachable = _proxmox_b_is_reachable()
     result = {
         "ok": True,
         "interface": WG_INTERFACE if _wg_interface_exists() else None,
         "wg_up": False,
-        "proxmox_reachable": _proxmox_b_is_reachable(),
+        "proxmox_reachable": _reachable,
         "recovery_needed": False,
         "checked_at": datetime.now(timezone.utc).isoformat(),
     }

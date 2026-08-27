@@ -153,6 +153,10 @@ app.include_router(wireguard_router)
 from core.kai_betting.api import router as betting_router
 app.include_router(betting_router)
 
+# JARVIS Phase 1: Kai Voice Gateway — WSS endpoint for voice pipeline
+from core.voice_gateway.gateway import voice_router as kai_voice_router
+app.include_router(kai_voice_router, prefix="/kai-voice")
+
 # 2026-08-09: Kai Mobile Command Node — Sub-project 6: Module Launcher & App Shortcuts
 from core.mobile_launcher_routes import router as mobile_launcher_router
 app.include_router(mobile_launcher_router)

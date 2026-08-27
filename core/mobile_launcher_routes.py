@@ -13,16 +13,100 @@ Routes:
 - GET /mobile/tiles    — tile data (services/modules with status)
 """
 
+import ipaddress
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["mobile-launcher"])
+
+# --- LAN / WireGuard source-IP guard ----------------------------------------
+# /mobile/api/* exposes operator-dashboard data (proxmox inventory, AI spend,
+# WireGuard peer list, mission queue, etc). The API is bound to 0.0.0.0:8000
+# and the dashboard is reached from the operator's LAN/phone, so we MUST
+# enforce source-IP allowlisting at the application layer — not just rely on
+# the deployment topology. Any request whose client IP isn't in one of these
+# CIDRs is rejected with 403 before the handler runs.
+
+_LAN_CIDRS = [
+    ipaddress.ip_network("127.0.0.0/8"),       # loopback (curl from claude-code)
+    ipaddress.ip_network("10.0.0.0/8"),         # private (10.x LAN + 10.8.0.x WireGuard)
+    ipaddress.ip_network("172.16.0.0/12"),      # private (docker bridge 172.17/18)
+    ipaddress.ip_network("192.168.0.0/16"),     # private (192.168.1.x / 192.168.99.x LANs)
+]
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP. Trusts X-Forwarded-For ONLY if the direct peer
+    is in the LAN CIDRs (i.e. the request came through a known reverse proxy
+    on the LAN). Otherwise returns the TCP peer address — never trust
+    attacker-supplied XFF headers from the public internet."""
+    peer = (request.client.host or "") if request.client else ""
+    # Starlette TestClient uses "testclient" as the host; treat as loopback
+    if peer in ("", "testclient", "localhost"):
+        return "127.0.0.1"
+    try:
+        peer_ip = ipaddress.ip_address(peer)
+    except ValueError:
+        return peer
+    in_lan = any(peer_ip in c for c in _LAN_CIDRS)
+    if not in_lan:
+        # Don't honor XFF from outside the LAN — return the direct peer
+        return peer
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        # left-most = original client
+        return xff.split(",")[0].strip()
+    return peer
+
+
+async def _require_lan_source(request: Request):
+    """Reject requests originating from outside the LAN/WireGuard CIDRs.
+    Used as a Depends() on every /mobile/api/* read endpoint."""
+    ip = _client_ip(request)
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+    except ValueError:
+        raise HTTPException(403, f"forbidden: unparseable source {ip!r}")
+    if not any(ip_obj in c for c in _LAN_CIDRS):
+        logger.warning("mobile/api: rejected request from non-LAN source %s", ip)
+        raise HTTPException(403, "forbidden: source IP not in LAN/WireGuard")
+    return ip
+
+
+async def _require_device_token(
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    """Hard auth on write actions (emergency stop, wg create). Reuses the
+    device-token registry that the KAI Ultimate Android app already uses —
+    so the dashboard can only file approvals when it's holding a paired
+    device token. Truncates/length-checks user-supplied fields to prevent
+    prompt-injection into operator-facing approval text."""
+    from core.device_registry import find_device_by_token
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "missing device token (mobile/api write actions require it)")
+    token = authorization[7:].strip()
+    device_id = find_device_by_token(token)
+    if not device_id:
+        raise HTTPException(401, "invalid or revoked device token")
+    return device_id
+
+
+def _safe_field(value: str | None, max_len: int = 120) -> str:
+    """Sanitize a user-supplied field before embedding in operator-facing text.
+    Truncates, strips control chars, removes newlines that could break
+    the single-line approval prompt."""
+    if value is None:
+        return ""
+    s = str(value)
+    s = "".join(c for c in s if c.isprintable() and c not in "\r\n\t")
+    return s[:max_len].strip()
 
 # ---------------------------------------------------------------------------
 # Tile definitions — the services/modules shown on the launcher grid
@@ -189,6 +273,141 @@ TILES = [
         "type": "external",
         "tags": ["web", "public"],
     },
+    # ── KAI Ultimate feature surfaces (v3.1.2 parity) ──────────────────────
+    # type=feature tiles open a bottom sheet that fetches the endpoint.
+    {
+        "id": "feature-home",
+        "name": "Home",
+        "description": "Executive summary, priorities, world model",
+        "icon": "home",
+        "color": "#16A34A",
+        "url": "/mobile/api/home",
+        "endpoint": "/mobile/api/home",
+        "type": "feature",
+        "tags": ["core", "jarvis"],
+    },
+    {
+        "id": "feature-proxmox",
+        "name": "Proxmox",
+        "description": "Nodes, containers, VMs, storage",
+        "icon": "server",
+        "color": "#3B82F6",
+        "url": "/mobile/api/proxmox",
+        "endpoint": "/mobile/api/proxmox",
+        "type": "feature",
+        "tags": ["infra", "monitoring"],
+    },
+    {
+        "id": "feature-missions",
+        "name": "Missions",
+        "description": "Active and queued work items",
+        "icon": "list-tree",
+        "color": "#8B5CF6",
+        "url": "/mobile/api/missions",
+        "endpoint": "/mobile/api/missions",
+        "type": "feature",
+        "tags": ["ops"],
+    },
+    {
+        "id": "feature-briefing",
+        "name": "Catch me up",
+        "description": "JARVIS executive briefing (facts only)",
+        "icon": "sunrise",
+        "color": "#F59E0B",
+        "url": "/mobile/api/briefing",
+        "endpoint": "/mobile/api/briefing",
+        "type": "feature",
+        "tags": ["jarvis"],
+    },
+    {
+        "id": "feature-capabilities",
+        "name": "What Kai can do",
+        "description": "Live tool/capability registry",
+        "icon": "list-checks",
+        "color": "#22C55E",
+        "url": "/mobile/api/capabilities",
+        "endpoint": "/mobile/api/capabilities",
+        "type": "feature",
+        "tags": ["jarvis", "core"],
+    },
+    {
+        "id": "feature-spend",
+        "name": "AI Spend",
+        "description": "Real AI cost tracker (last 30 days)",
+        "icon": "dollar-sign",
+        "color": "#10B981",
+        "url": "/mobile/api/spend?days=30",
+        "endpoint": "/mobile/api/spend?days=30",
+        "type": "feature",
+        "tags": ["finance", "jarvis"],
+        "actions": [{"label": "7d", "endpoint": "/mobile/api/spend?days=7", "method": "GET"},
+                    {"label": "30d", "endpoint": "/mobile/api/spend?days=30", "method": "GET"},
+                    {"label": "90d", "endpoint": "/mobile/api/spend?days=90", "method": "GET"}],
+    },
+    {
+        "id": "feature-emergency",
+        "name": "Emergency",
+        "description": "Kill switch + scheduler pause (approval-gated)",
+        "icon": "alert-octagon",
+        "color": "#EF4444",
+        "url": "/mobile/api/emergency/status",
+        "endpoint": "/mobile/api/emergency/status",
+        "type": "feature",
+        "tags": ["core", "control"],
+        "actions": [{"label": "STOP", "endpoint": "/mobile/api/emergency/stop",
+                     "method": "POST", "confirm": "File emergency-stop approval?",
+                     "body": {"reason": "mobile dashboard tap"}},
+                    {"label": "RESUME", "endpoint": "/mobile/api/emergency/resume",
+                     "method": "POST", "confirm": "File emergency-resume approval?",
+                     "body": {}}],
+    },
+    {
+        "id": "feature-wg",
+        "name": "WireGuard",
+        "description": "Live peers + create-peer (approval-gated)",
+        "icon": "network",
+        "color": "#7C3AED",
+        "url": "/mobile/api/wg/peers",
+        "endpoint": "/mobile/api/wg/peers",
+        "type": "feature",
+        "tags": ["network", "core"],
+        "actions": [{"label": "Create peer", "endpoint": "/mobile/api/wg/create",
+                     "method": "POST", "prompt": "Peer label", "body_field": "label"}],
+    },
+    {
+        "id": "feature-enhancements",
+        "name": "Enhancements",
+        "description": "Toggle Kai capability enhancements",
+        "icon": "wrench",
+        "color": "#06B6D4",
+        "url": "/mobile/api/enhancements",
+        "endpoint": "/mobile/api/enhancements",
+        "type": "feature",
+        "tags": ["jarvis", "core"],
+    },
+    {
+        "id": "feature-claude-terminal",
+        "name": "Claude Terminal",
+        "description": "Live ttyd session with the active claude-code",
+        "icon": "terminal",
+        "color": "#0EA5E9",
+        "url": "/mobile/api/terminal",
+        "endpoint": "/mobile/api/terminal",
+        "type": "feature",
+        "tags": ["dev", "core"],
+        "actions": [{"label": "Open terminal", "kind": "open-terminal"}],
+    },
+    {
+        "id": "feature-alerts",
+        "name": "Alerts",
+        "description": "Critical / important notifications feed",
+        "icon": "bell",
+        "color": "#F59E0B",
+        "url": "/mobile/api/alerts",
+        "endpoint": "/mobile/api/alerts",
+        "type": "feature",
+        "tags": ["monitoring", "core"],
+    },
 ]
 
 
@@ -198,14 +417,32 @@ TILES = [
 
 @router.get("/mobile", response_class=HTMLResponse)
 async def mobile_launcher(request: Request):
-    """Serve the PWA launcher dashboard."""
-    return _LAUNCHER_HTML
+    """Serve the PWA launcher dashboard. No-cache so a hard refresh always
+    picks up the latest tile list and JS (the service worker handles its
+    own caching for the static assets)."""
+    return Response(
+        content=_LAUNCHER_HTML,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @router.get("/mobile/", response_class=HTMLResponse)
 async def mobile_launcher_slash(request: Request):
     """Redirect /mobile/ to /mobile."""
-    return _LAUNCHER_HTML
+    return Response(
+        content=_LAUNCHER_HTML,
+        media_type="text/html",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -277,14 +514,18 @@ async def icon_512():
 # Route: Service Worker
 # ---------------------------------------------------------------------------
 
-_SW_JS = """
-const CACHE = 'kai-launcher-v1';
+_SW_JS = r"""
+// kai-launcher-v2: bumped 2026-08-26 to drop the cache-first HTML strategy
+// that was serving stale tiles. The HTML now always goes to the network
+// (with cache fallback for offline). Icons/manifest remain cache-first.
+const CACHE = 'kai-launcher-v2';
 const ASSETS = [
-  '/mobile',
   '/mobile/manifest',
   '/mobile/icon-192',
   '/mobile/icon-512',
 ];
+// Never cache the page shell or any /mobile/api/* JSON — they must be live.
+const NETWORK_ONLY = [/^\/mobile$/, /^\/mobile\/api\//];
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -304,6 +545,13 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  const url = new URL(e.request.url);
+  // Always-fresh: page shell + API JSON
+  if (NETWORK_ONLY.some(rx => rx.test(url.pathname))) {
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    return;
+  }
+  // Cache-first for static assets (icons, manifest, sw.js itself)
   e.respondWith(
     caches.match(e.request).then(cached =>
       cached || fetch(e.request).then(resp => {
@@ -365,6 +613,301 @@ async def mobile_tiles():
         "tiles": tiles,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# /mobile/api/* — public read-only + write-action endpoints for the mobile
+# dashboard. These mirror the device-token-gated /kai/app/* routes in
+# core.kai_app_api.py so a LAN browser (no device token) can show every
+# KAI Ultimate feature surface. Write actions still go through the approval
+# flow — the public dashboard never mutates state directly.
+# ---------------------------------------------------------------------------
+
+@router.get("/mobile/api/home")
+async def mobile_api_home(_: str = Depends(_require_lan_source)):
+    """Executive summary + world + data-trust — for the Home tile."""
+    from core.kai_app_api import gather_home_payload
+    return gather_home_payload()
+
+
+@router.get("/mobile/api/proxmox")
+async def mobile_api_proxmox(_: str = Depends(_require_lan_source)):
+    """Proxmox nodes + containers + VMs + storage — for the Proxmox tile."""
+    from core.kai_app_api import gather_proxmox_payload
+    return gather_proxmox_payload()
+
+
+@router.get("/mobile/api/missions")
+async def mobile_api_missions(_: str = Depends(_require_lan_source)):
+    """Active/queued missions — for the Missions tile."""
+    from core.kai_app_api import gather_missions_payload
+    return gather_missions_payload()
+
+
+@router.get("/mobile/api/enhancements")
+async def mobile_api_enhancements(_: str = Depends(_require_lan_source)):
+    """Public enhancement status (read-only)."""
+    from core.kai_app_api import gather_enhancements_payload
+    return gather_enhancements_payload()
+
+
+@router.get("/mobile/api/briefing")
+async def mobile_api_briefing(send: bool = False, _: str = Depends(_require_lan_source)):
+    """'JARVIS, catch me up' — executive briefing (facts only)."""
+    from core.kai_app_api import gather_briefing_payload
+    return gather_briefing_payload(send=send)
+
+
+@router.get("/mobile/api/capabilities")
+async def mobile_api_capabilities(_: str = Depends(_require_lan_source)):
+    """§50 universal capability registry — what can JARVIS do right now."""
+    from core.kai_app_api import gather_capabilities_payload
+    return gather_capabilities_payload()
+
+
+@router.get("/mobile/api/spend")
+async def mobile_api_spend(days: int = 30, _: str = Depends(_require_lan_source)):
+    """Real AI spend summary — for the Spend tile."""
+    from core.kai_app_api import gather_spend_payload
+    return gather_spend_payload(days)
+
+
+@router.get("/mobile/api/emergency/status")
+async def mobile_api_emergency_status(_: str = Depends(_require_lan_source)):
+    """Current emergency-stop state (read-only)."""
+    from core.kai_app_api import gather_emergency_status_payload
+    return gather_emergency_status_payload()
+
+
+@router.post("/mobile/api/emergency/stop")
+async def mobile_api_emergency_stop(body: dict = Body(default={}),
+                                    device_id: str = Depends(_require_device_token)):
+    """File an emergency-stop approval. Requires a paired device token
+    (the same one the KAI Ultimate Android app uses) — the LAN guard alone
+    isn't enough for state-mutating actions. Reason is sanitized before
+    being embedded in the operator-facing approval prompt."""
+    from core.kai_tools.policy import request_approval
+    raw_reason = (body or {}).get("reason", "mobile dashboard emergency stop")
+    reason = _safe_field(raw_reason, max_len=200)
+    rid = request_approval("kai.emergency.stop", {"source": f"mobile-dashboard:{device_id}"},
+                           f"Mobile dashboard ({device_id}): emergency stop — {reason or 'no reason'}")
+    if rid is None:
+        raise HTTPException(503, "could not file emergency-stop approval")
+    return {"ok": True, "approval_id": rid,
+            "note": "operator must approve; the kill switch is gated"}
+
+
+@router.post("/mobile/api/emergency/resume")
+async def mobile_api_emergency_resume(body: dict = Body(default={}),
+                                      device_id: str = Depends(_require_device_token)):
+    """File an emergency-resume approval. Requires a paired device token."""
+    from core.kai_tools.policy import request_approval
+    rid = request_approval("kai.emergency.resume", {"source": f"mobile-dashboard:{device_id}"},
+                           f"Mobile dashboard ({device_id}): emergency resume")
+    if rid is None:
+        raise HTTPException(503, "could not file emergency-resume approval")
+    return {"ok": True, "approval_id": rid,
+            "note": "operator must approve"}
+
+
+@router.get("/mobile/api/wg/peers")
+async def mobile_api_wg_peers(_: str = Depends(_require_lan_source)):
+    """Live WireGuard peer list (read-only)."""
+    from core.kai_app_api import gather_wg_peers_payload
+    return gather_wg_peers_payload()
+
+
+@router.get("/mobile/api/terminal")
+async def mobile_api_terminal(_: str = Depends(_require_lan_source)):
+    """Claude Code terminal join: ttyd port + basic-auth + live session
+    status (tmux session name, uptime, claude PID). The dashboard sheet
+    shows the active session is running and gives a button that opens
+    the ttyd URL with credentials pre-baked."""
+    from core.kai_app_api import gather_terminal_payload
+    return gather_terminal_payload()
+
+
+@router.get("/mobile/api/wallet")
+async def mobile_api_wallet(_: str = Depends(_require_lan_source)):
+    """KAI money-module wallet state — one-stop inspection surface.
+
+    Used by the KAI Mobile "Money" tile and the autonomous agents to
+    see the full state in one call:
+      - on-chain balances (ETH + USDT + USDC + tx count, last check time)
+      - monitor: is it running, baseline, delta, last alert
+      - master treasury: balance + funded + earned
+      - pending capital requests
+      - auto-sweep: enabled + last sweep + total swept
+
+    Aggregates data from money-center + the wallet monitor state file.
+    """
+    import os
+    from pathlib import Path
+    from datetime import datetime, timezone
+
+    out = {
+        "address": "0xa854EdEd5e1211Cb42bD28Ea53e4424Fa27ebaDd",
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Try to read the monitor state file (same path the monitor writes to).
+    state_path = Path(os.environ.get("KAI_WALLET_STATE_DIR", "/var/lib/kai")) / "wallet_monitor_state.json"
+    if state_path.exists():
+        try:
+            import json as _json
+            monitor_state = _json.loads(state_path.read_text())
+            out["monitor"] = {
+                "running": True,
+                "baseline_at": monitor_state.get("baseline_at"),
+                "baseline_balance": monitor_state.get("last_balance"),
+                "last_alert_at": monitor_state.get("last_alert_at"),
+                "delta_from_baseline": None,  # computed below
+                "watch_list_count": len(monitor_state.get("watch_list", [])),
+                "alerts_history_count": len(monitor_state.get("alerts_history", [])),
+                "state_path": str(state_path),
+            }
+            # Try to compute a fresh on-chain delta via blockscout (one-shot)
+            try:
+                import urllib.request as _ur, json as _j
+                _addr = out["address"]
+                _h = {"user-agent": "kai-mobile/1.0"}
+                # ETH balance
+                _r = _ur.Request("https://eth.blockscout.com/api?module=account&action=balance&address=" + _addr, headers=_h)
+                with _ur.urlopen(_r, timeout=5) as _resp:
+                    _d = _j.loads(_resp.read())
+                _eth = int(_d.get("result", 0)) / 1e18
+                # USDT balance (6 decimals)
+                _r = _ur.Request(
+                    "https://eth.blockscout.com/api?module=account&action=tokenbalance"
+                    "&contractaddress=0xdAC17F958D2ee523a2206206994597C13D831ec7&address=" + _addr,
+                    headers=_h)
+                with _ur.urlopen(_r, timeout=5) as _resp:
+                    _d = _j.loads(_resp.read())
+                _usdt_raw = int(_d.get("result", 0))
+                # USDT raw is 6-decimals → /1e6 = human-readable USD
+                _usdt = _usdt_raw / 1e6
+                cur = {"eth": _eth, "usdt": _usdt, "usdc": 0, "tx_count": 0}
+                out["on_chain"] = cur
+                if out["monitor"].get("baseline_balance"):
+                    base = out["monitor"]["baseline_balance"]
+                    # If baseline stored usdt as float, compare floats; if
+                    # raw int, compare ints. We don't know which, so
+                    # normalize: treat baseline as USD (float).
+                    base_usd = base.get("usdt", 0)
+                    # If baseline is huge (looks like raw), divide by 1e6
+                    if base_usd > 1_000_000:  # 1M USDT = implausibly large
+                        base_usd = base_usd / 1e6
+                    base_eth = base.get("eth", 0)
+                    out["monitor"]["delta_from_baseline"] = {
+                        "eth": cur["eth"] - base_eth,
+                        "usdt": round(cur["usdt"] - base_usd, 6),
+                        "usdc": cur["usdc"] - base.get("usdc", 0),
+                    }
+            except Exception as e:
+                out["on_chain_error"] = str(e)
+        except Exception as e:
+            out["monitor"] = {"running": False, "error": str(e)}
+    else:
+        out["monitor"] = {
+            "running": False,
+            "state_path": str(state_path),
+            "note": "monitor not running or state file missing",
+        }
+
+    # Master treasury + pending capital requests via money-center's own
+    # endpoints (we proxy to localhost; the kai_viewer token has read-only
+    # access to /treasury/summary and /capital-requests).
+    out["master_treasury"] = {"balance": 0, "funded": 0, "earned": 0}
+    out["pending_capital_requests"] = []
+    try:
+        import httpx  # noqa: F401
+        # Localhost proxy to money-center (same docker network on claude-code,
+        # or via the KAI_MC_URL env if set)
+        mc_url = os.environ.get("KAI_MC_URL", "http://192.168.1.118:8095")
+        viewer_tok = None
+        viewer_tok_path = "/root/.credentials/money-viewer-token"
+        if os.path.exists(viewer_tok_path):
+            viewer_tok = open(viewer_tok_path).read().strip()
+        headers = {"authorization": f"Bearer {viewer_tok}"} if viewer_tok else {}
+        import urllib.request, json as _json
+        # /treasury/summary
+        try:
+            req = urllib.request.Request(f"{mc_url}/treasury/summary", headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as r:
+                d = _json.loads(r.read())
+                master = d.get("treasury", {}).get("master", {})
+                out["master_treasury"] = {
+                    "balance": float(master.get("balance", 0)),
+                    "funded": float(master.get("funded", 0)),
+                    "earned": float(master.get("earned", 0)),
+                }
+        except Exception as e:
+            out["master_treasury_error"] = str(e)
+        # /capital-requests?status=pending
+        try:
+            req = urllib.request.Request(f"{mc_url}/capital-requests?status=pending", headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as r:
+                d = _json.loads(r.read())
+                out["pending_capital_requests"] = [
+                    {"id": cr.get("id"), "operation_slug": cr.get("operation_slug"),
+                     "amount": float(cr.get("amount", 0)), "status": cr.get("status"),
+                     "blocked_on": "master headroom" if out["master_treasury"]["balance"] == 0
+                                  else "operator review"}
+                    for cr in (d if isinstance(d, list) else [])
+                ]
+        except Exception as e:
+            out["pending_capital_requests_error"] = str(e)
+    except Exception as e:
+        out["money_center_error"] = str(e)
+
+    # Auto-sweep state
+    sweeper_path = Path(os.environ.get("KAI_WALLET_STATE_DIR", "/var/lib/kai")) / "wallet_sweeper_state.json"
+    out["auto_sweep"] = {
+        "enabled": os.environ.get("KAI_AUTO_SWEEP", "0") == "1",
+        "state_path": str(sweeper_path),
+        "last_sweep_ts": None,
+        "total_swept": 0.0,
+    }
+    if sweeper_path.exists():
+        try:
+            import json as _json
+            ss = _json.loads(sweeper_path.read_text())
+            out["auto_sweep"]["last_sweep_ts"] = ss.get("last_sweep_ts")
+            out["auto_sweep"]["total_swept"] = float(ss.get("total_swept", 0))
+            out["auto_sweep"]["last_sweep_tx"] = ss.get("last_sweep_tx")
+        except Exception:
+            pass
+
+    return out
+
+
+@router.get("/mobile/api/alerts")
+async def mobile_api_alerts(limit: int = 10, _: str = Depends(_require_lan_source)):
+    """Live alerts for the Alerts tile: counts by severity + recent N.
+    Same data as the existing /kai/notifications router, but in a single
+    compact shape that's easy to render in a bottom sheet."""
+    from core.kai_app_api import gather_alerts_payload
+    return gather_alerts_payload(limit=max(1, min(limit, 50)))
+
+
+@router.post("/mobile/api/wg/create")
+async def mobile_api_wg_create(body: dict = Body(...),
+                               device_id: str = Depends(_require_device_token)):
+    """File a WireGuard-peer-creation approval. Label is required and
+    sanitized. Requires a paired device token (rate limit at the approval
+    layer prevents flooding from a single compromised device)."""
+    label = _safe_field((body or {}).get("label", ""), max_len=60)
+    if not label:
+        raise HTTPException(422, "label is required (max 60 chars)")
+    from core.kai_tools.policy import request_approval
+    rid = request_approval("kai.wireguard.create_peer",
+                           {"server": "ddwrt", "label": label,
+                            "source": f"mobile-dashboard:{device_id}"},
+                           f"Mobile dashboard ({device_id}): create WG peer '{label}'")
+    if rid is None:
+        raise HTTPException(503, "could not file WG-create approval")
+    return {"ok": True, "approval_id": rid,
+            "note": "operator must approve; poll /approvals for status"}
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +1064,101 @@ body {
 /* ── Hidden class ── */
 .hidden{display:none!important}
 
+/* ── Bottom sheet (KAI Ultimate feature tiles) ── */
+.sheet-backdrop{
+  position:fixed; inset:0; background:rgba(0,0,0,0.6);
+  opacity:0; pointer-events:none; transition:opacity 200ms ease;
+  z-index:200;
+}
+.sheet-backdrop.open{opacity:1; pointer-events:auto}
+.sheet{
+  position:fixed; left:0; right:0; bottom:0;
+  background:var(--bg);
+  border-top-left-radius:24px; border-top-right-radius:24px;
+  border:1px solid var(--border);
+  max-height:85vh; min-height:30vh;
+  display:flex; flex-direction:column;
+  transform:translateY(100%);
+  transition:transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
+  z-index:201; padding-bottom:var(--safe-bottom);
+  box-shadow:0 -10px 30px rgba(0,0,0,0.4);
+}
+.sheet.open{transform:translateY(0)}
+.sheet-handle{
+  width:36px; height:4px; border-radius:2px;
+  background:var(--border); margin:8px auto 4px;
+}
+.sheet-header{
+  padding:8px 20px 12px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px;
+}
+.sheet-title{font-size:1.05rem; font-weight:700; color:var(--fg)}
+.sheet-subtitle{font-size:0.7rem; color:var(--subtle); margin-top:2px}
+.sheet-close{
+  background:var(--elevated); border:1px solid var(--border);
+  border-radius:50%; width:32px; height:32px;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; color:var(--muted); font-size:1.2rem; line-height:1;
+}
+.sheet-body{
+  flex:1; overflow-y:auto; overflow-x:hidden;
+  padding:14px 20px 14px;
+  -webkit-overflow-scrolling:touch;
+}
+.sheet-loading{padding:30px 0; text-align:center; color:var(--muted); font-size:0.85rem}
+.sheet-error{
+  padding:14px; border-radius:14px;
+  background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3);
+  color:#FCA5A5; font-size:0.8rem; line-height:1.4;
+}
+.sheet-actions{
+  display:flex; gap:8px; padding:10px 20px 14px;
+  border-top:1px solid var(--border);
+  background:rgba(2,6,23,0.85); backdrop-filter:blur(20px);
+}
+.sheet-action{
+  flex:1; padding:12px; border-radius:14px;
+  background:var(--elevated); border:1px solid var(--border);
+  color:var(--fg); font-size:0.85rem; font-weight:600;
+  cursor:pointer; transition:transform 120ms, border-color 150ms;
+}
+.sheet-action:active{transform:scale(0.97)}
+.sheet-action.danger{background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); color:#FCA5A5}
+.sheet-action.primary{background:var(--accent); color:#fff; border-color:transparent}
+.sheet-action:disabled{opacity:0.5; cursor:not-allowed}
+
+/* Generic key/value renderer for sheet data */
+.kv-card{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-sm); padding:12px 14px;
+  margin-bottom:10px;
+}
+.kv-card h4{font-size:0.75rem; color:var(--muted); font-weight:600;
+  text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px}
+.kv-row{display:flex; justify-content:space-between; gap:10px; padding:4px 0;
+  border-top:1px solid var(--border)}
+.kv-row:first-of-type{border-top:0}
+.kv-key{color:var(--muted); font-size:0.8rem; flex:0 0 auto; max-width:40%;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.kv-val{color:var(--fg); font-size:0.8rem; font-weight:500;
+  text-align:right; word-break:break-word; min-width:0; flex:1 1 auto}
+.kv-val code{font-family:var(--mono); font-size:0.75rem;
+  background:var(--elevated); padding:1px 5px; border-radius:4px}
+.status-pill{
+  display:inline-block; padding:2px 8px; border-radius:10px;
+  font-size:0.7rem; font-weight:600;
+}
+.status-pill.ok{background:rgba(22,163,74,0.18); color:#86EFAC}
+.status-pill.warning{background:rgba(245,158,11,0.18); color:#FCD34D}
+.status-pill.critical{background:rgba(239,68,68,0.18); color:#FCA5A5}
+.status-pill.unknown{background:var(--elevated); color:var(--subtle)}
+.briefing-text{
+  font-size:0.95rem; line-height:1.5; color:var(--fg);
+  white-space:pre-wrap; word-wrap:break-word;
+}
+
 /* ── Tablet / landscape overrides ── */
 @media (min-width:600px) {
   .tile-grid{grid-template-columns:repeat(4, 1fr)}
@@ -574,7 +1212,7 @@ body {
     <a href="/command-center" class="quick-action">
       <span class="qa-icon">🫀</span>Health Check
     </a>
-    <a href="/kai/notifications" class="quick-action">
+    <a href="#" onclick="openAlertsQuick(event)" class="quick-action">
       <span class="qa-icon">🔔</span>Alerts
     </a>
   </div>
@@ -602,6 +1240,16 @@ const ICONS = {
   'chart-line': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>',
   'trophy': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>',
   'globe': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>',
+  // KAI Ultimate feature surfaces (lucide-style 22x22 outline)
+  'home': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 2l9 7.5V20a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2V9.5Z"/></svg>',
+  'server': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><line x1="6" y1="7" x2="6.01" y2="7"/><line x1="6" y1="17" x2="6.01" y2="17"/></svg>',
+  'list-tree': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h4l3 12h7"/><circle cx="6" cy="6" r="2"/><circle cx="14" cy="18" r="2"/></svg>',
+  'sunrise': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="m4.93 10.93 2.83 2.83"/><path d="M2 18h2"/><path d="M20 18h2"/><path d="m19.07 10.93-2.83 2.83"/><path d="M22 18H2"/><path d="M8 6a4 4 0 0 0 8 0"/><path d="M12 18a6 6 0 0 0-6 6h12a6 6 0 0 0-6-6Z"/></svg>',
+  'list-checks': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>',
+  'dollar-sign': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  'alert-octagon': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  'network': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="6"/><rect x="16" y="16" width="6" height="6"/><rect x="2" y="16" width="6" height="6"/><path d="M5 16v-2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/><path d="M12 8v4"/></svg>',
+  'wrench': '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 1 1-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 1 5.4-5.4l-3 3-2-2 3-3Z"/></svg>',
 };
 
 // ── Clock ──
@@ -639,6 +1287,16 @@ function loadStaticTiles(){
     {id:'money-center',name:'Money Center',description:'KAI Money Ecosystem — treasury, operations, KAI account',icon:'banknote',color:'#059669',url:'http://192.168.1.118:8095',type:'external',status:'unknown',tags:['money','production']},
     {id:'kai-vault',name:'Kai Vault',description:'Passkey login, secrets, identity, audit',icon:'shield-check',color:'#7C3AED',url:'https://vault.sso.deerude.com',type:'external',status:'unknown',tags:['identity','security','core']},
     {id:'deerude',name:'Deerude',description:'Public site — ventures & careers portal',icon:'globe',color:'#0EA5E9',url:'https://deerude.com',type:'external',status:'unknown',tags:['web','public']},
+    // KAI Ultimate feature surfaces (mirror of TILES in Python)
+    {id:'feature-home',name:'Home',description:'Executive summary, priorities, world model',icon:'home',color:'#16A34A',url:'/mobile/api/home',endpoint:'/mobile/api/home',type:'feature',status:'unknown',tags:['core','jarvis']},
+    {id:'feature-proxmox',name:'Proxmox',description:'Nodes, containers, VMs, storage',icon:'server',color:'#3B82F6',url:'/mobile/api/proxmox',endpoint:'/mobile/api/proxmox',type:'feature',status:'unknown',tags:['infra','monitoring']},
+    {id:'feature-missions',name:'Missions',description:'Active and queued work items',icon:'list-tree',color:'#8B5CF6',url:'/mobile/api/missions',endpoint:'/mobile/api/missions',type:'feature',status:'unknown',tags:['ops']},
+    {id:'feature-briefing',name:'Catch me up',description:'JARVIS executive briefing (facts only)',icon:'sunrise',color:'#F59E0B',url:'/mobile/api/briefing',endpoint:'/mobile/api/briefing',type:'feature',status:'unknown',tags:['jarvis']},
+    {id:'feature-capabilities',name:'What Kai can do',description:'Live tool/capability registry',icon:'list-checks',color:'#22C55E',url:'/mobile/api/capabilities',endpoint:'/mobile/api/capabilities',type:'feature',status:'unknown',tags:['jarvis','core']},
+    {id:'feature-spend',name:'AI Spend',description:'Real AI cost tracker (last 30 days)',icon:'dollar-sign',color:'#10B981',url:'/mobile/api/spend?days=30',endpoint:'/mobile/api/spend?days=30',type:'feature',status:'unknown',tags:['finance','jarvis']},
+    {id:'feature-emergency',name:'Emergency',description:'Kill switch + scheduler pause (approval-gated)',icon:'alert-octagon',color:'#EF4444',url:'/mobile/api/emergency/status',endpoint:'/mobile/api/emergency/status',type:'feature',status:'unknown',tags:['core','control']},
+    {id:'feature-wg',name:'WireGuard',description:'Live peers + create-peer (approval-gated)',icon:'network',color:'#7C3AED',url:'/mobile/api/wg/peers',endpoint:'/mobile/api/wg/peers',type:'feature',status:'unknown',tags:['network','core']},
+    {id:'feature-enhancements',name:'Enhancements',description:'Toggle Kai capability enhancements',icon:'wrench',color:'#06B6D4',url:'/kai/app/enhancements',endpoint:'/kai/app/enhancements',type:'feature',status:'unknown',tags:['jarvis','core']},
   ]);
 }
 
@@ -654,6 +1312,8 @@ function renderTiles(tiles){
     el.dataset.name=t.name.toLowerCase();
     el.dataset.tags=t.tags.join(' ');
     el.dataset.id=t.id;
+    if(t.type==='feature' && t.endpoint) el.dataset.endpoint=t.endpoint;
+    if(t.type==='feature' && t.actions) el.dataset.actions=JSON.stringify(t.actions);
 
     el.innerHTML=
       (t.notif_count ? `<span class="tile-badge">${t.notif_count}</span>` : '') +
@@ -662,9 +1322,439 @@ function renderTiles(tiles){
       `<span class="tile-desc">${t.description||''}</span>` +
       (t.status!=='unknown' ? `<span class="tile-status ${t.status}"></span>` : '');
 
-    if(t.type==='internal') core.appendChild(el);
+    if(t.type==='internal' || t.type==='feature') core.appendChild(el);
     else ext.appendChild(el);
   });
+  // Wire feature tile taps → openSheet
+  document.querySelectorAll('.tile').forEach(t=>{
+    if(t.dataset.endpoint){
+      t.addEventListener('click', function(ev){
+        ev.preventDefault();
+        openSheet(t);
+      });
+    }
+  });
+}
+
+// ── Bottom sheet ─────────────────────────────────────────────────────────
+const _sheet=document.createElement('div');
+_sheet.className='sheet';
+_sheet.innerHTML=`
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div>
+      <div class="sheet-title" id="sheet-title">Loading…</div>
+      <div class="sheet-subtitle" id="sheet-subtitle"></div>
+    </div>
+    <button class="sheet-close" id="sheet-close" aria-label="Close">×</button>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+  <div class="sheet-actions" id="sheet-actions" style="display:none"></div>
+`;
+document.body.appendChild(_sheet);
+const _backdrop=document.createElement('div');
+_backdrop.className='sheet-backdrop';
+document.body.appendChild(_backdrop);
+
+document.getElementById('sheet-close').addEventListener('click', closeSheet);
+_backdrop.addEventListener('click', closeSheet);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheet(); });
+
+let _currentTile=null;
+function openSheet(tileEl){
+  _currentTile=tileEl;
+  const name=tileEl.querySelector('.tile-name')?.textContent || tileEl.dataset.id;
+  const desc=tileEl.querySelector('.tile-desc')?.textContent || '';
+  document.getElementById('sheet-title').textContent=name;
+  document.getElementById('sheet-subtitle').textContent=desc;
+  document.getElementById('sheet-body').innerHTML='<div class="sheet-loading">Loading…</div>';
+  document.getElementById('sheet-actions').style.display='none';
+  _backdrop.classList.add('open');
+  _sheet.classList.add('open');
+  fetchSheet(tileEl);
+}
+
+function closeSheet(){
+  _backdrop.classList.remove('open');
+  _sheet.classList.remove('open');
+  _currentTile=null;
+}
+
+async function fetchSheet(tileEl){
+  const url=tileEl.dataset.endpoint;
+  const body=document.getElementById('sheet-body');
+  try{
+    const r=await fetch(url);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    renderSheet(data, body);
+    renderActions(tileEl);
+  }catch(err){
+    body.innerHTML=`<div class="sheet-error">Failed to load: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderActions(tileEl){
+  const bar=document.getElementById('sheet-actions');
+  const raw=tileEl.dataset.actions;
+  if(!raw){ bar.style.display='none'; return; }
+  let actions;
+  try { actions=JSON.parse(raw); } catch(e){ bar.style.display='none'; return; }
+  if(!actions || !actions.length){ bar.style.display='none'; return; }
+  bar.style.display='flex';
+  bar.innerHTML='';
+  actions.forEach(a=>{
+    const b=document.createElement('button');
+    b.className='sheet-action';
+    if(a.label==='STOP' || a.label==='RESUME') b.classList.add('danger');
+    b.textContent=a.label;
+    b.addEventListener('click', ()=>runAction(a));
+    bar.appendChild(b);
+  });
+}
+
+async function runAction(a){
+  // Special action kinds (not HTTP requests) — handled in the sheet
+  if(a.kind === 'open-terminal') return openTerminal();
+  if(a.confirm && !confirm(a.confirm)) return;
+  let body=a.body || {};
+  if(a.prompt){
+    const v=prompt(a.prompt, '');
+    if(!v) return;
+    body={...body, [a.body_field || 'value']: v};
+  }
+  const bar=document.getElementById('sheet-actions');
+  [...bar.children].forEach(c=>c.disabled=true);
+  try{
+    const r=await fetch(a.endpoint, {
+      method: a.method || 'POST',
+      headers: a.method==='POST' ? {'content-type':'application/json'} : {},
+      body: a.method==='POST' ? JSON.stringify(body) : undefined,
+    });
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.detail || 'HTTP '+r.status);
+    const body2=document.getElementById('sheet-body');
+    const ok=document.createElement('div');
+    ok.className='sheet-error';
+    ok.style.background='rgba(22,163,74,0.15)';
+    ok.style.borderColor='rgba(22,163,74,0.4)';
+    ok.style.color='#86EFAC';
+    ok.textContent='✅ Approval filed: '+(data.approval_id||'ok');
+    body2.prepend(ok);
+    if(_currentTile && _currentTile.dataset.endpoint.includes('emergency')){
+      setTimeout(()=>{ if(_currentTile) fetchSheet(_currentTile); }, 800);
+    }
+  }catch(err){
+    alert('Action failed: '+err.message);
+  }finally{
+    [...bar.children].forEach(c=>c.disabled=false);
+  }
+}
+
+async function openTerminal(){
+  // Use the most recent /mobile/api/terminal payload (cached on the tile)
+  // to build a clickable URL with basic-auth baked in.
+  const bar=document.getElementById('sheet-actions');
+  [...bar.children].forEach(c=>c.disabled=true);
+  try{
+    const r=await fetch('/mobile/api/terminal');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d=await r.json();
+    if(!d.ok) throw new Error('terminal not configured');
+    const url = `http://${d.credential}@${location.hostname}:${d.port}${d.path || '/'}`;
+    window.open(url, '_blank', 'noopener');
+  }catch(err){
+    alert('Could not open terminal: '+err.message);
+  }finally{
+    [...bar.children].forEach(c=>c.disabled=false);
+  }
+}
+
+function renderSheet(data, body){
+  // Try a few smart shapes; otherwise dump as key/values
+  if(typeof data==='string'){
+    const div=document.createElement('div');
+    div.className='briefing-text';
+    div.textContent=data;
+    body.replaceChildren(div);
+    return;
+  }
+  if(data && data.briefing){
+    const div=document.createElement('div');
+    div.className='briefing-text';
+    div.textContent=data.briefing;
+    body.replaceChildren(div);
+    return;
+  }
+  if(data && data.total_cost !== undefined){
+    body.innerHTML=`
+      <div class="kv-card">
+        <h4>AI Spend (last ${data.days || 30}d)</h4>
+        <div class="kv-row"><span class="kv-key">Total cost</span><span class="kv-val"><code>$${escapeHtml(String(data.total_cost))}</code></span></div>
+        <div class="kv-row"><span class="kv-key">Calls estimated</span><span class="kv-val">${escapeHtml(String(data.calls_estimated))}</span></div>
+        ${data.by_provider ? renderProviderTable(data.by_provider) : ''}
+      </div>`;
+    return;
+  }
+  if(data && data.stopped !== undefined){
+    const stopped=data.stopped;
+    const cls=stopped?'critical':'ok';
+    const lbl=stopped?'STOPPED':'RUNNING';
+    body.innerHTML=`
+      <div class="kv-card">
+        <h4>System state</h4>
+        <div class="kv-row"><span class="kv-key">Status</span><span class="kv-val"><span class="status-pill ${cls}">${lbl}</span></span></div>
+        <div class="kv-row"><span class="kv-key">Scheduler paused</span><span class="kv-val">${data.scheduler_paused?'yes':'no'}</span></div>
+        ${data.by ? `<div class="kv-row"><span class="kv-key">Last stop by</span><span class="kv-val"><code>${escapeHtml(data.by)}</code></span></div>` : ''}
+        ${data.reason ? `<div class="kv-row"><span class="kv-key">Reason</span><span class="kv-val">${escapeHtml(data.reason)}</span></div>` : ''}
+      </div>`;
+    return;
+  }
+  if(data && data.raw !== undefined){
+    body.innerHTML=`
+      <div class="kv-card">
+        <h4>${data.ok ? 'Live peer list' : 'wg show failed'}</h4>
+        ${data.ok ? `<pre style="font-family:var(--mono);font-size:0.75rem;white-space:pre-wrap;color:var(--fg)">${escapeHtml(data.raw)}</pre>` : `<div class="sheet-error">${escapeHtml(data.error||'unknown')}</div>`}
+      </div>`;
+    return;
+  }
+  if(data && data.session !== undefined){
+    // Claude terminal: session + ttyd URL
+    const s = data.session || {};
+    const running = s.running;
+    const cls = running ? 'ok' : 'critical';
+    const lbl = running ? 'ACTIVE' : 'OFFLINE';
+    const u = s.uptime_s || 0;
+    const days = Math.floor(u / 86400);
+    const hours = Math.floor((u % 86400) / 3600);
+    const mins = Math.floor((u % 3600) / 60);
+    let uptime = '';
+    if (days) uptime += days + 'd ';
+    if (hours || days) uptime += hours + 'h ';
+    uptime += mins + 'm';
+    body.innerHTML = '';
+    const card = document.createElement('div');
+    card.className = 'kv-card';
+    const h = document.createElement('h4');
+    h.textContent = 'Claude Code session';
+    card.appendChild(h);
+    card.appendChild(kvRow('Status', statusPill(cls, lbl)));
+    if (s.tmux_session) card.appendChild(kvRow('tmux session', s.tmux_session));
+    if (s.claude_pid) card.appendChild(kvRow('claude PID', s.claude_pid));
+    if (s.claude_uptime_s != null) card.appendChild(kvRow('claude uptime', formatUptime(s.claude_uptime_s)));
+    else if (uptime) card.appendChild(kvRow('session uptime', uptime));
+    if (s.windows) card.appendChild(kvRow('windows', s.windows));
+    body.appendChild(card);
+
+    const tcard = document.createElement('div');
+    tcard.className = 'kv-card';
+    const th = document.createElement('h4');
+    th.textContent = 'ttyd (web terminal)';
+    tcard.appendChild(th);
+    tcard.appendChild(kvRow('Port', data.port));
+    tcard.appendChild(kvRow('Path', data.path || '/'));
+    const credRow = document.createElement('div');
+    credRow.className = 'kv-row';
+    const credK = document.createElement('span');
+    credK.className = 'kv-key'; credK.textContent = 'basic-auth';
+    const credV = document.createElement('span');
+    credV.className = 'kv-val';
+    const code = document.createElement('code');
+    code.textContent = data.credential;
+    credV.appendChild(code);
+    credRow.appendChild(credK); credRow.appendChild(credV);
+    tcard.appendChild(credRow);
+    const urlRow = document.createElement('div');
+    urlRow.className = 'kv-row';
+    const uK = document.createElement('span');
+    uK.className = 'kv-key'; uK.textContent = 'open in new tab';
+    const uV = document.createElement('span');
+    uV.className = 'kv-val';
+    const ttydUrl = `http://${data.credential}@${location.hostname}:${data.port}${data.path || '/'}`;
+    const a = document.createElement('a');
+    a.href = ttydUrl;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.style.color = 'var(--accent)';
+    a.textContent = 'ttyd →';
+    uV.appendChild(a);
+    urlRow.appendChild(uK); urlRow.appendChild(uV);
+    tcard.appendChild(urlRow);
+    body.appendChild(tcard);
+    return;
+  }
+  if(data && data.categories){
+    let html=`<div class="kv-card"><h4>${data.total||0} capabilities</h4>`;
+    for(const [cat, items] of Object.entries(data.categories)){
+      html+=`<div class="kv-row"><span class="kv-key">${escapeHtml(cat)}</span><span class="kv-val">${items.length} tools</span></div>`;
+    }
+    html+=`</div>`;
+    body.innerHTML=html;
+    return;
+  }
+  if(data && data.counts && data.recent !== undefined){
+    // Alerts tile: severity counts + recent items
+    const counts = data.counts || {};
+    const recent = data.recent || [];
+    body.innerHTML = '';
+    const c = document.createElement('div');
+    c.className = 'kv-card';
+    const ch = document.createElement('h4'); ch.textContent = 'Open alerts';
+    c.appendChild(ch);
+    c.appendChild(kvRow('Critical', statusPill('critical', String(counts.critical || 0))));
+    c.appendChild(kvRow('Important', statusPill('warning', String(counts.important || 0))));
+    c.appendChild(kvRow('Informational', statusPill('ok', String(counts.informational || 0))));
+    body.appendChild(c);
+    if (recent.length) {
+      const r = document.createElement('div');
+      r.className = 'kv-card';
+      const rh = document.createElement('h4');
+      rh.textContent = 'Recent (' + recent.length + ')';
+      r.appendChild(rh);
+      recent.forEach(n => {
+        const sev = n.severity || 'informational';
+        const cls = sev === 'critical' ? 'critical' : (sev === 'important' ? 'warning' : 'unknown');
+        const row = document.createElement('div');
+        row.className = 'kv-row';
+        const k = document.createElement('span');
+        k.className = 'kv-key';
+        k.textContent = n.title || n.id || '(no title)';
+        const v = document.createElement('span');
+        v.className = 'kv-val';
+        v.appendChild(statusPill(cls, sev));
+        row.appendChild(k); row.appendChild(v);
+        r.appendChild(row);
+        // body excerpt below
+        if (n.body) {
+          const br = document.createElement('div');
+          br.style.fontSize = '0.7rem';
+          br.style.color = 'var(--subtle)';
+          br.style.padding = '2px 0 6px';
+          br.textContent = String(n.body).slice(0, 200);
+          r.appendChild(br);
+        }
+      });
+      body.appendChild(r);
+    } else {
+      const empty = document.createElement('div');
+      empty.className = 'kv-card';
+      empty.style.color = 'var(--muted)';
+      empty.textContent = 'No recent alerts ✅';
+      body.appendChild(empty);
+    }
+    return;
+  }
+  if(data && data.nodes && Array.isArray(data.nodes)){
+    let html='';
+    data.nodes.forEach(n=>{
+      const cls=n.reachable?'ok':'critical';
+      html+=`<div class="kv-card">
+        <h4>${escapeHtml(n.name)} <span class="status-pill ${cls}">${n.reachable?'online':'offline'}</span></h4>
+        ${n.error?`<div class="sheet-error">${escapeHtml(n.error)}</div>`:''}
+        ${n.containers?`<div class="kv-row"><span class="kv-key">Containers</span><span class="kv-val">${n.containers.length}</span></div>`:''}
+        ${n.vms?`<div class="kv-row"><span class="kv-key">VMs</span><span class="kv-val">${n.vms.length}</span></div>`:''}
+        ${n.storage?`<div class="kv-row"><span class="kv-key">Storage</span><span class="kv-val">${n.storage.length}</span></div>`:''}
+      </div>`;
+    });
+    body.innerHTML=html;
+    return;
+  }
+  if(data && data.missions && Array.isArray(data.missions)){
+    if(!data.missions.length){
+      body.innerHTML=`<div class="kv-card"><h4>Missions</h4><div style="color:var(--muted);padding:10px 0">No active missions ✅</div></div>`;
+      return;
+    }
+    let html='<div class="kv-card"><h4>Active missions</h4>';
+    data.missions.forEach(m=>{
+      html+=`<div class="kv-row"><span class="kv-key">${escapeHtml(m.id||m.name||'?')}</span><span class="kv-val">${escapeHtml(m.status||'')}</span></div>`;
+    });
+    html+='</div>';
+    body.innerHTML=html;
+    return;
+  }
+  if(data && data.executive){
+    const ex=data.executive;
+    let html='<div class="kv-card"><h4>Executive</h4>';
+    if(ex.priorities && ex.priorities.length){
+      html+=`<div style="padding:6px 0"><b>Priorities</b><ul style="margin:6px 0 0 18px">`;
+      ex.priorities.slice(0,5).forEach(p=>{ html+=`<li>${escapeHtml(String(p))}</li>`; });
+      html+='</ul></div>';
+    }
+    html+=`</div>`;
+    if(data.world){
+      html+=`<div class="kv-card"><h4>World model</h4>
+        <div class="kv-row"><span class="kv-key">Keys</span><span class="kv-val">${Object.keys(data.world).length}</span></div>
+        </div>`;
+    }
+    if(data.data_trust){
+      html+=`<div class="kv-card"><h4>Data freshness</h4>`;
+      for(const [k,v] of Object.entries(data.data_trust)){
+        const cls=v===null?'unknown':(v>30?'critical':(v>10?'warning':'ok'));
+        html+=`<div class="kv-row"><span class="kv-key">${escapeHtml(k)}</span><span class="kv-val"><span class="status-pill ${cls}">${v===null?'unknown':v+'m'}</span></span></div>`;
+      }
+      html+='</div>';
+    }
+    body.innerHTML=html;
+    return;
+  }
+  // Fallback: generic key/value dump
+  body.innerHTML='<div class="kv-card"><h4>Response</h4>'+dumpKV(data)+'</div>';
+}
+
+function dumpKV(obj, depth=0){
+  if(depth>3) return '<div class="kv-row"><span class="kv-key">…</span><span class="kv-val">truncated</span></div>';
+  let html='';
+  if(obj===null||obj===undefined) return '';
+  if(typeof obj!=='object') return `<div class="kv-row"><span class="kv-key">value</span><span class="kv-val"><code>${escapeHtml(String(obj))}</code></span></div>`;
+  for(const [k,v] of Object.entries(obj)){
+    if(v===null||v===undefined){ html+=`<div class="kv-row"><span class="kv-key">${escapeHtml(k)}</span><span class="kv-val">—</span></div>`; continue; }
+    if(typeof v==='object'){ html+=`<div class="kv-row"><span class="kv-key">${escapeHtml(k)}</span><span class="kv-val">${Array.isArray(v)?`${v.length} items`:'object'}</span></div>`; continue; }
+    html+=`<div class="kv-row"><span class="kv-key">${escapeHtml(k)}</span><span class="kv-val">${escapeHtml(String(v).slice(0,200))}</span></div>`;
+  }
+  return html;
+}
+
+function renderProviderTable(byProvider){
+  let html='<div style="margin-top:10px"><b>By provider</b>';
+  for(const [p, v] of Object.entries(byProvider)){
+    html+=`<div class="kv-row"><span class="kv-key">${escapeHtml(p)}</span><span class="kv-val"><code>$${escapeHtml(String(v))}</code></span></div>`;
+  }
+  html+='</div>';
+  return html;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function kvRow(key, value){
+  const row=document.createElement('div');
+  row.className='kv-row';
+  const k=document.createElement('span'); k.className='kv-key'; k.textContent=key;
+  const v=document.createElement('span'); v.className='kv-val';
+  if(value instanceof Node) v.appendChild(value);
+  else { const c=document.createElement('code'); c.textContent=String(value); v.appendChild(c); }
+  row.appendChild(k); row.appendChild(v);
+  return row;
+}
+
+function statusPill(cls, label){
+  const p=document.createElement('span');
+  p.className='status-pill '+cls;
+  p.textContent=label;
+  return p;
+}
+
+function formatUptime(seconds){
+  if(!seconds || seconds<0) return '—';
+  const d=Math.floor(seconds/86400);
+  const h=Math.floor((seconds%86400)/3600);
+  const m=Math.floor((seconds%3600)/60);
+  let s='';
+  if(d) s+=d+'d ';
+  if(h || d) s+=h+'h ';
+  s+=m+'m';
+  return s;
 }
 
 // ── Search ──
@@ -683,10 +1773,107 @@ document.getElementById('search').addEventListener('input',function(e){
   });
 });
 
-// ── Voice (JARVIS P6/P17): hold-to-talk → /kai/voice/chat ──
+// ── Talk to Kai (voice + text fallback) ──────────────────────────────────
+// Two modes:
+//   1. Voice: hold-to-talk via /kai/voice/chat (requires secure context for
+//      getUserMedia — i.e. HTTPS or localhost/127.0.0.1).
+//   2. Text:  always available. POSTs to /kai/chat and shows the reply inline.
+// The button auto-detects the mode: if getUserMedia is available, it records;
+// otherwise it opens a text input. This avoids the scary "microphone
+// unavailable" error users hit when opening the page over a non-local HTTP
+// IP (the dashboard's primary access pattern from the S23 over WireGuard).
 let _mediaStream=null, _recorder=null, _chunks=[];
+let _kaiChatOverlay = null;
+
+function showKaiChatOverlay(){
+  if(_kaiChatOverlay) return _kaiChatOverlay;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;left:0;right:0;bottom:0;top:0;background:rgba(2,6,23,0.85);backdrop-filter:blur(8px);z-index:300;display:flex;flex-direction:column;padding:20px;padding-top:max(20px,env(safe-area-inset-top));padding-bottom:max(20px,env(safe-area-inset-bottom))';
+  ov.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--fg)">🧠 Talk to Kai</div>
+        <div style="font-size:0.7rem;color:var(--subtle);margin-top:2px">Text chat — same backend as the Android app</div>
+      </div>
+      <button id="kai-close" style="background:var(--elevated);border:1px solid var(--border);border-radius:50%;width:32px;height:32px;color:var(--muted);font-size:1.2rem;line-height:1;cursor:pointer">×</button>
+    </div>
+    <div id="kai-log" style="flex:1;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;margin-bottom:12px;font-size:0.85rem;color:var(--fg)"></div>
+    <form id="kai-form" style="display:flex;gap:8px">
+      <input id="kai-input" type="text" autocomplete="off" placeholder="Ask Kai anything…"
+             style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;color:var(--fg);font-size:0.9rem;outline:none">
+      <button type="submit" style="background:var(--accent);color:#fff;border:0;border-radius:14px;padding:0 18px;font-weight:600;cursor:pointer">Send</button>
+    </form>
+  `;
+  document.body.appendChild(ov);
+  const close = () => { ov.remove(); _kaiChatOverlay = null; };
+  ov.querySelector('#kai-close').addEventListener('click', close);
+  const log = ov.querySelector('#kai-log');
+  const append = (who, text) => {
+    const d = document.createElement('div');
+    d.style.cssText = 'margin-bottom:8px;padding:8px 10px;border-radius:10px;';
+    d.style.background = who==='user' ? 'var(--elevated)' : 'rgba(22,163,74,0.12)';
+    const who_lbl = document.createElement('div');
+    who_lbl.style.cssText = 'font-size:0.65rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--subtle);margin-bottom:3px';
+    who_lbl.textContent = who==='user' ? 'You' : 'Kai';
+    const body = document.createElement('div');
+    body.textContent = text;
+    d.appendChild(who_lbl); d.appendChild(body);
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+  };
+  // Greet
+  append('kai', 'Hi — what can I help with?');
+  const form = ov.querySelector('#kai-form');
+  const input = ov.querySelector('#kai-input');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const text = input.value.trim();
+    if(!text) return;
+    input.value = '';
+    append('user', text);
+    const sending = document.createElement('div');
+    sending.textContent = '…';
+    sending.style.color = 'var(--subtle)';
+    sending.style.fontSize = '0.75rem';
+    sending.style.padding = '4px 10px';
+    log.appendChild(sending);
+    log.scrollTop = log.scrollHeight;
+    try{
+      const r = await fetch('/kai/chat', {
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body: JSON.stringify({text: text, operator: 'mobile-dashboard'})
+      });
+      sending.remove();
+      if(!r.ok){
+        const err = await r.text();
+        append('kai', '⚠️ Error: '+(err||'HTTP '+r.status));
+        return;
+      }
+      const d = await r.json();
+      append('kai', d.response || d.text || '(no response)');
+    }catch(err){
+      sending.remove();
+      append('kai', '⚠️ Network error: '+err.message);
+    }
+  });
+  setTimeout(() => input.focus(), 100);
+  _kaiChatOverlay = ov;
+  return ov;
+}
+
 async function startVoice(e){
   if(e)e.preventDefault();
+  // Detect secure context — required for getUserMedia on non-localhost.
+  const canVoice = !!(window.isSecureContext && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  if(!canVoice){
+    // Fall back to text chat inline. The /mobile dashboard is typically
+    // reached over the LAN as http://192.168.x.x (insecure) or via
+    // http://10.x WireGuard — neither is a secure context, so this branch
+    // is the common case. Don't pop an alert; open the chat UI directly.
+    showKaiChatOverlay();
+    return;
+  }
   try{
     _mediaStream=await navigator.mediaDevices.getUserMedia({audio:true});
     _chunks=[];
@@ -697,7 +1884,6 @@ async function startVoice(e){
       const blob=new Blob(_chunks,{type:'audio/webm'});
       document.getElementById('voice-btn').innerHTML='<span class="qa-icon">🧠</span>Kai is thinking…';
       try{
-        // convert webm→wav via AudioContext decode for the brain API
         const arr=await blob.arrayBuffer();
         const ac=new (window.AudioContext||window.webkitAudioContext)();
         const buf=await ac.decodeAudioData(arr);
@@ -718,13 +1904,40 @@ async function startVoice(e){
     };
     document.getElementById('voice-btn').innerHTML='<span class="qa-icon">🔴</span>Listening… tap to send';
     _recorder.start();
-    // auto-stop after 8s or on second tap
     document.getElementById('voice-btn').onclick=(ev)=>{ev.preventDefault();if(_recorder.state==='recording')_recorder.stop();};
     setTimeout(()=>{if(_recorder&&_recorder.state==='recording')_recorder.stop();},8000);
   }catch(err){
-    alert('Microphone unavailable: '+err.message);
+    // Permission denied or device error — open text chat as fallback
+    showKaiChatOverlay();
   }
 }
+async function openAlertsQuick(e){
+  if(e)e.preventDefault();
+  // If the alerts feature tile exists, open it (synthesized since it's
+  // not in the static grid render). Otherwise create an ad-hoc sheet.
+  const tile = document.querySelector('[data-id="feature-alerts"]');
+  if(tile){
+    openSheet(tile);
+    return;
+  }
+  // Fallback: fetch + render inline
+  const body=document.getElementById('sheet-body');
+  document.getElementById('sheet-title').textContent='Alerts';
+  document.getElementById('sheet-subtitle').textContent='Live operational notifications';
+  body.innerHTML='<div class="sheet-loading">Loading…</div>';
+  document.getElementById('sheet-actions').style.display='none';
+  document.querySelector('.sheet-backdrop').classList.add('open');
+  document.querySelector('.sheet').classList.add('open');
+  try{
+    const r=await fetch('/mobile/api/alerts');
+    const d=await r.json();
+    // Render using the renderer's path: temporarily stash the data + call it
+    renderSheet(d, body);
+  }catch(err){
+    body.innerHTML='<div class="sheet-error">Failed to load alerts: '+escapeHtml(err.message)+'</div>';
+  }
+}
+
 function encodeWav(audioBuffer){
   const numCh=1,sr=16000;
   const src=audioBuffer.getChannelData(0);

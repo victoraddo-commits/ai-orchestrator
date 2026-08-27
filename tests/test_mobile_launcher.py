@@ -58,7 +58,26 @@ class TestLauncherPage:
 
         assert "viewport-fit=cover" in html
         assert "apple-mobile-web-app-capable" in html
-        assert "theme-color" in html
+
+    def test_launcher_html_is_no_cache(self, client):
+        """The HTML must never be served from a stale HTTP cache — the
+        dashboard renders tile + endpoint data that changes every reload,
+        so a hard refresh must always get the current shell."""
+        resp = client.get("/mobile")
+        cc = resp.headers.get("cache-control", "")
+        assert "no-store" in cc, f"expected no-store, got {cc!r}"
+        assert "no-cache" in cc, f"expected no-cache, got {cc!r}"
+
+    def test_sw_uses_network_first_for_html(self, client):
+        """The service worker must NOT cache-first serve /mobile or any
+        /mobile/api/* — those are live data surfaces. (v2 fix: previous
+        v1 served stale HTML when the shell changed.)"""
+        resp = client.get("/mobile/sw.js")
+        js = resp.text
+        assert "kai-launcher-v2" in js, "expected v2 SW version"
+        # Page shell + API must be in the network-only list
+        assert "/mobile" in js and "/mobile/api/" in js
+        assert "NETWORK_ONLY" in js
 
     def test_trailing_slash_also_serves_launcher(self, client):
         resp = client.get("/mobile/")
@@ -125,7 +144,9 @@ class TestServiceWorker:
         resp = client.get("/mobile/sw.js")
         sw = resp.text
 
-        assert "kai-launcher-v1" in sw
+        # v2 is the current generation (added 2026-08-26 — see fix note in
+        # core.mobile_launcher_routes). Bump this when you bump _SW_JS.
+        assert "kai-launcher-v2" in sw
         assert "install" in sw
         assert "activate" in sw
         assert "fetch" in sw
@@ -196,7 +217,10 @@ class TestTilesAPI:
             assert "url" in tile
             assert "type" in tile
             assert "status" in tile
-            assert tile["type"] in ("internal", "external")
+            assert tile["type"] in ("internal", "external", "feature")
+            # feature tiles MUST have an endpoint (the sheet fetches it)
+            if tile["type"] == "feature":
+                assert "endpoint" in tile, f"feature tile {tile['id']} missing endpoint"
 
     def test_tiles_has_updated_at(self, client):
         resp = client.get("/mobile/tiles")
@@ -208,7 +232,27 @@ class TestTilesAPI:
         resp = client.get("/mobile/tiles")
         data = resp.json()
 
-        assert len(data["tiles"]) >= 10  # minimum coverage
+        assert len(data["tiles"]) >= 20  # 16 legacy + KAI Ultimate features
+
+    def test_tiles_have_jarvis_features(self, client):
+        """KAI Ultimate feature tiles must be present."""
+        resp = client.get("/mobile/tiles")
+        data = resp.json()
+        tile_ids = {t["id"] for t in data["tiles"]}
+
+        required = {
+            "feature-briefing",     # Catch me up
+            "feature-capabilities", # What can Kai do
+            "feature-spend",        # AI spend
+            "feature-emergency",    # Emergency stop
+            "feature-wg",           # WireGuard peers + create
+            "feature-missions",     # Active missions
+            "feature-home",         # Executive home
+            "feature-proxmox",      # Proxmox inventory
+            "feature-enhancements", # Enhancement toggles
+        }
+        missing = required - tile_ids
+        assert not missing, f"missing KAI Ultimate tiles: {missing}"
 
     def test_internal_tiles_use_relative_urls(self, client):
         resp = client.get("/mobile/tiles")

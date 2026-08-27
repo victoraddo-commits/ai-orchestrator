@@ -30,7 +30,7 @@ import aiohttp
 import numpy as np
 
 
-DEFAULT_GATEWAY = "ws://127.0.0.1:8130/ws"
+DEFAULT_GATEWAY = "ws://localhost:8000/kai-voice/ws"
 SAMPLE_RATE = 16000
 CHUNK_MS = 100        # 100ms frames
 CHUNK_BYTES = SAMPLE_RATE * 2 * CHUNK_MS // 1000  # PCM16 = sample_rate * 2 bytes/s
@@ -83,8 +83,6 @@ class VoiceTestClient:
 
             async def receive_loop():
                 """Print all events from the gateway."""
-                nonlocal t0_wake, t0_first_audio
-
                 while self.running:
                     if self.ws is None:
                         break
@@ -108,11 +106,11 @@ class VoiceTestClient:
                         if self.t0_first_audio is None and self.t0_wake is not None:
                             self.t0_first_audio = time.monotonic()
                             elapsed = (self.t0_first_audio - self.t0_wake) * 1000
-                            print(f"\n🎙 FIRST AUDIO RECEIVED: {elapsed:.0f}ms after wake")
+                            print(f"\n[FIRST AUDIO] {elapsed:.0f}ms after wake")
                             if elapsed < 1200:
-                                print("✅ PASS: wake-to-first-audio < 1.2s")
+                                print("[PASS] wake-to-first-audio < 1.2s")
                             else:
-                                print(f"❌ FAIL: {elapsed:.0f}ms exceeds 1.2s threshold")
+                                print(f"[FAIL] {elapsed:.0f}ms exceeds 1.2s threshold")
 
                     elif msg.type == aiohttp.WSMsgType.CLOSED:
                         print("[DISCONNECTED]")

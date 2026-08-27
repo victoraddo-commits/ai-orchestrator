@@ -94,11 +94,19 @@ def test_terminal_endpoint_returns_credential(paired_device, isolated_memory, mo
         return real_open(path, *a, **kw)
 
     monkeypatch.setattr(builtins, "open", fake_open)
+    # Stub out the tmux/pgrep probes so the test gets the default port
+    # (and we can assert exact value)
+    import subprocess as _sp
+    monkeypatch.setattr(_sp, "run", lambda *a, **kw: _sp.CompletedProcess(args=a, returncode=1, stdout="", stderr=""))
     resp = client.get("/kai/app/terminal", headers=paired_device)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["ok"] is True and body["port"] == 8001
+    assert body["ok"] is True
+    # Port is 7681 by default; credential is the test value we wrote
+    assert body["port"] == 7681
     assert body["credential"] == "kai:abc123"
+    # Session object is always present (may show running=False in test env)
+    assert "session" in body
 
 
 def test_terminal_endpoint_requires_token():

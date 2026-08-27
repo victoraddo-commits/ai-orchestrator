@@ -138,18 +138,20 @@ async def pair_confirm(body: PairConfirm):
 
 # --- app data endpoints (device-token gated) ----------------------------------
 
-@router.get("/home")
-async def app_home(dev: dict = Depends(_require_device)):
-    """Everything for the Home screen: executive summary + world + modules."""
+# --- shared data-gathering helpers -------------------------------------------
+# These are used by both the device-token-gated /kai/app/* routes below and
+# the public /mobile/api/* routes in core.mobile_launcher_routes. Keep them
+# pure (no auth/Header deps) so they can be called from anywhere.
+
+def gather_home_payload() -> dict:
+    """Executive summary + world + data-trust for the Home surface."""
     from core.kai_executive import prioritize
     from core.world_model import get_state
-    p = prioritize()
-    w = get_state()
-    return {"executive": p, "world": w, "data_trust": _data_age_minutes()}
+    return {"executive": prioritize(), "world": get_state(),
+            "data_trust": _data_age_minutes()}
 
 
-@router.get("/proxmox")
-async def app_proxmox(dev: dict = Depends(_require_device)):
+def gather_proxmox_payload() -> dict:
     from core.proxmox_monitor import PROXMOX_NODES
     from core.proxmox_registry import discover_node_inventory
     nodes = []
@@ -165,31 +167,54 @@ async def app_proxmox(dev: dict = Depends(_require_device)):
     return {"nodes": nodes}
 
 
-@router.get("/missions")
-async def app_missions(dev: dict = Depends(_require_device)):
+def gather_missions_payload() -> dict:
     from core.kai_missions import list_missions
     return {"missions": list_missions()}
 
 
-@router.get("/enhancements")
-async def app_enhancements(dev: dict = Depends(_require_device)):
+def gather_enhancements_payload() -> dict:
     from core.kai_enhancements import status
     return {"enhancements": status()}
 
 
-@router.get("/wg/peers")
-async def app_wg_peers(dev: dict = Depends(_require_device)):
+def gather_wg_peers_payload() -> dict:
     """Live WG peer list from DD-WRT (via the tool's telnet path)."""
     import os
     os.chdir("/project/ai-orchestrator")
     from core.kai_tools import builtin
-    from core.kai_tools.registry import run_tool
-    # show peers = SAFE read; reuse the telnet helper directly
     try:
         show = builtin._ddwrt_telnet("wg show wg0 peers")
         return {"ok": True, "raw": show[:2000]}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# --- /kai/app/* device-token-gated routes -----------------------------------
+
+@router.get("/home")
+async def app_home(dev: dict = Depends(_require_device)):
+    """Everything for the Home screen: executive summary + world + modules."""
+    return gather_home_payload()
+
+
+@router.get("/proxmox")
+async def app_proxmox(dev: dict = Depends(_require_device)):
+    return gather_proxmox_payload()
+
+
+@router.get("/missions")
+async def app_missions(dev: dict = Depends(_require_device)):
+    return gather_missions_payload()
+
+
+@router.get("/enhancements")
+async def app_enhancements(dev: dict = Depends(_require_device)):
+    return gather_enhancements_payload()
+
+
+@router.get("/wg/peers")
+async def app_wg_peers(dev: dict = Depends(_require_device)):
+    return gather_wg_peers_payload()
 
 
 class WgCreateBody(BaseModel):
@@ -278,13 +303,12 @@ class VisionBody(BaseModel):
     question: str = "Describe this image and note anything unusual."
 
 
-@router.post("/vision")
-async def app_vision(body: VisionBody, dev: dict = Depends(_require_device)):
+def gather_vision_payload(image_b64: str, question: str) -> dict:
     """KAI EYES: analyze an image (camera capture or screenshot) through the
     vision model. Uses the same Gemini path as kai.vision.analyze_url."""
     import base64 as b64
     try:
-        png = b64.b64decode(body.image_b64)
+        png = b64.b64decode(image_b64)
     except Exception:
         raise HTTPException(400, "image_b64 must be base64")
     if len(png) < 100:
@@ -292,14 +316,17 @@ async def app_vision(body: VisionBody, dev: dict = Depends(_require_device)):
     if len(png) > 8_000_000:
         raise HTTPException(400, "image too large (max 8MB)")
     from core.kai_tools.builtin import _vision_ask
-    result = _vision_ask(png, body.question)
+    result = _vision_ask(png, question)
     return {"ok": True, **result}
 
 
-@router.get("/capabilities")
-async def app_capabilities(dev: dict = Depends(_require_device)):
-    """§50 universal capability registry — what can JARVIS do right now?
-    Derived from the live tool bus (risk classes + descriptions)."""
+@router.post("/vision")
+async def app_vision(body: VisionBody, dev: dict = Depends(_require_device)):
+    return gather_vision_payload(body.image_b64, body.question)
+
+
+def gather_capabilities_payload() -> dict:
+    """§50 universal capability registry — what can JARVIS do right now?"""
     from core.kai_tools.registry import describe_all
     tools = describe_all()
     by_category = {}
@@ -312,41 +339,175 @@ async def app_capabilities(dev: dict = Depends(_require_device)):
             "note": "CONTROLLED/HIGH_RISK require approval per policy"}
 
 
-@router.get("/briefing")
-async def app_briefing(dev: dict = Depends(_require_device), send: bool = False):
+def gather_briefing_payload(send: bool = False) -> dict:
     """§47: 'JARVIS, catch me up' — executive briefing (facts only)."""
     from core.kai_executive import run_briefing
-    text = run_briefing(kind="on-demand", send=bool(send))
-    return {"briefing": text}
+    return {"briefing": run_briefing(kind="on-demand", send=bool(send))}
 
 
-@router.get("/spend")
-async def app_spend(days: int = 30, dev: dict = Depends(_require_device)):
+def gather_spend_payload(days: int = 30) -> dict:
     """Real AI spend for the app's Jarvis tab — cost tracker summary."""
     from core.ai.cost_tracker import get_cost_summary
     return get_cost_summary(max(1, min(days, 90)))
 
 
-@router.get("/terminal")
-async def app_terminal(dev: dict = Depends(_require_device)):
-    """Terminal join: returns the phone-reachable ttyd URL + basic-auth
-    credential. Credential lives on disk (0600) and is only ever handed to
-    a PAIRED device over the WireGuard-only relay chain."""
+def gather_alerts_payload(limit: int = 10) -> dict:
+    """Live alerts: counts by severity + recent N for the dashboard tile.
+
+    Uses the same NotificationManager APIs as /kai/notifications (unread
+    counts + list_notifications) so the mobile dashboard shows the same
+    data the KAI Ultimate Android app and the /kai/notifications page
+    surface. Returns errors as a dict so the sheet can show 'unavailable'
+    instead of crashing the dashboard."""
+    try:
+        from core.notifications import NotificationManager
+        # Unread counts (static method, returns dict with critical/important/
+        # informational keys)
+        try:
+            counts = NotificationManager.unread_count() or {}
+        except Exception:
+            counts = {}
+        # Normalize the shape
+        counts = {
+            "critical": int(counts.get("critical", 0) or 0),
+            "important": int(counts.get("important", 0) or 0),
+            "informational": int(counts.get("informational", 0) or 0),
+        }
+        # Recent N
+        try:
+            recent_raw = NotificationManager.list_notifications(limit=limit)
+            # list_notifications returns a dict {total, notifications: [...]}
+            if isinstance(recent_raw, dict):
+                recent = recent_raw.get("notifications", [])
+            else:
+                recent = recent_raw or []
+        except Exception:
+            recent = []
+        # Normalize to the {id, severity, title, body} shape the dashboard expects
+        norm = []
+        for n in recent[:limit]:
+            if not isinstance(n, dict):
+                continue
+            norm.append({
+                "id": n.get("id"),
+                "severity": n.get("severity", "informational"),
+                "title": n.get("title") or n.get("summary") or n.get("id", "(no title)"),
+                "body": n.get("body") or n.get("message") or "",
+                "source": n.get("source"),
+                "module": n.get("module"),
+                "acknowledged": bool(n.get("acknowledged") or n.get("acked")),
+                "created_at": n.get("created_at") or n.get("timestamp"),
+            })
+        return {"counts": counts, "recent": norm, "limit": limit}
+    except Exception as e:
+        return {"counts": {"critical": 0, "important": 0, "informational": 0},
+                "recent": [], "limit": limit, "error": str(e)[:120]}
+
+
+def gather_terminal_payload() -> dict:
+    """Terminal join: ttyd port + basic-auth credential for the phone.
+
+    Also returns live status of the active claude-code session running in
+    the shared tmux ('claude-cc') so the dashboard can show "session is
+    running, X minutes uptime, Y CPU%" before the user opens the terminal.
+    """
     import os as _os
+    import subprocess as _sp
     cred_path = "/etc/default/kai-terminal-cred"
     if not _os.path.exists(cred_path):
         raise HTTPException(503, "terminal service not configured")
     cred = open(cred_path).read().strip()
     if ":" not in cred:
         raise HTTPException(503, "terminal credential malformed")
-    # phone-facing entry is the proxmox-b socat relay (WG/LAN reachable);
-    # derive it from whatever host the app already talks to.
-    from urllib.parse import urlparse
-    # Config lives client-side; we can only return the path + creds and let
-    # the app build the absolute URL from its own baseUrl host. The relay
-    # listens on port 8001 of the SAME host that relays :8000 -> API.
-    return {"ok": True, "port": 8001, "credential": cred,
-            "path": "/", "note": "open http://<server-host>:8001 in-app; basic auth"}
+    # Detect the actual ttyd port from its process args (port may change)
+    port = 7681
+    try:
+        out = _sp.run(["pgrep", "-f", "/usr/bin/ttyd"], capture_output=True, text=True, timeout=2).stdout.strip().splitlines()
+        if out:
+            cmdline = open(f"/proc/{out[0]}/cmdline", "rb").read().decode("utf-8", "ignore").split("\x00")
+            for i, tok in enumerate(cmdline):
+                if tok == "-p" and i + 1 < len(cmdline):
+                    port = int(cmdline[i + 1])
+                    break
+    except Exception:
+        pass
+    # Active session: which tmux session + which claude binary is running
+    session = {"running": False, "tmux_session": None, "claude_pid": None,
+               "uptime_s": None, "cpu_pct": None, "started_at": None}
+    try:
+        out = _sp.run(["tmux", "list-sessions", "-F", "#{session_name}:#{session_created}:#{session_windows}"],
+                      capture_output=True, text=True, timeout=2).stdout.strip()
+        for line in out.splitlines():
+            if line.startswith("claude-cc:"):
+                parts = line.split(":", 2)
+                if len(parts) >= 3:
+                    import time as _t
+                    session["tmux_session"] = parts[0]
+                    session["started_at"] = int(parts[1])
+                    session["uptime_s"] = int(_t.time()) - int(parts[1])
+                    session["windows"] = int(parts[2])
+                    session["running"] = True
+                break
+    except Exception:
+        pass
+    # Find the claude-code PID if any
+    try:
+        out = _sp.run(["pgrep", "-f", "claude"], capture_output=True, text=True, timeout=2).stdout.strip().splitlines()
+        for pid_str in out:
+            try:
+                pid = int(pid_str)
+                # /proc/PID/comm gives the process name
+                comm = open(f"/proc/{pid}/comm", "rb").read().decode("utf-8", "ignore").strip()
+                if "claude" in comm.lower():
+                    stat = open(f"/proc/{pid}/stat", "rb").read().decode("utf-8", "ignore").split()
+                    # fields: (1)pid (2)comm (3)state (4)ppid ... (22)starttime (in clock ticks)
+                    session["claude_pid"] = pid
+                    session["claude_comm"] = comm
+                    clk_tck = _os.sysconf("SC_CLK_TCK")
+                    boot_time = int(open("/proc/stat").read().split("btime ")[1].split()[0])
+                    starttime_sec = boot_time + int(stat[21]) / clk_tck
+                    session["claude_uptime_s"] = int(_t.time()) - int(starttime_sec)
+                    break
+            except (ValueError, OSError, IndexError):
+                continue
+    except Exception:
+        pass
+    return {"ok": True, "port": port, "credential": cred,
+            "path": "/", "session": session,
+            "note": "basic-auth in URL: http://user:pass@<host>:<port>/"}
+
+
+def gather_emergency_status_payload() -> dict:
+    from core.kai_emergency import stopped_info
+    info = stopped_info()
+    paused = False
+    try:
+        from core.scheduler import SCHEDULER_PAUSE_FILE
+        paused = SCHEDULER_PAUSE_FILE.exists()
+    except Exception:
+        pass
+    return {"stopped": bool(info.get("stopped")), "scheduler_paused": paused,
+            "by": info.get("by"), "reason": info.get("reason"), "at": info.get("at")}
+
+
+@router.get("/capabilities")
+async def app_capabilities(dev: dict = Depends(_require_device)):
+    return gather_capabilities_payload()
+
+
+@router.get("/briefing")
+async def app_briefing(dev: dict = Depends(_require_device), send: bool = False):
+    return gather_briefing_payload(send=send)
+
+
+@router.get("/spend")
+async def app_spend(days: int = 30, dev: dict = Depends(_require_device)):
+    return gather_spend_payload(days)
+
+
+@router.get("/terminal")
+async def app_terminal(dev: dict = Depends(_require_device)):
+    return gather_terminal_payload()
 
 
 class EmergencyBody(BaseModel):
@@ -358,7 +519,7 @@ async def app_emergency_stop(body: EmergencyBody, dev: dict = Depends(_require_d
     """Kill switch from the phone — same path as the CC emergency panel:
     tool switch + scheduler pause + running-mission cancel. Audited with
     the device label so the log shows WHERE the stop came from."""
-    from core.kai_emergency import check_rate, stopped_info, emergency_stop
+    from core.kai_emergency import check_rate, emergency_stop
     allowed, retry_after = check_rate(dev.get("label", "mobile"))
     if not allowed:
         raise HTTPException(429, f"rate limited, retry in {retry_after}s")
@@ -376,16 +537,7 @@ async def app_emergency_resume(dev: dict = Depends(_require_device)):
 
 @router.get("/emergency/status")
 async def app_emergency_status(dev: dict = Depends(_require_device)):
-    from core.kai_emergency import stopped_info
-    info = stopped_info()
-    paused = False
-    try:
-        from core.scheduler import SCHEDULER_PAUSE_FILE
-        paused = SCHEDULER_PAUSE_FILE.exists()
-    except Exception:
-        pass
-    return {"stopped": bool(info.get("stopped")), "scheduler_paused": paused,
-            "by": info.get("by"), "reason": info.get("reason"), "at": info.get("at")}
+    return gather_emergency_status_payload()
 
 
 

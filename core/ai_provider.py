@@ -216,7 +216,10 @@ def _omniroute_run_text_task(prompt, timeout=60, project_path=None):
 
 
 def _omniroute_available():
-    return llm_clients._omniroute_key() is not None
+    # Key check + live TCP probe — prevents 60s hangs when the Docker
+    # container is down (the key alone always passes, root cause of the
+    # minimax-m3 job stall on 2026-08-27).
+    return llm_clients._omniroute_key() is not None and llm_clients._omniroute_port_open()
 
 
 
@@ -558,3 +561,78 @@ register_provider(
     cost_tier="free",
 )
 
+
+# ============================================================================
+# Free Coding Module — verified free OpenRouter models via Free Model Manager
+# ============================================================================
+# cohere/north-mini-code:free is the first verified free model (7/8 tests,
+# coding_score 9.25/10, ACTIVE).  The pool is managed by
+# core/free_model_manager/ which discovers, validates, scores, rotates, and
+# fails over genuinely free OpenRouter models ($0 prompt + completion).
+#
+# This provider routes coding tasks to the local Free Model Manager REST API
+# (port 8096) which handles failover, circuit-breaking, and pool management.
+# The API key and OpenRouter billing stay local — we call our own server.
+
+import requests as _requests
+
+
+def _free_coding_run_task(project_path, instruction, **kwargs):
+    """Route coding task to the Free Model Manager pool.
+
+    The FMM API (port 8096) handles model selection, circuit-breaking, and
+    failover.  If the pool is empty or every model is circuit-open it falls
+    back to the last-resort error so the router can try its next candidate.
+    """
+    fmm_url = os.getenv("FREE_CODING_API_URL", "http://localhost:8096")
+    timeout = int(os.getenv("FREE_CODING_TIMEOUT", "120"))
+
+    try:
+        resp = _requests.post(
+            f"{fmm_url}/infer",
+            json={"prompt": instruction},
+            timeout=timeout,
+        )
+        if resp.ok:
+            data = resp.json()
+            if data.get("success"):
+                # FMM returns a plain content string; wrap it so the bridge
+                # receives the shape coding_bridge expects.
+                return {
+                    "content": data["content"],
+                    "model": data.get("model_id", "unknown"),
+                    "latency_ms": data.get("latency_ms", 0),
+                }
+            else:
+                error = data.get("error") or data.get("message") or "Unknown error"
+                raise RuntimeError(f"Free coding model error: {error}")
+        else:
+            raise RuntimeError(f"Free coding API returned {resp.status_code}: {resp.text}")
+    except _requests.exceptions.ConnectionError:
+        raise RuntimeError("Free Model Manager API is not reachable (is it running on port 8096?)")
+    except _requests.exceptions.Timeout:
+        raise RuntimeError("Free Model Manager API timed out")
+
+
+def _free_coding_available():
+    """True when the Free Model Manager API is reachable and has at least one
+    ACTIVE or AVAILABLE model in the pool."""
+    try:
+        fmm_url = os.getenv("FREE_CODING_API_URL", "http://localhost:8096")
+        resp = _requests.get(f"{fmm_url}/health", timeout=5)
+        if not resp.ok:
+            return False
+        stats = resp.json().get("stats", {})
+        return stats.get("active", 0) > 0 or stats.get("verified_free", 0) > 0
+    except Exception:
+        return False
+
+
+register_provider(
+    "free_coding",
+    run_coding_task=_free_coding_run_task,
+    available_fn=_free_coding_available,
+    kind="cloud",
+    description="Free OpenRouter coding models via Free Model Manager — cohere/nemotron/poolside/etc. verified $0, self-hosted failover, circuit breaker, 256k context. Primary free coding fallback.",
+    cost_tier="free",
+)

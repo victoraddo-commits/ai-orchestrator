@@ -331,7 +331,16 @@ ROLE_PROVIDERS["legal_coding"] = ["claude", "omniroute_deepseek_coding"]
 # through CloudCLI/Claude Code settings → ds/deepseek-v4-pro via OmniRoute
 # (operator chose "leave as is" 2026-08-23), so the coding chain remains
 # down until DeepSeek is funded. Honest state; no config pretense.
-ROLE_PROVIDERS["coding"] = ["claude", "omniroute_deepseek_coding", "omniroute", "gpuai_minimax"]
+# 2026-08-27: free_coding (cohere/nemotron/poolside free OpenRouter models
+# via Free Model Manager) inserted as the FIRST free fallback before any
+# paid option — verified free, circuit-broken, pool-rotating.
+ROLE_PROVIDERS["coding"] = [
+    "free_coding",
+    "claude",
+    "omniroute_deepseek_coding",
+    "omniroute",
+    "gpuai_minimax",
+]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 

@@ -360,6 +360,24 @@ def _omniroute_key():
     return os.getenv("ANTHROPIC_AUTH_TOKEN") or os.getenv("OPENAI_API_KEY")
 
 
+def _omniroute_port_open(timeout=3) -> bool:
+    """Quick TCP probe to confirm the gateway is actually listening.
+
+    Prevents the 60s hang that occurs when the Docker container is down but
+    the API key check passes (root cause of the minimax-m3 stall 2026-08-27).
+    """
+    import socket
+    import urllib.parse
+    parsed = urllib.parse.urlparse(OMNIROUTE_BASE_URL)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 20128
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def call_omniroute(prompt, model=None, timeout=60):
     key = _omniroute_key()
     if not key:
@@ -370,7 +388,7 @@ def call_omniroute(prompt, model=None, timeout=60):
         f"{OMNIROUTE_BASE_URL}/chat/completions",
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
         json={"model": model or OMNIROUTE_TEXT_MODEL, "messages": [{"role": "user", "content": prompt}]},
-        timeout=timeout,
+        timeout=(5, timeout),
     )
 
     if not data.get("choices"):
@@ -411,7 +429,7 @@ def call_omniroute_deepseek_flash(prompt, timeout=60):
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
         },
-        timeout=timeout,
+        timeout=(5, timeout),
     )
 
     if not data.get("choices"):

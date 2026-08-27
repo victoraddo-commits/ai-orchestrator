@@ -65,7 +65,7 @@ async def wss_endpoint(ws: WebSocket):
                 if msg.type == aiohttp.WSMsgType.BINARY:
                     audio_bytes = msg.data
                     if len(audio_bytes) <= MAX_BINARY_FRAME:
-                        await pipeline.handle_binary(audio_bytes)
+                        await pipeline.process_streaming_frame(audio_bytes)
 
                 elif msg.type == aiohttp.WSMsgType.TEXT:
                     raw = msg.data

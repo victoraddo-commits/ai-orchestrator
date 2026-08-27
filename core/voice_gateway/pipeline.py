@@ -22,7 +22,7 @@ from core.voice_gateway import events as ev
 from core.voice_gateway.elevenlabs_client import synthesize_stream as elab_synth
 from core.voice_gateway.events import VoiceEvent, make_event
 from core.voice_gateway.piper_client import synthesize_stream as piper_synth, is_acknowledgement as is_piper_ack
-from core.voice_gateway.telemetry import VoiceTurnTimer
+from core.voice_gateway.telemetry import VoiceTurnTimer, _now_ms
 from core.voice_gateway.vad import create_vad, VoiceActivityDetector
 from core.voice_gateway.wake_word import create_detector, WakeWordDetector
 from core.voice_gateway.whisper_client import transcribe
@@ -45,6 +45,8 @@ class VoicePipeline:
         self._audio_buffer = bytearray()
         self._tts_chunk_index = 0
         self._cancelled = False
+        self._last_provider = ""
+        self._last_response = ""
 
         # VAD config
         self._vad_min_silence_ms = 800
@@ -99,6 +101,7 @@ class VoicePipeline:
 
     def _start_turn(self) -> None:
         self._turn_timer = VoiceTurnTimer(self.session_id)
+        self._turn_timer._t0_stt = _now_ms()  # mark turn start for delta calculation
         self._audio_buffer.clear()
         self._tts_chunk_index = 0
         self._cancelled = False
@@ -151,6 +154,8 @@ class VoicePipeline:
             return
 
         timer.brain_done()
+        self._last_provider = provider
+        self._last_response = response
 
         # Select TTS engine
         if is_piper_ack(stt_text):
@@ -215,8 +220,8 @@ class VoicePipeline:
         if timer is None:
             return
 
-        provider = ""
-        text = ""
+        provider = self._last_provider
+        text = self._last_response
         try:
             entry = timer.record(text=text, provider=provider)
             timer.write(text=text, provider=provider)

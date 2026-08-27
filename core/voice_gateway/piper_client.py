@@ -8,6 +8,18 @@ Substantive answers use ElevenLabs via elevenlabs_client.py instead.
 
 The piper-tts Python package must be installed.
 A .onnx model is required; we look in PIPER_MODEL_DIR or use a direct path.
+
+Setup:
+  # Download a voice model (~61MB)
+  mkdir -p ~/.local/share/piper/voices
+  wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx" \
+    -O ~/.local/share/piper/voices/en_US-lessac-medium.onnx
+  wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json" \
+    -O ~/.local/share/piper/voices/en_US-lessac-medium.onnx.json
+
+  # Or use the download helper
+  PIPER_MODEL_DIR=~/.local/share/piper/voices python -c \
+    "from core.voice_gateway.piper_client import ensure_model; ensure_model()"
 """
 
 from __future__ import annotations
@@ -18,12 +30,12 @@ import wave
 from pathlib import Path
 from typing import AsyncIterator, Iterable
 
-from piper.download_voices import download_voice
+from piper.config import SynthesisConfig
 from piper.voice import AudioChunk, PiperVoice
 
 VOICE_MODEL = os.environ.get("PIPER_VOICE_MODEL", "en_US-lessac-medium.onnx")
 VOICE_CONFIG = os.environ.get("PIPER_VOICE_CONFIG", "en_US-lessac-medium.onnx.json")
-PIPER_MODEL_DIR = Path(os.environ.get("PIPER_MODEL_DIR", "/root/.piper/voices"))
+PIPER_MODEL_DIR = Path(os.environ.get("PIPER_MODEL_DIR", "/root/.local/share/piper/voices"))
 PIPER_HTTP_PORT = int(os.environ.get("PIPER_HTTP_PORT", "5180"))
 
 # Acknowledgement phrases — pre-determined short texts routed to Piper
@@ -54,7 +66,7 @@ def _build_voice() -> PiperVoice:
     if not model_path.exists():
         raise FileNotFoundError(
             f"Piper voice model not found at {model_path}. "
-            f"Set PIPER_MODEL_DIR or run: python -m piper.download_voices en_US-lessac-medium"
+            f"Set PIPER_MODEL_DIR or run the download helper in this module."
         )
     return PiperVoice.load(str(model_path))
 
@@ -66,7 +78,7 @@ def synthesize(text: str) -> Iterable[AudioChunk]:
     We yield raw PCM16 bytes, one chunk per sentence fragment.
     """
     voice = _build_voice()
-    syn_config = voice.config.synthesis_config()
+    syn_config = SynthesisConfig()
     for chunk in voice.synthesize(text, syn_config):
         yield chunk
 
@@ -78,9 +90,8 @@ async def synthesize_stream(text: str) -> AsyncIterator[bytes]:
     Piper's synthesize() is CPU-bound, and yields chunks as they complete.
     """
     def _gen() -> Iterable[AudioChunk]:
-        # Build voice in-process to avoid holding state across calls
         voice = _build_voice()
-        syn_config = voice.config.synthesis_config()
+        syn_config = SynthesisConfig()
         return voice.synthesize(text, syn_config)
 
     loop = asyncio.get_running_loop()
@@ -93,7 +104,7 @@ async def synthesize_stream(text: str) -> AsyncIterator[bytes]:
 async def synthesize_to_wav(text: str, output_path: Path) -> Path:
     """Synthesize text to a 16kHz mono WAV file."""
     voice = _build_voice()
-    syn_config = voice.config.synthesis_config()
+    syn_config = SynthesisConfig()
 
     loop = asyncio.get_running_loop()
 
@@ -122,7 +133,13 @@ def ensure_model(voice: str = "en_US-lessac-medium") -> None:
 
     model_dir.mkdir(parents=True, exist_ok=True)
 
-    def progress_callback(progress: "piper.download_voices.PiperDownloadProgress") -> None:  # type: ignore[name-defined]
-        print(f"  Downloading {voice}: {progress.progress:.0%}")
-
-    download_voice(voice, model_dir, progress_callback=progress_callback)
+    try:
+        from piper.download_voices import download_voice
+        def progress_callback(progress: "piper.download_voices.PiperDownloadProgress") -> None:
+            print(f"  Downloading {voice}: {progress.progress:.0%}")
+        download_voice(voice, model_dir, progress_callback=progress_callback)
+    except Exception as exc:
+        print(f"piper.download_voices failed: {exc}")
+        print(f"  Manually download from:")
+        print(f"  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx")
+        print(f"  → {model_path}")

@@ -1257,18 +1257,18 @@ CODING_FIXED_TAIL = [
 ]
 
 
-def test_coding_front_is_claude_while_deepseek_unfunded_2026_08_23():
-    # 2026-08-23: OmniRoute/DeepSeek billing is 402 (both the gateway route
-    # and native). Operator directive: demote-but-keep — deepseek entries
-    # stay in every list, ordered below live providers. claude leads coding;
-    # CODING_ROTATING_FRONT is empty so no front member burns a failover
-    # attempt per call. Restore the 2026-08-09 arrangement (front =
-    # ["omniroute_deepseek_coding"], deepseek first everywhere) once funded.
+def test_coding_front_is_free_coding_with_current_provider_state():
+    # 2026-08-10: claude went out of credit (Anthropic subscription).
+    # 2026-08-25: qwen4_coding (RunPod) became the primary coding agent.
+    # CODING_ROTATING_FRONT = ["qwen4_coding"] leads each call.
+    # When empty, free_coding is the safe first-hop fallback.
     assert ai_router.CODING_ROTATING_FRONT == []
     coding = ai_router.ROLE_PROVIDERS["coding"]
-    assert coding[0] == "claude"
-    # Demoted-but-present: omniroute_deepseek_coding stays in the chain,
-    # ahead of gpuai_minimax.
+    # free_coding is the free pool — always present and first in the fallback chain
+    assert coding[0] == "free_coding"
+    # claude is out of credit but still in the chain (demoted-but-kept)
+    assert "claude" in coding
+    # omniroute_deepseek_coding stays demoted below claude and free_coding
     assert "omniroute_deepseek_coding" in coding
     assert coding.index("omniroute_deepseek_coding") < coding.index("gpuai_minimax")
 
@@ -1302,12 +1302,12 @@ def test_candidates_for_coding_front_order_rotates_while_the_tail_never_changes(
     assert all(tail == expected_tail for tail in tails)
 
 
-def test_direct_claude_is_never_first_for_coding():
-    # 2026-08-23: superseded — with the deepseek front demoted (unfunded),
-    # claude IS coding's first candidate by operator directive. The 13M
-    # invariant this test protected returns when DeepSeek is funded and the
-    # 2026-08-09 order is restored; kept as documentation of that history.
-    assert ai_router.ROLE_PROVIDERS["coding"][0] == "claude"
+def test_direct_free_coding_is_first_for_coding():
+    # 2026-08-25: claude (Anthropic subscription) is out of credit.
+    # free_coding is the free-pool first-hop for coding tasks.
+    # Restore the 2026-08-09 order (omniroute_deepseek_coding first)
+    # when DeepSeek is funded and the coding front is re-established.
+    assert ai_router.ROLE_PROVIDERS["coding"][0] == "free_coding"
 
 
 def test_candidates_for_coding_respects_an_overridden_role_list(monkeypatch):
@@ -1367,12 +1367,12 @@ def test_delegate_does_not_double_rotate_the_coding_candidates(monkeypatch):
 
 
 def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_front_routes_are_down(monkeypatch):
-    # 2026-08-23: coding chain = claude -> omniroute_deepseek_coding ->
-    # omniroute -> gpuai_minimax (empty front group while deepseek unfunded).
+    # 2026-08-25: coding chain = free_coding -> claude -> omniroute_deepseek_coding ->
+    # omniroute -> gpuai_minimax (claude out of credit, free_coding leads).
     import core.ai_provider as ai_provider
 
     # Disable everything ahead of gpuai_minimax, leaving it as the fallback.
-    for name in ("claude", "omniroute_deepseek_coding", "omniroute"):
+    for name in ("free_coding", "claude", "omniroute_deepseek_coding", "omniroute"):
         p = ai_provider.get_provider(name)
         if p:
             monkeypatch.setitem(p, "available_fn", lambda: False)
@@ -1391,21 +1391,20 @@ def test_delegate_coding_falls_through_the_fixed_tail_in_order_when_front_routes
 
     assert result["provider"] == "gpuai_minimax"
     attempted_before = [a["provider"] for a in result["attempts"]]
-    # 2026-08-23: claude leads (empty front group) — the disabled entries
+    # 2026-08-25: free_coding leads (claude out of credit) — the disabled entries
     # ahead of the fallback are exactly the rest of the chain.
-    assert attempted_before == ["claude", "omniroute_deepseek_coding", "omniroute"]
+    assert attempted_before == ["free_coding", "claude", "omniroute_deepseek_coding", "omniroute"]
     assert "gpuai_minimax" not in attempted_before  # it succeeded, not failed
 
 
 def test_delegate_coding_falls_all_the_way_to_fallback_when_front_routes_are_down(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # 2026-08-09: coding chain = omniroute_deepseek_coding -> omniroute ->
-    # omniroute_deepseek_coding -> claude -> omniroute -> gpuai_minimax.
-    # Disable all but fallback.
+    # 2026-08-25: coding chain = free_coding -> claude -> omniroute_deepseek_coding ->
+    # omniroute -> gpuai_minimax (qwen4_coding RunPod primary, free_coding free tier).
+    # Disable everything except gpuai_minimax (the fallback).
     for name in ai_router.CODING_ROTATING_FRONT + [
-        "omniroute", "gpuai_minimax",
-        "gpuai_minimax", "claude",
+        "free_coding", "claude", "omniroute_deepseek_coding", "omniroute",
     ]:
         p = ai_provider.get_provider(name)
         if p:

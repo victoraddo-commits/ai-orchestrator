@@ -110,10 +110,37 @@ def is_open(provider: str) -> bool:
 
 
 def is_half_open(provider: str) -> bool:
-    """Return True if the breaker is in HALF_OPEN state."""
+    """Return True if the breaker is in HALF_OPEN state.
+
+    Side effect: if the breaker has been half_open for longer than the cooldown
+    period (meaning the probe request never came), transitions it back to CLOSED.
+    This prevents half_open entries from getting stuck when the provider is not
+    in any active routing chain and record_success() is never called.
+    """
     state = _load_state()
     entry = state.get(provider)
-    return entry is not None and entry.get("state") == "half_open"
+    if entry is None:
+        return False
+
+    if entry.get("state") != "half_open":
+        return False
+
+    # half_open probe window = one cooldown period. If no probe came in that
+    # time, return to closed rather than stay stuck indefinitely.
+    cooldown = entry.get("cooldown_seconds", _DEFAULT_COOLDOWN_SECONDS)
+    half_open_at = entry.get("half_open_at")
+    try:
+        elapsed = (datetime.now() - datetime.fromisoformat(half_open_at)).total_seconds()
+    except (TypeError, ValueError):
+        return True  # malformed timestamp — treat as half-open
+
+    if elapsed > cooldown:
+        # Probe window expired without a call to is_open() — transition to closed
+        state.pop(provider, None)
+        _save_state(state)
+        return False
+
+    return True
 
 
 def clear_breaker(provider: str) -> None:

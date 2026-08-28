@@ -266,13 +266,16 @@ class TestSandboxIsolation:
 
 
 class TestPodRoutingV3:
-    """V3: omniroute_deepseek_coding primary in coding, deepseek_native_pro primary in text roles."""
+    """V3: CODING_ROTATING_FRONT is empty (claude/omniroute unfunded since 2026-08-10).
+    free_coding is the first fallback in the coding chain."""
 
-    def test_coding_front_includes_omniroute_deepseek_coding(self):
+    def test_coding_front_is_empty_when_no_funded_provider(self):
         from core.ai.ai_router import CODING_ROTATING_FRONT
-        assert "omniroute_deepseek_coding" in CODING_ROTATING_FRONT
-        # gpuai_minimax (MiniMax M3 via GPU.ai) is in the coding fallback chain,
-        # not the rotating front.
+        # Front is empty because both claude (out of credit) and
+        # omniroute_deepseek_coding (demoted) are unfunded/unavailable.
+        # The routing logic falls through to the full candidate chain.
+        assert "omniroute_deepseek_coding" not in CODING_ROTATING_FRONT
+        assert "claude" not in CODING_ROTATING_FRONT
         assert "gpuai_minimax" not in CODING_ROTATING_FRONT
 
     # 2026-08-12 operator directive: local qwen2.5:7b (Ollama on Proxmox B) is

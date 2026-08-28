@@ -50,13 +50,17 @@ def get_all_chains():
     with defaults filled in for any module not present in the overrides file.
     Unlike /providers/config (which returns the raw overrides), this merges
     with ROLE_PROVIDERS defaults so the UI has a complete picture.
+    Also returns a `default_chains` map so the frontend can reset individual
+    modules back to defaults without needing to hardcode ROLE_PROVIDERS.
     """
     overrides = provider_config_editor.load_overrides().get("overrides", {})
     fallback_order = overrides.get("fallback_order", {})
-    result = {}
+    chains = {}
+    default_chains = {}
     for module, default_chain in ROLE_PROVIDERS.items():
-        result[module] = fallback_order.get(module, default_chain)
-    return result
+        default_chains[module] = default_chain
+        chains[module] = fallback_order.get(module, default_chain)
+    return {"chains": chains, "default_chains": default_chains}
 ```
 
 - [ ] **Step 2: Verify the route is reachable**
@@ -109,7 +113,8 @@ export interface ModuleChain {
 }
 
 export interface ChainsPayload {
-  [module: string]: string[]; // module name -> ordered provider list
+  chains: { [module: string]: string[] };     // merged chains (override or default)
+  default_chains: { [module: string]: string[] }; // defaults for reset
 }
 
 export interface ProviderDashboard {

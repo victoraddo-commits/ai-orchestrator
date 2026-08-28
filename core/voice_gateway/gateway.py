@@ -30,7 +30,7 @@ from core.voice_gateway.pipeline import VoicePipeline
 
 
 # Configuration
-BIND_HOST = os.environ.get("KAI_VOICE_BIND", "127.0.0.1")
+BIND_HOST = os.environ.get("KAI_VOICE_BIND", "0.0.0.0")
 BIND_PORT = int(os.environ.get("KAI_VOICE_PORT", "8130"))
 HEARTBEAT_INTERVAL = 15
 IDLE_TIMEOUT = 30

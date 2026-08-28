@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse, Response, JSONResponse
 import httpx
 from pydantic import BaseModel
 from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.staticfiles import StaticFiles
 import logging
 
 from core.memory import save, load
@@ -156,6 +157,11 @@ app.include_router(betting_router)
 # JARVIS Phase 1: Kai Voice Gateway — WSS endpoint for voice pipeline
 from core.voice_gateway.gateway import voice_router as kai_voice_router
 app.include_router(kai_voice_router, prefix="/kai-voice")
+
+# JARVIS Phase 2: Kai Voice HUD — served as static files from the built React app
+_hud_dist = Path(__file__).resolve().parents[2] / "src" / "kai-voice-hud" / "dist"
+if _hud_dist.exists():
+    app.mount("/voice-hud", StaticFiles(directory=str(_hud_dist), html=True), name="kai-voice-hud")
 
 # 2026-08-09: Kai Mobile Command Node — Sub-project 6: Module Launcher & App Shortcuts
 from core.mobile_launcher_routes import router as mobile_launcher_router

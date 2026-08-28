@@ -67,7 +67,10 @@ CAPABILITIES = {
 # Adding a narrower role later means changing the mapping below, not redesigning
 # the check — there's no lock-in cost to starting minimal.
 ROLE_CAPABILITIES = {
-    "operator": set(CAPABILITIES.keys()),
+    # Lazily built on first use — avoids import-order issues where
+    # kai_tools.routes registers kai.tools.execute after this module
+    # has already frozen the operator role's capability set.
+    "operator": None,  # resolved lazily in check_capability()
     "viewer": set(),  # read-only — no write capabilities
     "device": {
         "kai.chat.send",       # chat with Kai
@@ -230,6 +233,27 @@ _BRIDGE_OPERATORS = frozenset([
 ])
 
 
+def get_operator_capabilities() -> set[str]:
+    """Return the operator role's capability set, rebuilding it lazily.
+
+    This is the public accessor for the operator role's capabilities.
+    Use this instead of directly accessing ROLE_CAPABILITIES["operator"],
+    which may be None before first resolution due to lazy initialization.
+    """
+    return _get_role_caps("operator")
+
+
+def _get_role_caps(role: str) -> set[str]:
+    """Return the capability set for *role*, rebuilding operator lazily."""
+    if role == "operator":
+        caps = ROLE_CAPABILITIES.get("operator")
+        if caps is None:
+            caps = set(CAPABILITIES.keys())
+            ROLE_CAPABILITIES["operator"] = caps
+        return caps
+    return ROLE_CAPABILITIES.get(role, _EMPTY_SET)
+
+
 def check_capability(operator: str, capability: str) -> bool:
     """Return True if *operator* has *capability*, False otherwise.
 
@@ -250,7 +274,7 @@ def check_capability(operator: str, capability: str) -> bool:
         return False  # fail closed — unknown token → deny
 
     role = session.get("role", "")
-    allowed = ROLE_CAPABILITIES.get(role, _EMPTY_SET)
+    allowed = _get_role_caps(role)
     return capability in allowed
 
 

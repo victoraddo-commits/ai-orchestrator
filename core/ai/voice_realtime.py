@@ -6,8 +6,8 @@ pipeline.
 
 Circuit breaker: 2 consecutive failures trips this breaker open.
 Timeout: 3s per attempt.
-Chain: groq → deepseek_native_flash → qwen4_text → gemini → local (ollama)
-Free pool is excluded explicitly.
+Chain: omniroute_deepseek_flash → geminix → local (qwen2.5:7b ollama)
+Free pool and paid providers are excluded explicitly.
 """
 
 from __future__ import annotations
@@ -20,17 +20,20 @@ from typing import Optional
 from core import ai_provider
 from core.ai import circuit_breaker
 
-# Voice-specific provider chain — free pool excluded
+# Voice-specific provider chain — free tier first, local last resort
+# Updated 2026-08-28: groq/deepseek_native/gemini need API keys; using live providers
 VOICE_CHAIN = [
-    "groq",
-    "deepseek_native_flash",
-    "qwen4_text",
-    "gemini",
-    "local",
+    "omniroute_deepseek_flash",  # DeepSeek Flash via self-hosted OmniRoute gateway
+    "geminix",                   # Gemini free tier
+    "local",                     # qwen2.5:7b via ollama (always-on local)
 ]
 
-# 3s per-attempt timeout for voice turns
-_ATTEMPT_TIMEOUT = 3.0
+# Per-provider timeouts — local ollama needs more time (120s default in llm_clients)
+_TIMEOUTS = {
+    "local": 30.0,
+    "geminix": 3.0,
+}
+_ATTEMPT_TIMEOUT = 3.0  # default
 
 # 2-failure trip for voice (vs standard 3)
 _VOICE_BREAKER_THRESHOLD = 2
@@ -107,10 +110,11 @@ async def delegate_voice_turn(
             continue
 
         t0 = time.monotonic()
+        timeout = _TIMEOUTS.get(provider_name, _ATTEMPT_TIMEOUT)
         try:
             response = await asyncio.wait_for(
                 asyncio.to_thread(run_text_task, text),
-                timeout=_ATTEMPT_TIMEOUT,
+                timeout=timeout,
             )
             elapsed_ms = int((time.monotonic() - t0) * 1000)
             elapsed_total += elapsed_ms
@@ -131,7 +135,7 @@ async def delegate_voice_turn(
 
         except asyncio.TimeoutError:
             circuit_breaker.record_failure("voice_realtime")
-            elapsed_total += int(_ATTEMPT_TIMEOUT * 1000)
+            elapsed_total += int(timeout * 1000)
             continue
         except Exception:
             circuit_breaker.record_failure("voice_realtime")

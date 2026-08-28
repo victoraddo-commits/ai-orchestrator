@@ -37,3 +37,6 @@ __pycache__/
 core/legal_brain/legal_brain.db
 kai_betting.db
 *.db
+cert.pem
+key.pem
+*.pem

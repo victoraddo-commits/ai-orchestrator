@@ -30,9 +30,9 @@ SECURITY_HEADERS = {
         (
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data:; "
-            "font-src 'self'; "
+            "font-src 'self' https://fonts.gstatic.com; "
             "connect-src 'self' ws: wss:; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
@@ -61,7 +61,7 @@ SECURITY_HEADERS = {
     # Permissions-Policy: restrict browser features
     "Permissions-Policy": os.environ.get(
         "SECURITY_PERMISSIONS_POLICY",
-        "camera=(), microphone=(), geolocation=(), payment=()",
+        "camera=(self), microphone=(self), geolocation=(), payment=()",
     ),
 
     # Cache control for API endpoints (don't cache API responses)

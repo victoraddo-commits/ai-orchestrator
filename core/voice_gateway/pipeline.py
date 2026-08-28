@@ -141,6 +141,9 @@ class VoicePipeline:
         # Brain routing
         await self.ws.send_str(ev.brain_start(self.session_id).to_json())
 
+        # Emit brain.thinking so the HUD can show active generation
+        await self.ws.send_str(ev.brain_thinking(self.session_id).to_json())
+
         try:
             response, provider, brain_ms = await delegate_voice_turn(
                 stt_text,

@@ -17,7 +17,9 @@ import asyncio
 import json
 import os
 import signal
+import ssl
 import time
+from pathlib import Path
 from typing import Optional
 
 import aiohttp
@@ -55,44 +57,48 @@ async def wss_endpoint(ws: WebSocket):
 
     try:
         while True:
-            # Binary audio frame
-            if ws.state == WebSocketState.CONNECTED:
+            if ws.state != WebSocketState.CONNECTED:
+                break
+            try:
+                msg = await asyncio.wait_for(ws.receive(), timeout=60)
+            except asyncio.TimeoutError:
+                continue
+
+            # FastAPI WebSocket message types: 'text', 'binary', 'ping', 'pong', 'close'
+            if msg.type == "binary":
+                audio_bytes = msg.data
+                if len(audio_bytes) <= MAX_BINARY_FRAME:
+                    await pipeline.process_streaming_frame(audio_bytes)
+
+            elif msg.type == "text":
+                raw = msg.data
+                if isinstance(raw, bytes):
+                    raw = raw.decode("utf-8")
                 try:
-                    msg = await asyncio.wait_for(ws.receive(), timeout=60)
-                except asyncio.TimeoutError:
+                    obj = json.loads(raw)
+                except json.JSONDecodeError:
                     continue
 
-                if msg.type == aiohttp.WSMsgType.BINARY:
-                    audio_bytes = msg.data
-                    if len(audio_bytes) <= MAX_BINARY_FRAME:
-                        await pipeline.process_streaming_frame(audio_bytes)
+                event_type = obj.get("type", "")
+                event_data = obj.get("data", {})
 
-                elif msg.type == aiohttp.WSMsgType.TEXT:
-                    raw = msg.data
-                    if isinstance(raw, bytes):
-                        raw = raw.decode("utf-8")
-                    try:
-                        obj = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
+                if event_type == "wake.detected":
+                    await pipeline.handle_wake()
+                elif event_type == "vad.stop":
+                    reason = event_data.get("reason", "silence")
+                    await pipeline.handle_vad_stop(reason)
+                elif event_type == "tts.done":
+                    await pipeline.handle_tts_done()
+                elif event_type == "wake.interrupt":
+                    await pipeline.handle_interrupt()
+                elif event_type in ("ping", "ping_frame"):
+                    await pipeline.handle_ping(b"")
 
-                    event_type = obj.get("type", "")
-                    event_data = obj.get("data", {})
+            elif msg.type in ("ping", "pong"):
+                pass  # FastAPI auto-handles these
 
-                    if event_type == "wake.detected":
-                        await pipeline.handle_wake()
-                    elif event_type == "vad.stop":
-                        reason = event_data.get("reason", "silence")
-                        await pipeline.handle_vad_stop(reason)
-                    elif event_type == "tts.done":
-                        await pipeline.handle_tts_done()
-                    elif event_type == "wake.interrupt":
-                        await pipeline.handle_interrupt()
-                    elif event_type in ("ping", "ping_frame"):
-                        await pipeline.handle_ping(b"")
-
-                elif msg.type == aiohttp.WSMsgType.CLOSE:
-                    break
+            elif msg.type == "close":
+                break
 
     except WebSocketDisconnect:
         pass
@@ -134,11 +140,22 @@ async def run_standalone() -> None:
 
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, BIND_HOST, BIND_PORT)
+
+    # TLS support — cert files shared with the API HTTPS server
+    ssl_context: Optional[ssl.SSLContext] = None
+    cert_path = Path(__file__).resolve().parents[2] / "certs" / "cert.pem"
+    key_path = Path(__file__).resolve().parents[2] / "certs" / "key.pem"
+    if cert_path.exists() and key_path.exists():
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_context.load_cert_chain(str(cert_path), str(key_path))
+        _log("info", f"TLS enabled on port {BIND_PORT}")
+
+    site = web.TCPSite(runner, BIND_HOST, BIND_PORT, ssl_context=ssl_context)
     await site.start()
 
+    proto = "wss" if ssl_context else "ws"
     _log("info", f"Kai Voice Gateway running on {BIND_HOST}:{BIND_PORT}")
-    _log("info", f"WSS: ws://{BIND_HOST}:{BIND_PORT}/ws")
+    _log("info", f"WSS: {proto}://{BIND_HOST}:{BIND_PORT}/ws")
 
     try:
         await asyncio.Event().wait()

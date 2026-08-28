@@ -16,7 +16,7 @@ def test_every_capability_has_a_description():
 
 def test_operator_role_has_every_capability():
     for cap in authz.CAPABILITIES:
-        assert cap in authz.ROLE_CAPABILITIES["operator"], f"operator missing {cap}"
+        assert cap in authz.get_operator_capabilities(), f"operator missing {cap}"
 
 
 def test_viewer_role_has_no_capabilities():

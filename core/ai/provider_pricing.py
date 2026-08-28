@@ -59,6 +59,11 @@ PRICING = {
     "local": {
         "qwen2.5:7b": {"input_per_million": 0.00, "output_per_million": 0.00},
     },
+    # 2026-08-28: free_coding routes through the local free_model_manager
+    # (ollama on localhost:20100) — self-hosted, no per-token cost.
+    "free_coding": {
+        "local-ollama": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
     "llama3": {
         "llama3.2:3b": {"input_per_million": 0.00, "output_per_million": 0.00},
     },

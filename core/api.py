@@ -1538,6 +1538,26 @@ def delete_provider_config(
     return {"reset": True}
 
 
+@app.get("/providers/chains")
+def get_all_chains():
+    """Convenience endpoint for the Provider Chains dashboard tab.
+    Returns a flat dict mapping module name -> ordered provider list,
+    with defaults filled in for any module not present in the overrides file.
+    Unlike /providers/config (which returns the raw overrides), this merges
+    with ROLE_PROVIDERS defaults so the UI has a complete picture.
+    Also returns a `default_chains` map so the frontend can reset individual
+    modules back to defaults without needing to hardcode ROLE_PROVIDERS.
+    """
+    overrides = provider_config_editor.load_overrides().get("overrides", {})
+    fallback_order = overrides.get("fallback_order", {})
+    chains = {}
+    default_chains = {}
+    for module, default_chain in ROLE_PROVIDERS.items():
+        default_chains[module] = default_chain
+        chains[module] = fallback_order.get(module, default_chain)
+    return {"chains": chains, "default_chains": default_chains}
+
+
 # ---- V3: GPU & Pipeline endpoints ----
 
 @app.get("/api/gpu/status")

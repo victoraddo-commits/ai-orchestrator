@@ -1,4 +1,4 @@
-"""10-event vocabulary for the Kai Voice Gateway WSS protocol.
+"""12-event vocabulary for the Kai Voice Gateway WSS protocol.
 
 All events are JSON frames. Binary frames carry raw audio (PCM16 16kHz mono).
 
@@ -40,6 +40,8 @@ class EventType(str, Enum):
     STT_PARTIAL = "stt.partial"
     STT_FINAL = "stt.final"
     BRAIN_START = "brain.start"
+    BRAIN_THINKING = "brain.thinking"   # LLM is generating tokens (after initial planning)
+    BRAIN_TOOL_CALL = "brain.tool_call"  # tool use in progress
     TTS_CHUNK = "tts.chunk"
     TURN_END = "turn.end"
     ERROR = "error"
@@ -114,6 +116,16 @@ def stt_final(session_id: str, text: str) -> VoiceEvent:
 
 def brain_start(session_id: str, provider: str = "") -> VoiceEvent:
     return make_event("brain.start", session_id, provider=provider)
+
+
+def brain_thinking(session_id: str, provider: str = "") -> VoiceEvent:
+    """LLM is actively generating tokens — stream has started."""
+    return make_event("brain.thinking", session_id, provider=provider)
+
+
+def brain_tool_call(session_id: str, tool_name: str = "", call_id: str = "") -> VoiceEvent:
+    """A tool call was invoked during the turn."""
+    return make_event("brain.tool_call", session_id, tool_name=tool_name, call_id=call_id)
 
 
 def tts_chunk(session_id: str, index: int, is_last: bool = False) -> VoiceEvent:

@@ -62,6 +62,8 @@ def _classify_node(peer: dict) -> str:
         return "EXIT_NODE"
     if peer.get("AdvertiseRoutes"):
         return "SUBNET_ROUTER"
+    if peer.get("Direct", False):
+        return "DIRECT_PEER"
     return "ORDINARY_CLIENT"
 
 
@@ -83,10 +85,13 @@ def _parse_status_json(data: dict) -> tuple[dict, list]:
         "latency_ms": None,
     }
     for subnet in self_node.get("AdvertiseRoutes", []):
+        # Tailscale status --json does not expose per-route acceptance.
+        # accepted=True is the best available signal; CapMap may be added in future.
         routes.append({
             "subnet": subnet,
             "advertiser": self_name,
-            "accepted": True,
+            "accepted": self_node.get("CapMap", {}).get("act", [True])[0]
+            if self_node.get("CapMap", {}).get("act") else True,
         })
 
     for name, peer in (data.get("Peer") or {}).items():
@@ -104,10 +109,13 @@ def _parse_status_json(data: dict) -> tuple[dict, list]:
             "last_seen": peer.get("LastSeen"),
         }
         for subnet in peer.get("AdvertiseRoutes", []):
+            # Tailscale status --json does not expose per-route acceptance.
+            # accepted=True is the best available signal; CapMap may be added in future.
             routes.append({
                 "subnet": subnet,
                 "advertiser": peer_key,
-                "accepted": True,
+                "accepted": peer.get("CapMap", {}).get("act", [True])[0]
+                if peer.get("CapMap", {}).get("act") else True,
             })
 
     return peers, routes
@@ -142,6 +150,8 @@ def discover_tailscale_on_node(node: dict) -> dict:
         result["error"] = f"json parse error: {e}"
         return result
 
+    # Collected for future use; not currently parsed but may be needed for
+    # route-audit or policy debugging in a later phase.
     stdout, _, rc = _ssh(node, "ip route show table all")
     if rc == 0:
         result["routing_table"] = stdout

@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form, Body
+from fastapi import FastAPI, HTTPException, Header, Depends, Request, UploadFile, File, Form, Body, Query
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 import httpx
 from pydantic import BaseModel
@@ -3244,20 +3244,20 @@ from core.network_discovery_cycle import run_network_discovery_cycle
 
 
 @app.get("/network/topology")
-def network_topology():
+def network_topology(_: str = Depends(require_bridge_token)):
     """Full topology graph JSON — sites, tailscale peers, subnet routes, tunnel status."""
     return load_graph()
 
 
 @app.get("/network/topology/summary")
-def network_topology_summary():
+def network_topology_summary(_: str = Depends(require_bridge_token)):
     """Human-readable natural language summary of the current topology."""
     graph = load_graph()
     return {"summary": get_natural_summary(graph)}
 
 
 @app.get("/network/topology/sites")
-def network_topology_sites():
+def network_topology_sites(_: str = Depends(require_bridge_token)):
     """Sites summary — name, LAN subnet, gateway, Proxmox node, LXC/VM counts."""
     graph = load_graph()
     sites = graph.get("sites", {})
@@ -3265,7 +3265,7 @@ def network_topology_sites():
 
 
 @app.get("/network/topology/peers")
-def network_topology_peers():
+def network_topology_peers(_: str = Depends(require_bridge_token)):
     """Tailscale peer list — all peers across all nodes."""
     graph = load_graph()
     peers = graph.get("tailscale", {}).get("peers", {})
@@ -3273,7 +3273,7 @@ def network_topology_peers():
 
 
 @app.get("/network/topology/routes")
-def network_topology_routes():
+def network_topology_routes(_: str = Depends(require_bridge_token)):
     """Subnet route table — subnet → {advertiser, accepted}."""
     graph = load_graph()
     routes = graph.get("tailscale", {}).get("subnet_routes", {})
@@ -3281,7 +3281,7 @@ def network_topology_routes():
 
 
 @app.get("/network/connectivity")
-def network_connectivity():
+def network_connectivity(_: str = Depends(require_bridge_token)):
     """Last connectivity test results — A→B/B→A latency, packet loss, tunnel status."""
     graph = load_graph()
     return {
@@ -3291,14 +3291,14 @@ def network_connectivity():
 
 
 @app.post("/network/connectivity/test")
-def network_connectivity_test():
+def network_connectivity_test(_: str = Depends(_require_write_capability("network.admin"))):
     """Trigger immediate connectivity test — runs full discovery cycle synchronously."""
     graph = run_network_discovery_cycle()
     return {"ok": True, "connectivity": graph.get("connectivity", {}), "tunnel": graph.get("tunnel", {})}
 
 
 @app.get("/network/changes")
-def network_changes(limit: int = 50):
+def network_changes(limit: int = Query(50, ge=1, le=500), _: str = Depends(require_bridge_token)):
     """Last N network change events detected vs the prior graph snapshot."""
     prior = load_prior()
     current = load_graph()
@@ -3310,7 +3310,7 @@ def network_changes(limit: int = 50):
 
 
 @app.post("/network/discover")
-def network_discover():
+def network_discover(_: str = Depends(_require_write_capability("network.admin"))):
     """Trigger immediate full network discovery — tailscale + proxmox + topology + connectivity."""
     graph = run_network_discovery_cycle()
     return {"ok": True, "graph": graph}

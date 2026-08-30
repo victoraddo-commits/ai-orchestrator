@@ -13,6 +13,13 @@ def client():
 
 
 @pytest.fixture
+def auth_headers():
+    """Valid bridge token auth headers for write-gated endpoints."""
+    import core.api as api_module
+    return {"Authorization": f"Bearer {api_module._load_api_token()}"}
+
+
+@pytest.fixture
 def sample_graph():
     """A minimal but realistic topology graph."""
     return {
@@ -135,9 +142,9 @@ def prior_graph():
 
 # ── GET /network/topology ──────────────────────────────────────────────────────
 
-def test_network_topology_returns_full_graph(client, sample_graph):
+def test_network_topology_returns_full_graph(client, sample_graph, auth_headers):
     with patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/topology")
+        response = client.get("/network/topology", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["schema_version"] == 1
@@ -147,7 +154,7 @@ def test_network_topology_returns_full_graph(client, sample_graph):
     assert "tunnel" in data
 
 
-def test_network_topology_returns_empty_graph(client):
+def test_network_topology_returns_empty_graph(client, auth_headers):
     empty = {
         "schema_version": 1,
         "generated_at": "2026-08-30T12:00:00Z",
@@ -160,16 +167,16 @@ def test_network_topology_returns_empty_graph(client):
         "last_change": None,
     }
     with patch("core.api.load_graph", return_value=empty):
-        response = client.get("/network/topology")
+        response = client.get("/network/topology", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["sites"] == {}
 
 
 # ── GET /network/topology/sites ───────────────────────────────────────────────
 
-def test_network_topology_sites_returns_sites(client, sample_graph):
+def test_network_topology_sites_returns_sites(client, sample_graph, auth_headers):
     with patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/topology/sites")
+        response = client.get("/network/topology/sites", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "sites" in data
@@ -179,9 +186,9 @@ def test_network_topology_sites_returns_sites(client, sample_graph):
 
 # ── GET /network/topology/peers ───────────────────────────────────────────────
 
-def test_network_topology_peers_returns_peers(client, sample_graph):
+def test_network_topology_peers_returns_peers(client, sample_graph, auth_headers):
     with patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/topology/peers")
+        response = client.get("/network/topology/peers", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "peers" in data
@@ -189,19 +196,19 @@ def test_network_topology_peers_returns_peers(client, sample_graph):
     assert data["peers"]["prox-a"]["online"] is True
 
 
-def test_network_topology_peers_returns_empty(client, sample_graph):
+def test_network_topology_peers_returns_empty(client, sample_graph, auth_headers):
     sample_graph["tailscale"]["peers"] = {}
     with patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/topology/peers")
+        response = client.get("/network/topology/peers", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["peers"] == {}
 
 
 # ── GET /network/topology/routes ──────────────────────────────────────────────
 
-def test_network_topology_routes_returns_routes(client, sample_graph):
+def test_network_topology_routes_returns_routes(client, sample_graph, auth_headers):
     with patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/topology/routes")
+        response = client.get("/network/topology/routes", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "routes" in data
@@ -211,9 +218,9 @@ def test_network_topology_routes_returns_routes(client, sample_graph):
 
 # ── GET /network/connectivity ─────────────────────────────────────────────────
 
-def test_network_connectivity_returns_connectivity(client, sample_graph):
+def test_network_connectivity_returns_connectivity(client, sample_graph, auth_headers):
     with patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/connectivity")
+        response = client.get("/network/connectivity", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "connectivity" in data
@@ -224,9 +231,9 @@ def test_network_connectivity_returns_connectivity(client, sample_graph):
 
 # ── POST /network/connectivity/test ────────────────────────────────────────────
 
-def test_network_connectivity_test_runs_discovery(client, sample_graph):
+def test_network_connectivity_test_runs_discovery(client, sample_graph, auth_headers):
     with patch("core.api.run_network_discovery_cycle", return_value=sample_graph):
-        response = client.post("/network/connectivity/test")
+        response = client.post("/network/connectivity/test", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True
@@ -236,30 +243,30 @@ def test_network_connectivity_test_runs_discovery(client, sample_graph):
 
 # ── GET /network/changes ──────────────────────────────────────────────────────
 
-def test_network_changes_returns_changes(client, sample_graph, prior_graph):
+def test_network_changes_returns_changes(client, sample_graph, prior_graph, auth_headers):
     with patch("core.api.load_prior", return_value=prior_graph), \
          patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/changes")
+        response = client.get("/network/changes", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "changes" in data
     assert data["total"] >= 0
 
 
-def test_network_changes_returns_empty_when_no_prior(client, sample_graph):
+def test_network_changes_returns_empty_when_no_prior(client, sample_graph, auth_headers):
     with patch("core.api.load_prior", return_value=None), \
          patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/changes")
+        response = client.get("/network/changes", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["changes"] == []
     assert data["total"] == 0
 
 
-def test_network_changes_respects_limit(client, sample_graph, prior_graph):
+def test_network_changes_respects_limit(client, sample_graph, prior_graph, auth_headers):
     with patch("core.api.load_prior", return_value=prior_graph), \
          patch("core.api.load_graph", return_value=sample_graph):
-        response = client.get("/network/changes?limit=5")
+        response = client.get("/network/changes?limit=5", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert len(data["changes"]) <= 5
@@ -267,9 +274,9 @@ def test_network_changes_respects_limit(client, sample_graph, prior_graph):
 
 # ── POST /network/discover ─────────────────────────────────────────────────────
 
-def test_network_discover_runs_full_discovery(client, sample_graph):
+def test_network_discover_runs_full_discovery(client, sample_graph, auth_headers):
     with patch("core.api.run_network_discovery_cycle", return_value=sample_graph):
-        response = client.post("/network/discover")
+        response = client.post("/network/discover", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert data["ok"] is True

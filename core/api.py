@@ -3234,6 +3234,88 @@ def handle_kai_chat(text: str, operator: str) -> dict:
     return reply
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Network Topology Discovery (Tasks 7-9)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from core.network_knowledge import load_graph, load_prior
+from core.topology_engine import detect_changes, get_natural_summary
+from core.network_discovery_cycle import run_network_discovery_cycle
+
+
+@app.get("/network/topology")
+def network_topology():
+    """Full topology graph JSON — sites, tailscale peers, subnet routes, tunnel status."""
+    return load_graph()
+
+
+@app.get("/network/topology/summary")
+def network_topology_summary():
+    """Human-readable natural language summary of the current topology."""
+    graph = load_graph()
+    return {"summary": get_natural_summary(graph)}
+
+
+@app.get("/network/topology/sites")
+def network_topology_sites():
+    """Sites summary — name, LAN subnet, gateway, Proxmox node, LXC/VM counts."""
+    graph = load_graph()
+    sites = graph.get("sites", {})
+    return {"sites": sites}
+
+
+@app.get("/network/topology/peers")
+def network_topology_peers():
+    """Tailscale peer list — all peers across all nodes."""
+    graph = load_graph()
+    peers = graph.get("tailscale", {}).get("peers", {})
+    return {"peers": peers}
+
+
+@app.get("/network/topology/routes")
+def network_topology_routes():
+    """Subnet route table — subnet → {advertiser, accepted}."""
+    graph = load_graph()
+    routes = graph.get("tailscale", {}).get("subnet_routes", {})
+    return {"routes": routes}
+
+
+@app.get("/network/connectivity")
+def network_connectivity():
+    """Last connectivity test results — A→B/B→A latency, packet loss, tunnel status."""
+    graph = load_graph()
+    return {
+        "connectivity": graph.get("connectivity", {}),
+        "tunnel": graph.get("tunnel", {}),
+    }
+
+
+@app.post("/network/connectivity/test")
+def network_connectivity_test():
+    """Trigger immediate connectivity test — runs full discovery cycle synchronously."""
+    graph = run_network_discovery_cycle()
+    return {"ok": True, "connectivity": graph.get("connectivity", {}), "tunnel": graph.get("tunnel", {})}
+
+
+@app.get("/network/changes")
+def network_changes(limit: int = 50):
+    """Last N network change events detected vs the prior graph snapshot."""
+    prior = load_prior()
+    current = load_graph()
+    if not prior:
+        return {"changes": [], "total": 0}
+    changes = detect_changes(prior, current)
+    changes.sort(key=lambda c: c.get("at", ""), reverse=True)
+    return {"changes": changes[:limit], "total": len(changes)}
+
+
+@app.post("/network/discover")
+def network_discover():
+    """Trigger immediate full network discovery — tailscale + proxmox + topology + connectivity."""
+    graph = run_network_discovery_cycle()
+    return {"ok": True, "graph": graph}
+
+
 # ── JARVIS P6: Voice surface (STT/TTS router, local-first) ─────────────────
 from fastapi import File as _File, UploadFile as _UploadFile
 from fastapi.responses import Response as _Response

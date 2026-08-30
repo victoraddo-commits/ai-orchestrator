@@ -20,6 +20,7 @@ from core.orchestrator_cycle import run_cycle
 from core.logger import info
 from core.workers.deepseek_pool import start_pool, stop_pool
 from core.workers.telegram_monitor import TelegramMonitor
+from core.network_discovery_cycle import run_discovery_cycle
 
 # Worker pool, Telegram monitor, and Health Worker — started on first cycle,
 # survive until shutdown.
@@ -159,6 +160,9 @@ def start():
         try:
 
             result = run_cycle()
+
+            # Network discovery cycle — tailscale + proxmox + topology + connectivity
+            run_discovery_cycle()
 
             findings = len(
                 result.get("findings", [])

@@ -6,7 +6,6 @@ Detects changes vs prior graph. Generates human-readable summaries.
 
 import os
 from datetime import datetime, timezone
-from typing import Optional
 
 from core.network_knowledge import load_graph, save_graph, load_prior
 
@@ -159,7 +158,6 @@ def get_natural_summary(graph: dict) -> str:
     """Generate human-readable topology summary from graph."""
     sites = graph.get("sites", {})
     tunnel = graph.get("tunnel", {})
-    peers = graph.get("tailscale", {}).get("peers", {})
     routes = graph.get("tailscale", {}).get("subnet_routes", {})
 
     lines = []
@@ -207,5 +205,6 @@ def save(graph: dict) -> None:
     prior = load_prior()
     if prior:
         changes = detect_changes(prior, graph)
-        graph["last_change"] = datetime.now(timezone.utc).isoformat()
+        if changes:
+            graph["last_change"] = datetime.now(timezone.utc).isoformat()
     save_graph(graph)

@@ -23,7 +23,7 @@ SITE_B = {
 }
 
 
-def run_discovery_cycle():
+def run_network_discovery_cycle():
     """Run full network discovery: tailscale + proxmox + topology + connectivity."""
     info("network_discovery: cycle started")
 

@@ -2507,11 +2507,13 @@ async function loadNetworkTopology(){
       api('/network/topology').catch(()=>({sites:[]})),
       api('/network/connectivity').catch(()=>({tunnel:null}))
     ]);
-    const sites = topo?.sites || [];
+    const graph = topo || {};
+    const sites = Object.values(graph.sites || {});
     // Overall health: all sites online + tunnel healthy = healthy, else degraded/critical
-    const allOnline = sites.length >= 2 && sites.every(s => s.status === 'online');
-    const tunnelHealthy = conn?.tunnel?.status === 'healthy';
-    const overallHealth = allOnline && tunnelHealthy ? 'HEALTHY' : (sites.some(s=>s.status==='offline') || (conn?.tunnel?.status === 'down') ? 'CRITICAL' : 'DEGRADED');
+    const allOnline = sites.length >= 2 && sites.every(s => s.proxmox?.online);
+    const tunnelStatus = (conn?.tunnel?.status || 'unknown').toLowerCase();
+    const tunnelHealthy = tunnelStatus === 'healthy';
+    const overallHealth = allOnline && tunnelHealthy ? 'HEALTHY' : (sites.some(s=>!s.proxmox?.online) || tunnelStatus === 'down' ? 'CRITICAL' : 'DEGRADED');
     const healthClass = overallHealth === 'HEALTHY' ? 'ok' : overallHealth === 'CRITICAL' ? 'bad' : 'warn';
     const healthBadge = `<span class="badge ${healthClass}">${overallHealth}</span>`;
     let html = `<div style="font-family:var(--font-mono);font-size:0.72rem">`;
@@ -2520,35 +2522,40 @@ async function loadNetworkTopology(){
       <span style="font-weight:600;font-size:0.75rem">SITE-TO-SITE: TAILSCALE</span>${healthBadge}</div>`;
     // Sites
     for(const site of sites){
-      const siteClass = site.status === 'online' ? 'ok' : 'bad';
-      const routeStatus = site.routes && site.routes.length > 0 ? '↑' : '';
-      const routesStr = site.routes && site.routes.length > 0 ? site.routes.join(', ') : '';
+      const px = site.proxmox || {};
+      const isOnline = px.online;
+      const siteClass = isOnline ? 'ok' : 'bad';
+      const routes = (graph.tailscale?.subnet_routes ? Object.entries(graph.tailscale.subnet_routes)
+        .filter(([_, r]) => r.advertiser === px.name && r.accepted)
+        .map(([subnet]) => subnet) : []);
+      const routeStatus = routes.length > 0 ? '↑' : '';
       html += `<div style="padding:8px 10px;border:1px solid var(--border);border-top:none">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-weight:600;color:var(--accent)">SITE ${site.name?.toUpperCase()}: ${site.hostname || site.name}</span>
-          <span class="badge ${siteClass}">${site.status?.toUpperCase() || 'UNKNOWN'}</span>
+          <span style="font-weight:600;color:var(--accent)">SITE ${(site.name||'').toUpperCase()}: ${px.name || site.name || '?'}</span>
+          <span class="badge ${siteClass}">${isOnline ? 'ONLINE' : 'OFFLINE'}</span>
         </div>
         <div style="margin-top:5px;color:var(--fg-secondary)">
-          <div>LAN: ${site.lan_cidr || '-'} <span style="color:var(--fg-muted);margin-left:8px">GW: ${site.gateway || '-'}</span></div>
-          <div>Tailscale: ${site.tailscale_ip || '-'} <span style="color:var(--fg-muted);margin-left:8px">Routes: ${routesStr || '-'} ${routeStatus}</span></div>
-          <div>LXCs: ${site.lxc_count ?? '-'} running / Containers: ${site.container_count ?? '-'} total</div>
+          <div>LAN: ${site.lan_subnet || '-'} <span style="color:var(--fg-muted);margin-left:8px">GW: ${site.gateway || '-'}</span></div>
+          <div>Tailscale: ${px.tailscale_ip || '-'} <span style="color:var(--fg-muted);margin-left:8px">Routes: ${routes.length ? routes.join(', ') : '-'} ${routeStatus}</span></div>
+          <div>LXCs: ${site.lxcs?.filter(l=>l.status==='running').length ?? '-'} running / Containers: ${site.lxcs?.length ?? '-'} total</div>
         </div>
       </div>`;
     }
     // Tunnel section
     if(conn?.tunnel){
       const ts = conn.tunnel;
-      const tStatusClass = ts.status === 'healthy' ? 'ok' : ts.status === 'degraded' ? 'warn' : 'bad';
-      const latA = ts.latency_a_to_b != null ? `${ts.latency_a_to_b}ms` : '-';
-      const latB = ts.latency_b_to_a != null ? `${ts.latency_b_to_a}ms` : '-';
-      const loss = ts.packet_loss != null ? `${ts.packet_loss}%` : '-';
-      const routeAB = ts.routes_a_to_b ? '✅' : '❌';
-      const routeBA = ts.routes_b_to_a ? '✅' : '❌';
+      const tStatusClass = tunnelStatus === 'healthy' ? 'ok' : tunnelStatus === 'degraded' ? 'warn' : 'bad';
+      const latA = ts.a_to_b_latency_ms != null ? `${ts.a_to_b_latency_ms}ms` : '-';
+      const latB = ts.b_to_a_latency_ms != null ? `${ts.b_to_a_latency_ms}ms` : '-';
+      const loss = ts.packet_loss_pct != null ? `${ts.packet_loss_pct}%` : '-';
+      const c = conn.connectivity || {};
+      const routeAB = c.a_to_b_direct === 'PASS' ? '✅' : '❌';
+      const routeBA = c.b_to_a_direct === 'PASS' ? '✅' : '❌';
       const lastTest = ts.last_test ? new Date(ts.last_test).toLocaleString() : '-';
       html += `<div style="padding:8px 10px;border:1px solid var(--border);border-top:none">
         <div style="font-weight:600;color:var(--fg-muted);margin-bottom:5px">TUNNEL A ↔ B</div>
         <div style="color:var(--fg-secondary)">
-          <div>Status: <span class="badge ${tStatusClass}">${(ts.status||'unknown').toUpperCase()}</span> <span style="margin-left:8px">Latency: ${latA} / ${latB}</span></div>
+          <div>Status: <span class="badge ${tStatusClass}">${tunnelStatus.toUpperCase()}</span> <span style="margin-left:8px">Latency: ${latA} / ${latB}</span></div>
           <div>Packet Loss: ${loss} <span style="margin-left:8px">Routes: A→B ${routeAB}  B→A ${routeBA}</span></div>
           <div style="color:var(--fg-muted);font-size:0.65rem;margin-top:3px">Last Test: ${lastTest}</div>
         </div>

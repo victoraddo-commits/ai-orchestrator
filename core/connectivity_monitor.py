@@ -8,9 +8,10 @@ import subprocess
 import re
 from datetime import datetime, timezone
 from typing import Optional
+import requests
 
 
-def test_latency(from_ip: str, to_ip: str, count: int = 3) -> dict:
+def test_latency(to_ip: str, count: int = 3) -> dict:
     """Ping target and return latency stats. Returns dict with avg_ms, min_ms, max_ms."""
     try:
         result = subprocess.run(
@@ -41,12 +42,18 @@ def test_tcp_connect(ip: str, port: int, timeout: float = 3.0) -> bool:
 
 def test_http_health(url: str, timeout: float = 5.0) -> dict:
     """HEAD request to URL, return status_code and elapsed_ms."""
-    import requests
     try:
         start = datetime.now(timezone.utc)
+        # SSL verify disabled — internal URLs only
         resp = requests.head(url, timeout=timeout, verify=False, allow_redirects=True)
         elapsed_ms = (datetime.now(timezone.utc) - start).total_seconds() * 1000
         return {"status_code": resp.status_code, "elapsed_ms": elapsed_ms, "ok": 200 <= resp.status_code < 400}
+    except requests.exceptions.Timeout:
+        return {"status_code": None, "elapsed_ms": None, "ok": False, "error": "timeout"}
+    except requests.exceptions.ConnectionError:
+        return {"status_code": None, "elapsed_ms": None, "ok": False, "error": "connection_error"}
+    except requests.exceptions.SSLError as e:
+        return {"status_code": None, "elapsed_ms": None, "ok": False, "error": f"ssl_error: {e}"}
     except Exception as e:
         return {"status_code": None, "elapsed_ms": None, "ok": False, "error": str(e)}
 
@@ -91,18 +98,18 @@ def test_site_paths(site_a: dict, site_b: dict) -> dict:
 
     # A → B direct (Tailscale peer)
     if a_ts and b_ts:
-        lat = test_latency(a_ts, b_ts, count=3)
+        lat = test_latency(b_ts, count=3)
         result["a_to_b_latency_ms"] = lat.get("avg_ms")
         result["a_to_b_direct"] = "PASS" if lat.get("avg_ms") is not None else "FAIL"
 
     # A → B via subnet route (ping remote gateway via LAN)
     if a_gw and b_gw:
-        lat = test_latency(a_gw, b_gw, count=3)
+        lat = test_latency(b_gw, count=3)
         result["a_subnet_to_b_subnet"] = "PASS" if lat.get("avg_ms") is not None else "FAIL"
 
     # B → A direct
     if b_ts and a_ts:
-        lat = test_latency(b_ts, a_ts, count=3)
+        lat = test_latency(a_ts, count=3)
         result["b_to_a_latency_ms"] = lat.get("avg_ms")
         result["b_to_a_direct"] = "PASS" if lat.get("avg_ms") is not None else "FAIL"
 

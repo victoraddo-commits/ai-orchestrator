@@ -1,6 +1,6 @@
 """Persistent network topology graph — atomic read/write via Kai's memory layer."""
 
-import os, shutil
+import json, os, shutil
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -26,11 +26,14 @@ def load_graph() -> dict:
     if not graph_file.exists():
         return _empty_graph()
     try:
-        import json
         with open(graph_file) as f:
             return json.load(f)
-    except Exception:
+    except json.JSONDecodeError:
+        # Corrupt file — return empty graph, let caller decide whether to overwrite
         return _empty_graph()
+    except Exception:
+        # Unexpected error — re-raise, do not silently swallow
+        raise
 
 
 def load_prior() -> dict | None:
@@ -39,15 +42,25 @@ def load_prior() -> dict | None:
     if not bak_file.exists():
         return None
     try:
-        import json
         with open(bak_file) as f:
             return json.load(f)
-    except Exception:
+    except json.JSONDecodeError:
         return None
+    except Exception:
+        raise
+
+
+def _validate_graph(graph: dict) -> None:
+    """Raise ValueError if graph is missing required top-level keys."""
+    required = {"schema_version", "sites", "tailscale", "tunnel"}
+    missing = required - set(graph.keys())
+    if missing:
+        raise ValueError(f"graph missing required keys: {missing}")
 
 
 def save_graph(graph: dict) -> None:
     """Atomically save graph: copy prior to .bak → write temp → os.replace."""
+    _validate_graph(graph)
     memory_dir = _get_memory_dir()
     graph_file = _get_graph_file()
     bak_file = _get_bak_file()
@@ -59,7 +72,6 @@ def save_graph(graph: dict) -> None:
         shutil.copy2(graph_file, bak_file)
     # Atomic write via temp + replace
     tmp = graph_file.with_suffix(".tmp")
-    import json
     tmp.write_text(json.dumps(graph, indent=2))
     os.replace(tmp, graph_file)
     # Ensure .bak exists after every save (copy current if no prior existed)
@@ -80,6 +92,27 @@ def _empty_graph() -> dict:
         "last_discovery": None,
         "last_change": None,
     }
+
+
+def add_site(site_id: str, site_data: dict) -> None:
+    """Add or update a site in the graph. Saves immediately."""
+    graph = load_graph()
+    graph["sites"][site_id] = site_data
+    save_graph(graph)
+
+
+def update_tailscale_peers(peers: dict) -> None:
+    """Update the tailscale peers in the graph. Saves immediately."""
+    graph = load_graph()
+    graph["tailscale"]["peers"] = peers
+    save_graph(graph)
+
+
+def update_tunnel_status(status_data: dict) -> None:
+    """Update the tunnel status in the graph. Saves immediately."""
+    graph = load_graph()
+    graph["tunnel"].update(status_data)
+    save_graph(graph)
 
 
 def get_schema_version() -> int:

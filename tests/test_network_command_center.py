@@ -72,45 +72,56 @@ class TestNetworkTopologyPanel:
         return {
             "schema_version": 1,
             "generated_at": "2026-08-30T14:00:00Z",
-            "sites": [
-                {
+            "sites": {
+                "SITE-A": {
                     "name": "SITE-A",
-                    "hostname": "pve",
-                    "status": "online",
-                    "lan_cidr": "192.168.99.0/24",
+                    "lan_subnet": "192.168.99.0/24",
                     "gateway": "192.168.99.254",
-                    "tailscale_ip": "100.83.4.27",
-                    "routes": ["192.168.99.0/24"],
-                    "lxc_count": 12,
-                    "container_count": 14,
+                    "proxmox": {
+                        "name": "pve",
+                        "online": True,
+                        "tailscale_ip": "100.83.4.27",
+                    },
+                    "lxcs": [{"status": "running"}] * 12,
+                    "vms": [],
                 },
-                {
+                "SITE-B": {
                     "name": "SITE-B",
-                    "hostname": "pve-b",
-                    "status": "online",
-                    "lan_cidr": "192.168.1.0/24",
+                    "lan_subnet": "192.168.1.0/24",
                     "gateway": "192.168.1.1",
-                    "tailscale_ip": "100.89.97.76",
-                    "routes": ["192.168.1.0/24"],
-                    "lxc_count": 8,
-                    "container_count": 10,
+                    "proxmox": {
+                        "name": "pve-b",
+                        "online": True,
+                        "tailscale_ip": "100.89.97.76",
+                    },
+                    "lxcs": [{"status": "running"}] * 8,
+                    "vms": [],
                 },
-            ],
+            },
+            "tailscale": {
+                "subnet_routes": {
+                    "192.168.99.0/24": {"advertiser": "pve", "accepted": True},
+                    "192.168.1.0/24": {"advertiser": "pve-b", "accepted": True},
+                },
+            },
         }
 
     @pytest.fixture
     def mock_conn_response(self):
         """Sample connectivity data matching /network/connectivity endpoint shape."""
         return {
+            "connectivity": {
+                "a_to_b_direct": "PASS",
+                "b_to_a_direct": "PASS",
+                "a_subnet_to_b_subnet": "PASS",
+            },
             "tunnel": {
-                "status": "healthy",
-                "latency_a_to_b": 218,
-                "latency_b_to_a": 220,
-                "packet_loss": 0.0,
-                "routes_a_to_b": True,
-                "routes_b_to_a": True,
+                "status": "HEALTHY",
+                "a_to_b_latency_ms": 218,
+                "b_to_a_latency_ms": 220,
+                "packet_loss_pct": 0.0,
                 "last_test": "2026-08-30T14:22:01Z",
-            }
+            },
         }
 
     def _run_server(self, html_path, topo_data, conn_data):
@@ -181,30 +192,25 @@ class TestNetworkTopologyPanel:
     def test_panel_shows_critical_when_site_offline(self, topology_html, mock_conn_response):
         """Panel shows CRITICAL when one site is offline."""
         topo = {
-            "sites": [
-                {
+            "schema_version": 1,
+            "sites": {
+                "SITE-A": {
                     "name": "SITE-A",
-                    "hostname": "pve",
-                    "status": "online",
-                    "lan_cidr": "192.168.99.0/24",
+                    "lan_subnet": "192.168.99.0/24",
                     "gateway": "192.168.99.254",
-                    "tailscale_ip": "100.83.4.27",
-                    "routes": [],
-                    "lxc_count": 12,
-                    "container_count": 14,
+                    "proxmox": {"name": "pve", "online": True},
+                    "lxcs": [],
+                    "vms": [],
                 },
-                {
+                "SITE-B": {
                     "name": "SITE-B",
-                    "hostname": "pve-b",
-                    "status": "offline",
-                    "lan_cidr": "192.168.1.0/24",
+                    "lan_subnet": "192.168.1.0/24",
                     "gateway": "192.168.1.1",
-                    "tailscale_ip": "100.89.97.76",
-                    "routes": [],
-                    "lxc_count": 0,
-                    "container_count": 0,
+                    "proxmox": {"name": "pve-b", "online": False},
+                    "lxcs": [],
+                    "vms": [],
                 },
-            ],
+            },
         }
 
         from playwright.sync_api import sync_playwright
@@ -241,15 +247,17 @@ class TestNetworkTopologyPanel:
     def test_panel_shows_critical_when_tunnel_down(self, topology_html, mock_topo_response):
         """Panel shows CRITICAL when tunnel is down."""
         conn = {
+            "connectivity": {
+                "a_to_b_direct": "FAIL",
+                "b_to_a_direct": "FAIL",
+            },
             "tunnel": {
-                "status": "down",
-                "latency_a_to_b": None,
-                "latency_b_to_a": None,
-                "packet_loss": None,
-                "routes_a_to_b": False,
-                "routes_b_to_a": False,
+                "status": "DOWN",
+                "a_to_b_latency_ms": None,
+                "b_to_a_latency_ms": None,
+                "packet_loss_pct": None,
                 "last_test": None,
-            }
+            },
         }
 
         from playwright.sync_api import sync_playwright

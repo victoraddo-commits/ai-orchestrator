@@ -19,6 +19,10 @@ def build_graph(ts_data: dict, px_data: dict) -> dict:
     graph = load_graph()
     now = datetime.now(timezone.utc).isoformat()
 
+    # Ensure tailscale key exists (load_graph may return a minimal/empty structure)
+    if graph.get("tailscale") is None:
+        graph["tailscale"] = {"peers": {}, "subnet_routes": {}}
+
     # Sites
     for site_key, site_info in _build_sites(ts_data, px_data).items():
         graph["sites"][site_key] = site_info

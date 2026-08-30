@@ -990,6 +990,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <!-- INFRASTRUCTURE -->
       <section class="panel" id="panel-infrastructure">
         <div class="grid">
+          <div class="card"><h3>Network Topology</h3><div id="infra-network"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Proxmox Nodes</h3><div id="infra-proxmox"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>GPU Providers</h3><div id="infra-gpu"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>VPN Status</h3><div id="infra-vpn"><span class="loading">loading…</span></div></div>
@@ -2485,6 +2486,8 @@ async function airdropBroadcast(){
 // PANEL: INFRA
 // ═══════════════════════════════════════════════════════════════════
 async function loadInfra(){
+  // ── Network Topology ─────────────────────────────────────────────
+  loadNetworkTopology();
   try{const n=await api('/proxmox/nodes');
     if(n&&n.length){let html='<table><thead><tr><th>Node</th><th>Status</th><th>CPU</th><th>Mem</th></tr></thead><tbody>';
       for(const x of n){const s=x.status==='online'?'ok':'warn';html+=`<tr><td>${esc(x.node||x.name||x.id)}</td><td><span class="badge ${s}">${esc(x.status||'?')}</span></td><td>${esc(String(x.cpu??'-'))}</td><td>${esc(String(x.mem??x.memory??'-'))}</td></tr>`;}
@@ -2495,6 +2498,69 @@ async function loadInfra(){
   catch(e){$('infra-gpu').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
   try{const v=await api('/api/vpn/status');$('infra-vpn').innerHTML=`<p><strong>Status:</strong> ${esc(v.status||'unknown')}</p>`;}
   catch(e){$('infra-vpn').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+async function loadNetworkTopology(){
+  const el=$('infra-network');
+  try{
+    const [topo, conn] = await Promise.all([
+      api('/network/topology').catch(()=>({sites:[]})),
+      api('/network/connectivity').catch(()=>({tunnel:null}))
+    ]);
+    const sites = topo?.sites || [];
+    // Overall health: all sites online + tunnel healthy = healthy, else degraded/critical
+    const allOnline = sites.length >= 2 && sites.every(s => s.status === 'online');
+    const tunnelHealthy = conn?.tunnel?.status === 'healthy';
+    const overallHealth = allOnline && tunnelHealthy ? 'HEALTHY' : (sites.some(s=>s.status==='offline') || (conn?.tunnel?.status === 'down') ? 'CRITICAL' : 'DEGRADED');
+    const healthClass = overallHealth === 'HEALTHY' ? 'ok' : overallHealth === 'CRITICAL' ? 'bad' : 'warn';
+    const healthBadge = `<span class="badge ${healthClass}">${overallHealth}</span>`;
+    let html = `<div style="font-family:var(--font-mono);font-size:0.72rem">`;
+    // Header
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--bg-elevated);border:1px solid var(--border);margin-bottom:2px">
+      <span style="font-weight:600;font-size:0.75rem">SITE-TO-SITE: TAILSCALE</span>${healthBadge}</div>`;
+    // Sites
+    for(const site of sites){
+      const siteClass = site.status === 'online' ? 'ok' : 'bad';
+      const routeStatus = site.routes && site.routes.length > 0 ? '↑' : '';
+      const routesStr = site.routes && site.routes.length > 0 ? site.routes.join(', ') : '';
+      html += `<div style="padding:8px 10px;border:1px solid var(--border);border-top:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-weight:600;color:var(--accent)">SITE ${site.name?.toUpperCase()}: ${site.hostname || site.name}</span>
+          <span class="badge ${siteClass}">${site.status?.toUpperCase() || 'UNKNOWN'}</span>
+        </div>
+        <div style="margin-top:5px;color:var(--fg-secondary)">
+          <div>LAN: ${site.lan_cidr || '-'} <span style="color:var(--fg-muted);margin-left:8px">GW: ${site.gateway || '-'}</span></div>
+          <div>Tailscale: ${site.tailscale_ip || '-'} <span style="color:var(--fg-muted);margin-left:8px">Routes: ${routesStr || '-'} ${routeStatus}</span></div>
+          <div>LXCs: ${site.lxc_count ?? '-'} running / Containers: ${site.container_count ?? '-'} total</div>
+        </div>
+      </div>`;
+    }
+    // Tunnel section
+    if(conn?.tunnel){
+      const ts = conn.tunnel;
+      const tStatusClass = ts.status === 'healthy' ? 'ok' : ts.status === 'degraded' ? 'warn' : 'bad';
+      const latA = ts.latency_a_to_b != null ? `${ts.latency_a_to_b}ms` : '-';
+      const latB = ts.latency_b_to_a != null ? `${ts.latency_b_to_a}ms` : '-';
+      const loss = ts.packet_loss != null ? `${ts.packet_loss}%` : '-';
+      const routeAB = ts.routes_a_to_b ? '✅' : '❌';
+      const routeBA = ts.routes_b_to_a ? '✅' : '❌';
+      const lastTest = ts.last_test ? new Date(ts.last_test).toLocaleString() : '-';
+      html += `<div style="padding:8px 10px;border:1px solid var(--border);border-top:none">
+        <div style="font-weight:600;color:var(--fg-muted);margin-bottom:5px">TUNNEL A ↔ B</div>
+        <div style="color:var(--fg-secondary)">
+          <div>Status: <span class="badge ${tStatusClass}">${(ts.status||'unknown').toUpperCase()}</span> <span style="margin-left:8px">Latency: ${latA} / ${latB}</span></div>
+          <div>Packet Loss: ${loss} <span style="margin-left:8px">Routes: A→B ${routeAB}  B→A ${routeBA}</span></div>
+          <div style="color:var(--fg-muted);font-size:0.65rem;margin-top:3px">Last Test: ${lastTest}</div>
+        </div>
+      </div>`;
+    } else {
+      html += `<div style="padding:8px 10px;border:1px solid var(--border);border-top:none;color:var(--fg-muted)">Tunnel data unavailable</div>`;
+    }
+    html += `</div>`;
+    el.innerHTML = html;
+  } catch(e){
+    el.innerHTML = `<span class="error-text">${esc(e.message)}</span>`;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -52,7 +52,8 @@ def pop_last_usage():
 # (limit: 0) on this account's free tier -- confirmed live. gemini-flash-lite-latest
 # is the model this key actually has real generateContent quota for.
 GEMINI_DEFAULT_MODEL = "gemini-flash-lite-latest"
-GROQ_DEFAULT_MODEL = "llama-3.3-70b-versatile"
+# groq deprecated llama-3.3-70b-versatile 2026-08; replaced with qwen3.6-27b
+GROQ_DEFAULT_MODEL = "qwen/qwen3.6-27b"
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 # openai/gpt-4o-mini confirmed working live via OpenRouter. The free-tier
 # models available on this account (google/gemma-4-*:free) returned 429

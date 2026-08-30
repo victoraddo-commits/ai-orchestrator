@@ -1,6 +1,6 @@
 from core.inventory import collect
 from core.memory import save
-from tools.proxmox import status as proxmox_status
+from tools.proxmox import status as proxmox_status, status_b
 from datetime import datetime
 
 
@@ -8,15 +8,19 @@ def scan():
 
     inventory = collect()
 
+    # Primary: Proxmox B (all backup jobs run here)
+    # Via proxmox-b-tunnel SSH tunnel → localhost:8007
+    proxmox_b = status_b()
+
     report = {
         "scan_time": datetime.now().isoformat(),
         "hostname": inventory["hostname"],
         "docker": inventory.get("docker", {}),
-        # JARVIS P13 audit fix 2026-08-24: pass host metrics through —
-        # health_observatory extracts snapshot["host"]["cpu_percent"] etc.
-        # but scan() dropped the key, so host_*_pct series were all-zero.
         "host": inventory.get("host", {}),
-        "proxmox": proxmox_status()
+        # Primary proxmox key: B (all backup jobs run on B)
+        "proxmox": proxmox_b,
+        # Also record A for reference
+        "proxmox_a": proxmox_status(),
     }
 
     save(

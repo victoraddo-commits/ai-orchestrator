@@ -18,9 +18,9 @@ def test_find_duplications_detects_telegram_overlap():
             "telegram-messaging": {"id": "telegram-messaging", "canonical_owner": "kai-notify", "status": "active"},
         },
         "relationships": [
-            {"from": "kai-notify", "to": "telegram-messaging", "type": "notifies"},
-            {"from": "telegra-approval-responder", "to": "telegram-messaging", "type": "notifies"},
-            {"from": "kai-audit", "to": "telegram-messaging", "type": "notifies"},
+            {"from": "kai-notify", "to": "telegram-messaging", "type": "telegram_notify"},
+            {"from": "telegra-approval-responder", "to": "telegram-messaging", "type": "telegram_notify"},
+            {"from": "kai-audit", "to": "telegram-messaging", "type": "telegram_notify"},
         ],
         "last_updated": None,
     })

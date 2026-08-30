@@ -20,13 +20,15 @@ from core.orchestrator_cycle import run_cycle
 from core.logger import info
 from core.workers.deepseek_pool import start_pool, stop_pool
 from core.workers.telegram_monitor import TelegramMonitor
-from core.network_discovery_cycle import run_discovery_cycle
+from core.network_discovery_cycle import run_network_discovery_cycle
 
 # Worker pool, Telegram monitor, and Health Worker — started on first cycle,
 # survive until shutdown.
 _pool = None
 _monitor = None
 _health_worker = None
+_last_network_discovery = 0
+_network_discovery_interval = 300  # seconds — network discovery runs every 5 min
 
 
 # Was 300s, tuned for infra health checks (Phase 1-11) where that cadence is
@@ -161,8 +163,11 @@ def start():
 
             result = run_cycle()
 
-            # Network discovery cycle — tailscale + proxmox + topology + connectivity
-            run_discovery_cycle()
+            # Network discovery — runs every 300s, independent of the 60s cycle
+            now = time.time()
+            if now - _last_network_discovery >= _network_discovery_interval:
+                _last_network_discovery = now
+                run_network_discovery_cycle()
 
             findings = len(
                 result.get("findings", [])

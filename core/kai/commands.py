@@ -13,6 +13,8 @@ from core.roadmap_manager import advance_roadmap
 from core.build_learning import get_build_history
 from core.roadmap_engine import get_next_phase
 from core.kai.planner import generate_proposal
+from core.topology_engine import get_natural_summary
+from core.network_knowledge import load_graph
 
 
 FAILURE_STATUSES = {"FAILED", "ROLLED_BACK"}
@@ -275,6 +277,13 @@ def _handle_provider_statistics():
     return {"reply": "\n".join(lines)}
 
 
+def _handle_network_status():
+    """Return a natural language summary of the network topology."""
+    graph = load_graph()
+    summary = get_natural_summary(graph)
+    return {"reply": summary}
+
+
 
 COMMAND_PATTERNS = (
     (
@@ -388,6 +397,22 @@ COMMAND_PATTERNS += (
         re.compile(r"^(?:kai,\s*)?(?:which\s+provider\s+is\s+(?:fastest|best|most\s+reliable)|compare\s+providers?|provider\s+(?:rank|performance))\.?$", re.IGNORECASE),
         lambda match: _handle_provider_ranking(),
         "Show provider performance rankings.",
+    ),
+    # Network topology natural language commands — must come before generic provider status pattern
+    (
+        re.compile(r"^(?:kai,\s*)?(?:what's|what is)\s+connected\??$", re.IGNORECASE),
+        lambda match: _handle_network_status(),
+        "Show what's connected — natural language network topology summary.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?show network\??$", re.IGNORECASE),
+        lambda match: _handle_network_status(),
+        "Show network — natural language network topology summary.",
+    ),
+    (
+        re.compile(r"^(?:kai,\s*)?network status\??$", re.IGNORECASE),
+        lambda match: _handle_network_status(),
+        "Show network status — natural language network topology summary.",
     ),
     (
         re.compile(r"^(?:kai,\s*)?(?:what\s+(?:providers?|workers?)\s+are\s+(?:available|online|running|active|up))\.?$", re.IGNORECASE),

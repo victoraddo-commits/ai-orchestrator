@@ -261,19 +261,28 @@ async def chat_completions(
         actual_provider = result["provider"]
     except AllProvidersFailed as exc:
         duration_ms = int((time.time() - start) * 1000)
-        # Distinguish: did the consumer ask for a specific provider?
+        # Build a readable reason from the attempt log
+        reasons: list[str] = []
+        for attempt in (exc.attempts or []):
+            prov = attempt.get("provider", "?")
+            err = attempt.get("error", "")
+            reasons.append(f"{prov}: {err}")
+        reason_text = "; ".join(reasons) if reasons else str(exc)[:200]
+
         if provider:
             status_code = 502
             error_detail = {
                 "error": "provider_failed",
                 "provider": provider,
                 "message": f"Provider '{provider}' failed to serve this request",
+                "reason": reason_text,
             }
         else:
             status_code = 502
             error_detail = {
                 "error": "all_providers_failed",
                 "message": "No available provider could serve this request",
+                "reasons": reasons or [str(exc)[:200]],
             }
         log_request(
             consumer=api_key["key_id"],
@@ -281,7 +290,7 @@ async def chat_completions(
             provider=provider or "(none)",
             duration_ms=duration_ms,
             status_code=status_code,
-            error=str(exc)[:500],
+            error=reason_text,
         )
         raise HTTPException(status_code=status_code, detail=error_detail)
 

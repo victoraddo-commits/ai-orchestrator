@@ -47,18 +47,18 @@ DUPLICATION_RULES = [
 
 def _get_telegram_senders(graph: dict) -> list[dict]:
     """Find all entities that send Telegram messages."""
-    telegram_rels = [r for r in graph["relationships"] if "telegram" in r.get("type", "").lower() or "notify" in r.get("type", "").lower()]
+    telegram_rels = [r for r in graph["relationships"] if "telegram" in r.get("type", "").lower()]
     senders = set(r["from"] for r in telegram_rels)
     return [{"id": sid, "entity": graph["entities"].get(sid, {})} for sid in senders]
 
 def _get_secret_stores(graph: dict) -> list[dict]:
     """Find all entities that own secret storage."""
-    secret_owners = [eid for eid, e in graph["entities"].items() if "secret" in e.get("type", "").lower() or "secrets" in e.get("id", "").lower()]
+    secret_owners = [eid for eid, e in graph["entities"].items() if e.get("type") in ("secret_store", "capability_owner") or "secret" in e.get("id", "").lower()]
     return [{"id": sid, "entity": graph["entities"].get(sid, {})} for sid in secret_owners]
 
 def _get_notification_aggregators(graph: dict) -> list[dict]:
     """Find all notification-capable entities."""
-    notify_rels = [r for r in graph["relationships"] if r.get("type") in ("notifies", "notification")]
+    notify_rels = [r for r in graph["relationships"] if "notif" in r.get("type", "").lower()]
     aggregators = set(r["from"] for r in notify_rels)
     return [{"id": sid, "entity": graph["entities"].get(sid, {})} for sid in aggregators]
 
@@ -66,7 +66,9 @@ def _get_json_memory_stores(graph: dict) -> list[dict]:
     """Find entities with JSON-based storage."""
     stores = []
     for eid, e in graph["entities"].items():
-        path = e.get("path", "")
+        if "path" not in e:
+            continue
+        path = e["path"]
         if any(x in path for x in ("memory", "json", "store")):
             stores.append({"id": eid, "entity": e})
     return stores
@@ -98,16 +100,6 @@ def find_duplications() -> list[dict]:
                 "severity": rule["severity"],
                 "systems": items,
                 "count": len(items),
-            })
-        elif len(items) == 0:
-            findings.append({
-                "id": rule["id"],
-                "name": rule["name"],
-                "description": rule["description"],
-                "severity": rule["severity"],
-                "systems": [],
-                "count": 0,
-                "note": "No systems found for this capability",
             })
 
     return findings

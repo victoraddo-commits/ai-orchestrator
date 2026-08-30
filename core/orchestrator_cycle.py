@@ -75,6 +75,20 @@ def _sync_workforce():
         info(f"workforce sync failed: {type(error).__name__}")
 
 
+def _safe_run_ecosystem_discovery():
+    """Ecosystem graph discovery — guarded so discovery errors never break the cycle."""
+    try:
+        from core.ecosystem_discovery import build_initial_graph
+        from core.ecosystem_graph import save_graph
+        graph = build_initial_graph()
+        save_graph(graph)
+        info(f"ecosystem_discovery: discovered {len(graph.get('entities', []))} entities")
+        return True
+    except Exception as error:
+        info(f"ecosystem_discovery failed: {type(error).__name__}: {error}")
+        return False
+
+
 def run_cycle():
 
     info("=== orchestrator cycle started ===")
@@ -82,6 +96,9 @@ def run_cycle():
     # Workforce registry sync FIRST (2026-08-22 spec §1): identity records
     # must exist before any delegate gate / starvation check this cycle.
     _sync_workforce()
+
+    # Ecosystem graph discovery — build and persist the entity relationship graph.
+    _safe_run_ecosystem_discovery()
 
     # 2026-08-07: GPU lifecycle/heartbeat/auto-recovery removed —
     # RunPod pods decommissioned.

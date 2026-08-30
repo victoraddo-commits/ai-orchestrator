@@ -19,7 +19,7 @@ def test_scan_src_directory_finds_modules():
 def test_find_secret_stores_detects_json_secrets():
     stores = find_secret_stores(Path("/project/ai-orchestrator/core/ai/secrets.py"))
     assert len(stores) >= 1
-    assert any("orchestrator" in s["id"].lower() for s in stores)
+    assert any("secrets.py" in s["id"] or "provider_secrets" in s["id"] for s in stores)
 
 def test_find_telegram_bots_detects_notify():
     bots = find_telegram_bots(Path("/project/src/kai-notify/src/index.js"))

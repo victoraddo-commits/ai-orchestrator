@@ -81,7 +81,7 @@ def _classify_module(path: Path) -> dict | None:
 # ── Secret store detection ────────────────────────────────────────────────────
 
 SECRET_PATTERNS = [
-    re.compile(r"api_key|apiKey|api_key|apikey", re.I),
+    re.compile(r"api_key|apiKey|apikey", re.I),
     re.compile(r"secret|SECRET", re.I),
     re.compile(r"password|PASSWORD|passwd", re.I),
     re.compile(r"token|TOKEN", re.I),
@@ -114,7 +114,7 @@ def find_secret_stores(path: Path) -> list[dict]:
 def _should_scan_file(f: Path) -> bool:
     """Return True if the file should be scanned for secrets."""
     skip_dirs = {"node_modules", "dist", "__pycache__", ".pytest_cache", ".git", "target", ".venv", ".eggs"}
-    skip_suffixes = {".pyc", ".pyo", ".so", ".rlib", ".gif", ".png", ".jpg", ".jpeg", ".webp", ".ico", ".bin"}
+    skip_suffixes = {".pyc", ".pyo", ".so", ".rlib", ".gif", ".png", ".jpg", ".jpeg", ".webp", ".ico", ".bin", ".ttf", ".otf", ".woff", ".woff2", ".cur"}
     if any(part in skip_dirs for part in f.parts):
         return False
     if f.suffix.lower() in skip_suffixes:
@@ -127,8 +127,10 @@ def _entity_from_path(f: Path) -> str:
     parts = rel.parts
     # /project/ai-orchestrator/core/ai/secrets.py → "ai-orchestrator"
     # /project/src/kai-vault/... → "kai-vault"
+    if len(parts) < 2:
+        return "unknown"
     if parts[0] in ("ai-orchestrator", "src"):
-        return parts[1] if len(parts) > 1 else parts[0]
+        return parts[1]
     return parts[0]
 
 def _detect_secret_store_in_file(f: Path) -> list[dict]:

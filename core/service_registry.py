@@ -69,6 +69,9 @@ class ServiceRegistry:
         os.replace(tmp, path)
 
         hpath = self.memory_dir / HEALTH_FILE
+        hbak = self.memory_dir / f"{HEALTH_FILE}.bak"
+        if hpath.exists():
+            shutil.copy(hpath, hbak)
         with open(hpath, "w") as f:
             json.dump(self._health_history, f, indent=2)
 
@@ -244,10 +247,10 @@ class ServiceRegistry:
         added = 0
 
         for sid, svc in services_data.items():
-            if sid in self._services:
+            canonical_id = svc.get("entity_id", sid)
+            if canonical_id in self._services:
                 continue  # already registered, don't overwrite
 
-            canonical_id = svc.get("entity_id", sid)
             service = {
                 "id": canonical_id,
                 "name": svc.get("name", canonical_id),
@@ -288,14 +291,14 @@ class ServiceRegistry:
                 current["status"] = "running" if c["status"] == "running" else "stopped"
                 current["updated_at"] = time.time()
             else:
-                self._services[service_id] = {
+                self.upsert_service({
                     "id": service_id,
                     "name": c["name"],
                     "description": f"Docker container: {c.get('image', '')}",
                     "version": None,
                     "environment": "production",
                     "host": "localhost",
-                    "port": c["ports"][0]["private"] if c.get("ports") and c["ports"] else None,
+                    "port": c["ports"][0]["private"] if c["ports"] else None,
                     "endpoint": None,
                     "protocol": "docker",
                     "type": "container",
@@ -303,7 +306,7 @@ class ServiceRegistry:
                     "status": "running" if c["status"] == "running" else "stopped",
                     "source": "auto_discovered",
                     "metadata": {"image": c.get("image")},
-                }
+                })
 
         # Convert systemd services
         for s in results["systemd"]:
@@ -312,7 +315,7 @@ class ServiceRegistry:
                 self._services[sid]["status"] = "running"
                 self._services[sid]["updated_at"] = time.time()
             else:
-                self._services[sid] = {
+                self.upsert_service({
                     "id": sid,
                     "name": s["name"],
                     "description": s.get("description", ""),
@@ -327,7 +330,7 @@ class ServiceRegistry:
                     "status": "running",
                     "source": "auto_discovered",
                     "metadata": {},
-                }
+                })
 
         # Port probe results — update endpoint for services with matching ports
         for p in results["ports"]:
@@ -338,7 +341,6 @@ class ServiceRegistry:
                     svc["endpoint"] = p["url"]
                     svc["status"] = "running"
                     svc["updated_at"] = time.time()
-                    break
 
         self.save()
         return results

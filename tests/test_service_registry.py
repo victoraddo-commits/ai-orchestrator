@@ -124,7 +124,7 @@ def test_seed_from_ecosystem_graph(tmp_path, monkeypatch):
     finally:
         sr.ECOSYSTEM_GRAPH_PATH = orig_path
 
-    assert added >= 1
+    assert added == 1
     svc = reg.get_service("service-test-graph")
     assert svc is not None
     assert svc["source"] == "ecosystem_graph"
@@ -160,3 +160,13 @@ def test_run_discovery_calls_all_probes(isolated_registry, monkeypatch):
     assert "systemd" in called
     assert "ports" in called
     assert "proxmox" in called
+    # Verify Docker container was upserted (service_id is None so key is "service-docker--test-container")
+    assert "service-docker--test-container" in isolated_registry.list_services()
+    docker_svc = isolated_registry.get_service("service-docker--test-container")
+    assert docker_svc["source"] == "auto_discovered"
+    assert docker_svc["type"] == "container"
+    # Verify systemd service was upserted
+    assert "kai-orchestrator" in isolated_registry.list_services()
+    systemd_svc = isolated_registry.get_service("kai-orchestrator")
+    assert systemd_svc["source"] == "auto_discovered"
+    assert systemd_svc["type"] == "systemd-service"

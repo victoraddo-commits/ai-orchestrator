@@ -17,6 +17,7 @@ checks, and vice versa -- this is genuinely somebody else's problem to fix
 if it goes down, not a reason the rest of Kai should stop.
 """
 
+import threading
 import time
 
 from core.logger import info
@@ -28,6 +29,8 @@ from core.telegram_bridge import (
     edit_message_reply_markup,
     send_message,
 )
+from core.approval_watcher import poll_once as poll_approval_queue
+from core.approval_notifier import notify_new_pending, notify_status_change
 
 # Telegram recommends staying comfortably under its own server-side cap;
 # this is long enough to feel instant without holding the connection so
@@ -85,8 +88,26 @@ def poll_once():
     return len(messages)
 
 
+def _approval_watcher_loop():
+    """Background loop: check approval queue every 30 seconds."""
+    while True:
+        try:
+            result = poll_approval_queue()
+            for item in result["new_pending"]:
+                notify_new_pending(item)
+            for change in result["status_changes"]:
+                if change["new"] in ("approved", "rejected"):
+                    notify_status_change(change)
+        except Exception:
+            pass  # never crash the poller
+        time.sleep(30)
+
 def run_forever():
     info("telegram_poller started")
+
+    # Start approval watcher as daemon thread
+    _watcher_thread = threading.Thread(target=_approval_watcher_loop, daemon=True)
+    _watcher_thread.start()
 
     while True:
         try:

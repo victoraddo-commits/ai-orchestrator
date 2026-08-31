@@ -212,10 +212,22 @@ def test_consecutive_failures_degrade(isolated_registry):
     import requests_mock as rm
     with rm.Mocker() as m:
         m.get("http://localhost:9998/health", exc=requests.exceptions.ConnectionError)
+        # First failure
+        isolated_registry.check_service_health("service-fail")
+        # Second failure
+        isolated_registry.check_service_health("service-fail")
+        # Third failure — should now be degraded
         result = isolated_registry.check_service_health("service-fail")
 
     assert result["result"] == "error"
-    assert isolated_registry.get_service("service-fail")["status"] in ("degraded", "stopped")
+    assert isolated_registry.get_service("service-fail")["status"] == "degraded"
+
+
+def test_health_check_nonexistent_service(isolated_registry):
+    """check_service_health on unknown service returns not_found without crashing."""
+    result = isolated_registry.check_service_health("does-not-exist")
+    assert result["result"] == "not_found"
+    assert result["service_id"] == "does-not-exist"
 
 
 def test_health_history_capped_at_100(isolated_registry):

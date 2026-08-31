@@ -95,16 +95,21 @@ class ServiceRegistry:
     def record_health(self, record: dict):
         """Add health record, trim to MAX_HEALTH_HISTORY per service (FIFO)."""
         self._health_history.append(record)
-        # Trim per-service to MAX_HEALTH_HISTORY
         by_service = {}
         for h in self._health_history:
             sid = h["service_id"]
             by_service.setdefault(sid, []).append(h)
         trimmed = {}
+        needs_save = False
         for sid, records in by_service.items():
-            trimmed[sid] = records[-MAX_HEALTH_HISTORY:]
+            if len(records) > MAX_HEALTH_HISTORY:
+                trimmed[sid] = records[-MAX_HEALTH_HISTORY:]
+                needs_save = True
+            else:
+                trimmed[sid] = records
         self._health_history = [h for records in trimmed.values() for h in records]
-        self.save()
+        if needs_save:
+            self.save()
 
     def check_service_health(self, service_id: str) -> dict:
         """Perform a single health check on a service. Returns result dict."""
@@ -127,21 +132,19 @@ class ServiceRegistry:
         checked_at = _time.time()
         try:
             start = _time.perf_counter()
+            # suppress SSL warnings — homelab internal certs
             r = _requests.get(endpoint, timeout=5, verify=False)
             latency_ms = (_time.perf_counter() - start) * 1000
 
             if r.status_code == 200:
                 result = "ok"
-                new_status = "running"
-                consecutive = svc.get("_consecutive_failures", 0)
                 svc["_consecutive_failures"] = 0
+                svc["status"] = "running"
             else:
                 result = "error"
                 consecutive = svc.get("_consecutive_failures", 0) + 1
                 svc["_consecutive_failures"] = consecutive
-                new_status = "degraded" if consecutive >= 3 else "stopped"
-
-            svc["status"] = new_status
+                svc["status"] = "degraded" if consecutive >= 3 else "stopped"
             svc["last_health_check"] = checked_at
             svc["last_health_result"] = result
 

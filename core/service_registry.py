@@ -114,6 +114,12 @@ class ServiceRegistry:
         if not svc:
             return {"service_id": service_id, "result": "not_found"}
 
+        # Stale entry check — if last check was > 5 min ago, mark unknown
+        last_check = svc.get("last_health_check")
+        if last_check and (svc.get("endpoint")):
+            if _time.time() - last_check > 300:
+                svc["status"] = "unknown"
+
         endpoint = svc.get("endpoint")
         if not endpoint:
             return {"service_id": service_id, "result": "no_endpoint"}

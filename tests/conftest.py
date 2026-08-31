@@ -69,3 +69,11 @@ def isolated_cerebrum_feedback():
     except (ImportError, AttributeError):
         pass
     yield
+
+
+@pytest.fixture
+def client():
+    """FastAPI TestClient for API route tests."""
+    from fastapi.testclient import TestClient
+    from core.api import app
+    return TestClient(app)

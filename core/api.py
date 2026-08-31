@@ -183,6 +183,10 @@ app.include_router(kai_tools_router)
 from core.kai_app_api import router as kai_app_router
 app.include_router(kai_app_router)
 
+# Service Registry — service discovery, health, and lifecycle routes
+from core.service_registry_routes import router as service_registry_router
+app.include_router(service_registry_router)
+
 # Repository Registry
 from core.repo_registry import (
     list_repositories, list_by_platform, list_local_repositories, get_registry_stats,

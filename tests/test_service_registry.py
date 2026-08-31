@@ -253,3 +253,59 @@ def test_health_history_capped_at_100(isolated_registry):
     assert len(hist) == 100
     # Oldest entries (1000-1009) should be gone
     assert not any(h["checked_at"] < 1010 for h in hist)
+
+
+# Additional API tests — add to test_service_registry.py
+
+def test_api_list_services(isolated_registry, client, monkeypatch):
+    """GET /kai/services returns all registered services."""
+    # Override the global registry in routes
+    import core.service_registry_routes as routes
+    monkeypatch.setattr(routes, "_registry", isolated_registry)
+
+    isolated_registry.upsert_service({
+        "id": "service-api-test",
+        "name": "API Test",
+        "status": "running",
+        "source": "manual",
+    })
+    isolated_registry.save()
+
+    response = client.get("/kai/services")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert "service-api-test" in data["data"]
+
+def test_api_register_service(isolated_registry, client, monkeypatch):
+    """POST /kai/services registers a new service."""
+    import core.service_registry_routes as routes
+    monkeypatch.setattr(routes, "_registry", isolated_registry)
+
+    response = client.post("/kai/services", json={
+        "id": "service-new",
+        "name": "New Service",
+        "port": 9000,
+        "type": "python-service",
+        "status": "unknown",
+        "source": "manual",
+    })
+    assert response.status_code == 200
+    assert isolated_registry.get_service("service-new") is not None
+
+def test_api_delete_service(isolated_registry, client, monkeypatch):
+    """DELETE /kai/services/{id} removes a service."""
+    import core.service_registry_routes as routes
+    monkeypatch.setattr(routes, "_registry", isolated_registry)
+
+    isolated_registry.upsert_service({
+        "id": "service-to-delete",
+        "name": "To Delete",
+        "status": "running",
+        "source": "manual",
+    })
+    isolated_registry.save()
+
+    response = client.delete("/kai/services/service-to-delete")
+    assert response.status_code == 200
+    assert isolated_registry.get_service("service-to-delete") is None

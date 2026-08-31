@@ -1,6 +1,7 @@
 # ai-orchestrator/tests/test_service_registry.py
 import json
 import pytest
+import requests
 from pathlib import Path
 from core.service_registry import ServiceRegistry
 
@@ -170,3 +171,73 @@ def test_run_discovery_calls_all_probes(isolated_registry, monkeypatch):
     systemd_svc = isolated_registry.get_service("kai-orchestrator")
     assert systemd_svc["source"] == "auto_discovered"
     assert systemd_svc["type"] == "systemd-service"
+
+
+def test_health_check_updates_service_status(isolated_registry):
+    """A service with an endpoint gets its status updated after a health check."""
+    svc = {
+        "id": "service-echo",
+        "name": "Echo",
+        "endpoint": "http://localhost:9999/health",
+        "port": 9999,
+        "protocol": "http",
+        "status": "unknown",
+        "source": "manual",
+    }
+    isolated_registry.upsert_service(svc)
+
+    import requests_mock as rm
+    with rm.Mocker() as m:
+        m.get("http://localhost:9999/health", text="ok", status_code=200)
+        result = isolated_registry.check_service_health("service-echo")
+
+    assert result["result"] == "ok"
+    assert result["response_code"] == 200
+    assert isolated_registry.get_service("service-echo")["status"] == "running"
+
+
+def test_consecutive_failures_degrade(isolated_registry):
+    """Three consecutive failures set status to degraded."""
+    svc = {
+        "id": "service-fail",
+        "name": "Failing Service",
+        "endpoint": "http://localhost:9998/health",
+        "port": 9998,
+        "protocol": "http",
+        "status": "running",
+        "source": "manual",
+    }
+    isolated_registry.upsert_service(svc)
+
+    import requests_mock as rm
+    with rm.Mocker() as m:
+        m.get("http://localhost:9998/health", exc=requests.exceptions.ConnectionError)
+        result = isolated_registry.check_service_health("service-fail")
+
+    assert result["result"] == "error"
+    assert isolated_registry.get_service("service-fail")["status"] in ("degraded", "stopped")
+
+
+def test_health_history_capped_at_100(isolated_registry):
+    """Health history per service is capped at 100 entries (FIFO)."""
+    svc = {
+        "id": "service-hist",
+        "name": "History Test",
+        "endpoint": "http://localhost:9997/health",
+        "status": "unknown",
+        "source": "manual",
+    }
+    isolated_registry.upsert_service(svc)
+
+    for i in range(110):
+        isolated_registry.record_health({
+            "service_id": "service-hist",
+            "checked_at": 1000 + i,
+            "result": "ok",
+            "latency_ms": 10.0,
+        })
+
+    hist = [h for h in isolated_registry._health_history if h["service_id"] == "service-hist"]
+    assert len(hist) == 100
+    # Oldest entries (1000-1009) should be gone
+    assert not any(h["checked_at"] < 1010 for h in hist)

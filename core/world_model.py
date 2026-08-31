@@ -66,7 +66,7 @@ STATIC_EDGES = [
     {"src": "public:kai.local", "dst": "service:npm-ct104", "kind": "fronted_by"},
     # money ecosystem internals (CT108 compose)
     {"src": "app:kai-money", "dst": "svc:money-db", "kind": "depends_on"},
-    {"src": "app:kai-money", "dst": "svc:kai-notify", "kind": "notifies_via"},
+    {"src": "app:kai-money", "dst": "svc:ai-orchestrator", "kind": "notifies_via"},  # was kai-notify, merged
     {"src": "op:quant", "dst": "app:kai-money", "kind": "reports_to"},
     {"src": "op:automatron", "dst": "app:kai-money", "kind": "reports_to"},
     {"src": "op:defi", "dst": "app:kai-money", "kind": "reports_to"},
@@ -154,7 +154,7 @@ def collect_entities() -> dict:
         ("svc:npm-ct104", "Nginx Proxy Manager (CT104)", None),
         ("svc:ollama-local", "Ollama local models (.109 :11434)", None),
         ("svc:money-db", "Money Center Postgres (CT108)", None),
-        ("svc:kai-notify", "KAI Notify hub (CT108 :8094)", None),
+        ("svc:kai-notify", "KAI Notify hub (DEPRECATED — merged into ai-orchestrator)", None),
     ]:
         entities.setdefault(sid, {"type": "service", "label": label, "status": "unknown"})
     entities.setdefault("svc:kai-browser", {"type": "service", "label": "KAI Browser Sandbox (CT110 :8140)", "status": "unknown"})

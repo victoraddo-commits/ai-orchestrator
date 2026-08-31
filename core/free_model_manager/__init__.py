@@ -8,7 +8,7 @@ Architecture:
 - validator.py  — Real inference testing + multi-stage coding benchmarks
 - scorer.py     — Scoring engine (coding capability + overall ranking)
 - router.py     — Active model pool + automatic failover + circuit breaker
-- notifier.py   — Telegram notifications via kai-notify hub
+- notifier.py   — Telegram notifications via POST /notify endpoint (merged from kai-notify)
 - api.py        — REST endpoints + Telegram command interface
 - scheduler.py  — Scheduled discovery cycles + health checks
 - models.py     — Persistent model database (SQLite)
@@ -76,8 +76,8 @@ CIRCUIT_BREAKER_COOLDOWN_MS = 15 * 60 * 1000  # 15 minutes
 DISCOVERY_INTERVAL_SECONDS = 6 * 60 * 60  # 6 hours
 HEALTH_CHECK_INTERVAL_SECONDS = 15 * 60  # 15 minutes
 
-# Kai Notify integration
-NOTIFY_URL = os.getenv("KAI_NOTIFY_URL", "http://localhost:8094")
+# Kai Notify integration (merged — now uses local POST /notify endpoint)
+NOTIFY_URL = os.getenv("KAI_NOTIFY_URL", "http://localhost:8000/notify")
 NOTIFY_TOKEN = os.getenv("KAI_NOTIFY_TOKEN", "")
 
 # Backup configuration

@@ -9,7 +9,7 @@ Observations come from existing collectors only:
 
 Predictions are explicitly labelled PREDICTION with confidence, never stated
 as fact (§24/§49/§63). Findings that survive the noise filter go to
-kai-notify severity routing (warn/critical reach Telegram; info stored).
+merged notify endpoint (warn/critical reach Telegram; info stored).
 Deterministic rules first — no LLM in the loop for detection.
 """
 
@@ -115,8 +115,7 @@ def predict(observations: dict | None = None) -> list:
 
 def run_cycle(notify_threshold: str = "warn") -> dict:
     """One proactive loop pass: observe → predict → persist → notify.
-    Only findings at/above notify_threshold reach Telegram (via kai-notify
-    severity routing); everything is persisted regardless."""
+    Only findings at/above notify_threshold reach Telegram (via merged notify endpoint); everything is persisted regardless."""
     obs = observe()
     preds = predict(obs)
 
@@ -145,7 +144,7 @@ def run_cycle(notify_threshold: str = "warn") -> dict:
     except Exception:
         pass
 
-    # deliver actionable ones through kai-notify (dedupes + rate limits itself)
+    # deliver actionable ones through the merged notify endpoint (dedupes + rate limits itself)
     delivered = 0
     if actionable:
         try:

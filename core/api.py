@@ -2752,17 +2752,10 @@ def command_center_money():
         except Exception as exc:
             # §54 honesty: an unreachable section is reported, never fabricated.
             out[key] = {"error": str(exc)[:120]}
-    # Notifications (admin token on kai-notify) — recent operational alerts.
-    notify_url = os.environ.get("KAI_NOTIFY_URL", "http://192.168.1.118:8094")
+    # Notifications — recent operational alerts from local notify store.
     try:
-        ntok_file = os.environ.get("KAI_NOTIFY_TOKEN_FILE", "")
-        ntok = Path(ntok_file).read_text(encoding="utf-8").strip() if ntok_file else None
-        r = _rq.get(
-            f"{notify_url}/notifications?limit=10",
-            headers={"authorization": f"Bearer {ntok}"} if ntok else {},
-            timeout=8,
-        )
-        out["notifications"] = r.json() if r.ok else {"error": r.status_code}
+        from core.notify_endpoint import get_recent_notifications
+        out["notifications"] = {"notifications": get_recent_notifications(limit=10)}
     except Exception as exc:
         out["notifications"] = {"error": str(exc)[:120]}
     return out

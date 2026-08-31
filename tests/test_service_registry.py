@@ -92,3 +92,71 @@ def test_port_probe_returns_empty_for_unreachable(isolated_registry):
     """Port probe returns empty list for unreachable hosts without crashing."""
     results = isolated_registry.discover_ports(hosts=["192.168.255.254"], ports=[9999])
     assert results == []
+
+
+def test_seed_from_ecosystem_graph(tmp_path, monkeypatch):
+    """Services in the ecosystem graph but not in registry get added on seed."""
+    import json
+    import core.service_registry as sr
+    monkeypatch.setattr("core.service_registry.MEMORY_DIR", tmp_path)
+
+    # Create a fake ecosystem graph
+    graph_path = tmp_path / "kai-ecosystem-graph.json"
+    graph_path.write_text(json.dumps({
+        "entities": {
+            "services": {
+                "service-test-graph": {
+                    "entity_id": "service-test-graph",
+                    "type": "python-service",
+                    "name": "Test From Graph",
+                    "port": 9001,
+                    "host": "test-host",
+                }
+            }
+        }
+    }))
+
+    orig_path = sr.ECOSYSTEM_GRAPH_PATH
+    sr.ECOSYSTEM_GRAPH_PATH = graph_path
+    try:
+        reg = ServiceRegistry()
+        added = reg.seed_from_ecosystem_graph()
+    finally:
+        sr.ECOSYSTEM_GRAPH_PATH = orig_path
+
+    assert added >= 1
+    svc = reg.get_service("service-test-graph")
+    assert svc is not None
+    assert svc["source"] == "ecosystem_graph"
+
+
+def test_run_discovery_calls_all_probes(isolated_registry, monkeypatch):
+    """run_discovery() calls docker, systemd, port, and Proxmox probes and upserts results."""
+    called = []
+
+    def fake_docker():
+        called.append("docker")
+        return [{"name": "test-container", "status": "running", "ports": [], "service_id": None, "image": "test"}]
+
+    def fake_systemd():
+        called.append("systemd")
+        return [{"name": "kai-orchestrator.service", "description": "AI Orchestrator", "service_id": "kai-orchestrator", "active_state": "running"}]
+
+    def fake_ports():
+        called.append("ports")
+        return []
+
+    def fake_proxmox():
+        called.append("proxmox")
+        return []
+
+    monkeypatch.setattr(isolated_registry, "discover_docker", fake_docker)
+    monkeypatch.setattr(isolated_registry, "discover_systemd", fake_systemd)
+    monkeypatch.setattr(isolated_registry, "discover_ports", fake_ports)
+    monkeypatch.setattr(isolated_registry, "discover_proxmox", fake_proxmox)
+
+    isolated_registry.run_discovery()
+    assert "docker" in called
+    assert "systemd" in called
+    assert "ports" in called
+    assert "proxmox" in called

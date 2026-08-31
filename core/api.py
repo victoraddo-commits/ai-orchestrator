@@ -621,7 +621,7 @@ def auth_login(body: LoginRequest, response: Response):
         key="kai_session",
         value=token,
         httponly=True,
-        secure=False,  # LAN-only, no TLS
+        secure=True,   # HTTPS only — self-signed cert on port 8000
         samesite="lax",
         max_age=86400,  # 24h
         path="/",

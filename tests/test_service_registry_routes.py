@@ -109,7 +109,7 @@ def test_dependencies_endpoint(isolated_registry_client, isolated_registry):
         "status": "running",
         "source": "manual",
     })
-    r = isolated_registry_client.get("/kai/services/dependencies/svc-dep")
+    r = isolated_registry_client.get("/kai/services/svc-dep/dependencies")
     assert r.status_code == 200
     assert r.json()["ok"] is True
 

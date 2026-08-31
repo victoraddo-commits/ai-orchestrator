@@ -73,7 +73,11 @@ def trigger_discovery():
     })
 
 
-@router.get("/dependencies/{service_id}")
+# NOTE: /{service_id}/dependencies (not /dependencies/{service_id}) — Starlette 1.3.1
+# APIRouter prefix handling has a bug where multi-segment static paths under a
+# prefixed router fail to match. Moving dependencies under /{service_id}/...
+# makes it consistent with /{service_id}/health which works correctly.
+@router.get("/{service_id}/dependencies")
 def get_dependencies(service_id: str):
     """Dependency tree for a service (up + down)."""
     reg = get_registry()

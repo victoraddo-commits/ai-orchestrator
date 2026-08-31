@@ -120,7 +120,19 @@ from core.klaus.api_endpoints import klaus_router as klaus_api_router
 from core.klaus.scheduler import start_scheduler as start_klaus_scheduler
 
 
-app = FastAPI(title="AI Orchestrator Observability API")
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Seed service registry + start health loop on startup."""
+    from core.service_registry import ServiceRegistry
+    reg = ServiceRegistry.get_instance()
+    reg.start()
+    yield
+
+
+app = FastAPI(title="AI Orchestrator Observability API", lifespan=lifespan)
 
 # Security headers on every response (CSP, HSTS, X-Frame-Options, etc.)
 app.add_middleware(SecurityHeadersMiddleware)

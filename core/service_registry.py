@@ -370,6 +370,29 @@ class ServiceRegistry:
             self.save()
         return added
 
+    def start(self):
+        """Run on API startup: seed from ecosystem graph then start background health loop."""
+        import threading
+        logger.info("ServiceRegistry starting — seeding from ecosystem graph...")
+        added = self.seed_from_ecosystem_graph()
+        logger.info("ServiceRegistry seeded: %d new services added", added)
+        t = threading.Thread(target=self._health_worker, daemon=True, name="service-registry-health")
+        t.start()
+        logger.info("ServiceRegistry health worker thread started")
+
+    def _health_worker(self):
+        """Blocking health loop — runs in a daemon thread."""
+        import time as _time
+        while True:
+            for sid in list(self._services.keys()):
+                svc = self._services.get(sid)
+                if svc and svc.get("endpoint"):
+                    try:
+                        self.check_service_health(sid)
+                    except Exception as exc:
+                        logger.warning("Health check failed for %s: %s", sid, exc)
+            _time.sleep(60.0)
+
     def run_discovery(self) -> dict:
         """Run all discovery probes and upsert results into the registry."""
         results = {

@@ -19,6 +19,7 @@ MEMORY_DIR = Path(os.environ.get("AI_ORCHESTRATOR_MEMORY_DIR", "memory"))
 
 SERVICE_FILE = "kai_services.json"
 HEALTH_FILE = "kai_services_health_history.json"
+ECOSYSTEM_GRAPH_PATH = Path("/project/uploads/kai-ecosystem-graph.json")
 
 
 class ServiceRegistry:
@@ -226,3 +227,118 @@ class ServiceRegistry:
         except requests.exceptions.RequestException as e:
             logger.warning("Proxmox probe failed: %s", e)
             return []
+
+    def seed_from_ecosystem_graph(self) -> int:
+        """Load services from the ecosystem graph JSON and add them to the registry."""
+        import json as _json
+        path = ECOSYSTEM_GRAPH_PATH
+        if not path.exists():
+            logger.warning(f"Ecosystem graph not found at {path}")
+            return 0
+
+        with open(path) as f:
+            graph = _json.load(f)
+
+        entities = graph.get("entities", {})
+        services_data = entities.get("services", {})
+        added = 0
+
+        for sid, svc in services_data.items():
+            if sid in self._services:
+                continue  # already registered, don't overwrite
+
+            canonical_id = svc.get("entity_id", sid)
+            service = {
+                "id": canonical_id,
+                "name": svc.get("name", canonical_id),
+                "description": svc.get("description", ""),
+                "version": svc.get("version"),
+                "environment": svc.get("environment", "production"),
+                "host": svc.get("host"),
+                "port": svc.get("port"),
+                "endpoint": svc.get("health_endpoint") or svc.get("endpoint"),
+                "protocol": svc.get("protocol", "https"),
+                "type": svc.get("type", "unknown"),
+                "owner": svc.get("owner", "unknown"),
+                "status": "unknown",
+                "source": "ecosystem_graph",
+                "metadata": {},
+            }
+            self._services[canonical_id] = service
+            added += 1
+
+        if added:
+            self.save()
+        return added
+
+    def run_discovery(self) -> dict:
+        """Run all discovery probes and upsert results into the registry."""
+        results = {
+            "docker": self.discover_docker(),
+            "systemd": self.discover_systemd(),
+            "ports": self.discover_ports(),
+            "proxmox": self.discover_proxmox(),
+        }
+
+        # Convert Docker containers to service entries
+        for c in results["docker"]:
+            service_id = c.get("service_id") or f"service-docker--{c['name']}"
+            if service_id in self._services:
+                current = self._services[service_id]
+                current["status"] = "running" if c["status"] == "running" else "stopped"
+                current["updated_at"] = time.time()
+            else:
+                self._services[service_id] = {
+                    "id": service_id,
+                    "name": c["name"],
+                    "description": f"Docker container: {c.get('image', '')}",
+                    "version": None,
+                    "environment": "production",
+                    "host": "localhost",
+                    "port": c["ports"][0]["private"] if c.get("ports") and c["ports"] else None,
+                    "endpoint": None,
+                    "protocol": "docker",
+                    "type": "container",
+                    "owner": "docker",
+                    "status": "running" if c["status"] == "running" else "stopped",
+                    "source": "auto_discovered",
+                    "metadata": {"image": c.get("image")},
+                }
+
+        # Convert systemd services
+        for s in results["systemd"]:
+            sid = s["service_id"]
+            if sid in self._services:
+                self._services[sid]["status"] = "running"
+                self._services[sid]["updated_at"] = time.time()
+            else:
+                self._services[sid] = {
+                    "id": sid,
+                    "name": s["name"],
+                    "description": s.get("description", ""),
+                    "version": None,
+                    "environment": "production",
+                    "host": "localhost",
+                    "port": None,
+                    "endpoint": None,
+                    "protocol": "systemd",
+                    "type": "systemd-service",
+                    "owner": "system",
+                    "status": "running",
+                    "source": "auto_discovered",
+                    "metadata": {},
+                }
+
+        # Port probe results — update endpoint for services with matching ports
+        for p in results["ports"]:
+            if not p.get("reachable"):
+                continue
+            for sid, svc in self._services.items():
+                if svc.get("port") == p["port"] and svc.get("source") == "ecosystem_graph":
+                    svc["endpoint"] = p["url"]
+                    svc["status"] = "running"
+                    svc["updated_at"] = time.time()
+                    break
+
+        self.save()
+        return results

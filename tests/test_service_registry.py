@@ -71,7 +71,9 @@ def test_docker_probe_finds_containers(isolated_registry):
     assert isinstance(containers, list)
     if containers:
         c = containers[0]
-        assert "name" in c or "Names" in c
+        assert "name" in c
+        assert "image" in c
+        assert "status" in c
 
 
 def test_systemd_probe_returns_list(isolated_registry):
@@ -84,3 +86,9 @@ def test_port_probe_on_localhost(isolated_registry):
     """Port probe hits known ports, returns reachable services."""
     results = isolated_registry.discover_ports(hosts=["localhost"], ports=[20128])
     assert isinstance(results, list)
+
+
+def test_port_probe_returns_empty_for_unreachable(isolated_registry):
+    """Port probe returns empty list for unreachable hosts without crashing."""
+    results = isolated_registry.discover_ports(hosts=["192.168.255.254"], ports=[9999])
+    assert results == []

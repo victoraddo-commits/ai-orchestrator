@@ -129,7 +129,11 @@ class ServiceRegistry:
                     "metadata": {k: v for k, v in labels.items() if k.startswith("com.kai.")},
                 })
             return results
-        except Exception:
+        except ModuleNotFoundError as e:
+            logger.warning("Docker module unavailable: %s", e)
+            return []
+        except docker.errors.DockerException as e:
+            logger.warning("Docker probe failed: %s", e)
             return []
 
     def discover_systemd(self) -> list[dict]:
@@ -143,8 +147,7 @@ class ServiceRegistry:
             )
             if result.returncode != 0:
                 return []
-            import json as _json
-            units = _json.loads(result.stdout)
+            units = json.loads(result.stdout)
             services = []
             for u in units:
                 name = u.get("unit", "")
@@ -159,12 +162,17 @@ class ServiceRegistry:
                     "service_id": name.removesuffix(".service"),
                 })
             return services
-        except Exception:
+        except (subprocess.TimeoutExpired, OSError) as e:
+            logger.warning("Systemd probe failed: %s", e)
+            return []
+        except json.JSONDecodeError as e:
+            logger.warning("Systemd probe JSON parse error: %s", e)
             return []
 
     def discover_ports(self, hosts: list[str] = None, ports: list[int] = None) -> list[dict]:
         """Probe specific host:port combinations for HTTP/HTTPS health endpoints."""
         if hosts is None:
+            # defaults for homelab environment
             hosts = ["localhost", "192.168.1.114", "192.168.1.120"]
         if ports is None:
             ports = [8000, 8090, 8091, 8092, 8094, 8095, 8130, 20128]
@@ -185,8 +193,8 @@ class ServiceRegistry:
                             "reachable": True,
                         })
                         break
-                    except Exception:
-                        pass
+                    except requests.exceptions.RequestException as e:
+                        logger.debug("Port probe %s unreachable: %s", url, e)
         return results
 
     def discover_proxmox(self) -> list[dict]:
@@ -215,5 +223,6 @@ class ServiceRegistry:
                     "type": "container",
                 })
             return results
-        except Exception:
+        except requests.exceptions.RequestException as e:
+            logger.warning("Proxmox probe failed: %s", e)
             return []

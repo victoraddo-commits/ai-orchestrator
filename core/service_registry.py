@@ -395,6 +395,8 @@ class ServiceRegistry:
 
     def run_discovery(self) -> dict:
         """Run all discovery probes and upsert results into the registry."""
+        # Seed from ecosystem graph first so manually tracked services are present
+        self.seed_from_ecosystem_graph()
         results = {
             "docker": self.discover_docker(),
             "systemd": self.discover_systemd(),

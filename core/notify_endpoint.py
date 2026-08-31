@@ -13,6 +13,7 @@ router = APIRouter(prefix="/notify", tags=["notifications"])
 # Deduplication window in seconds (matches kai-notify 10min window)
 DEDUP_WINDOW_SECS = 600
 _rate_limit_store: dict[str, float] = {}  # source → last_sent timestamp
+_dedup_store: dict[str, float] = {}  # key → last_sent timestamp
 
 class NotifyPayload(BaseModel):
     source: str
@@ -61,7 +62,28 @@ async def notify_event(
         text = f"{emoji} [{payload.source}] {payload.title}\n{payload.message}"
         send_telegram_alert(text, chat_id=payload.chat_id)
 
+    # Store for the dashboard notifications endpoint
+    _store_notification(payload.source, payload.severity, payload.title, payload.message)
+
     return {"status": "ok", "key": key}
 
-# In-memory dedup store (per-process; resets on restart — acceptable for alert deduplication)
-_dedup_store: dict[str, float] = {}
+# ── Recent notifications store ──────────────────────────────────────────────────
+_recent_notifications: list[dict] = []
+
+def get_recent_notifications(limit: int = 10) -> list[dict]:
+    """Return the most recent notifications, newest first."""
+    return list(reversed(_recent_notifications))[-limit:]
+
+def _store_notification(source: str, severity: str, title: str, message: str):
+    """Append to the in-memory recent list (used by status dashboard)."""
+    _recent_notifications.append({
+        "source": source,
+        "severity": severity,
+        "title": title,
+        "message": message,
+        "ts": time.time(),
+    })
+    # Keep last 100
+    if len(_recent_notifications) > 100:
+        _recent_notifications[:] = _recent_notifications[-100:]
+

@@ -175,7 +175,7 @@ def _assess_duplication(finding: dict) -> str:
     if finding["id"] == "dup-secrets-001":
         return "Fragmented — secrets scattered across systems. kai-vault is canonical but locked. Consolidate into vault."
     if finding["id"] == "dup-notify-001":
-        return "Complementary — kai-notify is general hub, kai-audit is observability-focused, telegra-approval-responder is approval-specific."
+        return "Consolidated — kai-notify and telegra-approval-responder merged into ai-orchestrator."
     return "Multiple systems — evaluate if consolidation would reduce complexity."
 
 def _recommend_action(finding: dict) -> str:
@@ -185,11 +185,11 @@ def _recommend_action(finding: dict) -> str:
     if finding["count"] == 1:
         return "N/A — no duplication."
     if finding["id"] == "dup-telegram-001":
-        return "SPECIALIZE: Consolidate Telegram send infrastructure into kai-notify. telegra-approval-responder becomes a kai-notify source. kai-audit uses kai-notify for Telegram delivery."
+        return "RESOLVED: Telegram send infrastructure consolidated into ai-orchestrator. kai-notify and telegra-approval-responder deprecated."
     if finding["id"] == "dup-secrets-001":
         return "MERGE: Migrate all secrets to kai-vault once vault access is recovered. Deprecate orchestrator-secrets after migration."
     if finding["id"] == "dup-notify-001":
-        return "PRESERVE: Systems serve different purposes. Ensure kai-notify is the canonical Telegram send path for all consumers."
+        return "RESOLVED: Notification aggregators merged into ai-orchestrator."
     if finding["id"] == "dup-memory-001":
         return "OBSERVE: Monitor if JSON stores diverge. Consider unifying under Kai's memory layer if they grow."
     return "Evaluate per-system. Merge if same function, specialize if different function."

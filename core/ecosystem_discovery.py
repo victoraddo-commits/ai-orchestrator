@@ -49,7 +49,7 @@ def _classify_module(path: Path) -> dict | None:
         if name == "kai-vault":
             etype = "capability_owner"
             canonical = True
-        elif name in ("kai-notify", "kai-audit", "kai-agent"):
+        elif name in ("kai-audit", "kai-agent"):
             etype = "service"
             canonical = False
         else:
@@ -60,9 +60,6 @@ def _classify_module(path: Path) -> dict | None:
         canonical = False
     elif name in ("it-manager", "talent", "proxdash", "susu", "deerude-theme", "claudecodeui"):
         etype = "application"
-        canonical = False
-    elif name == "telegra-approval-responder":
-        etype = "service"
         canonical = False
     else:
         etype = "unknown"
@@ -268,7 +265,7 @@ def _docker_name_to_entity(name: str) -> str:
     if "vault" in name:
         return "kai-vault"
     if "notify" in name:
-        return "kai-notify"
+        return "ai-orchestrator"  # merged into orchestrator
     if "audit" in name:
         return "kai-audit"
     if "money" in name or "franklin" in name or "freqtrade" in name:
@@ -282,7 +279,7 @@ def _docker_name_to_entity(name: str) -> str:
     if "proxdash" in name:
         return "proxdash"
     if "telegra" in name or "approval" in name:
-        return "telegra-approval-responder"
+        return "ai-orchestrator"  # merged into orchestrator
     return name
 
 # ── Build initial graph ──────────────────────────────────────────────────────
@@ -361,8 +358,8 @@ def build_initial_graph() -> dict:
 
     CAPABILITIES = [
         {"id": "secret-management", "name": "Secret Management", "canonical_owner": "kai-vault", "deprecated_owners": ["orchestrator-secrets"], "status": "migrating"},
-        {"id": "notification", "name": "Notification / Alerting", "canonical_owner": "kai-notify", "deprecated_owners": [], "status": "active"},
-        {"id": "telegram-messaging", "name": "Telegram Messaging", "canonical_owner": "kai-notify", "deprecated_owners": ["telegra-approval-responder"], "status": "active"},
+        {"id": "notification", "name": "Notification / Alerting", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["kai-notify"], "status": "active"},
+        {"id": "telegram-messaging", "name": "Telegram Messaging", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["telegra-approval-responder"], "status": "active"},
         {"id": "observability-audit", "name": "Observability / Audit", "canonical_owner": "kai-audit", "deprecated_owners": [], "status": "active"},
         {"id": "ai-routing", "name": "AI Model Routing", "canonical_owner": "ai-orchestrator", "deprecated_owners": [], "status": "active"},
     ]
@@ -371,9 +368,8 @@ def build_initial_graph() -> dict:
 
     KNOWN_RELS = [
         {"from": "ai-orchestrator", "to": "orchestrator-secrets", "type": "reads_from", "description": "AI router reads provider keys from JSON store"},
-        {"from": "kai-money", "to": "kai-vault", "type": "reads_from", "description": "Money center reads keys via vault reveal API"},
-        {"from": "kai-notify", "to": "kai-vault", "type": "auth_with", "description": "Notify hub reads tokens from vault"},
-        {"from": "telegra-approval-responder", "to": "ai-orchestrator", "type": "reads_from", "description": "Reads approval queue from orchestrator memory"},
+        {"from": "ai-orchestrator", "to": "kai-vault", "type": "auth_with", "description": "Notify endpoint reads tokens from vault"},
+        {"from": "telegra-approval-responder", "to": "ai-orchestrator", "type": "reads_from", "description": "DEPRECATED — merged into ai-orchestrator"},
     ]
     for rel in KNOWN_RELS:
         if rel["from"] in entities and rel["to"] in entities:

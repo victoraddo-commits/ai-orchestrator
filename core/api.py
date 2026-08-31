@@ -158,6 +158,10 @@ app.include_router(betting_router)
 from core.voice_gateway.gateway import voice_router as kai_voice_router
 app.include_router(kai_voice_router, prefix="/kai-voice")
 
+# Ecosystem alert endpoint (merged from kai-notify)
+from core.notify_endpoint import router as notify_router
+app.include_router(notify_router)
+
 # JARVIS Phase 2: Kai Voice HUD — served as static files from the built React app
 _hud_dist = Path(__file__).resolve().parents[2] / "src" / "kai-voice-hud" / "dist"
 if _hud_dist.exists():

@@ -46,6 +46,7 @@ def test_atomic_write_with_backup(tmp_path, monkeypatch):
     """save() must write a .bak file before replacing the main file.
 
     First save creates the main file; second save creates .bak from it.
+    The .bak must contain the PREVIOUS version's data (name "S"), not the new one ("S v2").
     """
     monkeypatch.setattr("core.service_registry.MEMORY_DIR", tmp_path)
     reg = ServiceRegistry()
@@ -53,7 +54,12 @@ def test_atomic_write_with_backup(tmp_path, monkeypatch):
     reg.save()  # first save: creates main file
 
     reg.upsert_service({"id": "svc", "name": "S v2", "status": "healthy", "source": "manual"})
-    reg.save()  # second save: .bak created from existing main file
+    # upsert_service auto-saves; .bak now holds version "S" from before this call
 
     assert (tmp_path / "kai_services.json").exists()
     assert (tmp_path / "kai_services.json.bak").exists()
+
+    # .bak must have the previous version's name, not the current one
+    with open(tmp_path / "kai_services.json.bak") as f:
+        bak = json.load(f)
+    assert bak["svc"]["name"] == "S"

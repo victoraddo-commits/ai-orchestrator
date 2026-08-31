@@ -108,7 +108,7 @@ def send_telegram_alert(text, chat_id=None, token=None):
     Deduplication is handled by the caller (kai-notify hub logic)."""
     if chat_id is None:
         chat_id = ALLOWED_CHAT_ID
-    return send_message(chat_id, text, token)
+    return send_message(text, token=token, chat_id=chat_id)
 
 
 def send_typing(chat_id=None, token=None):

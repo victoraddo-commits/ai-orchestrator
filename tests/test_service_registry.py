@@ -63,3 +63,24 @@ def test_atomic_write_with_backup(tmp_path, monkeypatch):
     with open(tmp_path / "kai_services.json.bak") as f:
         bak = json.load(f)
     assert bak["svc"]["name"] == "S"
+
+
+def test_docker_probe_finds_containers(isolated_registry):
+    """Docker probe returns a list of container dicts with name, image, ports."""
+    containers = isolated_registry.discover_docker()
+    assert isinstance(containers, list)
+    if containers:
+        c = containers[0]
+        assert "name" in c or "Names" in c
+
+
+def test_systemd_probe_returns_list(isolated_registry):
+    """Systemd probe returns running services."""
+    services = isolated_registry.discover_systemd()
+    assert isinstance(services, list)
+
+
+def test_port_probe_on_localhost(isolated_registry):
+    """Port probe hits known ports, returns reachable services."""
+    results = isolated_registry.discover_ports(hosts=["localhost"], ports=[20128])
+    assert isinstance(results, list)

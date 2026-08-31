@@ -103,6 +103,14 @@ def send_message(text, token=None, chat_id=None, reply_markup=None):
     return body
 
 
+def send_telegram_alert(text, chat_id=None, token=None):
+    """Send an ecosystem alert to Telegram. Used by the /notify endpoint.
+    Deduplication is handled by the caller (kai-notify hub logic)."""
+    if chat_id is None:
+        chat_id = ALLOWED_CHAT_ID
+    return send_message(chat_id, text, token)
+
+
 def send_typing(chat_id=None, token=None):
     """17W: Send 'typing...' indicator via Telegram.  Non-blocking — best-effort.
     Telegram auto-clears the indicator after 5 seconds or on next message."""

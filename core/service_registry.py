@@ -20,6 +20,7 @@ MEMORY_DIR = Path(os.environ.get("AI_ORCHESTRATOR_MEMORY_DIR", "memory"))
 SERVICE_FILE = "kai_services.json"
 HEALTH_FILE = "kai_services_health_history.json"
 ECOSYSTEM_GRAPH_PATH = Path("/project/uploads/kai-ecosystem-graph.json")
+MAX_HEALTH_HISTORY = 100
 
 
 class ServiceRegistry:
@@ -92,9 +93,95 @@ class ServiceRegistry:
         self.save()
 
     def record_health(self, record: dict):
-        """Append a health check record to the health history."""
+        """Add health record, trim to MAX_HEALTH_HISTORY per service (FIFO)."""
         self._health_history.append(record)
+        # Trim per-service to MAX_HEALTH_HISTORY
+        by_service = {}
+        for h in self._health_history:
+            sid = h["service_id"]
+            by_service.setdefault(sid, []).append(h)
+        trimmed = {}
+        for sid, records in by_service.items():
+            trimmed[sid] = records[-MAX_HEALTH_HISTORY:]
+        self._health_history = [h for records in trimmed.values() for h in records]
         self.save()
+
+    def check_service_health(self, service_id: str) -> dict:
+        """Perform a single health check on a service. Returns result dict."""
+        import time as _time
+        import requests as _requests
+        svc = self._services.get(service_id)
+        if not svc:
+            return {"service_id": service_id, "result": "not_found"}
+
+        endpoint = svc.get("endpoint")
+        if not endpoint:
+            return {"service_id": service_id, "result": "no_endpoint"}
+
+        checked_at = _time.time()
+        try:
+            start = _time.perf_counter()
+            r = _requests.get(endpoint, timeout=5, verify=False)
+            latency_ms = (_time.perf_counter() - start) * 1000
+
+            if r.status_code == 200:
+                result = "ok"
+                new_status = "running"
+                consecutive = svc.get("_consecutive_failures", 0)
+                svc["_consecutive_failures"] = 0
+            else:
+                result = "error"
+                consecutive = svc.get("_consecutive_failures", 0) + 1
+                svc["_consecutive_failures"] = consecutive
+                new_status = "degraded" if consecutive >= 3 else "stopped"
+
+            svc["status"] = new_status
+            svc["last_health_check"] = checked_at
+            svc["last_health_result"] = result
+
+            health_record = {
+                "service_id": service_id,
+                "checked_at": checked_at,
+                "result": result,
+                "latency_ms": round(latency_ms, 2),
+                "error": None,
+                "response_code": r.status_code,
+            }
+        except _requests.exceptions.Timeout:
+            svc["_consecutive_failures"] = svc.get("_consecutive_failures", 0) + 1
+            svc["status"] = "degraded" if svc["_consecutive_failures"] >= 3 else "stopped"
+            svc["last_health_check"] = checked_at
+            svc["last_health_result"] = "timeout"
+            health_record = {
+                "service_id": service_id, "checked_at": checked_at,
+                "result": "timeout", "latency_ms": 5000,
+                "error": "Connection timeout", "response_code": None,
+            }
+        except _requests.exceptions.RequestException as e:
+            svc["_consecutive_failures"] = svc.get("_consecutive_failures", 0) + 1
+            svc["status"] = "degraded" if svc["_consecutive_failures"] >= 3 else "stopped"
+            svc["last_health_check"] = checked_at
+            svc["last_health_result"] = "error"
+            health_record = {
+                "service_id": service_id, "checked_at": checked_at,
+                "result": "error", "latency_ms": 0,
+                "error": str(e), "response_code": None,
+            }
+
+        self.record_health(health_record)
+        self.save()
+        return health_record
+
+    async def health_loop(self, interval: float = 60.0):
+        """Async health check loop. Call as background task."""
+        import asyncio
+        while True:
+            for sid in list(self._services.keys()):
+                svc = self._services.get(sid)
+                if svc and svc.get("endpoint"):
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, self.check_service_health, sid)
+            await asyncio.sleep(interval)
 
     def delete_service(self, service_id: str) -> bool:
         """Remove a service from the registry. Returns True if it existed, False otherwise."""

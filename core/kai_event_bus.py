@@ -81,6 +81,8 @@ class KAIEventBus:
 
     def _start_flusher(self) -> None:
         """Start a daemon thread that flushes the journal buffer every second."""
+        if self._flusher_thread is not None and self._flusher_thread.is_alive():
+            return  # already running
         self._stop_flusher_event.clear()
         self._flusher_thread = threading.Thread(
             target=self._flusher_loop,
@@ -88,6 +90,16 @@ class KAIEventBus:
             daemon=True,
         )
         self._flusher_thread.start()
+
+    def stop(self) -> None:
+        """Stop the flusher thread and flush remaining buffer."""
+        if not self._started:
+            return
+        self._stop_flusher_event.set()
+        if self._flusher_thread is not None:
+            self._flusher_thread.join(timeout=2.0)
+        self._flush_journal_buffer()  # final flush
+        self._started = False
 
     def _flusher_loop(self) -> None:
         """Daemon loop: flush journal buffer every _BUFFER_FLUSH_INTERVAL seconds."""
@@ -238,7 +250,7 @@ class KAIEventBus:
             self._journal_dir / f"{JOURNAL_FILE}.{i}"
             for i in range(1, JOURNAL_MAX_ROTATIONS + 1)
         ])
-        all_journals = [journal_path] + rotation_files
+        all_journals = rotation_files + [journal_path]
         for jpath in all_journals:
             if not jpath.exists():
                 continue

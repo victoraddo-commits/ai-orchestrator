@@ -29,6 +29,8 @@ def _fresh_bus(tmp_path):
     bus._journal_dir.mkdir(parents=True, exist_ok=True)
     bus._started = False
     bus._lock = threading.RLock()
+    bus._flusher_thread = None
+    bus._stop_flusher_event = threading.Event()
     return bus
 
 
@@ -317,6 +319,36 @@ class TestModuleAPI:
             assert called == ["test.one"]
         finally:
             keb.KAIEventBus.get_instance = orig
+
+
+# ----------------------------------------------------------------------------------------
+# Flusher thread (time-based)
+# ----------------------------------------------------------------------------------------
+
+class TestFlusher:
+    def test_time_based_flush_writes_journal(self, tmp_path, monkeypatch):
+        import core.kai_event_bus as keb
+        monkeypatch.setattr(keb, "_JOURNAL_BUFFER", [])
+        monkeypatch.setattr(keb, "_BUFFER_LOCK", threading.RLock())
+        monkeypatch.setattr(keb, "_BUFFER_SIZE", 9999)  # disable count-based flush
+        monkeypatch.setattr(keb, "_BUFFER_FLUSH_INTERVAL", 0.05)  # 50ms for test
+        bus = _fresh_bus(tmp_path)
+        # Patch replay_journal so start() doesn't try to replay during test
+        bus.replay_journal = lambda: 0
+        bus.start()  # launches flusher thread
+        bus.subscribe("kai.*", lambda t, e: None)
+        bus.publish("kai.started", {"msg": "time-flush"}, source="test", severity=CRITICAL)
+        # Give flusher time to fire (4x interval)
+        time.sleep(0.2)
+        journal_file = tmp_path / JOURNAL_FILE
+        assert journal_file.exists(), "journal file should exist after time-based flush"
+        lines = [l for l in journal_file.read_text().splitlines() if l.strip()]
+        assert len(lines) == 1
+        import json
+        entry = json.loads(lines[0])
+        assert entry["topic"] == "kai.started"
+        assert entry["payload"]["msg"] == "time-flush"
+        bus.stop()  # clean shutdown
 
 
 # ----------------------------------------------------------------------------------------

@@ -45,6 +45,19 @@ class WorkerRecord:
         "transitions": [],
     })
     metadata: dict = field(default_factory=dict)
+    tools: list = field(default_factory=list)
+    data_scope: list = field(default_factory=list)
+    vault_scope: list = field(default_factory=list)
+    destructive_authority: dict = field(default_factory=lambda: {
+        "delete_files": False,
+        "terminate_worker": False,
+        "kill_provider": False,
+        "force_deploy": False,
+        "modify_secrets": False,
+        "network_bridge": False,
+        "data_export": False,
+        "admin_action": False,
+    })
 
     def to_dict(self) -> dict:
         return asdict(self)

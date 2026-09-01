@@ -81,8 +81,18 @@ def poll_once():
             continue
 
         reply_text = result.get("reply")
+        audio_bytes = result.get("audio_bytes")
 
-        if reply_text:
+        if audio_bytes:
+            try:
+                from core.telegram_bridge import send_voice
+                send_voice(audio_bytes, chat_id=result.get("chat_id"))
+            except Exception as error:
+                info(f"telegram_poller: voice send failed: {type(error).__name__}")
+                # Fall back to text if voice fails
+                if reply_text:
+                    _safe_send(reply_text)
+        elif reply_text:
             _safe_send(reply_text)
 
     return len(messages)

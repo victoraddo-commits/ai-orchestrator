@@ -15,6 +15,7 @@ from core.monitoring.budget_monitor import check_budgets
 import core.vpn_failover as vpn_failover
 # 2026-08-09: Notification Service — Kai Mobile Command Node sub-project 3
 import core.notifications as notifications
+from core.kai_event_bus import event_bus
 
 
 def _safe_send(message_text):
@@ -368,6 +369,48 @@ def run_cycle():
 
     }
 
+    # Publish lifecycle events to the Kai event bus so consumers (dashboard, notifications,
+    # agents) can react to what happened this cycle without polling.
+    event_bus.publish(
+        "orchestrator.cycle.completed",
+        {
+            "findings": len(findings),
+            "incidents": len(incidents),
+            "decisions": len(decisions),
+            "remediation": len(remediation),
+            "builds_processed": len(builds) if builds else 0,
+            "roadmap_progress": roadmap_progress,
+        },
+        source="orchestrator_cycle",
+        severity="INFORMATIONAL",
+    )
+
+    for inc in incidents:
+        event_bus.publish(
+            "orchestrator.incident.created",
+            {"incident_id": inc.get("id"), "severity": inc.get("severity"), "service": inc.get("service")},
+            source="orchestrator_cycle",
+            severity="IMPORTANT",
+        )
+
+    for b_before in builds_before:
+        bid = b_before.get("id")
+        if not bid:
+            continue
+        builds_after_map = {b.get("id"): b for b in builds} if builds else {}
+        b_after = builds_after_map.get(bid)
+        if b_after and b_before.get("status") != b_after.get("status"):
+            event_bus.publish(
+                "orchestrator.build.state_changed",
+                {
+                    "build_id": bid,
+                    "name": b_after.get("name", bid),
+                    "from_status": b_before.get("status"),
+                    "to_status": b_after.get("status"),
+                },
+                source="orchestrator_cycle",
+                severity="IMPORTANT" if b_after.get("status") == "FAILED" else "INFORMATIONAL",
+            )
 
     info("=== orchestrator cycle completed ===")
 

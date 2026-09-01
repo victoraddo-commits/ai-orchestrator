@@ -18,6 +18,7 @@ import base64
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 import logging
+import jwt as _jwt_lib
 
 logger = logging.getLogger("kai.authz.jwt")
 
@@ -93,6 +94,7 @@ def create_jwt(claims: Dict[str, Any], expiry_seconds: int = JWT_EXPIRY_SECONDS)
         "nbf": now,
         "exp": now + expiry_seconds,
         "jti": _b64url_encode(os.urandom(16)),
+        "step_up_fresh": claims.get("step_up_fresh", False),
     }
 
     header_b64 = _b64url_encode(json.dumps(header, separators=(",", ":")).encode())
@@ -199,6 +201,19 @@ def blocklist_token(token: str) -> None:
     jti = _extract_jti(token)
     if jti:
         _JWT_BLOCKLIST.add(jti)
+
+
+def invalidate_session(token: str) -> bool:
+    """Add token's jti to the blocklist. Returns True if token was valid and blocked."""
+    try:
+        payload = _jwt_lib.decode(token, _load_or_create_jwt_secret(), algorithms=["HS256"])
+        jti = payload.get("jti")
+        if jti:
+            _JWT_BLOCKLIST.add(jti)
+            return True
+        return False
+    except Exception:
+        return False
 
 
 def _extract_jti(token: str) -> str | None:

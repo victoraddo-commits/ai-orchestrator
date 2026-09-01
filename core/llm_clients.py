@@ -528,9 +528,9 @@ def call_gpuai_minimax(prompt, model=GPUAI_MINIMAX_MODEL, timeout=60, max_tokens
 # Deployed 2026-08-11 after benchmark Phases 1-11: qwen2.5:7b beat
 # llama3.2:3b and llama3.1:8b on speed, code quality, JSON output,
 # reliability, hallucination resistance, and long-context extraction.
-# The ollama API is reachable via ZeroTier → LXC-B DNAT → Proxmox B host.
+# The ollama API is reachable via LAN on Proxmox B (192.168.1.109).
 # No API key needed — ollama runs unauthenticated on the local network.
-OLLAMA_BASE_URL = "http://10.250.0.2:11434"
+OLLAMA_BASE_URL = "http://192.168.1.109:11434"
 OLLAMA_MODEL = "qwen2.5:7b"
 
 # ── Concurrency guard — prevents NVMe I/O saturation on Proxmox B ────
@@ -552,7 +552,7 @@ def check_ollama_available(timeout=5):
 
 
 def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
-    """Call qwen2.5:7b via ollama on Proxmox B (ZeroTier → LXC-B DNAT).
+    """Call qwen2.5:7b via ollama on Proxmox B (LAN at 192.168.1.109:11434).
 
     Uses ollama's /api/generate endpoint (not OpenAI-compatible) with
     stream=false. Returns just the response text. Raises ProviderUnavailable

@@ -18,9 +18,8 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# Direct to kai-vault on Proxmox B CT107 via the network-core-a transit route
-# (192.168.1.0/24 via 10.250.0.2 over ZeroTier). Restored 2026-08-23 after the
-# zt-route-b.service boot race took nc-a's route down; before that fix this
+# Direct to kai-vault on Proxmox B CT107 via LAN (192.168.1.117:8120).
+# Restored 2026-08-23 after boot-race route issue; before that fix this
 # default was an SSH tunnel endpoint (127.0.0.1:18120).
 VAULT_URL = os.environ.get("VAULT_URL", "http://192.168.1.117:8120")
 VAULT_TOKEN_FILE = os.environ.get(

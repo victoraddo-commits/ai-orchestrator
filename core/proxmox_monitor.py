@@ -27,10 +27,9 @@ PROXMOX_NODES = [
     },
     {
         "name": "pve-b",
-        "host": os.environ.get("PROXMOX_B_HOST", "10.250.0.2"),
-        # TK-176d6efe: WireGuard is primary.  If the tunnel goes down, try
-        # the fallback (LAN IP if Proxmox B is ever routable that way, or a
-        # secondary WG endpoint).  Set PROXMOX_B_FALLBACK_HOST to enable.
+        "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.109"),
+        # Proxmox B is reachable via LAN (192.168.1.109). Set
+        # PROXMOX_B_FALLBACK_HOST to enable a secondary path.
         "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
         "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
         "token_secret": os.environ.get("PROXMOX_B_TOKEN_SECRET", ""),

@@ -45,9 +45,11 @@ STATIC_EDGES = [
     {"src": "host:pve-b", "dst": "ct:110", "kind": "hosts", "note": "kai-browser sandbox"},
     {"src": "svc:kai-browser", "dst": "ct:110", "kind": "runs_on"},
     {"src": "app:android-factory", "dst": "ct:109", "kind": "runs_on"},
-    # network-core dependencies (ZeroTier backbone per network-architecture rebuild)
-    {"src": "host:pve-b", "dst": "service:zerotier-backbone", "kind": "transit",
-     "note": "A<->B transit via ZT through network-core LXCs"},
+    # Tailscale VPN backbone (replaced ZeroTier 2026-08-30)
+    {"src": "host:pve-a", "dst": "host:pve-b", "kind": "transit",
+     "note": "A<->B via Tailscale (100.89.97.76 on pve-b)"},
+    # Deprecated: network-core-b was the ZeroTier relay LXC; removed 2026-08-30
+    # Deprecated: zerotier-backbone service entity; removed 2026-08-30
     {"src": "service:npm-ct104", "dst": "ct:104", "kind": "runs_on"},
     {"src": "service:vault-api", "dst": "ct:107", "kind": "runs_on"},
     {"src": "app:kai-money", "dst": "ct:108", "kind": "runs_on"},

@@ -27,8 +27,8 @@ from core.network_discovery_cycle import run_network_discovery_cycle
 _pool = None
 _monitor = None
 _health_worker = None
-_last_network_discovery = 0
-_network_discovery_interval = 300  # seconds — network discovery runs every 5 min
+_last_network_discovery: float = 0.0
+_network_discovery_interval = 300.0  # seconds — network discovery runs every 5 min
 
 
 # Was 300s, tuned for infra health checks (Phase 1-11) where that cadence is

@@ -229,7 +229,7 @@ def _local_run_text_task(prompt, timeout=120, project_path=None):
     This replaces the _local_not_implemented placeholder after benchmark
     Phases 1-11 selected qwen2.5:7b as the best local model for Kai Brain.
     The ollama server lives on Proxmox B (Samsung 970 EVO NVMe, i3-10100)
-    and is reachable via ZeroTier → LXC-B DNAT port 11434.
+    and is reachable via LAN at 192.168.1.109:11434 (no VPN needed).
     """
     return llm_clients.call_ollama_qwen(prompt, timeout=timeout)
 

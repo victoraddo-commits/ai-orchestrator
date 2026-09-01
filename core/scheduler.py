@@ -114,7 +114,7 @@ class WatchdogHeartbeat:
 
 def start():
 
-    global _pool, _monitor, _health_worker
+    global _pool, _monitor, _health_worker, _last_network_discovery
 
     # 2026-08-09: DeepSeek worker pool — primary AI engine per operator directive.
     _pool = start_pool(workers=8)

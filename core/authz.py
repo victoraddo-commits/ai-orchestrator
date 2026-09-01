@@ -61,6 +61,8 @@ CAPABILITIES = {
     "law.manage": "Manage law documents (add/delete)",
     "dashboard.password": "Change dashboard login password",
     "juris.admin": "Manage Juris Kai accounts (subscription, deactivate, grant days, referrals)",
+    "services.manage": "Register/update/remove services",
+    "capabilities.manage": "Register/update/remove capabilities and implementations",
 }
 
 # Exactly two roles — operator (everything) and viewer (read-only GETs).
@@ -243,7 +245,45 @@ def _resolve_session(token: str) -> dict | None:
 
 _EMPTY_SET: set = set()
 
-# Operator names that always have full capabilities — these are the values
+
+def _require_write_capability(capability: str):
+    """FastAPI dependency factory.  Returns a callable that checks the caller
+    has *capability* — either via the bridge token (always operator) or via
+    a valid session token with the matching role capability."""
+
+    def checker(
+        authorization: str | None = None,
+        x_kai_session: str | None = None,
+    ):
+        from fastapi import HTTPException
+        from core.bridge_auth import _load_api_token
+
+        session_token = x_kai_session or ""
+
+        # Bridge-token path: the existing mechanism, always operator
+        expected = f"Bearer {_load_api_token()}"
+        if authorization:
+            import hmac
+            if hmac.compare_digest(authorization.encode(), expected.encode()):
+                return "bridge-token:operator"
+
+        # Session-token path: resolve role and check capability
+        if session_token:
+            if check_capability(session_token, capability):
+                return session_token
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+        # Neither path — no valid credentials → 401
+        raise HTTPException(status_code=401, detail="Missing or invalid credentials")
+
+    from fastapi import Depends, Header
+    # Header() defaults tell FastAPI to extract and inject these header values.
+    # Without them, FastAPI ignores header names and passes None.
+    checker.__defaults__ = (
+        Header(default=None),
+        Header(default=None, alias="x-kai-session"),
+    )
+    return Depends(checker)
 # returned by core.api.require_bridge_token (i.e. the CloudCLI plugin bridge
 # that presents the shared API token).  No session lookup needed.
 _BRIDGE_OPERATORS = frozenset([

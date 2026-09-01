@@ -5,13 +5,14 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
+from core.authz import _require_write_capability
 from core.capability_registry import CapabilityRegistry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/kai/capabilities", tags=["kai", "capabilities"])
 
-# Note: write endpoints (POST, PUT, DELETE, /discover, /implementations) are not yet
-# auth-gated — Phase 15A adds capability-based auth guards to all mutating routes.
+# Note: write endpoints (POST, PUT, DELETE, /discover, /implementations) are gated
+# with _require_write_capability("capabilities.manage") (Phase 15A).
 
 _registry: Optional[CapabilityRegistry] = None
 
@@ -42,7 +43,7 @@ def list_capabilities(
     return _ok(caps, count=len(caps))
 
 
-@router.post("/discover")
+@router.post("/discover", dependencies=[_require_write_capability("capabilities.manage")])
 def trigger_discovery():
     """Trigger auto-discovery of capability assignments from ServiceRegistry."""
     reg = get_registry()
@@ -75,8 +76,7 @@ def check_health(cap_id: str):
     return _ok(cap)
 
 
-# TODO(phase-15a): add _require_write_capability guard
-@router.post("")
+@router.post("", dependencies=[_require_write_capability("capabilities.manage")])
 def register_capability(body: dict):
     """Register a new capability. Requires 'capability_id' in body. Returns 400 if missing."""
     if "capability_id" not in body:
@@ -88,8 +88,7 @@ def register_capability(body: dict):
     return _ok(reg.get_capability(cap_id))
 
 
-# TODO(phase-15a): add _require_write_capability guard
-@router.put("/{cap_id}")
+@router.put("/{cap_id}", dependencies=[_require_write_capability("capabilities.manage")])
 def update_capability(cap_id: str, body: dict):
     """Update a capability. Body replaces merged record. 404 if not found."""
     reg = get_registry()
@@ -101,8 +100,7 @@ def update_capability(cap_id: str, body: dict):
     return _ok(reg.get_capability(cap_id))
 
 
-# TODO(phase-15a): add _require_write_capability guard
-@router.delete("/{cap_id}")
+@router.delete("/{cap_id}", dependencies=[_require_write_capability("capabilities.manage")])
 def deregister_capability(cap_id: str):
     """Remove a capability. 404 if not found."""
     reg = get_registry()
@@ -112,8 +110,7 @@ def deregister_capability(cap_id: str):
     return _ok({"deleted": True, "capability_id": cap_id})
 
 
-# TODO(phase-15a): add _require_write_capability guard
-@router.post("/{cap_id}/implementations")
+@router.post("/{cap_id}/implementations", dependencies=[_require_write_capability("capabilities.manage")])
 def add_implementation(cap_id: str, body: dict):
     """Add a service implementation to a capability. Body: {service_id, role?}. 400 if missing service_id. 404 if cap not found."""
     if "service_id" not in body:
@@ -130,8 +127,7 @@ def add_implementation(cap_id: str, body: dict):
     return _ok(reg.get_capability(cap_id))
 
 
-# TODO(phase-15a): add _require_write_capability guard
-@router.delete("/{cap_id}/implementations/{service_id}")
+@router.delete("/{cap_id}/implementations/{service_id}", dependencies=[_require_write_capability("capabilities.manage")])
 def remove_implementation(cap_id: str, service_id: str):
     """Remove a service implementation from a capability. 404 if not found."""
     reg = get_registry()

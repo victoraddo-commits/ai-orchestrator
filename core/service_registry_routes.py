@@ -2,6 +2,7 @@
 import logging
 from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
+from core.authz import _require_write_capability
 from core.service_registry import ServiceRegistry
 
 logger = logging.getLogger(__name__)
@@ -114,8 +115,7 @@ def get_service(service_id: str):
     return _ok(result)
 
 
-# TODO: gate with services.manage capability (Phase 15A)
-@router.post("")
+@router.post("", dependencies=[_require_write_capability("services.manage")])
 def register_service(payload: dict):
     """Register a new service manually."""
     if "id" not in payload:
@@ -126,8 +126,7 @@ def register_service(payload: dict):
     return _ok({"id": payload["id"], "registered": True})
 
 
-# TODO: gate with services.manage capability (Phase 15A)
-@router.put("/{service_id}")
+@router.put("/{service_id}", dependencies=[_require_write_capability("services.manage")])
 def update_service(service_id: str, payload: dict):
     """Update a service."""
     reg = get_registry()
@@ -140,8 +139,7 @@ def update_service(service_id: str, payload: dict):
     return _ok({"id": service_id, "updated": True})
 
 
-# TODO: gate with services.manage capability (Phase 15A)
-@router.delete("/{service_id}")
+@router.delete("/{service_id}", dependencies=[_require_write_capability("services.manage")])
 def deregister_service(service_id: str):
     """Deregister a service."""
     reg = get_registry()

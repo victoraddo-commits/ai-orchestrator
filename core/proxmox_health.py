@@ -165,15 +165,20 @@ def analyze_proxmox_cluster():
         reverse=True
     )
 
-    if not backup_tasks:
+    node_uptime = node.get("uptime", 0)
 
-        findings.append({
-            "severity": "warning",
-            "service": "proxmox-backup",
-            "issue": "No recent backup (vzdump) history found",
-            "risk_score": 50,
-            "recommendation": "Verify backup jobs are configured and running"
-        })
+    if not backup_tasks:
+        # Nodes up < 1 day won't have a weekly vzdump run yet — skip.
+        if node_uptime < 86400:
+            pass  # no backup history is expected for a recently-booted node
+        else:
+            findings.append({
+                "severity": "warning",
+                "service": "proxmox-backup",
+                "issue": "No recent backup (vzdump) history found",
+                "risk_score": 50,
+                "recommendation": "Verify backup jobs are configured and running"
+            })
 
     elif backup_tasks[0].get("status") != "OK":
 

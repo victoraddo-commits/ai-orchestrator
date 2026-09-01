@@ -51,10 +51,10 @@ def _classify_module(path: Path) -> dict | None:
             canonical = True
         elif name in ("kai-audit", "kai-agent"):
             etype = "service"
-            canonical = False
+            canonical = True  # kai-* entities are canonical capability owners
         else:
             etype = "application"
-            canonical = False
+            canonical = True  # kai-* entities are canonical capability owners
     elif name == "ai-orchestrator":
         etype = "agent"
         canonical = False
@@ -63,7 +63,8 @@ def _classify_module(path: Path) -> dict | None:
         canonical = False
     elif name in ("it-manager", "talent", "proxdash", "susu", "deerude-theme", "claudecodeui", "hr-app-design"):
         etype = "application"
-        canonical = False
+        # These external services own their respective capabilities
+        canonical = name in ("it-manager", "proxdash")
     elif name == "telegra-approval-responder":
         etype = "bot"
         canonical = False
@@ -288,6 +289,28 @@ def _docker_name_to_entity(name: str) -> str:
         return "ai-orchestrator"  # merged into orchestrator
     return name
 
+# ── Capability definitions (mirrored in CapabilityRegistry) ─────────────────────
+
+CAPABILITIES = [
+    # Core infra capabilities
+    {"id": "secret-management", "name": "Secret Management", "canonical_owner": "kai-vault", "deprecated_owners": ["orchestrator-secrets"], "status": "migrating"},
+    {"id": "notification", "name": "Notification / Alerting", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["kai-notify"], "status": "active"},
+    {"id": "notifications", "name": "Notification / Alerting", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["kai-notify"], "status": "active"},
+    {"id": "telegram-messaging", "name": "Telegram Messaging", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["telegra-approval-responder"], "status": "active"},
+    {"id": "telegram-bots", "name": "Telegram Messaging", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["telegra-approval-responder"], "status": "active"},
+    {"id": "observability-audit", "name": "Observability / Audit", "canonical_owner": "kai-audit", "deprecated_owners": [], "status": "active"},
+    {"id": "ai-routing", "name": "AI Model Routing", "canonical_owner": "ai-orchestrator", "deprecated_owners": [], "status": "active"},
+    # Extended capabilities discovered from ServiceRegistry
+    {"id": "cli-tooling", "name": "CLI Tooling", "canonical_owner": "ai-orchestrator", "deprecated_owners": [], "status": "active"},
+    {"id": "command-gateway", "name": "Command Gateway", "canonical_owner": "ai-orchestrator", "deprecated_owners": [], "status": "active"},
+    {"id": "hr-tools", "name": "HR Tools", "canonical_owner": "it-manager", "deprecated_owners": [], "status": "active"},
+    {"id": "infra-monitoring", "name": "Infra Monitoring", "canonical_owner": "ai-orchestrator", "deprecated_owners": [], "status": "active"},
+    {"id": "legal-brain", "name": "Legal Brain", "canonical_owner": "kai-legal", "deprecated_owners": [], "status": "active"},
+    {"id": "trading-engine", "name": "Trading Engine", "canonical_owner": "kai-money", "deprecated_owners": [], "status": "active"},
+    {"id": "voice-ai", "name": "Voice AI", "canonical_owner": "kai-voice-hud", "deprecated_owners": [], "status": "active"},
+    {"id": "audit", "name": "Audit", "canonical_owner": "kai-audit", "deprecated_owners": [], "status": "active"},
+]
+
 # ── Build initial graph ──────────────────────────────────────────────────────
 
 def build_initial_graph() -> dict:
@@ -362,13 +385,6 @@ def build_initial_graph() -> dict:
             else:
                 entities[svc["entity_id"]]["status"] = "stopped"
 
-    CAPABILITIES = [
-        {"id": "secret-management", "name": "Secret Management", "canonical_owner": "kai-vault", "deprecated_owners": ["orchestrator-secrets"], "status": "migrating"},
-        {"id": "notification", "name": "Notification / Alerting", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["kai-notify"], "status": "active"},
-        {"id": "telegram-messaging", "name": "Telegram Messaging", "canonical_owner": "ai-orchestrator", "deprecated_owners": ["telegra-approval-responder"], "status": "active"},
-        {"id": "observability-audit", "name": "Observability / Audit", "canonical_owner": "kai-audit", "deprecated_owners": [], "status": "active"},
-        {"id": "ai-routing", "name": "AI Model Routing", "canonical_owner": "ai-orchestrator", "deprecated_owners": [], "status": "active"},
-    ]
     for cap in CAPABILITIES:
         capabilities[cap["id"]] = cap
 

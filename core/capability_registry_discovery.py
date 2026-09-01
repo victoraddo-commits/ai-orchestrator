@@ -133,17 +133,58 @@ def detect_capability_for_service(service: dict) -> tuple[str, bool]:
 # 3. Wiring services into the CapabilityRegistry
 # ----------------------------------------------------------------------------------------
 
+def _entity_to_capability_id(entity_id: str) -> Optional[str]:
+    """Derive the capability_id an entity provides, based on naming conventions."""
+    # Known entity → capability mappings
+    _ENTITY_CAP = {
+        "kai-vault":    "secret-management",
+        "kai-notify":   "notifications",
+        "kai-legal":    "legal-brain",
+        "juris-kai":    "legal-brain",
+        "kai-money":    "trading-engine",
+        "kai-audit":    "audit",
+        "proxdash":     "infra-monitoring",
+        "it-manager":   "hr-tools",
+        "talent":       "hr-tools",
+    }
+    if entity_id in _ENTITY_CAP:
+        return _ENTITY_CAP[entity_id]
+    # kai- prefixed entities that provide a named capability
+    if entity_id.startswith("kai-"):
+        return entity_id  # e.g. kai-voice-hud → "kai-voice-hid" (raw entity id as cap)
+    return None
+
+
 def link_services_to_capabilities(registry) -> None:
     """Wire every Service Registry service into the CapabilityRegistry.
 
     For each service:
     - Determines its capability via ``detect_capability_for_service``.
-    - Creates the capability record if it does not yet exist.
+    - Creates the capability record if it does not yet exist,
+      deriving canonical_owner from the ecosystem graph (entity that owns this
+      capability, or "ai-orchestrator" as default for native capabilities).
     - Appends an implementation entry (role=primary if explicit mapping,
       secondary if auto-detected) unless the service is already linked.
     - Calls ``registry.save()`` at the end if anything changed.
     """
     from core.service_registry import ServiceRegistry
+    from core.ecosystem_graph import load_graph
+
+    # Build capability → canonical_owner from the ecosystem graph.
+    # For each entity that is marked canonical_owner=True, treat its provided
+    # capability (derived from entity id → known capability) as owned by it.
+    _eco = load_graph()
+    _entities = _eco.get("entities", {})
+
+    # Map capability_id → entity that canonical-owns it.
+    # Preserve the first owner so a more-specific entity (e.g. kai-audit) wins
+    # over a generic one (e.g. ai-orchestrator) that happens to claim the same cap.
+    _cap_owner = {}
+    for entity_id, ent in _entities.items():
+        if ent.get("canonical_owner"):
+            cid = _entity_to_capability_id(entity_id)
+            if cid and cid not in _cap_owner:
+                _cap_owner[cid] = entity_id
 
     svc_reg = ServiceRegistry.get_instance()
     services = svc_reg.list_services()
@@ -153,12 +194,19 @@ def link_services_to_capabilities(registry) -> None:
     for sid, svc in services.items():
         cap_id, auto_detected = detect_capability_for_service(svc)
 
+        # Skip unknown capabilities — don't seed garbage into the registry
+        if cap_id == "unknown":
+            continue
+
+        # Determine canonical_owner: from ecosystem if known, else ai-orchestrator
+        canonical_owner = _cap_owner.get(cap_id, "ai-orchestrator")
+
         # Ensure the capability record exists
         if cap_id not in registry._capabilities:
             registry._capabilities[cap_id] = {
                 "capability_id":   cap_id,
                 "name":            cap_id.replace("-", " ").title(),
-                "canonical_owner": svc.get("owner", "unknown"),
+                "canonical_owner": canonical_owner,
                 "priority":        "P2",
                 "status":          "unknown",
                 "version":         "1.0",

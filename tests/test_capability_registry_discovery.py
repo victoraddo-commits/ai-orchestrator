@@ -206,17 +206,17 @@ class TestDetectCapabilityForService:
 class TestLinkServicesToCapabilities:
     """Tests for link_services_to_capabilities()."""
 
-    def test_unknown_capability_created_for_unmatched_service(self, tmp_path):
-        """A service with no match creates the 'unknown' capability record."""
+    def test_unknown_capability_not_seeded(self, tmp_path):
+        """A service with no matching pattern is skipped — no 'unknown' garbage seeded."""
         from core.capability_registry import CapabilityRegistry
 
-        # Mock ServiceRegistry with a single generic service
+        # Mock ServiceRegistry with a single generic service that matches nothing
         class MockSvcReg:
             def list_services(self):
-                return {"generic-svc": {"id": "generic-svc", "name": "Generic", "owner": "ops", "status": "healthy"}}
+                # No Telegram, kai-*, proxdash, etc. — will fall through to unknown
+                return {"random-svc": {"id": "random-svc", "name": "Random Service", "status": "healthy"}}
 
         cap_reg = CapabilityRegistry(memory_dir=tmp_path)
-        # Patch ServiceRegistry.get_instance so link() uses our mock
         import core.service_registry
         orig = core.service_registry.ServiceRegistry.get_instance
         core.service_registry.ServiceRegistry.get_instance = classmethod(lambda cls: MockSvcReg())
@@ -226,13 +226,10 @@ class TestLinkServicesToCapabilities:
         finally:
             core.service_registry.ServiceRegistry.get_instance = orig
 
-        assert "unknown" in cap_reg._capabilities
-        cap = cap_reg._capabilities["unknown"]
-        assert cap["canonical_owner"] == "ops"
-        assert len(cap["implementations"]) == 1
-        assert cap["implementations"][0]["service_id"] == "generic-svc"
-        assert cap["implementations"][0]["role"] == "secondary"  # auto_detected=True
-        assert cap["implementations"][0]["auto_detected"] is True
+        # No capability should be created for an unmatched service
+        assert "unknown" not in cap_reg._capabilities
+        # The registry should be empty
+        assert len(cap_reg._capabilities) == 0
 
     def test_explicit_mapping_creates_primary_role(self, tmp_path, monkeypatch):
         """A service mapped explicitly gets role=primary, auto_detected=False."""
@@ -279,7 +276,8 @@ class TestLinkServicesToCapabilities:
 
         class MockSvcReg:
             def list_services(self):
-                return {"generic-svc": {"id": "generic-svc", "name": "Generic", "owner": "ops", "status": "healthy"}}
+                # telegram-svc maps to telegram-bots via NAME_CAPABILITY_MAP
+                return {"telegram-svc": {"id": "telegram-svc", "name": "Telegram Bot", "status": "healthy"}}
 
         from core.capability_registry import CapabilityRegistry
         import core.service_registry
@@ -293,6 +291,6 @@ class TestLinkServicesToCapabilities:
         finally:
             core.service_registry.ServiceRegistry.get_instance = orig
 
-        impls = cap_reg._capabilities["unknown"]["implementations"]
-        count = sum(1 for i in impls if i["service_id"] == "generic-svc")
-        assert count == 1
+        impls = cap_reg._capabilities["telegram-bots"]["implementations"]
+        count = sum(1 for i in impls if i["service_id"] == "telegram-svc")
+        assert count == 1, "Service should only be linked once, not duplicated"

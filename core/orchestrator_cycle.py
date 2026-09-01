@@ -103,12 +103,13 @@ def _safe_run_ecosystem_discovery():
 
         # Apply new discovery data to existing entities too (type/status/path may have
         # been corrected), but preserve manually-added fields (notes, description, etc.)
-        # by only overwriting fields that come from discovery (type, status, path).
+        # by only overwriting fields that come from discovery (type, status, path, canonical_owner).
         for entity_id, new_entity in new_entities.items():
             if entity_id in old_entities:
                 old_entities[entity_id].update({
                     k: v for k, v in new_entity.items()
-                    if k in ("type", "status", "path", "name", "description", "docker_name", "docker_status")
+                    if k in ("type", "status", "path", "name", "description",
+                             "docker_name", "docker_status", "canonical_owner")
                 })
         merged["capabilities"] = new_discovery.get("capabilities", {})
         merged["relationships"] = new_discovery.get("relationships", [])

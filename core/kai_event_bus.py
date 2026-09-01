@@ -25,6 +25,7 @@ SEVERITY_ORDER = {CRITICAL: 0, IMPORTANT: 1, INFORMATIONAL: 2}
 JOURNAL_FILE = "kai_event_journal.jsonl"
 JOURNAL_MAX_SIZE = 10 * 1024 * 1024  # 10 MB
 JOURNAL_MAX_ROTATIONS = 3
+_BUFFER_FLUSH_INTERVAL = 1.0  # seconds
 _MAX_RECENT = 1000
 
 _logger = logging.getLogger(__name__)
@@ -44,11 +45,14 @@ class KAIEventBus:
     """Thread-safe pub/sub event bus with fnmatch topic patterns and journal persistence."""
 
     _instance: Optional["KAIEventBus"] = None
+    _instance_lock: threading.Lock = threading.Lock()
 
     @classmethod
     def get_instance(cls) -> "KAIEventBus":
         if cls._instance is None:
-            cls._instance = cls()
+            with cls._instance_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
         return cls._instance
 
     def __init__(self) -> None:
@@ -58,6 +62,8 @@ class KAIEventBus:
         self._lock = threading.RLock()
         self._journal_dir = Path(__file__).parent.parent / "memory"
         self._started = False
+        self._flusher_thread: Optional[threading.Thread] = None
+        self._stop_flusher_event = threading.Event()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -71,6 +77,22 @@ class KAIEventBus:
         self._journal_dir.mkdir(parents=True, exist_ok=True)
         self._flush_journal_buffer()  # flush any buffered writes from imports
         self.replay_journal()
+        self._start_flusher()
+
+    def _start_flusher(self) -> None:
+        """Start a daemon thread that flushes the journal buffer every second."""
+        self._stop_flusher_event.clear()
+        self._flusher_thread = threading.Thread(
+            target=self._flusher_loop,
+            name="kai-event-bus-flusher",
+            daemon=True,
+        )
+        self._flusher_thread.start()
+
+    def _flusher_loop(self) -> None:
+        """Daemon loop: flush journal buffer every _BUFFER_FLUSH_INTERVAL seconds."""
+        while not self._stop_flusher_event.wait(_BUFFER_FLUSH_INTERVAL):
+            self._flush_journal_buffer()
 
     # ------------------------------------------------------------------
     # Subscription management

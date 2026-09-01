@@ -317,6 +317,10 @@ class CapabilityRegistry:
         with open(MAPPING_FILE) as f:
             mapping = json.load(f)
 
+        # Look up canonical_owner from ecosystem graph CAPABILITIES
+        from core.ecosystem_discovery import CAPABILITIES as _ECOSYSTEM_CAPS
+        _eco_owner = {c["id"]: c.get("canonical_owner", "unknown") for c in _ECOSYSTEM_CAPS}
+
         added = 0
         changed = 0
         for service_id, cap_id in mapping.items():
@@ -327,7 +331,7 @@ class CapabilityRegistry:
             if cap_id not in self._capabilities:
                 self.upsert_capability(cap_id, {
                     "name": cap_id,
-                    "canonical_owner": "unknown",
+                    "canonical_owner": _eco_owner.get(cap_id, "unknown"),
                     "priority": "P2",
                     "status": "unknown",
                 })

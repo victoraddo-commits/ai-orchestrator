@@ -120,6 +120,15 @@ def _safe_run_ecosystem_discovery():
         added = len(added_entities)
         info(f"ecosystem_discovery: discovered {len(new_entities)} entities, "
              f"{added} new added to graph")
+
+        # Publish entity lifecycle events so consumers can react to deltas
+        for entity_id in changes.get("added", {}).get("entities", {}):
+            event_bus.publish("ecosystem.entity.added", {"entity_id": entity_id}, source="ecosystem_discovery")
+        for entity_id in changes.get("removed", {}).get("entities", {}):
+            event_bus.publish("ecosystem.entity.removed", {"entity_id": entity_id}, source="ecosystem_discovery")
+        for entity_id in changes.get("changed", {}).get("entities", {}):
+            event_bus.publish("ecosystem.entity.changed", {"entity_id": entity_id}, source="ecosystem_discovery")
+
         return True
     except Exception as error:
         info(f"ecosystem_discovery failed: {type(error).__name__}: {error}")

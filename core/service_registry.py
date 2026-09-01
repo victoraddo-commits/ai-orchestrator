@@ -338,8 +338,8 @@ class ServiceRegistry:
         with open(path) as f:
             graph = _json.load(f)
 
-        entities = graph.get("entities", {})
-        services_data = entities.get("services", {})
+        # Entities are stored directly in the entities dict, not under a "services" sub-key
+        services_data = graph.get("entities", {})
         added = 0
 
         for sid, svc in services_data.items():

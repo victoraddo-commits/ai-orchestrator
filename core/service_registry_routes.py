@@ -81,15 +81,28 @@ def trigger_discovery():
 # makes it consistent with /{service_id}/health which works correctly.
 @router.get("/{service_id}/dependencies")
 def get_dependencies(service_id: str):
-    """Dependency tree for a service (up + down)."""
+    """Dependency tree for a service (up + down).
+
+    depends_on: services this service requires (from metadata/depends_on).
+    dependents: services that list this service in their own depends_on.
+    """
     reg = get_registry()
     if not reg.get_service(service_id):
         raise HTTPException(status_code=404, detail=f"Service '{service_id}' not found")
     svc = reg.get_service(service_id)
+    depends_on = svc.get("metadata", {}).get("depends_on", [])
+    # Compute dependents by scanning all services for mutual depends_on references
+    dependents = []
+    for other_id, other in reg.list_services().items():
+        if other_id == service_id:
+            continue
+        other_deps = other.get("metadata", {}).get("depends_on", [])
+        if service_id in other_deps:
+            dependents.append(other_id)
     return _ok({
         "service_id": service_id,
-        "depends_on": svc.get("metadata", {}).get("depends_on", []),
-        "dependents": [],
+        "depends_on": depends_on,
+        "dependents": dependents,
     })
 
 

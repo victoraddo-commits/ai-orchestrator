@@ -284,11 +284,14 @@ def _require_write_capability(capability: str):
         Header(default=None, alias="x-kai-session"),
     )
     return Depends(checker)
-# returned by core.api.require_bridge_token (i.e. the CloudCLI plugin bridge
-# that presents the shared API token).  No session lookup needed.
+
+
+# Bridge-token operators — always have full operator capabilities and bypass
+# session lookup.  These correspond to core.api.BRIDGE_OPERATOR and
+# core.api.DASHBOARD_PROXY_OPERATOR.
 _BRIDGE_OPERATORS = frozenset([
-    "cloudcli-plugin",       # core.api.BRIDGE_OPERATOR
-    "dashboard-proxy",       # core.api.DASHBOARD_PROXY_OPERATOR
+    "cloudcli-plugin",
+    "dashboard-proxy",
 ])
 
 

@@ -199,6 +199,10 @@ app.include_router(kai_app_router)
 from core.service_registry_routes import router as service_registry_router
 app.include_router(service_registry_router)
 
+# Phase 18A-ai: Kai OIDC auth routes — vault SSO callback, step-up, userinfo, logout
+from core.auth_kai_routes import router as auth_kai_router
+app.include_router(auth_kai_router)
+
 # Repository Registry
 from core.repo_registry import (
     list_repositories, list_by_platform, list_local_repositories, get_registry_stats,

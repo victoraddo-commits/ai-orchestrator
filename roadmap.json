@@ -1940,7 +1940,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1950,8 +1950,9 @@
       "tests_required": false,
       "note": "[2026-09-01 reconciliation] Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
       "assigned_provider": null,
-      "build_id": null,
-      "failure_reason": null
+      "build_id": "d5c03c15",
+      "failure_reason": null,
+      "completion_note": "Option C: Telegram voice messages — transcribe via voice_router, respond via TTS, reply as voice note"
     },
     {
       "id": "17Q",

@@ -16,6 +16,7 @@ from core.juris_kai.accounts import (
     SUBSCRIPTION_TIERS,
     DISCLAIMER_TEXT,
 )
+from core.juris_kai.session import get_user_session
 
 
 def handle_command(text: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:

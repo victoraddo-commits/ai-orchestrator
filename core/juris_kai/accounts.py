@@ -403,9 +403,65 @@ class AccountManager:
         remaining = max(0, limit - used)
         return {"allowed": remaining > 0, "remaining": remaining, "limit": limit}
 
+    def try_record_query(self, account_id: str, input_tokens: int = 0,
+                         output_tokens: int = 0, model: str = "") -> Dict[str, Any]:
+        """Atomically check and record a query. Returns {allowed, remaining, limit}.
+
+        Uses a single UPDATE that increments only if under the limit, then checks
+        rows_affected to know whether the increment succeeded. Eliminates the
+        check-then-increment race condition.
+        """
+        sub = self.get_active_subscription(account_id)
+        if not sub or not sub["is_active"]:
+            return {"allowed": False, "remaining": 0, "limit": 0, "reason": "inactive_account"}
+
+        limit = sub["limits"]["max_queries_per_day"]
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        # Atomic conditional increment: only succeeds when queries_today < limit
+        result = self.db.execute(
+            """UPDATE juris_accounts
+               SET queries_today = queries_today + 1, queries_date = ?,
+                   updated_at = datetime('now')
+               WHERE account_id = ?
+                 AND (queries_date != ? OR queries_today < ?)
+                 AND is_active = 1""",
+            (today, account_id, today, limit),
+        )
+        rows_affected = result.rowcount
+        self.db.execute(
+            "INSERT INTO juris_usage_log (account_id, action_type, input_tokens,"
+            " output_tokens, model) VALUES (?, 'query', ?, ?, ?)",
+            (account_id, input_tokens, output_tokens, model),
+        )
+        self.db.commit()
+
+        if rows_affected == 0:
+            # Either at limit, inactive, or wrong date — do a clean check to report accurately
+            row = self.db.execute(
+                "SELECT queries_today, queries_date FROM juris_accounts WHERE account_id = ?",
+                (account_id,),
+            ).fetchone()
+            if row and row["queries_date"] != today:
+                # Day rolled over mid-flight — retry once
+                self.db.execute(
+                    "UPDATE juris_accounts SET queries_today = 0, queries_date = ? WHERE account_id = ?",
+                    (today, account_id),
+                )
+                self.db.commit()
+                return {"allowed": True, "remaining": limit - 1, "limit": limit}
+            return {"allowed": False, "remaining": 0, "limit": limit, "reason": "limit_exceeded"}
+
+        remaining = max(0, limit - 1)
+        return {"allowed": True, "remaining": remaining, "limit": limit}
+
     def record_query(self, account_id: str, input_tokens: int = 0,
                       output_tokens: int = 0, model: str = "") -> bool:
-        """Record a query usage. Call after successful AI response."""
+        """Record a query usage. Call after successful AI response.
+
+        Deprecated: prefer try_record_query() for atomic check-and-record.
+        This method bypasses the quota check (for already-authorized paths).
+        """
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         self.db.execute(
             """UPDATE juris_accounts

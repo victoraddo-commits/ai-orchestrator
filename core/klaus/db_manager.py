@@ -397,35 +397,39 @@ def get_documents_flagged_for_review() -> List[Dict[str, Any]]:
 
 
 def init_sample_data() -> bool:
-    """Seed initial Ghana legal sources into the database."""
-    from core.klaus.scheduler import TIER_1_SEEDS
+    """Seed initial Ghana legal sources into the database.
 
+    Uses TIER_1_SEEDS from scheduler for a canonical list; falls back to a
+    minimal hard-coded list if the import fails.
+    """
     try:
-        for seed in TIER_1_SEEDS:
+        from core.klaus.scheduler import TIER_1_SEEDS
+        sources = TIER_1_SEEDS
+    except Exception:
+        # Fallback if scheduler is not importable
+        sources = [
+            {"url": "https://parliament.gh", "domain": "parliament.gh",
+             "tier": 1, "jurisdiction": "Ghana"},
+            {"url": "https://judiciary.gov.gh", "domain": "judliary.gov.gh",
+             "tier": 1, "jurisdiction": "Ghana"},
+            {"url": "https://ghalii.org", "domain": "ghalii.org",
+             "tier": 2, "jurisdiction": "Ghana"},
+        ]
+
+    seeded = 0
+    for seed in sources:
+        try:
             add_source(
                 url=seed["url"],
                 domain=seed["domain"],
                 tier=seed["tier"],
                 jurisdiction=seed["jurisdiction"],
             )
-        log_audit_event("discovery", "info", f"Seeded {len(TIER_1_SEEDS)} initial sources")
-        return True
-    except Exception:
-        return False
-
-
-def init_sample_data():
-    """Seed the database with sample Ghana legal sources."""
-    sources = [
-        ("https://parliament.gh", "parliament.gh", 1, "Ghana"),
-        ("https://judiciary.gov.gh", "judiciary.gov.gh", 1, "Ghana"),
-        ("https://ghalii.org", "ghalii.org", 2, "Ghana"),
-    ]
-    for url, domain, tier, jurisdiction in sources:
-        try:
-            add_source(url, domain, tier, jurisdiction)
+            seeded += 1
         except Exception:
             pass
+
+    log_audit_event("discovery", "info", f"Seeded {seeded} initial sources")
     return True
 
 

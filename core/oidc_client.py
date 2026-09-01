@@ -119,7 +119,11 @@ class OIDCClient:
         Raises:
             OIDCError: if state mismatch, vault unreachable, or vault returns an error.
         """
-        if state != saved_state:
+        if not self.CLIENT_SECRET:
+            raise OIDCError(
+                "CLIENT_SECRET is not set. Set KAI_ID_SECRET_FILE or KAI_ID_SECRET env var."
+            )
+        if not secrets.compare_digest(state, saved_state):
             raise OIDCError("state_mismatch")
 
         payload = {
@@ -156,6 +160,10 @@ class OIDCClient:
 
         Returns the same dict shape as :meth:`exchange_code`.
         """
+        if not self.CLIENT_SECRET:
+            raise OIDCError(
+                "CLIENT_SECRET is not set. Set KAI_ID_SECRET_FILE or KAI_ID_SECRET env var."
+            )
         payload = {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
@@ -237,7 +245,7 @@ class OIDCClient:
             OIDCError: on connection errors or non-2xx responses.
         """
         verify: bool | str = not self.ALLOW_SELF_SIGNED
-        with httpx.Client(verify=verify) as client:
+        with httpx.Client(verify=verify, timeout=10.0) as client:
             resp = client.post(url, data=data)
         if resp.status_code >= 400:
             try:

@@ -77,3 +77,17 @@ def client():
     from fastapi.testclient import TestClient
     from core.api import app
     return TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def oidc_client_secret(monkeypatch):
+    """Provide a dummy CLIENT_SECRET for tests that instantiate OIDCClient.
+
+    The real OIDCClient class loads the secret at class definition time from
+    KAI_ID_SECRET_FILE / KAI_ID_SECRET env vars.  This fixture ensures tests
+    that call methods on OIDCClient (exchange_code, refresh_token, …) have a
+    non-empty secret so the runtime guard inside those methods does not fire
+    before the code under test is reached.
+    """
+    from core import oidc_client
+    monkeypatch.setattr(oidc_client.OIDCClient, "CLIENT_SECRET", "test-secret-for-oidc")

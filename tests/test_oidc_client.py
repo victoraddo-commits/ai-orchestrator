@@ -89,6 +89,18 @@ class TestExchangeCode:
                 )
         assert "vault_unreachable" in str(exc_info.value)
 
+    def test_exchange_code_state_mismatch_raises(self):
+        """state != saved_state raises OIDCError with state_mismatch."""
+        client = OIDCClient()
+        with mock.patch.object(client, "_post"):
+            with pytest.raises(OIDCError) as exc_info:
+                client.exchange_code(
+                    code="any-code",
+                    state="one-state",
+                    saved_state="different-state",
+                )
+            assert "state_mismatch" in str(exc_info.value)
+
 
 class TestRoleMapping:
     def test_role_mapping_defined(self):
@@ -122,3 +134,57 @@ class TestStateStorage:
         assert not errors, f"Thread errors: {errors}"
         assert len(results) == 10
         assert len(set(results)) == 10, "States must be unique"
+
+
+class TestValidateState:
+    def test_validate_state_one_use(self):
+        """validate_state returns True the first time, False the second (one-use)."""
+        client = OIDCClient()
+        _, state = client.get_authorization_url()
+
+        assert client.validate_state(state) is True
+        assert client.validate_state(state) is False  # consumed — replay blocked
+
+
+class TestRefreshToken:
+    def test_refresh_token_returns_user_info(self):
+        """Mock POST returns user dict; refresh_token returns same shape as exchange_code."""
+        client = OIDCClient()
+
+        with mock.patch.object(client, "_post") as mock_post:
+            mock_post.return_value = {
+                "user_id": "u456",
+                "username": "bob",
+                "role": "admin",
+                "step_up_fresh": True,
+                "issued_at": 1700000001,
+            }
+            result = client.refresh_token(refresh_token="refresh-xyz-789")
+
+        assert result["user"]["id"] == "u456"
+        assert result["user"]["username"] == "bob"
+        assert result["user"]["role"] == "operator"  # admin mapped to operator
+        assert result["step_up_fresh"] is True
+        assert result["issued_at"] == 1700000001
+
+
+class TestAuditEvent:
+    def test_send_audit_event_fires_post_and_swallows_errors(self):
+        """send_audit_event calls _post and never raises, even on error."""
+        client = OIDCClient()
+
+        with mock.patch.object(client, "_post") as mock_post:
+            mock_post.side_effect = OIDCError("boom")
+            # Must not raise
+            client.send_audit_event(
+                action="login",
+                actor_id="u123",
+                actor_type="user",
+                outcome="success",
+                detail={"client_id": "ai-orchestrator"},
+            )
+            mock_post.assert_called_once()
+            call_args = mock_post.call_args
+            assert call_args[0][0] == f"{client.VAULT_URL}/api/v1/audit/event"
+            assert call_args[0][1]["action"] == "login"
+            assert call_args[0][1]["actor_id"] == "u123"

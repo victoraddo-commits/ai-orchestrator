@@ -37,10 +37,11 @@ def get_event_stats():
 
 
 @router.get("/stream")
-def stream_events(
+async def stream_events(
     topic_pattern: Optional[str] = Query(None, description="fnmatch glob pattern to filter topics (e.g. 'orchestrator.*')"),
     source: Optional[str] = Query(None, description="Filter by event source"),
     severity: Optional[str] = Query(None, description="Filter by severity level"),
+    request: Request = None,  # injected by FastAPI for async endpoints
 ):
     """Server-Sent Events (SSE) stream of events matching the given filters.
 
@@ -65,7 +66,13 @@ def stream_events(
         # envelope already contains: topic, payload, source, severity, timestamp, id, journal
         def make_handler():
             def handler(topic: str, envelope: dict):
-                asyncio.create_task(queue.put(envelope))
+                # No async event loop in the publisher thread context,
+                # so use put_nowait instead of create_task (which silently
+                # fails when there is no running loop).
+                try:
+                    queue.put_nowait(envelope)
+                except asyncio.QueueFull:
+                    pass
             return handler
 
         sub_id = event_bus.subscribe(
@@ -89,7 +96,7 @@ def stream_events(
             event_bus.unsubscribe(sub_id)
 
     return StreamingResponse(
-        event_generator,
+        event_generator(None),  # call to get the async generator object
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

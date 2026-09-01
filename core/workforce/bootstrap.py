@@ -19,6 +19,19 @@ _DEV_ONLY_PROVIDERS = {"ox_alpha"}
 AGENT_ROLE_TASK_TYPES = {}  # populated lazily in sync_roles
 
 
+def _destructive_authority_default() -> dict:
+    return {
+        "delete_files": False,
+        "terminate_worker": False,
+        "kill_provider": False,
+        "force_deploy": False,
+        "modify_secrets": False,
+        "network_bridge": False,
+        "data_export": False,
+        "admin_action": False,
+    }
+
+
 def _slug(name: str) -> str:
     return name.strip().lower().replace("-", "_")
 
@@ -86,6 +99,10 @@ def sync_providers() -> int:
             temporary=is_dev,
             metadata={"cost_tier": meta.get("cost_tier", "unknown"),
                       "description": meta.get("description", "")[:120]},
+            tools=[],
+            data_scope=["provider-apis"],
+            vault_scope=[] if is_dev else [f"ai-orchestrator/providers/{_slug(name)}"],
+            destructive_authority=_destructive_authority_default(),
         ))
         count += 1
     return count
@@ -103,6 +120,10 @@ def sync_pool_slots(max_concurrent: int) -> int:
                          "filesystem": ["sandbox"]},
             limits={"max_concurrency": 1, "timeout_seconds": 2400},
             metadata={"slot": i},
+            tools=[],
+            data_scope=["sandbox"],
+            vault_scope=[],
+            destructive_authority=_destructive_authority_default(),
         ))
         count += 1
     return count
@@ -125,6 +146,10 @@ def sync_roles() -> int:
                          "filesystem": []},
             limits={"max_concurrency": 4, "timeout_seconds": 600},
             metadata={},
+            tools=[],
+            data_scope=["internal"],
+            vault_scope=[],
+            destructive_authority=_destructive_authority_default(),
         ))
         count += 1
     return count
@@ -155,6 +180,10 @@ def sync_local_models() -> int:
                          "filesystem": []},
             limits={"max_concurrency": 2, "timeout_seconds": 300},
             metadata={"endpoint": host, "size_bytes": model.get("size")},
+            tools=[],
+            data_scope=["local-only"],
+            vault_scope=[],
+            destructive_authority=_destructive_authority_default(),
         ))
         count += 1
     return count

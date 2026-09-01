@@ -69,10 +69,22 @@ def save_graph(graph: dict) -> None:
     shutil.copy(str(graph_file), str(bak_file))
 
 def update_graph(mutate_fn) -> dict:
-    """Atomic read-modify-write via caller-provided mutate function."""
+    """Atomic read-modify-write via caller-provided mutate function.
+
+    Uses flock to prevent concurrent writes from racing (e.g. the Telegram
+    poller and the orchestrator cycle both touching the graph simultaneously).
+    """
+    import fcntl
+    graph_file = _get_graph_file()
+    lock_file = graph_file.with_suffix(graph_file.suffix + ".lock")
     graph = load_graph()
     result = mutate_fn(graph)
-    save_graph(graph)
+    with open(lock_file, "w") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            save_graph(graph)
+        finally:
+            fcntl.flock(lf, fcntl.LOCK_UN)
     return result
 
 # ── Entity operations ─────────────────────────────────────────────────────────

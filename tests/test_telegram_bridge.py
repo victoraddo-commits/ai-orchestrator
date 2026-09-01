@@ -53,6 +53,10 @@ def _make_updates(*messages):
         if msg.get("reply_to") is not None:
             message["reply_to_message"] = {"message_id": msg["reply_to"]}
 
+        # Voice messages carry audio metadata instead of text.
+        if msg.get("voice") is not None:
+            message["voice"] = msg["voice"]
+
         updates.append(
             {
                 "update_id": msg.get("update_id", 1000 + i),
@@ -617,6 +621,33 @@ def test_poll_updates_skips_empty_text_messages(monkeypatch):
     messages = tb.poll_updates(token="test-token", chat_id="612786480")
 
     assert messages == []
+
+
+def test_poll_updates_detects_voice_message(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+    tb.reset_offset()
+
+    monkeypatch.setattr(
+        tb.requests, "get",
+        lambda url, params=None, timeout=None: _make_updates(
+            {
+                "voice": {
+                    "file_id": "AwICAgIC8gAmb",
+                    "duration": 5,
+                    "mime_type": "audio/ogg",
+                }
+            },
+        ),
+    )
+
+    messages = tb.poll_updates(token="test-token", chat_id="612786480")
+
+    assert len(messages) == 1
+    assert messages[0]["text"] == ""
+    assert "voice" in messages[0]
+    assert messages[0]["voice"]["file_id"] == "AwICAgIC8gAmb"
+    assert messages[0]["voice"]["duration"] == 5
+    assert messages[0]["voice"]["mime_type"] == "audio/ogg"
 
 
 def test_poll_updates_respects_last_offset(monkeypatch):

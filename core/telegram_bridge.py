@@ -276,29 +276,37 @@ def poll_updates(token=None, chat_id=None, poll_timeout=0):
             continue
 
         text = (msg.get("text") or "").strip()
+        voice = msg.get("voice")
 
-        if not text:
+        if not text and not voice:
             continue
 
-        messages.append(
-            {
-                "update_id": update_id,
-                "chat_id": msg_chat_id,
-                "text": text,
-                # 2026-08-02: present only when the operator used Telegram's
-                # native reply-to (long-press/swipe to quote a message).
-                # route_inbound_reply uses it to resolve exactly which build
-                # a reply targets when several are pending at once.
-                "reply_to_message_id": (msg.get("reply_to_message") or {}).get(
-                    "message_id"
-                ),
-                "from": {
-                    "id": str((msg.get("from") or {}).get("id", "")),
-                    "username": (msg.get("from") or {}).get("username", ""),
-                    "first_name": (msg.get("from") or {}).get("first_name", ""),
-                },
+        msg_dict = {
+            "update_id": update_id,
+            "chat_id": msg_chat_id,
+            "text": text,
+            # 2026-08-02: present only when the operator used Telegram's
+            # native reply-to (long-press/swipe to quote a message).
+            # route_inbound_reply uses it to resolve exactly which build
+            # a reply targets when several are pending at once.
+            "reply_to_message_id": (msg.get("reply_to_message") or {}).get(
+                "message_id"
+            ),
+            "from": {
+                "id": str((msg.get("from") or {}).get("id", "")),
+                "username": (msg.get("from") or {}).get("username", ""),
+                "first_name": (msg.get("from") or {}).get("first_name", ""),
+            },
+        }
+
+        if voice:
+            msg_dict["voice"] = {
+                "file_id": voice.get("file_id", ""),
+                "duration": voice.get("duration", 0),
+                "mime_type": voice.get("mime_type", "audio/ogg"),
             }
-        )
+
+        messages.append(msg_dict)
 
     if _last_update_id is not None:
         _save_last_offset(_last_update_id)

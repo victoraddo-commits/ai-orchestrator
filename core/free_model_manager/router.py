@@ -15,6 +15,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from threading import Lock
 
 from . import (
     OMNIROUTE_BASE_URL, OPENROUTER_API_KEY, BACKUP_DIR, MAX_BACKUPS,
@@ -23,6 +24,8 @@ from . import (
 )
 from .models import db
 from .scorer import should_promote, get_pool_ranking
+
+_env_lock = Lock()
 
 
 class RouterError(Exception):
@@ -84,7 +87,10 @@ def backup_current_config() -> str:
         except Exception:
             pass
 
-    backup_path.write_text(json.dumps(config_data, indent=2))
+    tmp = backup_path.with_suffix(f".tmp{os.getpid()}")
+    tmp.write_text(json.dumps(config_data, indent=2))
+    tmp.chmod(0o600)
+    tmp.replace(backup_path)
     db.save_config_snapshot("free_coding", config_data, str(backup_path))
 
     # Cleanup old backups
@@ -204,24 +210,29 @@ def update_kai_config(model_id: str, dry_run: bool = False) -> dict:
         kai_env_path = Path(__file__).parent.parent.parent / ".env"
 
         if kai_env_path.exists():
-            env_content = kai_env_path.read_text()
+            with _env_lock:
+                env_content = kai_env_path.read_text()
 
-            # Check if FREE_CODING_MODEL is already set
-            if "FREE_CODING_MODEL" in env_content:
-                # Update existing
-                lines = env_content.split("\n")
-                new_lines = []
-                for line in lines:
-                    if line.startswith("FREE_CODING_MODEL="):
-                        new_lines.append(f'FREE_CODING_MODEL={model_id}')
-                    else:
-                        new_lines.append(line)
-                env_content = "\n".join(new_lines)
-            else:
-                # Add new
-                env_content += f"\nFREE_CODING_MODEL={model_id}\n"
+                # Check if FREE_CODING_MODEL is already set
+                if "FREE_CODING_MODEL" in env_content:
+                    # Update existing
+                    lines = env_content.split("\n")
+                    new_lines = []
+                    for line in lines:
+                        if line.startswith("FREE_CODING_MODEL="):
+                            new_lines.append(f'FREE_CODING_MODEL={model_id}')
+                        else:
+                            new_lines.append(line)
+                    env_content = "\n".join(new_lines)
+                else:
+                    # Add new
+                    env_content += f"\nFREE_CODING_MODEL={model_id}\n"
 
-            kai_env_path.write_text(env_content)
+                tmp = kai_env_path.with_suffix(f".tmp{os.getpid()}")
+                tmp.write_text(env_content)
+                tmp.chmod(0o600)
+                tmp.replace(kai_env_path)
+
             result["config_updated"] = True
             print(f"[free-model-manager] Updated Kai .env with FREE_CODING_MODEL={model_id}")
 

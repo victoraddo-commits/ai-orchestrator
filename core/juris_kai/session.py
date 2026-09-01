@@ -18,7 +18,7 @@ import os
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
+from threading import RLock
 from typing import Optional
 
 logger = logging.getLogger("juris_kai.session")
@@ -26,7 +26,7 @@ logger = logging.getLogger("juris_kai.session")
 # Session storage — in memory/ directory like all other runtime state
 STORAGE_PATH = Path(__file__).parent.parent.parent / "memory" / "juris_kai_sessions.json"
 MAX_CONVERSATION_HISTORY = 20
-_write_lock = Lock()
+_write_lock = RLock()
 
 
 def _load() -> dict:
@@ -65,41 +65,44 @@ def get_user_session(chat_id: str | int) -> dict:
       - created_at: str — ISO timestamp
       - updated_at: str — ISO timestamp
     """
-    sessions = _load()
-    key = str(chat_id)
+    with _write_lock:
+        sessions = _load()
+        key = str(chat_id)
 
-    if key not in sessions:
-        now = datetime.now(timezone.utc).isoformat()
-        sessions[key] = {
-            "topics_studied": [],
-            "quiz_scores": {},
-            "weak_areas": [],
-            "conversation_history": [],
-            "current_menu": None,
-            "document_sessions": {},
-            "preferences": {"language": "en", "learning_level": "beginner"},
-            "created_at": now,
-            "updated_at": now,
-        }
-        _save(sessions)
+        if key not in sessions:
+            now = datetime.now(timezone.utc).isoformat()
+            sessions[key] = {
+                "topics_studied": [],
+                "quiz_scores": {},
+                "weak_areas": [],
+                "conversation_history": [],
+                "current_menu": None,
+                "document_sessions": {},
+                "preferences": {"language": "en", "learning_level": "beginner"},
+                "created_at": now,
+                "updated_at": now,
+            }
+            _save(sessions)
 
-    return sessions[key]
+        return sessions[key]
 
 
 def update_session(chat_id: str | int, **kwargs) -> dict:
     """Update session fields and persist. Returns the updated session."""
-    sessions = _load()
-    key = str(chat_id)
+    with _write_lock:
+        sessions = _load()
+        key = str(chat_id)
 
-    if key not in sessions:
-        session = get_user_session(chat_id)
-        sessions = _load()  # reload after get_user_session created it
+        if key not in sessions:
+            # Recursive call — safe because the lock is re-entrant (threading.RLock)
+            session = get_user_session(chat_id)
+            sessions = _load()
 
-    session = sessions[key]
-    session.update(kwargs)
-    session["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _save(sessions)
-    return session
+        session = sessions[key]
+        session.update(kwargs)
+        session["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _save(sessions)
+        return session
 
 
 def record_topic_studied(chat_id: str | int, topic: str) -> None:

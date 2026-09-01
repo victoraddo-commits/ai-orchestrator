@@ -19,6 +19,7 @@ phases all run on DeepSeek concurrently.
 import threading
 import time
 import queue
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional, Callable
@@ -27,7 +28,6 @@ from typing import Optional, Callable
 import core.ai.ai_router as ai_router
 import core.telegram_bridge as telegram_bridge
 from core.logger import info as _log
-from core.memory import save as _memory_save
 
 
 # --- Configuration ---
@@ -38,12 +38,6 @@ DEFAULT_WORKERS = 8
 
 # How long a worker waits for a new task before the pool considers it idle.
 IDLE_POLL_SECONDS = 2.0
-
-# Results are persisted to memory/ for dashboard/audit visibility.
-RESULTS_FILE = "deepseek_worker_results.json"
-
-# Maximum result records to retain in the results file.
-MAX_RESULTS = 200
 
 
 # --- Data types ---
@@ -152,7 +146,6 @@ class DeepSeekWorkerPool:
 
     def submit(self, task_type: str, prompt: str, build_id: Optional[str] = None, build_name: Optional[str] = None) -> str:
         """Enqueue a task. Returns task_id for tracking."""
-        import uuid
         task_id = f"ds-{uuid.uuid4().hex[:8]}"
         task = WorkerTask(
             task_id=task_id,
@@ -178,23 +171,6 @@ class DeepSeekWorkerPool:
                 "failed": self._failed_count,
                 "uptime_seconds": None,  # TODO
             }
-
-    def recent_results(self, limit: int = 10) -> list[dict]:
-        """Return the most recent completed results."""
-        with self._lock:
-            recent = self._results[-limit:]
-        return [
-            {
-                "task_id": r.task_id,
-                "task_type": r.task_type,
-                "provider": r.provider,
-                "success": r.success,
-                "error": r.error,
-                "duration_ms": r.duration_ms,
-                "completed_at": r.completed_at,
-            }
-            for r in recent
-        ]
 
     # --- Internals ---
 
@@ -235,8 +211,8 @@ class DeepSeekWorkerPool:
             if self.on_result:
                 try:
                     self.on_result(result)
-                except Exception:
-                    pass
+                except Exception as e:
+                    _log(f"DeepSeek pool: on_result callback raised: {type(e).__name__}: {e}")
 
             self._queue.task_done()
 
@@ -333,29 +309,8 @@ class DeepSeekWorkerPool:
                 f"Duration: {result.duration_ms}ms",
                 chat_id=self._telegram_chat_id,
             )
-        except Exception:
-            pass
-
-    def _persist_results(self):
-        """Save recent results to memory/ for dashboard visibility."""
-        try:
-            with self._lock:
-                records = [
-                    {
-                        "task_id": r.task_id,
-                        "task_type": r.task_type,
-                        "provider": r.provider,
-                        "success": r.success,
-                        "response": r.response,
-                        "error": r.error,
-                        "duration_ms": r.duration_ms,
-                        "completed_at": r.completed_at,
-                    }
-                    for r in self._results[-MAX_RESULTS:]
-                ]
-            _memory_save(RESULTS_FILE, {"records": records, "updated_at": datetime.now(timezone.utc).isoformat()})
-        except Exception:
-            pass
+        except Exception as e:
+            _log(f"DeepSeek pool: failed to send Telegram failure notification: {type(e).__name__}")
 
 
 # Sentinel to wake idle workers for graceful shutdown.

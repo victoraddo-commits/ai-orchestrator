@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
 
+_logger = logging.getLogger("kai.audit")
+
 logger = logging.getLogger("kai.audit")
 
 # ---------------------------------------------------------------------------
@@ -287,3 +289,43 @@ def verify_log_integrity() -> Dict[str, Any]:
         return {"total": total, "valid": valid, "invalid": invalid, "error": str(e)}
 
     return {"total": total, "valid": valid, "invalid": invalid}
+
+
+# ---------------------------------------------------------------------------
+# Event Bus Integration
+# ---------------------------------------------------------------------------
+
+def _register_event_bus_subscription():
+    """Subscribe to external audit events from the event bus."""
+    from core.kai_event_bus import event_bus
+    event_bus.subscribe("audit.critical.*", _handle_external_audit_event)
+    _logger.info("Registered event bus subscription for audit.critical.*")
+
+
+def _handle_external_audit_event(topic: str, envelope: dict):
+    """Handle audit events published by other modules to the event bus."""
+    payload = envelope["payload"]
+    log_audit_event(
+        event_type="external_audit",
+        operator=payload.get("operator", "unknown"),
+        endpoint=topic,
+        method="EVENT",
+        status_code=200,
+        details={
+            "source": envelope.get("source", "unknown"),
+            "resource": payload.get("resource", ""),
+            "result": payload.get("result", "unknown"),
+            "ip": payload.get("ip", "unknown"),
+            "details": payload.get("details", {}),
+            "trace_id": payload.get("trace_id", ""),
+        },
+        client_ip=payload.get("ip", "unknown"),
+        trace_id=payload.get("trace_id", None),
+    )
+
+
+# Auto-register when module is imported (after functions are defined)
+try:
+    _register_event_bus_subscription()
+except Exception as exc:
+    _logger.warning("Could not register event bus subscription: %s", exc)

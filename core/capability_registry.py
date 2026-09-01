@@ -279,6 +279,26 @@ class CapabilityRegistry:
 
         self._record_health_event(cap_id, new_status, old_status)
 
+        # Publish event bus notification when status changes
+        if old_status != new_status:
+            from core.kai_event_bus import event_bus, IMPORTANT
+            severity = "critical" if new_status == "down" else "important"
+            event_bus.publish(
+                f"capability.health.{cap_id}",
+                {
+                    "capability_id": cap_id,
+                    "old_status": old_status,
+                    "new_status": new_status,
+                    "implementations": [
+                        {"service_id": i["service_id"], "health": i.get("health", "unknown")}
+                        for i in cap.get("implementations", [])
+                    ],
+                },
+                source="capability_registry",
+                severity=severity,
+                journal=True,
+            )
+
     # ------------------------------------------------------------------
     # Startup / discovery
     # ------------------------------------------------------------------

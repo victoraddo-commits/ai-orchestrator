@@ -129,6 +129,9 @@ async def lifespan(app: FastAPI):
     from core.service_registry import ServiceRegistry
     reg = ServiceRegistry.get_instance()
     reg.start()
+    from core.capability_registry import CapabilityRegistry
+    cap_reg = CapabilityRegistry.get_instance()
+    cap_reg.start()
     yield
 
 
@@ -198,6 +201,10 @@ app.include_router(kai_app_router)
 # Service Registry — service discovery, health, and lifecycle routes
 from core.service_registry_routes import router as service_registry_router
 app.include_router(service_registry_router)
+
+# Capability Registry — capability catalog with health aggregation and auto-discovery
+from core.capability_registry_routes import router as capability_registry_router
+app.include_router(capability_registry_router)
 
 # Phase 18A-ai: Kai OIDC auth routes — vault SSO callback, step-up, userinfo, logout
 from core.auth_kai_routes import router as auth_kai_router

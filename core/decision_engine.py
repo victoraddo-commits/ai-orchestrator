@@ -181,12 +181,15 @@ def evaluate_incidents():
     if not incidents:
         return []
 
+    # Skip resolved incidents — they no longer need remediation decisions.
+    open_incidents = [i for i in incidents if i.get("status") != "resolved"]
+
     decisions = load_decisions()
     requests = load_requests()
 
     made = []
 
-    for incident in incidents:
+    for incident in open_incidents:
 
         analysis = analyze_incident(incident, related_incidents=incidents)
 

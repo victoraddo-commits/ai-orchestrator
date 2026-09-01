@@ -77,13 +77,48 @@ def _sync_workforce():
 
 
 def _safe_run_ecosystem_discovery():
-    """Ecosystem graph discovery — guarded so discovery errors never break the cycle."""
+    """Ecosystem graph discovery — guarded so discovery errors never break the cycle.
+
+    Merges new discovery results with the existing graph rather than replacing it,
+    so manually-edited entity fields (description, status, notes, etc.) are preserved
+    across cycles. Deltas are detected and published as events.
+    """
     try:
         from core.ecosystem_discovery import build_initial_graph
-        from core.ecosystem_graph import save_graph
-        graph = build_initial_graph()
-        save_graph(graph)
-        info(f"ecosystem_discovery: discovered {len(graph.get('entities', []))} entities")
+        from core.ecosystem_graph import load_graph, save_graph, detect_changes
+
+        old_graph = load_graph()
+        new_discovery = build_initial_graph()
+
+        # Merge: existing entities are preserved (manual edits kept);
+        # only truly new entities are added from discovery.
+        merged = dict(old_graph)
+        old_entities = old_graph.get("entities", {})
+        new_entities = new_discovery.get("entities", {})
+
+        added_entities = {}
+        for entity_id, entity in new_entities.items():
+            if entity_id not in old_entities:
+                added_entities[entity_id] = entity
+
+        # Apply new discovery data to existing entities too (type/status/path may have
+        # been corrected), but preserve manually-added fields (notes, description, etc.)
+        # by only overwriting fields that come from discovery (type, status, path).
+        for entity_id, new_entity in new_entities.items():
+            if entity_id in old_entities:
+                old_entities[entity_id].update({
+                    k: v for k, v in new_entity.items()
+                    if k in ("type", "status", "path", "name", "description", "docker_name", "docker_status")
+                })
+        merged["capabilities"] = new_discovery.get("capabilities", {})
+        merged["relationships"] = new_discovery.get("relationships", [])
+
+        changes = detect_changes(old_graph, merged)
+
+        save_graph(merged)
+        added = len(added_entities)
+        info(f"ecosystem_discovery: discovered {len(new_entities)} entities, "
+             f"{added} new added to graph")
         return True
     except Exception as error:
         info(f"ecosystem_discovery failed: {type(error).__name__}: {error}")

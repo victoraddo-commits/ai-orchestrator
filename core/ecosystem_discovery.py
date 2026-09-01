@@ -55,11 +55,17 @@ def _classify_module(path: Path) -> dict | None:
         else:
             etype = "application"
             canonical = False
-    elif name in ("ai-orchestrator", "ai-orchestrator-plugin"):
+    elif name == "ai-orchestrator":
         etype = "agent"
         canonical = False
-    elif name in ("it-manager", "talent", "proxdash", "susu", "deerude-theme", "claudecodeui"):
+    elif name == "ai-orchestrator-plugin":
+        etype = "plugin"
+        canonical = False
+    elif name in ("it-manager", "talent", "proxdash", "susu", "deerude-theme", "claudecodeui", "hr-app-design"):
         etype = "application"
+        canonical = False
+    elif name == "telegra-approval-responder":
+        etype = "bot"
         canonical = False
     else:
         etype = "unknown"

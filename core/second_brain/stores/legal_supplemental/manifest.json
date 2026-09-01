@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "store_name": "legal_supplemental",
+  "memory_types": [],
+  "merge_policy": "SOURCE_AUTHORITY",
+  "description": "Passthrough to core/legal_brain/ — not modified in Phase 5"
+}

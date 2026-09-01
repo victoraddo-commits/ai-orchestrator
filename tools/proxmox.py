@@ -81,19 +81,23 @@ def status():
 
 
 def status_b():
-    """Proxmox B status via the proxmox-b-tunnel SSH tunnel (localhost:8007).
+    """Proxmox B status via direct LAN (192.168.1.109:8006).
 
     Uses PROXMOX_B_TOKEN_ID + PROXMOX_B_TOKEN_SECRET (or falls back to
     PROXMOX_B_TOKEN env var) for authentication.
     """
     token_id = os.getenv("PROXMOX_B_TOKEN_ID", "")
     token_secret = os.getenv("PROXMOX_B_TOKEN_SECRET", os.getenv("PROXMOX_B_TOKEN", ""))
+    # Direct LAN — no SSH tunnel needed
+    host = os.getenv("PROXMOX_B_HOST", "192.168.1.109")
+    port = os.getenv("PROXMOX_B_PORT", "8006")
+    endpoint = f"{host}:{port}"
     return {
-        "node": get_node_status(host="localhost:8007", token_id=token_id, token_secret=token_secret),
-        "lxc": get_lxc(host="localhost:8007", token_id=token_id, token_secret=token_secret),
-        "qemu": get_qemu(host="localhost:8007", token_id=token_id, token_secret=token_secret),
-        "tasks": get_tasks(host="localhost:8007", token_id=token_id, token_secret=token_secret),
-        "network": get_network(host="localhost:8007", token_id=token_id, token_secret=token_secret)
+        "node": get_node_status(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "lxc": get_lxc(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "qemu": get_qemu(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "tasks": get_tasks(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "network": get_network(host=endpoint, token_id=token_id, token_secret=token_secret)
     }
 
 

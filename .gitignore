@@ -41,3 +41,6 @@ kai_betting.db
 cert.pem
 key.pem
 *.pem
+
+# Vault OIDC client secret
+.vault_oidc_client_secret

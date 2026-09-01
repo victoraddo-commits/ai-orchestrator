@@ -174,6 +174,18 @@ def authenticate(username: str, password: str, client_ip: str = "127.0.0.1") -> 
     return token
 
 
+def _map_vault_role_to_orch_role(vault_role: str) -> str:
+    """Map vault SSO role to orchestrator role.
+
+    Vault admin/operator → orchestrator operator (full capabilities)
+    Vault auditor → orchestrator viewer (read-only)
+    Unknown role → viewer (safe default)
+    """
+    if vault_role in ("admin", "operator"):
+        return "operator"
+    return "viewer"
+
+
 def _resolve_session(token: str) -> dict | None:
     """Resolve a session token (JWT or legacy random token).
 
@@ -184,9 +196,16 @@ def _resolve_session(token: str) -> dict | None:
     # Try JWT verification first
     claims = verify_jwt(token)
     if claims is not None:
+        # Check for vault_role claim (Phase 3 SSO integration)
+        # The vault_role claim is trusted — it was set by this orchestrator's
+        # own /auth/kai/callback after vault verified the operator's passkey.
+        role = claims.get("role", "viewer")
+        vault_role = claims.get("vault_role")
+        if vault_role:
+            role = _map_vault_role_to_orch_role(vault_role)
         return {
             "username": claims.get("sub", ""),
-            "role": claims.get("role", "viewer"),
+            "role": role,
             "created": datetime.fromtimestamp(claims.get("iat", 0), tz=timezone.utc).isoformat(),
         }
 

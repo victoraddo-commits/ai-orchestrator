@@ -6,6 +6,11 @@ from pathlib import Path
 from core.service_registry import ServiceRegistry
 
 
+def auth_headers():
+    import core.api as api_module
+    return {"Authorization": f"Bearer {api_module._load_api_token()}"}
+
+
 @pytest.fixture
 def isolated_registry(tmp_path, monkeypatch):
     """Point registry at a temp dir so tests never touch production memory."""
@@ -105,14 +110,12 @@ def test_seed_from_ecosystem_graph(tmp_path, monkeypatch):
     graph_path = tmp_path / "kai-ecosystem-graph.json"
     graph_path.write_text(json.dumps({
         "entities": {
-            "services": {
-                "service-test-graph": {
-                    "entity_id": "service-test-graph",
-                    "type": "python-service",
-                    "name": "Test From Graph",
-                    "port": 9001,
-                    "host": "test-host",
-                }
+            "service-test-graph": {
+                "entity_id": "service-test-graph",
+                "type": "python-service",
+                "name": "Test From Graph",
+                "port": 9001,
+                "host": "test-host",
             }
         }
     }))
@@ -289,7 +292,7 @@ def test_api_register_service(isolated_registry, client, monkeypatch):
         "type": "python-service",
         "status": "unknown",
         "source": "manual",
-    })
+    }, headers=auth_headers())
     assert response.status_code == 200
     assert isolated_registry.get_service("service-new") is not None
 
@@ -306,6 +309,6 @@ def test_api_delete_service(isolated_registry, client, monkeypatch):
     })
     isolated_registry.save()
 
-    response = client.delete("/kai/services/service-to-delete")
+    response = client.delete("/kai/services/service-to-delete", headers=auth_headers())
     assert response.status_code == 200
     assert isolated_registry.get_service("service-to-delete") is None

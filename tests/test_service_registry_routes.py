@@ -217,14 +217,12 @@ def test_seed_from_ecosystem_graph_via_discover(isolated_registry_client, isolat
     graph_path = tmp_path / "kai-ecosystem-graph.json"
     graph_data = {
         "entities": {
-            "services": {
-                "svc-graph-seed": {
-                    "entity_id": "svc-graph-seed",
-                    "name": "Graph Seeded",
-                    "type": "python-service",
-                    "port": 9001,
-                    "host": "test-host",
-                }
+            "svc-graph-seed": {
+                "entity_id": "svc-graph-seed",
+                "name": "Graph Seeded",
+                "type": "python-service",
+                "port": 9001,
+                "host": "test-host",
             }
         }
     }

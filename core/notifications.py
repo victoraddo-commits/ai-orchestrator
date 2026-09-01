@@ -153,6 +153,68 @@ def _load_notifications() -> list[dict]:
 class NotificationManager:
     """Stateless notification engine — all state lives in memory/notifications.json."""
 
+    # ---------------------------------------------------------------------------
+    # Event bus integration
+    # ---------------------------------------------------------------------------
+
+    @staticmethod
+    def get_instance() -> "NotificationManager":
+        """Return the shared NotificationManager instance."""
+        return NotificationManager()
+
+    def register_event_subscriptions(self):
+        """Subscribe to event bus topics. Call once after bus.start()."""
+        from core.kai_event_bus import event_bus
+        event_bus.subscribe("service.down.*", self._handle_service_event)
+        event_bus.subscribe("capability.health.*", self._handle_capability_event)
+        event_bus.subscribe("build.failed", self._handle_build_event)
+        event_bus.subscribe("remediation.*", self._handle_remediation_event)
+        logger.info("Registered event bus subscriptions")
+
+    def _handle_service_event(self, topic: str, envelope: dict):
+        payload = envelope["payload"]
+        svc_id = payload.get("service_id", topic.split(".")[-1])
+        self.enqueue(
+            severity=CRITICAL,
+            title=f"Service down: {svc_id}",
+            body=payload.get("message", f"Service {svc_id} is down"),
+            source="event_bus",
+        )
+
+    def _handle_capability_event(self, topic: str, envelope: dict):
+        payload = envelope["payload"]
+        cap_id = payload.get("capability_id", "unknown")
+        new_status = payload.get("new_status", "unknown")
+        if new_status == "degraded":
+            self.enqueue(
+                severity=IMPORTANT,
+                title=f"Capability degraded: {cap_id}",
+                body=f"{cap_id} is degraded",
+                source="event_bus",
+            )
+
+    def _handle_build_event(self, topic: str, envelope: dict):
+        payload = envelope["payload"]
+        self.enqueue(
+            severity=IMPORTANT,
+            title=f"Build failed: {payload.get('build_id', 'unknown')}",
+            body=payload.get("error", "Build failed"),
+            source="event_bus",
+        )
+
+    def _handle_remediation_event(self, topic: str, envelope: dict):
+        payload = envelope["payload"]
+        self.enqueue(
+            severity=CRITICAL,
+            title=f"Remediation: {payload.get('remediation_id', topic)}",
+            body=payload.get("message", str(payload)),
+            source="event_bus",
+        )
+
+    # ---------------------------------------------------------------------------
+    # Public API (enqueue et al.)
+    # ---------------------------------------------------------------------------
+
     @staticmethod
     def enqueue(
         severity: str,

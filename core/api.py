@@ -134,6 +134,9 @@ async def lifespan(app: FastAPI):
     cap_reg.start()
     from core.kai_event_bus import event_bus
     event_bus.start()
+    from core.notifications import NotificationManager
+    nm = NotificationManager.get_instance()
+    nm.register_event_subscriptions()
     yield
 
 

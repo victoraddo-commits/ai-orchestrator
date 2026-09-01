@@ -96,21 +96,27 @@ def _safe_run_ecosystem_discovery():
         old_entities = old_graph.get("entities", {})
         new_entities = new_discovery.get("entities", {})
 
+        # Build a NEW merged entities dict so old_graph stays unmodified —
+        # detect_changes() compares old_graph vs merged, so mutation would
+        # make both identical and always report zero changes.
+        merged_entities: dict = dict(old_entities)
+
         added_entities = {}
         for entity_id, entity in new_entities.items():
             if entity_id not in old_entities:
+                merged_entities[entity_id] = entity
                 added_entities[entity_id] = entity
-
-        # Apply new discovery data to existing entities too (type/status/path may have
-        # been corrected), but preserve manually-added fields (notes, description, etc.)
-        # by only overwriting fields that come from discovery (type, status, path, canonical_owner).
-        for entity_id, new_entity in new_entities.items():
-            if entity_id in old_entities:
-                old_entities[entity_id].update({
+            else:
+                # Apply new discovery data to existing entities too (type/status/path
+                # may have been corrected), but preserve manually-added fields
+                # (notes, description, etc.) by only overwriting discovery fields.
+                merged_entities[entity_id] = {**old_entities[entity_id], **{
                     k: v for k, v in new_entity.items()
                     if k in ("type", "status", "path", "name", "description",
                              "docker_name", "docker_status", "canonical_owner")
-                })
+                }}
+
+        merged["entities"] = merged_entities
         merged["capabilities"] = new_discovery.get("capabilities", {})
         merged["relationships"] = new_discovery.get("relationships", [])
 

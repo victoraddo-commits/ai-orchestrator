@@ -58,3 +58,47 @@ def test_no_capable_worker_error_type():
     from core.ai.ai_router import AllProvidersFailed
     assert isinstance(err, AllProvidersFailed)
     assert err.attempts == [{"provider": "x"}]
+
+
+def test_check_operation_unknown_op_passes_through():
+    """Operations not in DESTRUCTIVE_OPERATIONS return None (forward compat)."""
+    _reset(**{"provider:t1": {}})
+    assert gate.check_operation("t1", "not_a_real_operation") is None
+
+
+def test_check_operation_registered_worker_without_authority_denied():
+    """A registered worker without the destructive flag is denied."""
+    _reset(**{"provider:t2": {}})
+    denial = gate.check_operation("t2", "delete_files")
+    assert denial is not None
+    assert "delete_files" in denial
+
+
+def test_check_operation_worker_with_authority_allowed():
+    """A worker with destructive_authority.delete_files=True is allowed."""
+    _reset(**{"provider:t3": {
+        "destructive_authority": {
+            "delete_files": True,
+            "terminate_worker": False,
+            "kill_provider": False,
+            "force_deploy": False,
+            "modify_secrets": False,
+            "network_bridge": False,
+            "data_export": False,
+            "admin_action": False,
+        }
+    }})
+    assert gate.check_operation("t3", "delete_files") is None
+    assert gate.check_operation("t3", "terminate_worker") is not None  # not granted
+
+
+def test_check_operation_unregistered_worker_passes():
+    """Backward compat: unregistered workers pass through check_operation."""
+    assert gate.check_operation("never_seen", "delete_files") is None
+
+
+def test_check_operation_audits_denial():
+    """Denied operations write to the audit log."""
+    _reset(**{"provider:t4": {}})
+    result = gate.check_operation("t4", "force_deploy")
+    assert result is not None

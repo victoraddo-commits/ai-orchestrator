@@ -7,6 +7,7 @@ from typing import Optional
 
 from core.authz import _require_write_capability
 from core.capability_registry import CapabilityRegistry
+from core.kai_event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/kai/capabilities", tags=["kai", "capabilities"])
@@ -85,6 +86,7 @@ def register_capability(body: dict):
     reg = get_registry()
     reg.upsert_capability(cap_id, body)
     reg.save()
+    event_bus.publish("capability.registered", {"capability_id": cap_id}, source="capability_registry")
     return _ok(reg.get_capability(cap_id))
 
 
@@ -97,6 +99,7 @@ def update_capability(cap_id: str, body: dict):
         raise HTTPException(status_code=404, detail=f"Capability '{cap_id}' not found")
     reg.upsert_capability(cap_id, body)
     reg.save()
+    event_bus.publish("capability.updated", {"capability_id": cap_id}, source="capability_registry")
     return _ok(reg.get_capability(cap_id))
 
 
@@ -107,6 +110,7 @@ def deregister_capability(cap_id: str):
     if not reg.delete_capability(cap_id):
         raise HTTPException(status_code=404, detail=f"Capability '{cap_id}' not found")
     reg.save()
+    event_bus.publish("capability.deregistered", {"capability_id": cap_id}, source="capability_registry")
     return _ok({"deleted": True, "capability_id": cap_id})
 
 
@@ -124,6 +128,7 @@ def add_implementation(cap_id: str, body: dict):
     if not success:
         raise HTTPException(status_code=400, detail=f"Invalid role '{role}' (must be primary or secondary)")
     reg.save()
+    event_bus.publish("capability.implementation_added", {"capability_id": cap_id, "service_id": service_id, "role": role}, source="capability_registry")
     return _ok(reg.get_capability(cap_id))
 
 
@@ -136,6 +141,7 @@ def remove_implementation(cap_id: str, service_id: str):
     if not reg.remove_implementation(cap_id, service_id):
         raise HTTPException(status_code=404, detail=f"Implementation '{service_id}' not found on capability '{cap_id}'")
     reg.save()
+    event_bus.publish("capability.implementation_removed", {"capability_id": cap_id, "service_id": service_id}, source="capability_registry")
     return _ok(reg.get_capability(cap_id))
 
 

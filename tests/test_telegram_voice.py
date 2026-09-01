@@ -177,3 +177,77 @@ class TestRouteVoiceMessage:
 
             with pytest.raises(RuntimeError, match="STT failed"):
                 _route_voice_message(message)
+
+
+class TestDownloadFileErrors:
+    """_download_file error paths."""
+
+    @patch("core.telegram_bridge._load_token")
+    @patch("core.telegram_bridge.requests.get")
+    def test_download_file_getfile_returns_not_ok(self, mock_get, mock_token):
+        mock_token.return_value = "test_token"
+        mock_get.return_value = MagicMock(
+            ok=True,
+            raise_for_status=MagicMock,
+            json=lambda: {"ok": False, "description": "File not found"},
+        )
+        from core.telegram_bridge import _download_file
+        with pytest.raises(RuntimeError, match="not ok"):
+            _download_file("bad_file_id")
+
+    @patch("core.telegram_bridge._load_token")
+    @patch("core.telegram_bridge.requests.get")
+    def test_download_file_cdn_fetch_fails(self, mock_get, mock_token):
+        mock_token.return_value = "test_token"
+        mock_get.side_effect = [
+            MagicMock(
+                ok=True, raise_for_status=MagicMock,
+                json=lambda: {"ok": True, "result": {"file_path": "voice/f.ogg"}},
+            ),
+            MagicMock(
+                status_code=500,
+                raise_for_status=MagicMock(side_effect=Exception("cdn error")),
+            ),
+        ]
+        from core.telegram_bridge import _download_file
+        with pytest.raises(RuntimeError, match="download failed|Telegram file download failed"):
+            _download_file("file_id")
+
+
+class TestRouteVoiceMessageErrors:
+    """_route_voice_message error paths."""
+
+    @patch("core.telegram_bridge._download_file")
+    def test_route_voice_message_empty_transcript(self, mock_download):
+        """STT returns ok=True but text is empty string."""
+        mock_download.return_value = b"ogg"
+        with patch("core.voice_router.transcribe") as mock_transcribe:
+            mock_transcribe.return_value = {"ok": True, "text": "   "}
+            from core.telegram_bridge import _route_voice_message
+            message = {"chat_id": "1", "voice": {"file_id": "x"}, "from": {"id": "1"}}
+            with pytest.raises(RuntimeError, match="empty text"):
+                _route_voice_message(message)
+
+    @patch("core.telegram_bridge._download_file")
+    @patch("core.telegram_bridge._import_kai_chat")
+    def test_route_voice_message_tts_failure(self, mock_import, mock_download):
+        """speak returns ok=False."""
+        mock_download.return_value = b"ogg"
+        mock_import.return_value = None
+        with patch("core.api.handle_kai_chat") as mock_chat:
+            mock_chat.return_value = {"response": "hello"}
+            with patch("core.voice_router.transcribe") as mock_transcribe:
+                mock_transcribe.return_value = {"ok": True, "text": "hi"}
+                with patch("core.voice_router.speak") as mock_speak:
+                    mock_speak.return_value = {"ok": False, "error": "no audio"}
+                    from core.telegram_bridge import _route_voice_message
+                    message = {"chat_id": "1", "voice": {"file_id": "x"}, "from": {"id": "1"}}
+                    with pytest.raises(RuntimeError, match="TTS failed"):
+                        _route_voice_message(message)
+
+    def test_route_voice_message_missing_file_id(self):
+        """Voice dict missing file_id raises RuntimeError."""
+        from core.telegram_bridge import _route_voice_message
+        message = {"chat_id": "1", "voice": {}, "from": {"id": "1"}}
+        with pytest.raises(RuntimeError, match="file_id"):
+            _route_voice_message(message)

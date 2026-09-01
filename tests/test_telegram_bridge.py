@@ -1283,3 +1283,119 @@ def test_route_inbound_reply_build_selection_with_same_names(monkeypatch):
     assert "action" not in result  # Should not auto-approve
     assert result["build_id"] == "b2"  # Should indicate build b2 was selected
     assert "waiting for deploy approval" in result["reply"]  # Should prompt for approval
+
+
+# ---------------------------------------------------------------------------
+# _download_file
+# ---------------------------------------------------------------------------
+
+
+def test_download_file_returns_bytes_on_success(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+
+    fake_file_bytes = b"\x00\x01\x02\x03OGG----fake-audio-data"
+
+    def fake_get(url, params=None, timeout=None):
+        # First call: getFile API
+        if "getFile" in url:
+            return _http_resp(
+                json_body={
+                    "ok": True,
+                    "result": {"file_path": "voice/file_001.ogg"},
+                },
+            )
+        # Second call: actual file download from Telegram CDN
+        return _http_resp(
+            status=200,
+            json_body=None,
+        )
+
+    class FakeAudioResp:
+        status_code = 200
+        content = fake_file_bytes
+
+        def raise_for_status(self):
+            pass
+
+    call_count = [0]
+
+    def fake_get_with_content(url, params=None, timeout=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            # getFile API response
+            return _http_resp(
+                json_body={
+                    "ok": True,
+                    "result": {"file_path": "voice/file_001.ogg"},
+                },
+            )
+        else:
+            # File download response
+            resp = FakeAudioResp()
+            return resp
+
+    monkeypatch.setattr(tb.requests, "get", fake_get_with_content)
+
+    result = tb._download_file("AwICAgIC8gAmb", token="test-token")
+
+    assert isinstance(result, bytes)
+    assert result == fake_file_bytes
+
+
+def test_download_file_raises_when_getfile_api_fails(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+
+    def fake_get(url, params=None, timeout=None):
+        return _http_resp(status=500, json_body={})
+
+    monkeypatch.setattr(tb.requests, "get", fake_get)
+
+    with pytest.raises(RuntimeError, match="Telegram getFile failed"):
+        tb._download_file("bad-file-id", token="test-token")
+
+
+def test_download_file_raises_when_getfile_returns_not_ok(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+
+    def fake_get(url, params=None, timeout=None):
+        return _http_resp(json_body={"ok": False, "description": "file not found"})
+
+    monkeypatch.setattr(tb.requests, "get", fake_get)
+
+    with pytest.raises(RuntimeError, match="Telegram getFile not ok"):
+        tb._download_file("bad-file-id", token="test-token")
+
+
+def test_download_file_raises_when_file_path_missing(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+
+    def fake_get(url, params=None, timeout=None):
+        return _http_resp(json_body={"ok": True, "result": {}})
+
+    monkeypatch.setattr(tb.requests, "get", fake_get)
+
+    with pytest.raises(RuntimeError, match="no file_path"):
+        tb._download_file("bad-file-id", token="test-token")
+
+
+def test_download_file_raises_when_cdn_download_fails(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+
+    call_count = [0]
+
+    def fake_get(url, params=None, timeout=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return _http_resp(
+                json_body={
+                    "ok": True,
+                    "result": {"file_path": "voice/file_001.ogg"},
+                },
+            )
+        else:
+            return _http_resp(status=404, json_body={})
+
+    monkeypatch.setattr(tb.requests, "get", fake_get)
+
+    with pytest.raises(RuntimeError, match="Telegram file download failed"):
+        tb._download_file("AwICAgIC8gAmb", token="test-token")

@@ -67,6 +67,51 @@ def _api_url(method, token):
     return f"https://api.telegram.org/bot{token}/{method}"
 
 
+def _download_file(file_id, token=None):
+    """Download a file (voice, audio, photo) from Telegram's file API.
+
+    Returns raw bytes of the file content, or raises RuntimeError.
+    Voice messages from Telegram are in OGG (Opus) format.
+    """
+    if token is None:
+        token = _load_token()
+
+    try:
+        response = requests.get(
+            _api_url("getFile", token),
+            params={"file_id": file_id},
+            timeout=30,
+        )
+        response.raise_for_status()
+        body = response.json()
+    except Exception as error:
+        raise RuntimeError(
+            f"Telegram getFile failed for {file_id}: {type(error).__name__}"
+        ) from error
+
+    if not body.get("ok"):
+        raise RuntimeError(
+            f"Telegram getFile not ok: {body.get('description', 'unknown')}"
+        )
+
+    result = body.get("result", {})
+    file_path = result.get("file_path")
+    if not file_path:
+        raise RuntimeError(f"Telegram getFile: no file_path in response for {file_id}")
+
+    # Assemble the full download URL from the Telegram CDN
+    file_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
+
+    try:
+        audio_resp = requests.get(file_url, timeout=60)
+        audio_resp.raise_for_status()
+        return audio_resp.content
+    except Exception as error:
+        raise RuntimeError(
+            f"Telegram file download failed for {file_path}: {type(error).__name__}"
+        ) from error
+
+
 # ---------------------------------------------------------------------------
 # Outbound: send a message to the allowed chat
 # ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 """POST /notify — ecosystem alert endpoint (merged from kai-notify)."""
+import os
 import time
 import hashlib
 from typing import Optional
@@ -9,6 +10,34 @@ from pydantic import BaseModel
 from core.telegram_bridge import send_telegram_alert
 
 router = APIRouter(prefix="/notify", tags=["notifications"])
+
+# Authorized bearer tokens for ecosystem services
+# Tokens are stored in environment as comma-separated list OR in a file (one per line)
+# This allows tokens to be updated without code changes
+_AUTHORIZED_TOKENS: set[str] = set()
+
+def _load_tokens() -> set[str]:
+    tokens: set[str] = set()
+    # Load from environment variable (comma-separated)
+    env_val = os.environ.get("KAI_NOTIFY_AUTHORIZED_TOKENS", "")
+    if env_val:
+        tokens.update(t.strip() for t in env_val.split(",") if t.strip())
+    # Load from token file (one per line, path configured via env)
+    token_file = os.environ.get("KAI_NOTIFY_TOKENS_FILE", "")
+    if token_file:
+        try:
+            with open(token_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        tokens.add(line)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+    return tokens
+
+_AUTHORIZED_TOKENS = _load_tokens()
 
 # Deduplication window in seconds (matches kai-notify 10min window)
 DEDUP_WINDOW_SECS = 600
@@ -38,9 +67,16 @@ async def notify_event(
     payload: NotifyPayload,
     authorization: str = Header(None),
 ):
-    # Source authentication (bearer token — same pattern as kai-notify)
+    # Bearer token authentication
     if authorization is None:
         raise HTTPException(status_code=401, detail="Missing authorization")
+
+    token = authorization.removeprefix("Bearer ").strip()
+    if not _AUTHORIZED_TOKENS:
+        # No tokens configured — allow all (open mode for initial deployment)
+        pass
+    elif token not in _AUTHORIZED_TOKENS:
+        raise HTTPException(status_code=403, detail="Invalid token")
 
     # Rate limit per source
     if not _check_rate_limit(payload.source):

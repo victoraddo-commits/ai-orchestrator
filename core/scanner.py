@@ -8,8 +8,7 @@ def scan():
 
     inventory = collect()
 
-    # Primary: Proxmox B (all backup jobs run here)
-    # Via proxmox-b-tunnel SSH tunnel → localhost:8007
+    # Primary: Proxmox B (all backup jobs run here) — direct LAN at 192.168.1.109
     proxmox_b = status_b()
 
     report = {

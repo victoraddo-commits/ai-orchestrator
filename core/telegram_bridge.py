@@ -174,6 +174,53 @@ def send_typing(chat_id=None, token=None):
         pass  # typing indicator is a nice-to-have, never block on it
 
 
+def send_voice(audio_bytes, chat_id=None, token=None, duration=None):
+    """Send a voice message (WAV audio) to the allowed chat.
+
+    Telegram accepts WAV for voice messages. The voice_router.speak() returns
+    raw PCM16 16kHz mono bytes; this function wraps them in a WAV container
+    (no external dependencies required).
+    """
+    if token is None:
+        token = _load_token()
+    if chat_id is None:
+        chat_id = ALLOWED_CHAT_ID
+
+    import io
+    import wave as _wave
+
+    # voice_router returns PCM16 16kHz mono — wrap in WAV
+    wav_buffer = io.BytesIO()
+    with _wave.open(wav_buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)  # 16-bit
+        wav.setframerate(16000)
+        wav.writeframes(audio_bytes)
+    wav_buffer.seek(0)
+    wav_bytes = wav_buffer.read()
+
+    try:
+        response = requests.post(
+            _api_url("sendVoice", token),
+            data={"chat_id": chat_id},
+            files={"voice": ("voice.wav", wav_bytes, "audio/wav")},
+            timeout=30,
+        )
+        response.raise_for_status()
+        body = response.json()
+    except Exception as error:
+        raise RuntimeError(
+            f"Telegram sendVoice failed: {type(error).__name__}"
+        ) from error
+
+    if not body.get("ok"):
+        raise RuntimeError(
+            f"Telegram sendVoice returned not ok: {body.get('description', 'unknown')}"
+        )
+
+    return body
+
+
 def send_approval_keyboard(chat_id, build_id, approval_type, token=None):
     """17W: Send a message with inline Approve/Reject buttons for a build
     approval.  Returns the sent message response for tracking."""
@@ -775,6 +822,77 @@ def _build_from_reply_to(message):
     return build
 
 
+def _route_voice_message(message):
+    """Handle a voice message: transcribe → Kai chat → TTS → voice reply.
+
+    Returns a dict with:
+      - routed: True
+      - action: "voice_reply"
+      - reply_text: the Kai-generated text (for logging/debugging)
+      - audio_bytes: raw PCM/WAV bytes of the TTS response
+      - chat_id: destination chat_id
+    Or raises RuntimeError on failure.
+    """
+    voice = message.get("voice", {})
+    file_id = voice.get("file_id")
+    if not file_id:
+        raise RuntimeError("voice message missing file_id")
+
+    # Download the audio
+    audio_bytes = _download_file(file_id)
+
+    # Transcribe via voice_router (local-first, cloud fallback)
+    from core.voice_router import transcribe
+    result = transcribe(audio_bytes, filename="voice.ogg")
+
+    if not result.get("ok"):
+        raise RuntimeError(f"STT failed: {result.get('error', 'unknown')}")
+
+    transcribed_text = result.get("text", "").strip()
+    if not transcribed_text:
+        raise RuntimeError("STT returned empty text")
+
+    # Route to Kai chat (same handler as text messages)
+    from_info = message.get("from", {})
+    operator = _operator_name(from_info)
+
+    _import_kai_chat()
+    try:
+        reply = _handle_kai_chat(transcribed_text, operator)
+    except Exception as exc:
+        raise RuntimeError(f"Kai chat error: {exc}") from exc
+
+    # Extract reply text
+    if reply.get("response") is not None:
+        reply_text = str(reply["response"])
+    elif reply.get("result") is not None:
+        result_data = reply["result"]
+        reply_text = result_data if isinstance(result_data, str) else json.dumps(result_data, indent=2, default=str)
+    elif reply.get("error"):
+        reply_text = str(reply["error"])
+    else:
+        reply_text = str(reply)
+
+    # Synthesize speech via voice_router (local-first, cloud fallback)
+    from core.voice_router import speak
+    tts_result = speak(reply_text)
+
+    if not tts_result.get("ok"):
+        raise RuntimeError(f"TTS failed: {tts_result.get('error', 'unknown')}")
+
+    audio_bytes = tts_result.get("audio")
+    if not audio_bytes:
+        raise RuntimeError("TTS returned no audio")
+
+    return {
+        "routed": True,
+        "action": "voice_reply",
+        "reply_text": reply_text,
+        "audio_bytes": audio_bytes,
+        "chat_id": message.get("chat_id"),
+    }
+
+
 def route_inbound_reply(message, pending_builds=None):
     # 17W: Send typing indicator so the operator sees Kai is working
     chat_id = str((message.get("chat") or {}).get("id", ALLOWED_CHAT_ID))
@@ -828,6 +946,20 @@ def route_inbound_reply(message, pending_builds=None):
         from_info = message.get("from", {})
         operator = _operator_name(from_info)
         text = (message.get("text") or "").strip()
+
+        voice = message.get("voice")
+        if voice:
+            # Voice message path — transcribe, reason, synthesize
+            result = _route_voice_message(message)
+            return {
+                "routed": True,
+                "action": result["action"],
+                "operator": operator,
+                "reply_text": result["reply_text"],
+                "audio_bytes": result["audio_bytes"],
+                "chat_id": result["chat_id"],
+            }
+
         if not text:
             return {"routed": False, "reply": "Empty message."}
 

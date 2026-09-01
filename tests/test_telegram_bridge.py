@@ -1399,3 +1399,74 @@ def test_download_file_raises_when_cdn_download_fails(monkeypatch):
 
     with pytest.raises(RuntimeError, match="Telegram file download failed"):
         tb._download_file("AwICAgIC8gAmb", token="test-token")
+
+
+# ---------------------------------------------------------------------------
+# send_voice
+# ---------------------------------------------------------------------------
+
+def test_send_voice_posts_wav_to_sendvoice_endpoint(monkeypatch):
+    """send_voice must wrap PCM16 16kHz mono bytes in a WAV container and
+    POST it to the sendVoice Telegram endpoint."""
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token-voice")
+
+    import io, wave as _wave
+
+    # Generate a known PCM16 16kHz mono WAV in memory
+    def _make_pcm_wav():
+        buf = io.BytesIO()
+        with _wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\x00\x01\x00\x02" * 160)  # 10ms of audio
+        buf.seek(0)
+        return buf.read()
+
+    pcm_audio = b"\x00\x01\x00\x02" * 160  # raw PCM16
+    wav_bytes = _make_pcm_wav()
+
+    posted = {}
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        posted["url"] = url
+        posted["data"] = data
+        posted["files"] = files
+        return _SEND_OK
+
+    monkeypatch.setattr(tb.requests, "post", fake_post)
+
+    tb.send_voice(pcm_audio, token="test-token-voice", chat_id="612786480")
+
+    assert "/sendVoice" in posted["url"]
+    assert posted["data"]["chat_id"] == "612786480"
+    # The file field must carry a WAV container
+    name, payload, mime = posted["files"]["voice"]
+    assert name == "voice.wav"
+    assert mime == "audio/wav"
+    # WAV header must be present (RIFF)
+    assert payload[:4] == b"RIFF"
+
+
+def test_send_voice_raises_on_api_failure(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+
+    monkeypatch.setattr(
+        tb.requests, "post",
+        lambda *a, **k: _SEND_FAIL,
+    )
+
+    with pytest.raises(RuntimeError, match="sendVoice"):
+        tb.send_voice(b"\x00\x01\x00\x02" * 160, token="test-token", chat_id="612786480")
+
+
+def test_send_voice_raises_when_response_not_ok(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+
+    def fake_post(url, data=None, files=None, timeout=None):
+        return _http_resp(json_body={"ok": False, "description": "chat not found"})
+
+    monkeypatch.setattr(tb.requests, "post", fake_post)
+
+    with pytest.raises(RuntimeError, match="sendVoice returned not ok"):
+        tb.send_voice(b"\x00\x01\x00\x02" * 160, token="test-token", chat_id="612786480")

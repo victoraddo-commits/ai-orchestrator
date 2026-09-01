@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 from core.authz import _require_write_capability
 from core.service_registry import ServiceRegistry
+from core.kai_event_bus import event_bus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/kai/services", tags=["kai", "services"])
@@ -123,6 +124,7 @@ def register_service(payload: dict):
     reg = get_registry()
     payload["source"] = "manual"
     reg.upsert_service(payload)
+    event_bus.publish("service.registered", {"service_id": payload["id"], "name": payload.get("name")}, source="service_registry")
     return _ok({"id": payload["id"], "registered": True})
 
 
@@ -136,6 +138,7 @@ def update_service(service_id: str, payload: dict):
     payload["id"] = service_id
     payload["source"] = existing.get("source", "manual")
     reg.upsert_service(payload)
+    event_bus.publish("service.updated", {"service_id": service_id, "name": payload.get("name")}, source="service_registry")
     return _ok({"id": service_id, "updated": True})
 
 
@@ -146,4 +149,5 @@ def deregister_service(service_id: str):
     if not reg.get_service(service_id):
         raise HTTPException(status_code=404, detail=f"Service '{service_id}' not found")
     reg.delete_service(service_id)
+    event_bus.publish("service.deregistered", {"service_id": service_id}, source="service_registry")
     return _ok({"id": service_id, "deleted": True})

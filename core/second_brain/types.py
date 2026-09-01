@@ -151,7 +151,7 @@ class QueryRequest:
 
     entity: str | None = None
     memory_types: list[MemoryType] | None = None
-    time_range: tuple[str, str] | None = None  # (start_iso, end_iso)
+    time_range: dict[str, str] | None = None  # {"start": ISO, "end": ISO}
     require_confirmation: bool = False
     limit: int = 100
 

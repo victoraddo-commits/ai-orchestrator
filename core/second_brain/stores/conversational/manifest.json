@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "store_name": "conversational",
+  "memory_types": ["CONVERSATION", "WORKING_MEMORY", "SHORT_TERM"],
+  "merge_policy": "NEWEST_WINS",
+  "description": "Chat history, working memory, short-term context"
+}

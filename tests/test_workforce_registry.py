@@ -81,3 +81,70 @@ def test_unknown_worker_get_returns_none():
 
 def test_registry_file_is_workers_json():
     assert REGISTRY_FILE == "workers.json"
+
+
+def test_worker_record_new_fields_have_defaults():
+    """New fields have correct default values."""
+    from core.workforce.registry import WorkerRecord
+    rec = WorkerRecord(
+        worker_id="test:fields",
+        kind="provider",
+        capabilities=["generate"],
+        permissions={"secrets": [], "network": [], "filesystem": []},
+        limits={},
+    )
+    assert rec.tools == []
+    assert rec.data_scope == []
+    assert rec.vault_scope == []
+    assert rec.destructive_authority["delete_files"] is False
+    assert rec.destructive_authority["admin_action"] is False
+    assert len(rec.destructive_authority) == 8
+
+
+def test_worker_record_new_fields_serializable():
+    """New fields round-trip through to_dict/from_dict."""
+    from core.workforce.registry import WorkerRecord
+    rec = WorkerRecord(
+        worker_id="test:serialize",
+        kind="role",
+        capabilities=["planning"],
+        permissions={"secrets": [], "network": [], "filesystem": []},
+        limits={},
+        tools=["bash", "read_file"],
+        data_scope=["logs", "configs"],
+        vault_scope=["kai-betting/"],
+        destructive_authority={"delete_files": True, "terminate_worker": False,
+                              "kill_provider": False, "force_deploy": False,
+                              "modify_secrets": False, "network_bridge": False,
+                              "data_export": False, "admin_action": False},
+    )
+    d = rec.to_dict()
+    assert d["tools"] == ["bash", "read_file"]
+    assert d["data_scope"] == ["logs", "configs"]
+    assert d["vault_scope"] == ["kai-betting/"]
+    assert d["destructive_authority"]["delete_files"] is True
+
+    loaded = WorkerRecord.from_dict(d)
+    assert loaded.tools == ["bash", "read_file"]
+    assert loaded.data_scope == ["logs", "configs"]
+    assert loaded.destructive_authority["delete_files"] is True
+
+
+def test_register_and_get_preserves_new_fields():
+    """New fields survive register/get round-trip."""
+    register(_rec(worker_id="test:roundtrip",
+                  tools=["grep"],
+                  data_scope=["configs"],
+                  vault_scope=["secrets/"],
+                  destructive_authority={"delete_files": False,
+                                        "terminate_worker": False,
+                                        "kill_provider": False,
+                                        "force_deploy": False,
+                                        "modify_secrets": False,
+                                        "network_bridge": False,
+                                        "data_export": False,
+                                        "admin_action": False}))
+    loaded = get("test:roundtrip")
+    assert loaded.tools == ["grep"]
+    assert loaded.data_scope == ["configs"]
+    assert loaded.vault_scope == ["secrets/"]

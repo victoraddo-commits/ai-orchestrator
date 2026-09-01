@@ -6,6 +6,11 @@ import core.service_registry_routes as routes
 from core.service_registry import ServiceRegistry
 
 
+def auth_headers():
+    import core.api as api_module
+    return {"Authorization": f"Bearer {api_module._load_api_token()}"}
+
+
 @pytest.fixture
 def client():
     return TestClient(app)
@@ -40,12 +45,12 @@ def test_register_service(isolated_registry_client):
         "type": "python-service",
         "status": "unknown",
         "source": "manual",
-    })
+    }, headers=auth_headers())
     assert r.status_code == 200
     assert r.json()["ok"] is True
 
 def test_register_service_requires_id(isolated_registry_client):
-    r = isolated_registry_client.post("/kai/services", json={"name": "No ID"})
+    r = isolated_registry_client.post("/kai/services", json={"name": "No ID"}, headers=auth_headers())
     assert r.status_code == 400
 
 def test_update_service(isolated_registry_client, isolated_registry):
@@ -57,7 +62,7 @@ def test_update_service(isolated_registry_client, isolated_registry):
     })
     r = isolated_registry_client.put("/kai/services/svc-to-update", json={
         "name": "Updated",
-    })
+    }, headers=auth_headers())
     assert r.status_code == 200
     assert isolated_registry.get_service("svc-to-update")["name"] == "Updated"
 
@@ -68,7 +73,7 @@ def test_delete_service(isolated_registry_client, isolated_registry):
         "status": "running",
         "source": "manual",
     })
-    r = isolated_registry_client.delete("/kai/services/svc-to-delete")
+    r = isolated_registry_client.delete("/kai/services/svc-to-delete", headers=auth_headers())
     assert r.status_code == 200
     assert isolated_registry.get_service("svc-to-delete") is None
 
@@ -151,7 +156,7 @@ def test_discover_endpoint(isolated_registry_client, isolated_registry, monkeypa
     monkeypatch.setattr(isolated_registry, "discover_ports", fake_ports)
     monkeypatch.setattr(isolated_registry, "discover_proxmox", fake_proxmox)
 
-    r = isolated_registry_client.post("/kai/services/discover")
+    r = isolated_registry_client.post("/kai/services/discover", headers=auth_headers())
     assert r.status_code == 200
     data = r.json()
     assert data["ok"] is True
@@ -174,7 +179,7 @@ def test_full_lifecycle_via_api(isolated_registry_client, isolated_registry, mon
         "type": "python-service",
         "status": "unknown",
         "source": "manual",
-    })
+    }, headers=auth_headers())
     assert r.status_code == 200
     assert r.json()["ok"] is True
 
@@ -186,12 +191,12 @@ def test_full_lifecycle_via_api(isolated_registry_client, isolated_registry, mon
     r = isolated_registry_client.put("/kai/services/lifecycle-test", json={
         "name": "Lifecycle Test Updated",
         "status": "running",
-    })
+    }, headers=auth_headers())
     assert r.status_code == 200
     assert isolated_registry.get_service("lifecycle-test")["name"] == "Lifecycle Test Updated"
 
     # Delete
-    r = isolated_registry_client.delete("/kai/services/lifecycle-test")
+    r = isolated_registry_client.delete("/kai/services/lifecycle-test", headers=auth_headers())
     assert r.status_code == 200
     assert isolated_registry.get_service("lifecycle-test") is None
 
@@ -228,7 +233,7 @@ def test_seed_from_ecosystem_graph_via_discover(isolated_registry_client, isolat
     orig_path = sr.ECOSYSTEM_GRAPH_PATH
     sr.ECOSYSTEM_GRAPH_PATH = graph_path
     try:
-        r = isolated_registry_client.post("/kai/services/discover")
+        r = isolated_registry_client.post("/kai/services/discover", headers=auth_headers())
     finally:
         sr.ECOSYSTEM_GRAPH_PATH = orig_path
 

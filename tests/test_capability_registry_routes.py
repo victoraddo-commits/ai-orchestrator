@@ -4,6 +4,11 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 
+def auth_headers():
+    import core.api as api_module
+    return {"Authorization": f"Bearer {api_module._load_api_token()}"}
+
+
 @pytest.fixture
 def client():
     """Return a TestClient with the global _registry patched to a mock."""
@@ -106,7 +111,7 @@ class TestRegisterCapability:
         tc, mock_reg = client
         saved_cap = {"capability_id": "notifications", "name": "Notifications", "status": "unknown"}
         mock_reg.get_capability.return_value = saved_cap
-        resp = tc.post("/kai/capabilities", json={"capability_id": "notifications", "name": "Notifications"})
+        resp = tc.post("/kai/capabilities", json={"capability_id": "notifications", "name": "Notifications"}, headers=auth_headers())
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
         mock_reg.upsert_capability.assert_called_once()
@@ -114,7 +119,7 @@ class TestRegisterCapability:
 
     def test_missing_capability_id(self, client):
         tc, mock_reg = client
-        resp = tc.post("/kai/capabilities", json={"name": "Notifications"})
+        resp = tc.post("/kai/capabilities", json={"name": "Notifications"}, headers=auth_headers())
         assert resp.status_code == 400
         assert "capability_id" in resp.json()["detail"]
 
@@ -127,14 +132,14 @@ class TestUpdateCapability:
             {"capability_id": "notifications", "status": "unknown"},  # check existence
             updated_cap,  # return after update
         ]
-        resp = tc.put("/kai/capabilities/notifications", json={"status": "healthy"})
+        resp = tc.put("/kai/capabilities/notifications", json={"status": "healthy"}, headers=auth_headers())
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
     def test_not_found(self, client):
         tc, mock_reg = client
         mock_reg.get_capability.return_value = None
-        resp = tc.put("/kai/capabilities/nonexistent", json={"status": "healthy"})
+        resp = tc.put("/kai/capabilities/nonexistent", json={"status": "healthy"}, headers=auth_headers())
         assert resp.status_code == 404
 
 
@@ -142,14 +147,14 @@ class TestDeregisterCapability:
     def test_success(self, client):
         tc, mock_reg = client
         mock_reg.delete_capability.return_value = True
-        resp = tc.delete("/kai/capabilities/notifications")
+        resp = tc.delete("/kai/capabilities/notifications", headers=auth_headers())
         assert resp.status_code == 200
         assert resp.json()["data"]["deleted"] is True
 
     def test_not_found(self, client):
         tc, mock_reg = client
         mock_reg.delete_capability.return_value = False
-        resp = tc.delete("/kai/capabilities/nonexistent")
+        resp = tc.delete("/kai/capabilities/nonexistent", headers=auth_headers())
         assert resp.status_code == 404
 
 
@@ -157,21 +162,21 @@ class TestAddImplementation:
     def test_success(self, client):
         tc, mock_reg = client
         mock_reg.get_capability.return_value = {"capability_id": "notifications", "implementations": []}
-        resp = tc.post("/kai/capabilities/notifications/implementations", json={"service_id": "svc-1", "role": "primary"})
+        resp = tc.post("/kai/capabilities/notifications/implementations", json={"service_id": "svc-1", "role": "primary"}, headers=auth_headers())
         assert resp.status_code == 200
         mock_reg.add_implementation.assert_called_once_with("notifications", "svc-1", role="primary")
         mock_reg.save.assert_called_once()
 
     def test_missing_service_id(self, client):
         tc, mock_reg = client
-        resp = tc.post("/kai/capabilities/notifications/implementations", json={"role": "primary"})
+        resp = tc.post("/kai/capabilities/notifications/implementations", json={"role": "primary"}, headers=auth_headers())
         assert resp.status_code == 400
         assert "service_id" in resp.json()["detail"]
 
     def test_capability_not_found(self, client):
         tc, mock_reg = client
         mock_reg.get_capability.return_value = None
-        resp = tc.post("/kai/capabilities/nonexistent/implementations", json={"service_id": "svc-1"})
+        resp = tc.post("/kai/capabilities/nonexistent/implementations", json={"service_id": "svc-1"}, headers=auth_headers())
         assert resp.status_code == 404
 
 
@@ -180,7 +185,7 @@ class TestRemoveImplementation:
         tc, mock_reg = client
         mock_reg.get_capability.return_value = {"capability_id": "notifications", "implementations": []}
         mock_reg.remove_implementation.return_value = True
-        resp = tc.delete("/kai/capabilities/notifications/implementations/svc-1")
+        resp = tc.delete("/kai/capabilities/notifications/implementations/svc-1", headers=auth_headers())
         assert resp.status_code == 200
         mock_reg.remove_implementation.assert_called_once_with("notifications", "svc-1")
         mock_reg.save.assert_called_once()
@@ -188,14 +193,14 @@ class TestRemoveImplementation:
     def test_capability_not_found(self, client):
         tc, mock_reg = client
         mock_reg.get_capability.return_value = None
-        resp = tc.delete("/kai/capabilities/nonexistent/implementations/svc-1")
+        resp = tc.delete("/kai/capabilities/nonexistent/implementations/svc-1", headers=auth_headers())
         assert resp.status_code == 404
 
     def test_implementation_not_found(self, client):
         tc, mock_reg = client
         mock_reg.get_capability.return_value = {"capability_id": "notifications", "implementations": []}
         mock_reg.remove_implementation.return_value = False
-        resp = tc.delete("/kai/capabilities/notifications/implementations/nonexistent")
+        resp = tc.delete("/kai/capabilities/notifications/implementations/nonexistent", headers=auth_headers())
         assert resp.status_code == 404
 
 
@@ -203,7 +208,7 @@ class TestTriggerDiscovery:
     def test_success(self, client):
         tc, mock_reg = client
         mock_reg.list_capabilities.return_value = {"notifications": {}, "telegram": {}}
-        resp = tc.post("/kai/capabilities/discover")
+        resp = tc.post("/kai/capabilities/discover", headers=auth_headers())
         assert resp.status_code == 200
         data = resp.json()
         assert data["ok"] is True

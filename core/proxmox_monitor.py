@@ -16,6 +16,13 @@ from datetime import datetime, timezone
 
 import requests
 
+
+def _get_verify():
+    """Return the CA cert path for TLS verification, or False to disable it."""
+    ca_cert = os.getenv("PROXMOX_CA_CERT", "")
+    return ca_cert if ca_cert else False
+
+
 PROXMOX_NODES = [
     {
         "name": "pve",
@@ -65,7 +72,7 @@ def _do_request(host, headers, path, timeout=_REQUEST_TIMEOUT):
     try:
         resp = requests.get(
             f"https://{host}:8006/api2/json/{path}",
-            headers=headers, timeout=timeout, verify=False,
+            headers=headers, timeout=timeout, verify=_get_verify(),
         )
         if resp.status_code == 200:
             return resp.json().get("data", {}), None

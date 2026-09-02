@@ -304,11 +304,16 @@ class ServiceRegistry:
         token = os.environ.get("PROXMOX_TOKEN", "")
         if not token:
             return []
+        ca_cert = os.environ.get("PROXMOX_CA_CERT", "")
+        verify = ca_cert if ca_cert else False
+        # host may already carry a port (e.g. localhost:8008 from SSH tunnel)
+        if ":" not in host:
+            host = f"{host}:8006"
         try:
             r = requests.get(
-                f"https://{host}:8006/api2/json/nodes/pve/lxc",
+                f"https://{host}/api2/json/nodes/pve/lxc",
                 headers={"Authorization": f"PVEAPIToken={token}"},
-                verify=False, timeout=5,
+                verify=verify, timeout=5,
             )
             if r.status_code != 200:
                 return []

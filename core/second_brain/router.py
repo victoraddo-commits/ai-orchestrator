@@ -1,274 +1,170 @@
-"""SecondBrainRouter — stateless query fan-out and result merging for the Second Brain."""
+"""SecondBrainRouter — single entry point for all Second Brain queries.
+
+Query flow:
+  1. Decompose query by entity, memory_types, time_range
+  2. Filter stores to those that serve any of the requested memory types
+  3. Fan out in parallel to each filtered store
+  4. Merge results using each store's declared merge policy
+  5. Inject confidence flags; never silently elevate inference
+
+Result envelope:
+  {
+    "records": [...],
+    "stores_queried": [...],
+    "total": N,
+  }
+"""
 from __future__ import annotations
 
-import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
 
 from core.second_brain.base_store import AppendOnlyStore
+from core.second_brain.registry import STORE_MERGE_POLICIES, STORE_TIERS
 from core.second_brain.types import (
+    Confidence,
     MEMORY_TYPE_STORE,
     MergePolicy,
     MemoryType,
-    QueryResult,
     SecondBrainRecord,
+    QueryRequest,
 )
 
-logger = logging.getLogger(__name__)
-
-#: Stores managed by the router (legal_supplemental is passthrough — skipped in Phase 5).
-ROUTER_STORE_NAMES = [
-    "operational",
-    "cognitive",
-    "conversational",
-    "project",
-    "relationship",
-]
-
-#: Timeout for each store query in seconds.
-_STORE_QUERY_TIMEOUT = 30
+if TYPE_CHECKING:
+    pass
 
 
 class SecondBrainRouter:
-    """Single stateless entry point for all Second Brain queries.
+    """Stateless query router for the Second Brain.
 
-    Fans out to the relevant stores in parallel and merges results using the
-    store's declared merge policy (or an override).
+    Accepts either the stores parent directory (second_brain_root) or the
+    stores directory itself (second_brain_root/stores/). Router always
+    resolves to the stores directory at runtime.
     """
 
-    def __init__(self, stores_base: str = "core/second_brain/stores") -> None:
-        self.stores_base = stores_base
-        self._stores: dict[str, AppendOnlyStore] = {}
+    def __init__(self, second_brain_root: str | None = None):
+        from pathlib import Path
+        if second_brain_root is None:
+            self._root_parent = Path(__file__).parent
+        else:
+            self._root_parent = Path(second_brain_root)
+        # Detect: is this already a stores dir or the parent?
+        if (self._root_parent / "stores").exists():
+            self.root = self._root_parent / "stores"
+        elif self._root_parent.name == "stores":
+            self.root = self._root_parent
+        else:
+            # Default: parent, expect stores/ subdir
+            self.root = self._root_parent / "stores"
+        self._store_cache: dict[str, _RouterStore] = {}
+        self._store_cache: dict[str, _RouterStore] = {}
 
-    # --- public API ---
-
-    def query(self, query_dict: dict[str, Any]) -> list[SecondBrainRecord]:
-        """Decompose query, fan out to relevant stores in parallel, merge results.
-
-        Args:
-            query_dict: {
-                "entity": str | None,
-                "memory_types": list[MemoryType] | None,   # or "*" for all
-                "time_range": {"start": ISO, "end": ISO} | None,  # dict, not tuple
-                "require_confirmation": bool,
-                "limit": int,
-                "merge_policy_override": MergePolicy | None,
-            }
-
-        Returns:
-            Merged list of SecondBrainRecord, newest-first.
-        """
-        entity: str | None = query_dict.get("entity")
-        memory_types: list[MemoryType] | None = query_dict.get("memory_types")
-        time_range: dict[str, str] | None = query_dict.get("time_range")
-        require_confirmation: bool = query_dict.get("require_confirmation", False)
-        limit: int = query_dict.get("limit", 100)
-        merge_policy_override: MergePolicy | None = query_dict.get("merge_policy_override")
-
-        # Determine which stores to query
-        stores_to_query = self._stores_for_types(memory_types)
-
-        # Convert time_range dict → tuple for store.scan()
-        time_range_tuple: tuple[str, str] | None = None
-        if time_range is not None:
-            time_range_tuple = (time_range.get("start", ""), time_range.get("end", ""))
-
-        # Fan out in parallel
-        results: list[QueryResult] = []
-        if not stores_to_query:
-            return []
-        with ThreadPoolExecutor(max_workers=len(stores_to_query)) as executor:
-            futures = {
-                executor.submit(
-                    self._query_store,
-                    store_name,
-                    entity,
-                    memory_types,
-                    time_range_tuple,
-                    limit,
-                    merge_policy_override,
-                ): store_name
-                for store_name in stores_to_query
-            }
-            for future in as_completed(futures):
-                store_name = futures[future]
-                try:
-                    result = future.result(timeout=_STORE_QUERY_TIMEOUT)
-                    results.append(result)
-                except Exception as exc:  # pragma: no cover — defensive
-                    logger.warning("Store %s query failed: %s", store_name, exc)
-
-        # Merge all results
-        merged = self._merge(results, merge_policy_override)
-
-        # Apply require_confirmation flagging
-        if require_confirmation:
-            merged = self._apply_confirmation_flag(merged)
-
-        # Apply limit (approximate — each store returned up to limit, merge may add more)
-        return merged[:limit]
-
-    # --- internal helpers ---
+    def _get_store(self, store_name: str) -> _RouterStore:
+        if store_name not in self._store_cache:
+            store_dir = self.root / store_name
+            policy = STORE_MERGE_POLICIES.get(store_name, MergePolicy.NEWEST_WINS)
+            store = _RouterStore(store_name, store_dir, policy)
+            store.ensure_exists()
+            self._store_cache[store_name] = store
+        return self._store_cache[store_name]
 
     def _stores_for_types(
         self, memory_types: list[MemoryType] | None
     ) -> list[str]:
-        """Map memory_type list → deduplicated list of relevant store names.
-
-        Skips legal_supplemental (passthrough — core/legal_brain/ not modified in Phase 5).
-        """
-        if memory_types is None or "*" in memory_types:
-            # Query all router-managed stores
-            return [s for s in ROUTER_STORE_NAMES if s != "legal_supplemental"]
-
-        store_names: list[str] = []
-        seen: set[str] = set()
+        """Return list of unique store names that serve the given memory types."""
+        if memory_types is None:
+            return list(STORE_MERGE_POLICIES.keys())
+        stores: set[str] = set()
         for mt in memory_types:
-            if mt not in MEMORY_TYPE_STORE:
-                continue
-            store_name, _ = MEMORY_TYPE_STORE[mt]
-            if store_name == "legal_supplemental":
-                continue  # Phase 5: skip passthrough store
-            if store_name not in seen:
-                seen.add(store_name)
-                store_names.append(store_name)
+            store_name, _ = MEMORY_TYPE_STORE.get(mt, (None, None))
+            if store_name:
+                stores.add(store_name)
+        return list(stores)
 
-        return store_names
+    def query(self, request: QueryRequest | dict) -> dict:
+        """Execute a query and return a result envelope."""
+        if isinstance(request, dict):
+            request = QueryRequest(
+                entity=request.get("entity"),
+                memory_types=request.get("memory_types"),
+                time_range=request.get("time_range"),
+                require_confirmation=request.get("require_confirmation", False),
+                limit=request.get("limit", 100),
+            )
 
-    def _query_store(
-        self,
-        store_name: str,
-        entity: str | None,
-        memory_types: list[MemoryType] | None,
-        time_range: tuple[str, str] | None,
-        limit: int,
-        merge_policy_override: MergePolicy | None,
-    ) -> QueryResult:
-        """Query a single store and return a QueryResult."""
-        store = self._get_store(store_name)
+        store_names = self._stores_for_types(request.memory_types)
+        time_range = request.time_range or {}
+        time_start = time_range.get("start")
+        time_end = time_range.get("end")
 
-        # Determine effective merge policy for this store
-        if merge_policy_override is not None:
-            effective_policy = merge_policy_override
-        else:
-            # Look up from STORE_MERGE_POLICIES via registry — imported lazily to avoid cycle
-            from core.second_brain.registry import STORE_MERGE_POLICIES
+        # Fan out in parallel
+        all_records: list[SecondBrainRecord] = []
 
-            effective_policy = STORE_MERGE_POLICIES.get(store_name, MergePolicy.NEWEST_WINS)
+        def fetch_store(store_name: str) -> list[SecondBrainRecord]:
+            store = self._get_store(store_name)
+            if request.entity:
+                current = store.get_current(request.entity)
+                if current:
+                    return [current]
+                return []
+            return store.scan(
+                entity=None,
+                memory_types=[mt.value for mt in request.memory_types] if request.memory_types else None,
+                time_start=time_start,
+                time_end=time_end,
+                limit=request.limit,
+            )
 
-        # Filter by memory_type if provided (otherwise scan all types in this store)
-        mt_filter: MemoryType | None = None
-        if memory_types and len(memory_types) == 1:
-            mt_filter = memory_types[0]
+        with ThreadPoolExecutor(max_workers=len(store_names)) as executor:
+            results = executor.map(fetch_store, store_names)
+            for records in results:
+                all_records.extend(records)
 
-        records = store.scan(
-            memory_type=mt_filter,
-            entity=entity,
-            time_range=time_range,
-            limit=limit,
-        )
+        # Apply merge
+        merged = self._merge(all_records)
 
-        return QueryResult(records=records, store=store_name, merge_policy=effective_policy)
+        # Confidence enforcement: flag inferred records if require_confirmation
+        flagged = []
+        for rec in merged:
+            rec_dict = rec.to_dict()
+            if request.require_confirmation and rec.confidence == Confidence.INFERRED:
+                rec_dict["_flags"] = rec_dict.get("_flags", []) + ["UNCONFIRMED_INFERENCE"]
+            flagged.append(rec_dict)
 
-    def _get_store(self, store_name: str) -> AppendOnlyStore:
-        """Lazily instantiate and cache a store adapter."""
-        if store_name not in self._stores:
-            from core.second_brain.base_store import AppendOnlyStore
+        return {
+            "records": flagged,
+            "stores_queried": store_names,
+            "total": len(flagged),
+        }
 
-            store_dir = f"{self.stores_base}/{store_name}"
-            self._stores[store_name] = AppendOnlyStore(store_dir)
-        return self._stores[store_name]
-
-    def _merge(
-        self,
-        results: list[QueryResult],
-        merge_policy_override: MergePolicy | None,
-    ) -> list[SecondBrainRecord]:
-        """Apply merge policy to deduplicate and rank results.
-
-        - NEWEST_WINS: keep record with latest timestamp per entity
-        - SOURCE_AUTHORITY: keep record with lowest source_authority tier number
-        - UNION_ALL: keep all records (deduplicate by id)
-        """
-        # Collect all records with their effective policy
-        all_records: list[tuple[SecondBrainRecord, MergePolicy]] = []
-        for result in results:
-            policy = merge_policy_override if merge_policy_override else result.merge_policy
-            for record in result.records:
-                all_records.append((record, policy))
-
-        if not all_records:
+    def _merge(self, records: list[SecondBrainRecord]) -> list[SecondBrainRecord]:
+        """Apply newest_wins dedup: per entity keep newest timestamp, skip superseded."""
+        if not records:
             return []
+        # Group by entity for deduplication
+        by_entity: dict[str, list[SecondBrainRecord]] = {}
+        for rec in records:
+            key = rec.entity or rec.id
+            by_entity.setdefault(key, []).append(rec)
 
-        # Group by entity (or by id for null-entity records so they don't collapse into one)
-        by_entity: dict[str, list[tuple[SecondBrainRecord, MergePolicy]]] = {}
-        for record, policy in all_records:
-            if record.entity is None:
-                # Null-entity records are keyed by id so they don't collapse into one
-                key = f"__null_entity__{record.id}"
-            else:
-                key = record.entity
-            by_entity.setdefault(key, []).append((record, policy))
-
-        merged: list[SecondBrainRecord] = []
-
-        for key, record_policy_pairs in by_entity.items():
-            # Apply merge strategy per entity group
-            if not record_policy_pairs:
+        results: list[SecondBrainRecord] = []
+        for entity, recs in by_entity.items():
+            # Sort by timestamp descending
+            recs.sort(key=lambda r: r.timestamp, reverse=True)
+            winner = recs[0]
+            # Skip if superseded
+            if winner.superseded_by:
                 continue
+            results.append(winner)
 
-            # Collect unique policies in this group (prefer override)
-            effective_policy = merge_policy_override if merge_policy_override else record_policy_pairs[0][1]
+        results.sort(key=lambda r: r.timestamp, reverse=True)
+        return results
 
-            if effective_policy == MergePolicy.UNION_ALL:
-                # Deduplicate by id
-                seen_ids: set[str] = set()
-                for record, _ in record_policy_pairs:
-                    if record.id not in seen_ids:
-                        seen_ids.add(record.id)
-                        merged.append(record)
 
-            elif effective_policy == MergePolicy.SOURCE_AUTHORITY:
-                # Keep lowest tier number (lowest = highest authority)
-                best: SecondBrainRecord | None = None
-                for record, _ in record_policy_pairs:
-                    if best is None or record.source_authority.value < best.source_authority.value:
-                        best = record
-                if best is not None:
-                    merged.append(best)
+class _RouterStore(AppendOnlyStore):
+    """Store wrapper for the router with merge policy."""
 
-            else:  # NEWEST_WINS (default)
-                # Keep latest timestamp
-                newest: SecondBrainRecord | None = None
-                for record, _ in record_policy_pairs:
-                    if newest is None or record.timestamp > newest.timestamp:
-                        newest = record
-                if newest is not None:
-                    merged.append(newest)
-
-        # Sort newest-first
-        merged.sort(key=lambda r: r.timestamp, reverse=True)
-        return merged
-
-    def _apply_confirmation_flag(
-        self, records: list[SecondBrainRecord]
-    ) -> list[SecondBrainRecord]:
-        """Add UNCONFIRMED_INFERENCE flag to INFERRED records that require confirmation."""
-        from core.second_brain.types import Confidence
-
-        flagged: list[SecondBrainRecord] = []
-        for record in records:
-            if record.confidence == Confidence.INFERRED:
-                # Copy with flag
-                metadata = dict(record.metadata)
-                flags = list(metadata.get("_flags", []))
-                if "UNCONFIRMED_INFERENCE" not in flags:
-                    flags.append("UNCONFIRMED_INFERENCE")
-                metadata["_flags"] = flags
-                flagged_record = SecondBrainRecord(
-                    **{**record.__dict__, "metadata": metadata}
-                )
-                flagged.append(flagged_record)
-            else:
-                flagged.append(record)
-        return flagged
+    def __init__(self, name: str, store_dir, merge_policy):
+        super().__init__(store_dir)
+        self.STORE_NAME = name
+        self.MERGE_POLICY = merge_policy

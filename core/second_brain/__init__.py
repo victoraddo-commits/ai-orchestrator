@@ -6,9 +6,11 @@ from core.second_brain.types import (
     SourceAuthority,
     MergePolicy,
     SecondBrainRecord,
+    QueryRequest,
+    QueryResult,
 )
-from core.second_brain.router import SecondBrainRouter
 from core.second_brain.writer import SecondBrainWriter
+from core.second_brain.router import SecondBrainRouter
 
 __all__ = [
     "MemoryType",
@@ -17,6 +19,8 @@ __all__ = [
     "SourceAuthority",
     "MergePolicy",
     "SecondBrainRecord",
-    "SecondBrainRouter",
+    "QueryRequest",
+    "QueryResult",
     "SecondBrainWriter",
+    "SecondBrainRouter",
 ]

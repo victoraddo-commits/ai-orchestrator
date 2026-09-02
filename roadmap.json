@@ -1813,6 +1813,29 @@
       "completed": "2026-08-08"
     },
     {
+      "id": "15A-2",
+      "name": "Vault OIDC SSO Integration \u2014 Phase 3 Identity & Trust",
+      "description": "Orchestrator becomes an OIDC relying party of kai-vault. Operator uses vault passkey once; all ecosystem apps share the session via /auth/kai/* redirect flow. Local accounts stay as vault-unreachable fallback.\n\nImplemented:\n- core/oidc_client.py: OIDCClient with get_authorization_url, validate_state, exchange_code, refresh_token, map_role, send_audit_event\n- core/auth_kai_routes.py: GET /auth/kai/start, GET /auth/kai/callback, POST /auth/kai/step-up, GET /auth/kai/step-up-callback, GET /auth/kai/userinfo, POST /auth/kai/logout\n- core/jwt_auth.py: step_up_fresh JWT claim, invalidate_session\n- core/authz.py: vault_role claim \u2192 orchestrator role mapping via _map_vault_role_to_orch_role\n- core/api.py: auth_kai_router mounted at /auth/kai/*\n- memory/.vault_oidc_client_secret: vault client credential (operator fills after registration)\n- /etc/systemd/system/ai-orchestrator-api.service.d/vault-oidc.conf: KAI_ID_* env vars injected\n- send_audit_event wired on login/logout/step-up in auth_kai_routes\n\nSatellite apps (kai-money, SUSU, ProxDash) already have OIDC redirect wired \u2014 only vault client registration needed.",
+      "status": "completed",
+      "dependencies": [
+        "15A"
+      ],
+      "priority": 40,
+      "completion_criteria": [
+        "OIDCClient tested: authorization URL format, state uniqueness, code exchange, invalid code, vault unreachable, thread safety, role mapping",
+        "All /auth/kai/* routes mounted and returning correct HTTP status codes",
+        "step_up_fresh claim present in JWT payload from vault flow",
+        "vault_role claim mapped to orchestrator role (admin/operator \u2192 operator, auditor/other \u2192 viewer)",
+        "Vault env vars loaded via systemd drop-in",
+        "Audit events streamed on login/logout/step-up"
+      ],
+      "tests_required": true,
+      "build_id": null,
+      "failure_reason": null,
+      "completed_at": "2026-09-02",
+      "completion_note": "Vault OIDC SSO integration \u2014 all 8 tasks complete, 18 tests green. Satellite apps already wired."
+    },
+    {
       "id": "15B",
       "name": "Self-modification guardrail: mandatory review for auth/security-critical code",
       "description": "Direct consequence of adding 15A's multi-user auth: once more than one identity can request builds, a self-modifying build touching authz/RBAC/credential-handling code (core/authz.py, account storage, core/security.py, provider credential loading, the API token/bridge-token mechanism itself) must never be treated like an ordinary code change -- a 'viewer'-capability user asking Kai to 'fix a bug' in core/authz.py must not be able to quietly widen their own or anyone else's permissions and sail through the normal architecture-approval flow unnoticed. Add a fixed, explicit path/module allowlist (auth/RBAC/credential files) checked in build_manager._run_planning or _create_architecture_approval: when a plan's generated diff touches any listed path, the architecture-approval request is flagged (distinct risk marker, e.g. risk='security-critical') and requires the 'operator' role specifically -- never auto-approved by any lower-privileged automation, regardless of who originally requested the build. This mirrors the existing core/kai/policies.py pattern (grep-enforced restriction that Kai itself can never call approve_architecture/approve_deploy) but for a different boundary: which class of change requires the highest-privilege human, not whether Kai can self-approve at all.",
@@ -1952,7 +1975,7 @@
       "assigned_provider": null,
       "build_id": "d5c03c15",
       "failure_reason": null,
-      "completion_note": "Option C: Telegram voice messages — transcribe via voice_router, respond via TTS, reply as voice note"
+      "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note"
     },
     {
       "id": "17Q",

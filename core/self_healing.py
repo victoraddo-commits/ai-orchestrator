@@ -145,36 +145,48 @@ def run_self_healing():
         pass
 
     # 1. Detect and fix stuck builds
-    stuck = _detect_stuck_builds()
-    for build in stuck:
-        _reset_stuck_build(build["build_id"])
-        actions.append({
-            "type": "stuck_build_reset",
-            "build_id": build["build_id"],
-            "name": build["name"],
-            "age_minutes": build["age_minutes"],
-            "timestamp": _now(),
-        })
-
-    # 2. Detect and clear provider errors
-    degraded = _detect_provider_errors()
-    for prov in degraded:
-        if _clear_provider_errors(prov["provider"]):
+    try:
+        stuck = _detect_stuck_builds()
+        for build in stuck:
+            _reset_stuck_build(build["build_id"])
             actions.append({
-                "type": "provider_error_cleared",
-                "provider": prov["provider"],
-                "detail": prov["detail"],
+                "type": "stuck_build_reset",
+                "build_id": build["build_id"],
+                "name": build["name"],
+                "age_minutes": build["age_minutes"],
                 "timestamp": _now(),
             })
+    except Exception as e:
+        from core.logger import warning
+        warning(f"self_healing: stuck-build step failed: {e}")
+
+    # 2. Detect and clear provider errors
+    try:
+        degraded = _detect_provider_errors()
+        for prov in degraded:
+            if _clear_provider_errors(prov["provider"]):
+                actions.append({
+                    "type": "provider_error_cleared",
+                    "provider": prov["provider"],
+                    "detail": prov["detail"],
+                    "timestamp": _now(),
+                })
+    except Exception as e:
+        from core.logger import warning
+        warning(f"self_healing: provider-error step failed: {e}")
 
     # 3. Kill stale coding bridge processes
-    killed = _kill_stale_coding()
-    if killed:
-        actions.append({
-            "type": "stale_coding_killed",
-            "pids": killed,
-            "timestamp": _now(),
-        })
+    try:
+        killed = _kill_stale_coding()
+        if killed:
+            actions.append({
+                "type": "stale_coding_killed",
+                "pids": killed,
+                "timestamp": _now(),
+            })
+    except Exception as e:
+        from core.logger import warning
+        warning(f"self_healing: stale-coding step failed: {e}")
 
     return actions
 

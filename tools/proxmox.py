@@ -8,6 +8,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _get_verify():
+    """Return the CA cert path for TLS verification, or False to disable it."""
+    ca_cert = os.getenv("PROXMOX_CA_CERT", "")
+    return ca_cert if ca_cert else False
+
+
 def api_request(path, host=None, token_id=None, token_secret=None):
     """Make a Proxmox API request.
 
@@ -38,7 +44,7 @@ def api_request(path, host=None, token_id=None, token_secret=None):
     headers = {"Authorization": auth}
 
     try:
-        r = requests.get(url, headers=headers, verify=False, timeout=10)
+        r = requests.get(url, headers=headers, verify=_get_verify(), timeout=10)
         return r.json()
     except Exception as e:
         return {"error": str(e)}

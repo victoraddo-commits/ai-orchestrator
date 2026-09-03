@@ -303,6 +303,12 @@ def service_worker():
     return Response(content=_SW_JS, media_type="application/javascript")
 
 
+def _kai_brain_auth():
+    """Lazy auth wrapper to avoid circular import with _require_write_capability."""
+    from core.authz import _require_write_capability
+    return Depends(_require_write_capability("kai.brain.read"))
+
+
 @app.get("/kai/mobile/diagnose")
 def mobile_diagnose():
     """Run Kai Mobile Command Node self-diagnostics (SP6 — Integration & Testing).
@@ -315,6 +321,12 @@ def mobile_diagnose():
     return run_diagnostic()
 
 
+def _kai_brain_auth():
+    """Returns a FastAPI Depends() for kai.brain.read capability. Defined before routes to avoid forward-reference issues."""
+    from core.authz import _require_write_capability
+    return _require_write_capability("kai.brain.read")
+
+
 @app.get("/kai/brain/query")
 def query_second_brain(
     entity: str | None = None,
@@ -323,6 +335,7 @@ def query_second_brain(
     time_end: str | None = None,
     require_confirmation: bool = True,
     limit: int = Query(default=100, ge=1, le=1000),
+    operator: str = _kai_brain_auth(),
 ):
     """Query the Second Brain stores.
 
@@ -367,7 +380,9 @@ def query_second_brain(
 
 
 @app.get("/kai/brain/stores")
-def list_second_brain_stores():
+def list_second_brain_stores(
+    operator: str = _kai_brain_auth(),
+):
     """Return store names, record counts, and merge policies."""
     from core.second_brain.registry import STORE_MERGE_POLICIES
     from pathlib import Path

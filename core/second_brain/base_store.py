@@ -34,6 +34,7 @@ class AppendOnlyStore:
         self.records_file = self.store_dir / "records.jsonl"
         self.index_file = self.store_dir / "current_index.json"
         self.manifest_file = self.store_dir / "manifest.json"
+        self.ensure_exists()
 
     # ── Initialization ────────────────────────────────────────────────────────
 
@@ -42,8 +43,10 @@ class AppendOnlyStore:
         self.store_dir.mkdir(parents=True, exist_ok=True)
         if not self.records_file.exists():
             self.records_file.touch()
-        self._write_index({})
-        self._write_manifest()
+        if not self.index_file.exists():
+            self._write_index({})
+        if not self.manifest_file.exists():
+            self._write_manifest()
 
     # ── Index ─────────────────────────────────────────────────────────────────
 
@@ -109,26 +112,34 @@ class AppendOnlyStore:
 
     # ── Write ────────────────────────────────────────────────────────────────
 
-    def append(self, record: SecondBrainRecord) -> str:
+    def append(self, record: SecondBrainRecord, auto_supersedes: bool = True) -> str:
         """Append a record to the append-only file. Updates current index atomically.
+
+        Args:
+            record: the record to append
+            auto_supersedes: if True and record.supersedes is None, auto-set supersedes
+                to the current head for this entity. Set to False for pure append
+                (learning adapter use case: no chain, every write = independent record).
 
         Returns the record ID.
         """
         self.ensure_exists()
         index = self._read_index()
+
+        entity = record.entity
+        if entity:
+            old_latest_id = index.get(entity)
+            if old_latest_id and auto_supersedes and record.supersedes is None:
+                record.supersedes = old_latest_id
+
         rec_dict = record.to_dict()
 
         # Write to append-only file
         with open(self.records_file, "a") as f:
             f.write(json.dumps(rec_dict, default=str) + "\n")
 
-        # Update current index if this entity has a latest record
-        entity = record.entity
+        # Update current index
         if entity:
-            old_latest_id = index.get(entity)
-            if old_latest_id:
-                # Mark the old record as superseded in the file
-                self._mark_superseded(old_latest_id, record.id)
             index[entity] = record.id
 
         self._write_index(index)
@@ -136,7 +147,7 @@ class AppendOnlyStore:
         # Update manifest count
         manifest = self._read_manifest()
         manifest["record_count"] = manifest.get("record_count", 0) + 1
-        self._write_manifest()
+        self._write_manifest(manifest["record_count"])
 
         return record.id
 
@@ -194,15 +205,24 @@ class AppendOnlyStore:
     def scan(
         self,
         entity: str | None = None,
-        memory_types: list[str] | None = None,
-        time_start: str | None = None,
-        time_end: str | None = None,
+        memory_type: str | None = None,
+        time_range: tuple[str, str] | None = None,
         limit: int = 100,
     ) -> list[SecondBrainRecord]:
-        """Scan records.jsonl with optional filters. Returns newest-first."""
+        """Scan records.jsonl with optional filters. Returns newest-first.
+
+        Args:
+            entity: filter to this entity name
+            memory_type: filter to this memory type string (singular)
+            time_range: (start_iso, end_iso) tuple
+            limit: max records to return
+        """
         results: list[SecondBrainRecord] = []
         if not self.records_file.exists():
             return results
+
+        time_start, time_end = (time_range or (None, None))
+
         with open(self.records_file) as f:
             for line in f:
                 line = line.strip()
@@ -212,19 +232,23 @@ class AppendOnlyStore:
                     rec = SecondBrainRecord.from_dict(json.loads(line))
                 except (json.JSONDecodeError, TypeError, KeyError):
                     continue
-                # Skip superseded records
-                if rec.superseded_by:
-                    continue
                 # Entity filter
                 if entity and rec.entity != entity:
                     continue
                 # Memory type filter
-                if memory_types and rec.memory_type.value not in memory_types:
+                if memory_type and rec.memory_type.value != memory_type:
                     continue
                 # Time range filter
                 if time_start and rec.timestamp < time_start:
                     continue
                 if time_end and rec.timestamp > time_end:
+                    continue
+                # Skip superseded records only when:
+                # 1. No specific entity requested (router wants current state per entity)
+                # 2. No time_range requested (historical queries want records that were current at that time)
+                # When entity is specified, return all records for that entity (full history).
+                # When time_range is specified, superseded records in range were current at that time.
+                if entity is None and time_range is None and rec.superseded_by:
                     continue
                 results.append(rec)
         # Sort by timestamp descending (newest first)

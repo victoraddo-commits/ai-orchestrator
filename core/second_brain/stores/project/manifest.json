@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
-  "store_name": "project",
-  "memory_types": ["PROJECT", "BUSINESS", "PERSONAL_CONTEXT", "PROCEDURAL"],
-  "merge_policy": "NEWEST_WINS",
-  "description": "Project context, business facts, personal context, procedures"
+  "merge_policy": "newest_wins",
+  "record_count": 0,
+  "store_name": "project"
 }

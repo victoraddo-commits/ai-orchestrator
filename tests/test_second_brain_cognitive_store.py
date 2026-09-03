@@ -32,7 +32,7 @@ class TestCognitiveStoreInit:
     def test_store_exists(self):
         """store is an AppendOnlyStore pointing at the cognitive directory."""
         assert isinstance(store, AppendOnlyStore)
-        assert "cognitive" in store.store_dir
+        assert "cognitive" in str(store.store_dir)
 
 
 class TestAppendAndGetCurrent:

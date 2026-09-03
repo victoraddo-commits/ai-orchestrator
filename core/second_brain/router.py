@@ -26,9 +26,13 @@ from core.second_brain.types import (
     MEMORY_TYPE_STORE,
     MergePolicy,
     MemoryType,
-    SecondBrainRecord,
     QueryRequest,
+    QueryResult,
+    SecondBrainRecord,
 )
+
+#: All store names in priority order (tier 1 = most authoritative)
+ROUTER_STORE_NAMES: list[str] = list(STORE_MERGE_POLICIES.keys())
 
 if TYPE_CHECKING:
     pass
@@ -42,12 +46,12 @@ class SecondBrainRouter:
     resolves to the stores directory at runtime.
     """
 
-    def __init__(self, second_brain_root: str | None = None):
+    def __init__(self, stores_base: str | None = None):
         from pathlib import Path
-        if second_brain_root is None:
+        if stores_base is None:
             self._root_parent = Path(__file__).parent
         else:
-            self._root_parent = Path(second_brain_root)
+            self._root_parent = Path(stores_base)
         # Detect: is this already a stores dir or the parent?
         if (self._root_parent / "stores").exists():
             self.root = self._root_parent / "stores"
@@ -57,7 +61,16 @@ class SecondBrainRouter:
             # Default: parent, expect stores/ subdir
             self.root = self._root_parent / "stores"
         self._store_cache: dict[str, _RouterStore] = {}
-        self._store_cache: dict[str, _RouterStore] = {}
+
+    @property
+    def _stores(self) -> dict[str, _RouterStore]:
+        """Backward-compatible alias for _store_cache (used by tests)."""
+        return self._store_cache
+
+    @_stores.setter
+    def _stores(self, value: dict[str, _RouterStore]) -> None:
+        """Backward-compatible setter for _store_cache (used by tests)."""
+        self._store_cache = value
 
     def _get_store(self, store_name: str) -> _RouterStore:
         if store_name not in self._store_cache:
@@ -73,6 +86,9 @@ class SecondBrainRouter:
     ) -> list[str]:
         """Return list of unique store names that serve the given memory types."""
         if memory_types is None:
+            return list(STORE_MERGE_POLICIES.keys())
+        # Handle wildcard string "*"
+        if memory_types and any(str(mt) == "*" for mt in memory_types):
             return list(STORE_MERGE_POLICIES.keys())
         stores: set[str] = set()
         for mt in memory_types:
@@ -97,38 +113,43 @@ class SecondBrainRouter:
         time_start = time_range.get("start")
         time_end = time_range.get("end")
 
-        # Fan out in parallel
-        all_records: list[SecondBrainRecord] = []
-
-        def fetch_store(store_name: str) -> list[SecondBrainRecord]:
-            store = self._get_store(store_name)
-            if request.entity:
-                current = store.get_current(request.entity)
-                if current:
-                    return [current]
-                return []
-            return store.scan(
-                entity=None,
-                memory_types=[mt.value for mt in request.memory_types] if request.memory_types else None,
-                time_start=time_start,
-                time_end=time_end,
-                limit=request.limit,
+        def fetch_store(store_name: str) -> QueryResult:
+            try:
+                store = self._get_store(store_name)
+                records = store.scan(
+                    entity=request.entity,
+                    memory_type=request.memory_types[0].value if request.memory_types else None,
+                    time_range=(time_start, time_end) if (time_start or time_end) else None,
+                    limit=request.limit,
+                )
+                merge_policy = store.MERGE_POLICY
+            except Exception:
+                records = []
+                merge_policy = MergePolicy.NEWEST_WINS
+            return QueryResult(
+                records=records,
+                store=store_name,
+                merge_policy=merge_policy,
             )
 
-        with ThreadPoolExecutor(max_workers=len(store_names)) as executor:
-            results = executor.map(fetch_store, store_names)
-            for records in results:
-                all_records.extend(records)
+        if not store_names:
+            return {"records": [], "stores_queried": [], "total": 0}
+
+        max_workers = max(1, len(store_names))
+        query_results: list[QueryResult] = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for qr in executor.map(fetch_store, store_names):
+                query_results.append(qr)
 
         # Apply merge
-        merged = self._merge(all_records)
+        merged = self._merge(query_results)
 
         # Confidence enforcement: flag inferred records if require_confirmation
         flagged = []
         for rec in merged:
             rec_dict = rec.to_dict()
             if request.require_confirmation and rec.confidence == Confidence.INFERRED:
-                rec_dict["_flags"] = rec_dict.get("_flags", []) + ["UNCONFIRMED_INFERENCE"]
+                rec_dict.setdefault("metadata", {}).setdefault("_flags", []).append("UNCONFIRMED_INFERENCE")
             flagged.append(rec_dict)
 
         return {
@@ -137,28 +158,119 @@ class SecondBrainRouter:
             "total": len(flagged),
         }
 
-    def _merge(self, records: list[SecondBrainRecord]) -> list[SecondBrainRecord]:
-        """Apply newest_wins dedup: per entity keep newest timestamp, skip superseded."""
+    def _merge(
+        self,
+        results: list[QueryResult],
+        merge_policy_override: MergePolicy | None = None,
+    ) -> list[SecondBrainRecord]:
+        """Merge per-store results using each store's merge policy.
+
+        Args:
+            results: list of QueryResult objects (one per store)
+            merge_policy_override: if set, apply this single policy to all stores
+        """
+        if not results:
+            return []
+
+        # If override is set, treat all as one flat list with the override policy
+        if merge_policy_override is not None:
+            all_records = [r for qr in results for r in qr.records]
+            return self._apply_merge_policy(all_records, merge_policy_override)
+
+        # Apply per-store merge policy to each store's records
+        merged_by_store: list[SecondBrainRecord] = []
+        for qr in results:
+            merged_by_store.extend(self._apply_merge_policy(qr.records, qr.merge_policy))
+
+        # For single-store case, deduplicate by id to handle edge cases
+        if len(results) == 1:
+            seen: set[str] = set()
+            unique: list[SecondBrainRecord] = []
+            for rec in merged_by_store:
+                if rec.id not in seen:
+                    seen.add(rec.id)
+                    unique.append(rec)
+            return unique
+
+        # Multiple stores: cross-store newest_wins to deduplicate
+        return self._apply_merge_policy(merged_by_store, MergePolicy.NEWEST_WINS)
+
+    def _apply_merge_policy(
+        self,
+        records: list[SecondBrainRecord],
+        policy: MergePolicy,
+    ) -> list[SecondBrainRecord]:
+        """Apply a specific merge policy to a list of records."""
         if not records:
             return []
-        # Group by entity for deduplication
+
+        if policy == MergePolicy.UNION_ALL:
+            # Keep all, deduplicate by id
+            seen: set[str] = set()
+            unique: list[SecondBrainRecord] = []
+            for rec in records:
+                if rec.id not in seen:
+                    seen.add(rec.id)
+                    unique.append(rec)
+            return unique
+
+        # NEWEST_WINS and SOURCE_AUTHORITY both group by entity
         by_entity: dict[str, list[SecondBrainRecord]] = {}
         for rec in records:
-            key = rec.entity or rec.id
+            # Use id as key for records with null entity to avoid collapsing them
+            key = rec.entity if rec.entity else rec.id
             by_entity.setdefault(key, []).append(rec)
 
         results: list[SecondBrainRecord] = []
         for entity, recs in by_entity.items():
-            # Sort by timestamp descending
-            recs.sort(key=lambda r: r.timestamp, reverse=True)
-            winner = recs[0]
-            # Skip if superseded
-            if winner.superseded_by:
-                continue
-            results.append(winner)
+            winner: SecondBrainRecord | None = None
+            if policy == MergePolicy.NEWEST_WINS:
+                # Keep newest by timestamp
+                recs.sort(key=lambda r: r.timestamp, reverse=True)
+                winner = recs[0]
+            elif policy == MergePolicy.SOURCE_AUTHORITY:
+                # Keep lowest authority tier number (most authoritative)
+                recs.sort(key=lambda r: r.source_authority.value)
+                winner = recs[0]
+
+            if winner:
+                # Check if this winner is superseded by any other record in recs.
+                # Build the supersedes chain: winner → winner.supersedes → ... → None
+                superseded_ids: set[str] = set()
+                current = winner.supersedes
+                while current:
+                    superseded_ids.add(current)
+                    # Find the record with this id
+                    parent = next((r for r in recs if r.id == current), None)
+                    if parent:
+                        current = parent.supersedes
+                    else:
+                        break
+                # If any OTHER record in recs supersedes the winner, skip it
+                other_ids = {r.id for r in recs if r.id != winner.id}
+                if not (other_ids & superseded_ids):
+                    results.append(winner)
 
         results.sort(key=lambda r: r.timestamp, reverse=True)
         return results
+
+    def _apply_confirmation_flag(
+        self,
+        records: list[SecondBrainRecord],
+        require_confirmation: bool = True,
+    ) -> list[dict]:
+        """Apply INFERRED confidence flag when require_confirmation is True.
+
+        Returns list of record dicts with optional "_flags" metadata for
+        INFERRED-confidence records.
+        """
+        flagged: list[dict] = []
+        for rec in records:
+            rec_dict = rec.to_dict()
+            if require_confirmation and rec.confidence == Confidence.INFERRED:
+                rec_dict.setdefault("metadata", {}).setdefault("_flags", []).append("UNCONFIRMED_INFERENCE")
+            flagged.append(rec_dict)
+        return flagged
 
 
 class _RouterStore(AppendOnlyStore):

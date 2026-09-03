@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
-  "store_name": "cognitive",
-  "memory_types": ["SEMANTIC", "EPISODIC", "TEMPORAL"],
-  "merge_policy": "SOURCE_AUTHORITY",
-  "description": "Semantic facts, episodic events, temporal knowledge"
+  "merge_policy": "source_authority",
+  "record_count": 0,
+  "store_name": "cognitive"
 }

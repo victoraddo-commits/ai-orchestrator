@@ -1,13 +1,21 @@
-"""Cognitive store — Semantic, Episodic, Temporal memory types."""
-from __future__ import annotations
-
+"""Cognitive store — Semantic, Episodic, Temporal memory types (source_authority)."""
 from core.second_brain.base_store import AppendOnlyStore
-from core.second_brain.types import MemoryType
+from core.second_brain.types import MergePolicy, MemoryType
 
-SUPPORTED_TYPES = [
+SUPPORTED_TYPES: set[MemoryType] = {
     MemoryType.SEMANTIC,
     MemoryType.EPISODIC,
     MemoryType.TEMPORAL,
-]
+}
 
-store = AppendOnlyStore("core/second_brain/stores/cognitive")
+
+class CognitiveStore(AppendOnlyStore):
+    STORE_NAME = "cognitive"
+    MERGE_POLICY = MergePolicy.SOURCE_AUTHORITY
+
+
+try:
+    store = CognitiveStore("memory/stores/cognitive")
+    store.ensure_exists()
+except Exception:
+    store = None

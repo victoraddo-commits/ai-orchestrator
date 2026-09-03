@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
-  "store_name": "relationship",
-  "memory_types": ["RELATIONSHIP", "DOCUMENT"],
-  "merge_policy": "UNION_ALL",
-  "description": "Relationship facts and document references"
+  "merge_policy": "union_all",
+  "record_count": 0,
+  "store_name": "relationship"
 }

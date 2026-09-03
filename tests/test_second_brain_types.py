@@ -27,22 +27,22 @@ class TestMemoryType:
 
     def test_expected_values(self):
         expected = {
-            "INFRASTRUCTURE",
-            "INCIDENT",
-            "OPERATIONAL",
-            "DECISION",
-            "SEMANTIC",
-            "EPISODIC",
-            "TEMPORAL",
-            "CONVERSATION",
-            "WORKING_MEMORY",
-            "SHORT_TERM",
-            "PROJECT",
-            "BUSINESS",
-            "PERSONAL_CONTEXT",
-            "RELATIONSHIP",
-            "DOCUMENT",
-            "PROCEDURAL",
+            "infrastructure",
+            "incident",
+            "operational",
+            "decision",
+            "semantic",
+            "episodic",
+            "temporal",
+            "conversation",
+            "working_memory",
+            "short_term",
+            "project",
+            "business",
+            "personal_context",
+            "relationship",
+            "document",
+            "procedural",
         }
         assert {e.value for e in MemoryType} == expected
 
@@ -51,14 +51,14 @@ class TestChangeType:
     def test_all_8_values_exist(self):
         values = {e.value for e in ChangeType}
         assert len(values) == 8
-        assert {"CREATED", "UPDATED", "DEGRADED", "RECOVERED", "DELETED", "MIGRATED", "ROTATED", "ESCALATED"} == values
+        assert {"created", "updated", "degraded", "recovered", "deleted", "migrated", "rotated", "escalated"} == values
 
 
 class TestConfidence:
     def test_all_4_values_exist(self):
         values = {e.value for e in Confidence}
         assert len(values) == 4
-        assert {"CONFIRMED", "DOCUMENTED", "CONVERSATIONAL", "INFERRED"} == values
+        assert {"confirmed", "documented", "conversational", "inferred"} == values
 
 
 class TestSourceAuthority:
@@ -72,7 +72,7 @@ class TestMergePolicy:
     def test_all_3_values_exist(self):
         values = {e.value for e in MergePolicy}
         assert len(values) == 3
-        assert {"NEWEST_WINS", "SOURCE_AUTHORITY", "UNION_ALL"} == values
+        assert {"newest_wins", "source_authority", "union_all"} == values
 
 
 class TestMemoryTypeStore:
@@ -136,11 +136,11 @@ class TestSecondBrainRecord:
             "id": str(uuid.uuid4()),
             "entity": "test",
             "entity_type": None,
-            "memory_type": "OPERATIONAL",
+            "memory_type": "operational",
             "fact": {},
-            "change_type": "CREATED",
+            "change_type": "created",
             "changed_reason": "",
-            "confidence": "CONFIRMED",
+            "confidence": "confirmed",
             "source_authority": 1,
             "supersedes": None,
             "superseded_by": None,

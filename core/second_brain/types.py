@@ -142,5 +142,5 @@ class QueryRequest:
 @dataclass
 class QueryResult:
     records: list[SecondBrainRecord]
-    store: str
-    merge_policy: MergePolicy
+    store: str = ""
+    merge_policy: MergePolicy = MergePolicy.NEWEST_WINS

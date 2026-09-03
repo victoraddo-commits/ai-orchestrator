@@ -226,8 +226,5 @@ class TestManifest:
             manifest = json.load(f)
         assert manifest["schema_version"] == 1
         assert manifest["store_name"] == "operational"
-        assert manifest["merge_policy"] == "NEWEST_WINS"
-        assert "INFRASTRUCTURE" in manifest["memory_types"]
-        assert "INCIDENT" in manifest["memory_types"]
-        assert "OPERATIONAL" in manifest["memory_types"]
-        assert "DECISION" in manifest["memory_types"]
+        assert manifest["store_name"] == "operational"
+        assert manifest["merge_policy"] == "newest_wins"

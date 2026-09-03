@@ -20,6 +20,7 @@ from core.second_brain.types import (
     ChangeType,
     Confidence,
     MemoryType,
+    MergePolicy,
     SecondBrainRecord,
     SourceAuthority,
 )
@@ -31,18 +32,19 @@ if TYPE_CHECKING:
 class SecondBrainWriter:
     """Single writer for all Second Brain stores."""
 
-    def __init__(self, second_brain_root: str | Path | None = None):
-        if second_brain_root is None:
+    def __init__(self, stores_base: str | Path | None = None):
+        if stores_base is None:
             self.root = Path(__file__).parent / "stores"
         else:
-            self.root = Path(second_brain_root)
+            self.root = Path(stores_base)
         self._stores: dict[str, _StoreImpl] = {}
 
     def _get_store(self, store_name: str) -> _StoreImpl:
         """Lazily create and return a store instance."""
         if store_name not in self._stores:
+            # Store dir is directly under root: <root>/<store_name>
             store_dir = self.root / store_name
-            policy = STORE_MERGE_POLICIES.get(store_name)
+            policy = STORE_MERGE_POLICIES.get(store_name, MergePolicy.NEWEST_WINS)
             store = _StoreImpl(store_name, store_dir, policy)
             store.ensure_exists()
             self._stores[store_name] = store
@@ -51,44 +53,24 @@ class SecondBrainWriter:
     def write(
         self,
         store_name: str,
-        entity: str | None,
-        entity_type: str | None,
-        memory_type: MemoryType,
-        fact: dict,
-        change_type: ChangeType = ChangeType.CREATED,
-        changed_reason: str = "",
-        confidence: Confidence = Confidence.CONFIRMED,
-        source_authority: SourceAuthority = SourceAuthority.SECOND_BRAIN,
-        ttl_seconds: int | None = None,
-        metadata: dict | None = None,
-        supersedes: str | None = None,
+        record: SecondBrainRecord,
     ) -> str:
-        """Direct append to a store. Returns record ID."""
-        record = SecondBrainRecord(
-            entity=entity,
-            entity_type=entity_type,
-            memory_type=memory_type,
-            fact=fact,
-            change_type=change_type,
-            changed_reason=changed_reason,
-            confidence=confidence,
-            source_authority=source_authority,
-            superseded_by=None,
-            ttl_seconds=ttl_seconds,
-            metadata=metadata or {},
-            supersedes=supersedes,
-        )
+        """Direct append to a store. Returns record ID.
+
+        auto_supersedes=False ensures pure append with no chain linkage
+        (learning adapter use case: independent events, no supersedes).
+        """
         store = self._get_store(store_name)
-        return store.append(record)
+        return store.append(record, auto_supersedes=False)
 
     def update(
         self,
         store_name: str,
         entity: str,
-        entity_type: str | None,
         memory_type: MemoryType,
         fact: dict,
         changed_reason: str,
+        entity_type: str | None = None,
         change_type: ChangeType = ChangeType.UPDATED,
         confidence: Confidence = Confidence.CONFIRMED,
         source_authority: SourceAuthority = SourceAuthority.SECOND_BRAIN,

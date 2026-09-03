@@ -176,7 +176,7 @@ class TestScan:
         self._now = datetime.now(timezone.utc)
 
     def _ts(self, offset_seconds: int) -> str:
-        return (self._now + timedelta(seconds=offset_seconds)).isoformat()
+        return (self._now + timedelta(seconds=offset_seconds)).replace(microsecond=0).isoformat()
 
     def test_scan_returns_all_records_newest_first(self, store):
         r1 = SecondBrainRecord(entity="e1", memory_type=MemoryType.OPERATIONAL, timestamp=self._ts(0))
@@ -251,7 +251,7 @@ class TestHistory:
         self._now = datetime.now(timezone.utc)
 
     def _ts(self, offset_seconds: int) -> str:
-        return (self._now + timedelta(seconds=offset_seconds)).isoformat()
+        return (self._now + timedelta(seconds=offset_seconds)).replace(microsecond=0).isoformat()
 
     def test_history_returns_all_versions_oldest_first(self, store):
         r1 = SecondBrainRecord(id="id1", entity="same", timestamp=self._ts(0))
@@ -285,7 +285,7 @@ class TestRebuildIndex:
         self._now = datetime.now(timezone.utc)
 
     def _ts(self, offset_seconds: int) -> str:
-        return (self._now + timedelta(seconds=offset_seconds)).isoformat()
+        return (self._now + timedelta(seconds=offset_seconds)).replace(microsecond=0).isoformat()
 
     def test_rebuild_index_reconstructs_from_jsonl(self, store):
         r1 = SecondBrainRecord(id="id1", entity="e1", timestamp=self._ts(0))

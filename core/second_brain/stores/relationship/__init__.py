@@ -1,10 +1,20 @@
-"""Relationship store — Relationship, Document memory types."""
+"""Relationship store — Relationship, Document memory types (union_all)."""
 from core.second_brain.base_store import AppendOnlyStore
-from core.second_brain.types import MemoryType
+from core.second_brain.types import MergePolicy, MemoryType
 
-SUPPORTED_TYPES = [
+SUPPORTED_TYPES: set[MemoryType] = {
     MemoryType.RELATIONSHIP,
     MemoryType.DOCUMENT,
-]
+}
 
-store = AppendOnlyStore("core/second_brain/stores/relationship")
+
+class RelationshipStore(AppendOnlyStore):
+    STORE_NAME = "relationship"
+    MERGE_POLICY = MergePolicy.UNION_ALL
+
+
+try:
+    store = RelationshipStore("memory/stores/relationship")
+    store.ensure_exists()
+except Exception:
+    store = None

@@ -130,10 +130,10 @@ class TestUpdateSetsCorrectFields:
         assert record["entity"] == "my-entity"
         assert record["entity_type"] == "server"
         assert record["fact"] == {"status": "running", "ip": "192.168.1.1"}
-        assert record["memory_type"] == "OPERATIONAL"
-        assert record["change_type"] == "CREATED"
+        assert record["memory_type"] == "operational"
+        assert record["change_type"] == "created"
         assert record["changed_reason"] == "server registered"
-        assert record["confidence"] == "CONFIRMED"
+        assert record["confidence"] == "confirmed"
         assert record["source_authority"] == 1  # LIVE_SYSTEM
         assert record["ttl_seconds"] == 3600
         assert record["metadata"] == {"region": "us-east"}

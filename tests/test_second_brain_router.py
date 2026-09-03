@@ -311,10 +311,10 @@ class TestRequireConfirmation:
         )
 
         router = SecondBrainRouter(stores_base="/tmp/fake")
-        flagged = router._apply_confirmation_flag([inferred])
+        flagged = router._apply_confirmation_flag([inferred], require_confirmation=True)
 
         assert len(flagged) == 1
-        assert "UNCONFIRMED_INFERENCE" in flagged[0].metadata.get("_flags", [])
+        assert "UNCONFIRMED_INFERENCE" in flagged[0].get("metadata", {}).get("_flags", [])
 
     def test_confirmed_record_not_flagged(self):
         confirmed = make_record(
@@ -327,7 +327,7 @@ class TestRequireConfirmation:
         flagged = router._apply_confirmation_flag([confirmed])
 
         assert len(flagged) == 1
-        assert "UNCONFIRMED_INFERENCE" not in flagged[0].metadata.get("_flags", [])
+        assert "UNCONFIRMED_INFERENCE" not in flagged[0].get("metadata", {}).get("_flags", [])
 
     def test_documented_record_not_flagged(self):
         documented = make_record(
@@ -340,7 +340,7 @@ class TestRequireConfirmation:
         flagged = router._apply_confirmation_flag([documented])
 
         assert len(flagged) == 1
-        assert "UNCONFIRMED_INFERENCE" not in flagged[0].metadata.get("_flags", [])
+        assert "UNCONFIRMED_INFERENCE" not in flagged[0].get("metadata", {}).get("_flags", [])
 
     def test_require_confirmation_in_query_dict(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -354,6 +354,7 @@ class TestRequireConfirmation:
             )
             mock_store = MagicMock()
             mock_store.scan.return_value = [inferred]
+            mock_store.MERGE_POLICY = MergePolicy.NEWEST_WINS
             router._stores["operational"] = mock_store
 
             results = router.query({
@@ -362,8 +363,8 @@ class TestRequireConfirmation:
                 "limit": 100,
             })
 
-            assert len(results) == 1
-            assert "UNCONFIRMED_INFERENCE" in results[0].metadata.get("_flags", [])
+            assert len(results["records"]) == 1
+            assert "UNCONFIRMED_INFERENCE" in results["records"][0].get("metadata", {}).get("_flags", [])
 
 
 class TestEmptyStoresList:
@@ -379,7 +380,7 @@ class TestEmptyStoresList:
                 "memory_types": ["__nonexistent__"],  # type: ignore
                 "limit": 100,
             })
-            assert result == []
+            assert result == {"records": [], "stores_queried": [], "total": 0}
 
 
 class TestNullEntityMerge:
@@ -471,20 +472,23 @@ class TestStoreExceptionHandling:
             good_store = MagicMock()
             good_record = make_record("good-entity", id="good-rec")
             good_store.scan.return_value = [good_record]
+            good_store.MERGE_POLICY = MergePolicy.NEWEST_WINS
 
             # Failing store
             bad_store = MagicMock()
             bad_store.scan.side_effect = RuntimeError("store read error")
+            bad_store.MERGE_POLICY = MergePolicy.NEWEST_WINS
 
             router._stores["operational"] = good_store
             router._stores["cognitive"] = bad_store
 
             # Query both stores
-            results = router.query({
+            result = router.query({
                 "memory_types": [MemoryType.INFRASTRUCTURE, MemoryType.SEMANTIC],
                 "limit": 100,
             })
 
             # Good store's result should be in the output
-            assert len(results) >= 1
-            assert any(r.id == "good-rec" for r in results)
+            records = result["records"]
+            assert len(records) >= 1
+            assert any(r.get("id") == "good-rec" for r in records)

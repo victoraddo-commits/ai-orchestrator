@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
-  "store_name": "operational",
-  "memory_types": ["INFRASTRUCTURE", "INCIDENT", "OPERATIONAL", "DECISION"],
-  "merge_policy": "NEWEST_WINS",
-  "description": "Infrastructure state, incidents, operational facts, decisions"
+  "merge_policy": "newest_wins",
+  "record_count": 0,
+  "store_name": "operational"
 }

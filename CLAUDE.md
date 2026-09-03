@@ -124,7 +124,7 @@ The Provider rotation varies by task_type. Key roles:
 | **17N** | Voice/Phone AI (MiniMax) | 60 | none | Design proposal only — no code yet |
 | **17V** | Kai Conversation Memory | 33 | 13X | Session envelopes, long-term operator store, guarded compression |
 | **17Z** | Qwen4 RunPod Provider | 45 | none | Proper text provider registration with qwen4_text/qwen4_pod_b |**
-| **18A-ai** | AI Gateway | 40 | none | OpenAI-compatible /v1 endpoint for external consumers |
+| ~~**18A-ai**~~ | ~~AI Gateway~~ | ~~40~~ | ~~none~~ | ✅ COMPLETE 2026-09-03 — `/v1/chat/completions`, `/v1/models`, `/v1/providers`, `/v1/usage`, key management, 59 tests green |
 
 ### Failed (10 phases)
 13I (Future roadmap generator), 13L (Performance-weighted routing), 14A (Stuck-phase detection), 15G (AI Workforce Center), 17E (Multi-node Proxmox), 17G (UI/UX polish), 17I (App portfolio awareness), 17R (AI routing resilience), 17S (OpenCode Zen dedicated keys), 17U (Provider config editor), 17W (Telegram native UX), 17X (Automated resiliency)
@@ -186,29 +186,27 @@ When a new AI provider picks up Kai's work:
 1. **Read this file** first — it's the provider-agnostic entry point
 2. **Check `roadmap.json`** for current phase status
 3. **Check `memory/builds.json`** for any WAITING_FOR_USER_INPUT or stuck builds
-4. **Prioritize in-progress phases** by priority score (lower = more urgent, except 15A at 50 which blocks other work)
-5. **18A-ai is the current active work** — AI Gateway (OpenAI-compatible /v1 endpoints)
-6. **Run tests** before any code change: `.venv/bin/python -m pytest`
-7. **After deploy**: watch one full scheduler cycle (`journalctl -u ai-orchestrator -f`)
+4. **Prioritize in-progress phases** by priority score (lower = more urgent)
+5. **Run tests** before any code change: `.venv/bin/python -m pytest`
+6. **After deploy**: watch one full scheduler cycle (`journalctl -u ai-orchestrator -f`)
 
-### Current active task: AI Gateway (Phase 1)
+### Current active task: P23 Consolidation
 
 **Context:**
-- AI Gateway module (`core/ai_gateway/`) provides OpenAI-compatible /v1 endpoints
-- Mounted on the existing FastAPI app (port 8000) alongside the observability API
-- External consumers authenticate with bearer API keys, not dashboard JWT
-- Rate-limited per consumer key, with audit logging and cost tracking
+- 7 duplicates identified: `talent.db` ×2, `vault_master_key` ×2, NetBird ×2, kai-notify ×2
+- Formal consolidation not yet performed
+- See `/project/uploads/kai-disaster-recovery-2026-09-03.md` for full service inventory
 
-**What's already done (17Z — Qwen3/Qwen4 RunPod Provider):**
-- `qwen4_text` (was `qwen3_coder_text`) properly registered as text_task provider
-- `qwen4_coding` registered as coding agent (tool-use loop via coding bridge)
-- `qwen4Z` registered as coding agent via coding bridge
-- `qwen4_pod_b` registered as dedicated review/deploy text pod
-- `call_qwen4_text()` in `llm_clients.py` (was `call_qwen3_coder_text`)
-- `call_qwen4_pod_b_text()` in `llm_clients.py` (was `call_qwen3_pod_b_text`)
-- `openai` slot aliases qwen4_text (description updated, same endpoint)
-- All qwen3→qwen4 provider renames complete across source, tests, and docs
-- 3 dead OpenRouter-billed providers deregistered from registry
+**AI Gateway (18A-ai) — COMPLETE as of 2026-09-03:**
+- `POST /v1/chat/completions` — OpenAI-compatible chat
+- `POST /v1/chat/completions/stream` — SSE streaming
+- `GET /v1/models` — list available models
+- `GET /v1/providers` — provider health/status
+- `GET /v1/usage` — consumer usage tracking
+- Key management: create/revoke/list API keys
+- 59 tests green, all endpoints live at https://localhost:8000
+
+**Agent Registry routes:** (all write-gated)
 
 **AI Gateway routes:**
 - `POST /v1/chat/completions` — OpenAI-compatible chat

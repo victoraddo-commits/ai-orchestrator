@@ -23,26 +23,35 @@ def _get_verify():
     return ca_cert if ca_cert else False
 
 
-PROXMOX_NODES = [
-    {
-        "name": "pve",
-        "host": os.environ.get("PROXMOX_HOST", "192.168.99.2"),
-        # TK-176d6efe: LAN is primary, no fallback needed — but if Proxmox A
-        # ever goes remote, set PROXMOX_FALLBACK_HOST in the environment.
-        "fallback_host": os.environ.get("PROXMOX_FALLBACK_HOST", ""),
-        "token": os.environ.get("PROXMOX_TOKEN", ""),
-    },
-    {
-        "name": "pve-b",
-        "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.109"),
-        # Proxmox B is reachable via LAN (192.168.1.109). Set
-        # PROXMOX_B_FALLBACK_HOST to enable a secondary path.
-        "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
-        "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
-        "token_secret": os.environ.get("PROXMOX_B_TOKEN_SECRET", ""),
-    },
-]
-PROXMOX_NODES = [n for n in PROXMOX_NODES if n.get("token") or n.get("token_secret")]
+def _get_node_configs():
+    """Return node configs with secrets resolved from vault (fallback: env).
+
+    Built at call time rather than import time so the vault is available
+    by the time this runs (vault master key loaded on first use).
+    """
+    from core.ai.credential_vault import retrieve_api_key
+
+    return [
+        {
+            "name": "pve",
+            "host": os.environ.get("PROXMOX_HOST", "192.168.99.2"),
+            "fallback_host": os.environ.get("PROXMOX_FALLBACK_HOST", ""),
+            # TK-176d6efe: token vault slug "proxmox_a"
+            "token": retrieve_api_key("proxmox_a") or os.environ.get("PROXMOX_TOKEN", ""),
+        },
+        {
+            "name": "pve-b",
+            "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.109"),
+            "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
+            "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
+            "token_secret": retrieve_api_key("proxmox_b_secret") or os.environ.get("PROXMOX_B_TOKEN_SECRET", ""),
+        },
+    ]
+
+
+# Module-level config for non-secret fields only — used for discovery/shell commands
+_PROXMOX_HOST = os.environ.get("PROXMOX_HOST", "192.168.99.2")
+_PROXMOX_B_HOST = os.environ.get("PROXMOX_B_HOST", "192.168.1.109")
 
 # TK-176d6efe: retry constants
 _MAX_RETRIES = int(os.environ.get("PROXMOX_RETRY_COUNT", "3"))
@@ -202,7 +211,7 @@ def collect_node_health(node):
 
 
 def collect_all_nodes():
-    return {n["name"]: collect_node_health(n) for n in PROXMOX_NODES}
+    return {n["name"]: collect_node_health(n) for n in _get_node_configs()}
 
 
 def check_alerts(health_data):

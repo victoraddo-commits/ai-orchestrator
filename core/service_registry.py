@@ -300,8 +300,9 @@ class ServiceRegistry:
     def discover_proxmox(self) -> list[dict]:
         """Query Proxmox API for LXC containers."""
         import os, requests
+        from core.ai.credential_vault import retrieve_api_key
         host = os.environ.get("PROXMOX_HOST", "192.168.99.3")
-        token = os.environ.get("PROXMOX_TOKEN", "")
+        token = retrieve_api_key("proxmox_a") or os.environ.get("PROXMOX_TOKEN", "")
         if not token:
             return []
         ca_cert = os.environ.get("PROXMOX_CA_CERT", "")

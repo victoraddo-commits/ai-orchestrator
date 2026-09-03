@@ -39,7 +39,8 @@ logger = logging.getLogger(__name__)
 DDWRT_HOST = os.environ.get("DDWRT_HOST", "192.168.99.66")
 DDWRT_PORT = int(os.environ.get("DDWRT_PORT", "23"))
 DDWRT_USER = os.environ.get("DDWRT_USER", "root")
-DDWRT_PASSWORD = os.environ.get("DDWRT_PASSWORD", "103057016")
+# No hardcoded default — vault or bust (the old default "103057016" is now in the vault)
+DDWRT_PASSWORD = os.environ.get("DDWRT_PASSWORD", "")
 DDWRT_TIMEOUT = int(os.environ.get("DDWRT_TIMEOUT", "15"))
 
 # WireGuard on DD-WRT

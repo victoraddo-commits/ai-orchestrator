@@ -8,7 +8,7 @@ import os, json, subprocess
 from datetime import datetime, timezone
 from typing import Optional
 
-from core.proxmox_monitor import PROXMOX_NODES
+from core.proxmox_monitor import _get_node_configs
 
 
 # -------------------------------------------------------------------
@@ -154,7 +154,7 @@ def _correlate_tailscale_to_node(ts_data: dict, px_nodes: dict) -> dict:
 def discover_all_nodes() -> dict:
     """Full network-aware Proxmox discovery across all configured nodes."""
     results = {}
-    for node in PROXMOX_NODES:
+    for node in _get_node_configs():
         net = discover_node_networking(node)
         results[node["name"]] = net
     return results

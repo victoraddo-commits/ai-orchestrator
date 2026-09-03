@@ -50,12 +50,12 @@ def _req_always_on_audio() -> tuple[bool, str]:
 
 def _req_ha_server() -> tuple[bool, str]:
     """Home Assistant integration requires a reachable HA instance + token."""
+    from core.ai.credential_vault import retrieve_api_key
     url = os.environ.get("HA_BASE_URL", "")
-    tok = os.environ.get("HA_TOKEN", "")
+    tok = retrieve_api_key("ha_token") or os.environ.get("HA_TOKEN", "")
     if not url or not tok:
         return False, ("requires a Home Assistant server: set HA_BASE_URL "
-                       "(e.g. http://<ha-ip>:8123) and HA_TOKEN (long-lived "
-                       "access token) in ai-orchestrator .env")
+                       "(e.g. http://<ha-ip>:8123) and HA_TOKEN in vault or .env")
     try:
         import requests
         r = requests.get(f"{url.rstrip('/')}/api/", headers={"Authorization": f"Bearer {tok}"}, timeout=5)

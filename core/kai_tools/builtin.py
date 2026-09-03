@@ -546,7 +546,7 @@ def _home_gate() -> None:
     if not capability_available("kai.home.control"):
         raise RuntimeError(
             "Home Assistant integration is DISABLED/BLOCKED — enable it via "
-            "kai.enhancements.enable (requires HA_BASE_URL + HA_TOKEN in .env)")
+            "kai.enhancements.enable (requires HA_BASE_URL + HA_TOKEN in vault or .env)")
 
 
 @tool(ToolSpec(
@@ -556,8 +556,12 @@ def _home_gate() -> None:
 def home_devices() -> dict:
     _home_gate()
     import requests, os
-    url = os.environ["HA_BASE_URL"].rstrip("/")
-    r = requests.get(f"{url}/api/states", headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+    from core.ai.credential_vault import retrieve_api_key
+    url = (os.environ.get("HA_BASE_URL") or "").rstrip("/")
+    ha_token = retrieve_api_key("ha_token") or os.environ.get("HA_TOKEN", "")
+    if not url or not ha_token:
+        raise RuntimeError("HA_BASE_URL or HA_TOKEN not configured")
+    r = requests.get(f"{url}/api/states", headers={"Authorization": f"Bearer {ha_token}"},
                      timeout=10)
     domains = {}
     for e in r.json():
@@ -576,7 +580,11 @@ def home_devices() -> dict:
 def home_set_state(entity_id: str, action: str, value=None) -> dict:
     _home_gate()
     import requests, os
-    url = os.environ["HA_BASE_URL"].rstrip("/")
+    from core.ai.credential_vault import retrieve_api_key
+    url = (os.environ.get("HA_BASE_URL") or "").rstrip("/")
+    ha_token = retrieve_api_key("ha_token") or os.environ.get("HA_TOKEN", "")
+    if not url or not ha_token:
+        raise RuntimeError("HA_BASE_URL or HA_TOKEN not configured")
     domain = entity_id.split(".")[0]
     service = {"turn_on": "turn_on", "turn_off": "turn_off"}.get(action)
     payload = {"entity_id": entity_id}
@@ -586,7 +594,7 @@ def home_set_state(entity_id: str, action: str, value=None) -> dict:
     elif not service:
         raise ValueError(f"unsupported action '{action}'")
     r = requests.post(f"{url}/api/services/{domain}/{service}",
-                      headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+                      headers={"Authorization": f"Bearer {ha_token}"},
                       json=payload, timeout=10)
     return {"entity_id": entity_id, "action": action, "ok": r.status_code in (200, 201)}
 
@@ -613,12 +621,13 @@ def _ddwrt_telnet(command: str) -> str:
     """Run a command on DD-WRT via telnet. Runs from THIS host (A-side) —
     CT104/B-side cannot reach 192.168.99.66 (routing asymmetry)."""
     import os, telnetlib
+    from core.ai.credential_vault import retrieve_api_key
     host = os.environ.get("DDWRT_HOST", "192.168.99.66")
     port = int(os.environ.get("DDWRT_TELNET_PORT", "23"))
     user = os.environ.get("DDWRT_USER", "root")
-    pw = os.environ.get("DDWRT_PASSWORD", "")
+    pw = retrieve_api_key("ddwrt") or os.environ.get("DDWRT_PASSWORD", "")
     if not pw:
-        raise RuntimeError("DDWRT_PASSWORD missing from orchestrator .env")
+        raise RuntimeError("DDWRT_PASSWORD missing — not in vault or .env")
     tn = telnetlib.Telnet(host, port, timeout=15)
     tn.read_until(b"login:", timeout=10)
     tn.write(user.encode() + b"\n")
@@ -735,7 +744,7 @@ def _home_gate() -> None:
     if not capability_available("kai.home.control"):
         raise RuntimeError(
             "Home Assistant integration is DISABLED/BLOCKED — enable it via "
-            "kai.enhancements.enable (requires HA_BASE_URL + HA_TOKEN in .env)")
+            "kai.enhancements.enable (requires HA_BASE_URL + HA_TOKEN in vault or .env)")
 
 
 @tool(ToolSpec(
@@ -745,8 +754,12 @@ def _home_gate() -> None:
 def home_devices() -> dict:
     _home_gate()
     import requests, os
-    url = os.environ["HA_BASE_URL"].rstrip("/")
-    r = requests.get(f"{url}/api/states", headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+    from core.ai.credential_vault import retrieve_api_key
+    url = (os.environ.get("HA_BASE_URL") or "").rstrip("/")
+    ha_token = retrieve_api_key("ha_token") or os.environ.get("HA_TOKEN", "")
+    if not url or not ha_token:
+        raise RuntimeError("HA_BASE_URL or HA_TOKEN not configured")
+    r = requests.get(f"{url}/api/states", headers={"Authorization": f"Bearer {ha_token}"},
                      timeout=10)
     domains = {}
     for e in r.json():
@@ -765,7 +778,11 @@ def home_devices() -> dict:
 def home_set_state(entity_id: str, action: str, value=None) -> dict:
     _home_gate()
     import requests, os
-    url = os.environ["HA_BASE_URL"].rstrip("/")
+    from core.ai.credential_vault import retrieve_api_key
+    url = (os.environ.get("HA_BASE_URL") or "").rstrip("/")
+    ha_token = retrieve_api_key("ha_token") or os.environ.get("HA_TOKEN", "")
+    if not url or not ha_token:
+        raise RuntimeError("HA_BASE_URL or HA_TOKEN not configured")
     domain = entity_id.split(".")[0]
     service = {"turn_on": "turn_on", "turn_off": "turn_off"}.get(action)
     payload = {"entity_id": entity_id}
@@ -775,7 +792,7 @@ def home_set_state(entity_id: str, action: str, value=None) -> dict:
     elif not service:
         raise ValueError(f"unsupported action '{action}'")
     r = requests.post(f"{url}/api/services/{domain}/{service}",
-                      headers={"Authorization": f"Bearer {os.environ['HA_TOKEN']}"},
+                      headers={"Authorization": f"Bearer {ha_token}"},
                       json=payload, timeout=10)
     return {"entity_id": entity_id, "action": action, "ok": r.status_code in (200, 201)}
 

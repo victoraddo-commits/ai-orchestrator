@@ -141,7 +141,22 @@ def get_secret(provider: str) -> Optional[dict]:
 
 def get_api_key(provider: str) -> Optional[str]:
     """Convenience: return just the API key string for a provider.
-    None if not found.  The key is PLAINTEXT — do not log or expose."""
+    None if not found.  The key is PLAINTEXT — do not log or expose.
+
+    Resolution order (vault-first, then plaintext fallback for migration):
+      1. credential_vault (AES-256-GCM encrypted store)
+      2. kai-vault machine plane (if configured and reachable)
+      3. local plaintext store (pre-vault migration entries)
+      4. process environment variable (last resort for tests/migration)
+    """
+    # Try credential vault first (AES-GCM encrypted, kai-vault fallback)
+    from core.ai.credential_vault import retrieve_api_key as _vault_key
+    vault_key = _vault_key(provider)
+    if vault_key:
+        _log_access(provider, "get_api_key", True, "source=vault")
+        return vault_key
+
+    # Fallback to old plaintext store (pre-vault migration entries)
     secret = get_secret(provider)
     return secret["api_key"] if secret else None
 

@@ -152,10 +152,10 @@ def gather_home_payload() -> dict:
 
 
 def gather_proxmox_payload() -> dict:
-    from core.proxmox_monitor import PROXMOX_NODES
+    from core.proxmox_monitor import _get_node_configs
     from core.proxmox_registry import discover_node_inventory
     nodes = []
-    for n in PROXMOX_NODES:
+    for n in _get_node_configs():
         try:
             inv = discover_node_inventory(n)
             nodes.append({"name": n["name"], "reachable": inv.get("reachable", False),

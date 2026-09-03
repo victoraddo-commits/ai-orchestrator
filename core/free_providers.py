@@ -67,11 +67,16 @@ def register_free_provider(name, run_text_task_fn, description):
         raise ValueError(f"Provider '{name}' failed evaluation: {'; '.join(issues)}")
 
     from core.ai_provider import register_provider
+    from core.ai.credential_vault import retrieve_api_key
+
+    def _available():
+        # Try vault first (provider name = slug), then env var fallback
+        return bool(retrieve_api_key(name) or os.environ.get(f"{name.upper()}_API_KEY"))
 
     register_provider(
         name,
         run_text_task=run_text_task_fn,
-        available_fn=lambda: bool(os.environ.get(f"{name.upper()}_API_KEY")),
+        available_fn=_available,
         kind="cloud",
         description=description,
         cost_tier="free",

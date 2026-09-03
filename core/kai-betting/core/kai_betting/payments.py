@@ -26,9 +26,11 @@ class BettingPaymentClient:
     """
 
     def __init__(self):
-        self._client_id = os.environ.get("HUBTEL_CLIENT_ID")
-        self._client_secret = os.environ.get("HUBTEL_CLIENT_SECRET")
-        self._merchant_number = os.environ.get("HUBTEL_MERCHANT_NUMBER")
+        from core.ai.credential_vault import retrieve_hubtel_credentials
+        creds = retrieve_hubtel_credentials()
+        self._client_id = creds["client_id"] or os.environ.get("HUBTEL_CLIENT_ID")
+        self._client_secret = creds["client_secret"] or os.environ.get("HUBTEL_CLIENT_SECRET")
+        self._merchant_number = creds["merchant_number"] or os.environ.get("HUBTEL_MERCHANT_NUMBER")
         self._test_mode = (
             os.environ.get("HUBTEL_TEST_MODE", "true").lower() == "true"
             or not self._is_configured()

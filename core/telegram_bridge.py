@@ -53,12 +53,16 @@ ALLOWED_CHAT_ID = os.environ.get("KAI_TELEGRAM_CHAT_ID") or "612786480"
 
 
 def _load_token():
-    load_dotenv(AI_ORCHESTRATOR_ENV_PATH)
-    token = os.environ.get("KAI_TELEGRAM_BOT_TOKEN")
+    # Try vault first (AES-GCM + kai-vault), then dotenv fallback
+    from core.ai.credential_vault import retrieve_api_key
+    token = retrieve_api_key("kai_telegram")
+    if not token:
+        load_dotenv(AI_ORCHESTRATOR_ENV_PATH)
+        token = os.environ.get("KAI_TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError(
-            "KAI_TELEGRAM_BOT_TOKEN is not set; expected in "
-            f"{AI_ORCHESTRATOR_ENV_PATH} or the environment"
+            "KAI_TELEGRAM_BOT_TOKEN not found — store in vault or set in "
+            f"{AI_ORCHESTRATOR_ENV_PATH}"
         )
     return token
 

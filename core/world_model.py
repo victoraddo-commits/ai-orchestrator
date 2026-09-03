@@ -96,9 +96,9 @@ def collect_entities() -> dict:
 
     # Proxmox nodes + guests (both hosts)
     try:
-        from core.proxmox_monitor import PROXMOX_NODES
+        from core.proxmox_monitor import _get_node_configs
         from core.proxmox_registry import discover_node_inventory
-        for n in PROXMOX_NODES:
+        for n in _get_node_configs():
             inv = discover_node_inventory(n)
             nid = f"host:{n['name']}"
             entities[nid] = {

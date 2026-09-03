@@ -6,7 +6,7 @@ across configured Proxmox nodes.
 """
 
 from datetime import datetime, timezone
-from core.proxmox_monitor import PROXMOX_NODES, _api_get
+from core.proxmox_monitor import _get_node_configs, _api_get
 
 
 def discover_node_inventory(node):
@@ -91,7 +91,7 @@ def discover_node_inventory(node):
 
 def discover_all_inventory():
     """Full multi-node inventory."""
-    return [discover_node_inventory(n) for n in PROXMOX_NODES]
+    return [discover_node_inventory(n) for n in _get_node_configs()]
 
 
 def get_registry_summary():

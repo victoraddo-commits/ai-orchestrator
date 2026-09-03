@@ -70,7 +70,8 @@ def get_appliance_status():
     deepseek_flash = {"status": "unknown"}
     try:
         import requests
-        api_key = os.environ.get("DEEPSEEK_NATIVE_FLASH_API_KEY", "")
+        from core.ai.credential_vault import retrieve_api_key
+        api_key = retrieve_api_key("deepseek_native_flash") or os.environ.get("DEEPSEEK_NATIVE_FLASH_API_KEY", "")
         if api_key:
             resp = requests.get(
                 "https://api.deepseek.com/v1/models",

@@ -227,10 +227,67 @@ def retrieve_credential(provider: str) -> Optional[dict]:
     }
 
 
+# Env-var fallback map for providers whose keys may live in the process
+# environment (e.g., during migration or in test environments).  These are
+# consulted ONLY when the vault returns nothing.
+_PROVIDER_ENV_FALLBACK = {
+    "gemini":               "GEMINI_API_KEY",
+    "geminix":              "GEMINIX_API_KEY",
+    "groq":                 "GROQ_API_KEY",
+    "openai":               "OPENAI_API_KEY",
+    "openrouter":           "OPENROUTER_API_KEY",
+    "minimax":              "MINIMAX_API_KEY",
+    "deepseek_native_pro":  "DEEPSEEK_NATIVE_PRO_API_KEY",
+    "deepseek_native_flash":"DEEPSEEK_NATIVE_FLASH_API_KEY",
+    "deepseek_openrouter":  "DEEPSEEK_OPENROUTER_API_KEY",
+    "odds_api_io":          "ODDS_API_IO_KEY",
+    "kai_telegram":         "KAI_TELEGRAM_BOT_TOKEN",
+    "juris_kai":            "JURIS_KAI_BOT_TOKEN",
+    "proxmox_b":            "PROXMOX_B_TOKEN_ID",
+    "proxmox_b_secret":     "PROXMOX_B_TOKEN_SECRET",
+    "opnsense":             "OPNSENSE_API_KEY",
+    "opnsense_secret":      "OPNSENSE_API_SECRET",
+    "ddwrt":                "DDWRT_PASSWORD",
+    # Additional secrets from audit
+    "anthropic_auth":       "ANTHROPIC_AUTH_TOKEN",
+    "ha_token":             "HA_TOKEN",
+    "hubtel_client_secret": "HUBTEL_CLIENT_SECRET",
+    "hubtel_client_id":     "HUBTEL_CLIENT_ID",
+    "hubtel_merchant_num":  "HUBTEL_MERCHANT_NUMBER",
+    "proxmox_a":           "PROXMOX_TOKEN",
+}
+
+
+def retrieve_hubtel_credentials() -> dict:
+    """Return all Hubtel credentials as a dict.
+
+    Resolves from vault (AES-GCM + kai-vault) with env fallback.
+    Returns keys: client_id, client_secret, merchant_number
+    """
+    return {
+        "client_id":       retrieve_api_key("hubtel_client_id"),
+        "client_secret":   retrieve_api_key("hubtel_client_secret"),
+        "merchant_number": retrieve_api_key("hubtel_merchant_num"),
+    }
+
+
 def retrieve_api_key(provider: str) -> Optional[str]:
-    """Convenience: return just the plaintext API key."""
+    """Convenience: return just the plaintext API key.
+
+    Source order:
+      1. kai-vault machine plane (if configured and reachable)
+      2. local AES-GCM vault store
+      3. process environment variable (migration / test compatibility)
+    """
     cred = retrieve_credential(provider)
-    return cred["api_key"] if cred else None
+    if cred:
+        return cred["api_key"]
+    # Fallback for tests / migration: read directly from env
+    env_var = _PROVIDER_ENV_FALLBACK.get(provider)
+    if env_var:
+        import os
+        return os.getenv(env_var) or None
+    return None
 
 
 def list_vault_entries() -> list[dict]:

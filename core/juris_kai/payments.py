@@ -17,9 +17,6 @@ from datetime import datetime, timezone
 logger = logging.getLogger("juris_kai.payments")
 
 # Hubtel configuration
-HUBTEL_CLIENT_ID = os.environ.get("HUBTEL_CLIENT_ID", "")
-HUBTEL_CLIENT_SECRET = os.environ.get("HUBTEL_CLIENT_SECRET", "")
-HUBTEL_MERCHANT_NUMBER = os.environ.get("HUBTEL_MERCHANT_NUMBER", "")
 HUBTEL_API_BASE = os.environ.get(
     "HUBTEL_API_BASE", "https://api.hubtel.com/v1"
 )
@@ -35,9 +32,11 @@ class HubtelPaymentClient:
     """Client for Hubtel's Receive Money API."""
 
     def __init__(self):
-        self.client_id = HUBTEL_CLIENT_ID
-        self.client_secret = HUBTEL_CLIENT_SECRET
-        self.merchant_number = HUBTEL_MERCHANT_NUMBER
+        from core.ai.credential_vault import retrieve_hubtel_credentials
+        creds = retrieve_hubtel_credentials()
+        self.client_id = creds["client_id"] or os.environ.get("HUBTEL_CLIENT_ID", "")
+        self.client_secret = creds["client_secret"] or os.environ.get("HUBTEL_CLIENT_SECRET", "")
+        self.merchant_number = creds["merchant_number"] or os.environ.get("HUBTEL_MERCHANT_NUMBER", "")
         self.base_url = HUBTEL_API_BASE.rstrip("/")
         self.test_mode = HUBTEL_TEST_MODE
 

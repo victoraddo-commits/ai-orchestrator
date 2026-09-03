@@ -61,7 +61,17 @@ logger = logging.getLogger("juris_kai.bot")
 # Config
 # ---------------------------------------------------------------------------
 
-BOT_TOKEN = os.environ.get("JURIS_KAI_BOT_TOKEN", "")
+BOT_TOKEN: str = ""  # filled lazily on first use
+
+
+def _get_bot_token() -> str:
+    """Load JURIS_KAI_BOT_TOKEN from vault (fallback: env)."""
+    global BOT_TOKEN
+    if BOT_TOKEN:
+        return BOT_TOKEN
+    from core.ai.credential_vault import retrieve_api_key
+    BOT_TOKEN = retrieve_api_key("juris_kai") or os.environ.get("JURIS_KAI_BOT_TOKEN", "")
+    return BOT_TOKEN
 ADMIN_IDS: set[int] = set()
 _raw_admin = os.environ.get("JURIS_KAI_ADMIN_IDS", "")
 if _raw_admin:
@@ -129,7 +139,7 @@ def telegram_api(method: str, data: dict, timeout: int = 35) -> dict:
     Default timeout is 35s to accommodate getUpdates long-polling (POLL_TIMEOUT=25s
     + network buffer).
     """
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
+    url = f"https://api.telegram.org/bot{_get_bot_token()}/{method}"
     try:
         resp = requests.post(url, json=data, timeout=timeout)
         return resp.json()
@@ -1366,7 +1376,7 @@ def poll_updates(offset: int | None = None) -> int | None:
 
 def run_forever():
     """Main entry point — poll forever. Run as a standalone process."""
-    if not BOT_TOKEN:
+    if not _get_bot_token():
         logger.error("JURIS_KAI_BOT_TOKEN not set. Bot cannot start.")
         print("ERROR: JURIS_KAI_BOT_TOKEN environment variable is not set.")
         return

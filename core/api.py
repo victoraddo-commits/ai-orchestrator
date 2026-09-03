@@ -315,6 +315,82 @@ def mobile_diagnose():
     return run_diagnostic()
 
 
+@app.get("/kai/brain/query")
+def query_second_brain(
+    entity: str | None = None,
+    memory_type: str | None = None,
+    time_start: str | None = None,
+    time_end: str | None = None,
+    require_confirmation: bool = True,
+    limit: int = Query(default=100, ge=1, le=1000),
+):
+    """Query the Second Brain stores.
+
+    Args:
+        entity: filter to this entity name
+        memory_type: filter to this memory type (e.g. "incident", "decision",
+                     "infrastructure", "operational", "project", "semantic")
+        time_start: ISO timestamp — return records modified after this
+        time_end:   ISO timestamp — return records modified before this
+        require_confirmation: if true, flag inferred-confidence records (default True)
+        limit: max records to return (1–1000, default 100)
+    """
+    from core.second_brain.router import SecondBrainRouter
+    from core.second_brain.types import MemoryType
+
+    if memory_type:
+        try:
+            mt = MemoryType(memory_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unknown memory_type: {memory_type!r}")
+        memory_types = [mt]
+    else:
+        memory_types = None
+
+    time_range = None
+    if time_start or time_end:
+        time_range = {}
+        if time_start:
+            time_range["start"] = time_start
+        if time_end:
+            time_range["end"] = time_end
+
+    router = SecondBrainRouter()
+    result = router.query({
+        "entity": entity,
+        "memory_types": memory_types,
+        "time_range": time_range,
+        "require_confirmation": require_confirmation,
+        "limit": limit,
+    })
+    return result
+
+
+@app.get("/kai/brain/stores")
+def list_second_brain_stores():
+    """Return store names, record counts, and merge policies."""
+    from core.second_brain.registry import STORE_MERGE_POLICIES
+    from pathlib import Path
+
+    stores_root = Path(__file__).parent / "second_brain" / "stores"
+    result = {}
+    for store_name in STORE_MERGE_POLICIES:
+        manifest_path = stores_root / store_name / "manifest.json"
+        records_path = stores_root / store_name / "records.jsonl"
+        import json
+        manifest = {}
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text())
+            except Exception:
+                pass
+        result[store_name] = {
+            "merge_policy": STORE_MERGE_POLICIES[store_name].value,
+            "record_count": manifest.get("record_count", 0),
+        }
+    return result
+
+
 @app.get("/")
 def root_redirect():
     return RedirectResponse(url="/command-center")

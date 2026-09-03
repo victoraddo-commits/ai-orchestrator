@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from core.memory import load, save, update
+from core.second_brain.stores.project.adapters.learning_adapter import sync_lesson_to_second_brain as _sb_sync
 
 
 SUCCESS_STATUSES = {"COMPLETED"}
@@ -198,6 +199,16 @@ def record_lesson(category, subject, source, evidence=None, recommendation=None)
         return lessons
 
     update(LESSONS_FILE, mutate)
+
+    # Mirror to Second Brain (additive — failures are silent)
+    try:
+        _sb_sync(
+            action=subject,
+            classification=recommendation or "observe",
+            context={"category": category, "source": source, "evidence": evidence or {}},
+        )
+    except Exception:
+        pass
 
     return entry
 

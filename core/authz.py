@@ -58,6 +58,7 @@ CAPABILITIES = {
     "delegate.use": "Use the AI delegation endpoint",
     "kai.command": "Issue Kai commands",
     "kai.chat.send": "Send chat messages to Kai",
+    "kai.brain.read": "Query the Second Brain stores",
     "law.manage": "Manage law documents (add/delete)",
     "dashboard.password": "Change dashboard login password",
     "juris.admin": "Manage Juris Kai accounts (subscription, deactivate, grant days, referrals)",

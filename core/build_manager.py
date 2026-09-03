@@ -17,6 +17,7 @@ from core.plugin_deployer import redeploy_plugin_if_needed
 from core.service_restarter import restart_services_if_needed
 from core.remediation import attempt_rollback
 from core.build_learning import record_build_outcome, TERMINAL_STATUSES
+from core.second_brain.stores.project.adapters.learning_adapter import sync_build_learn_to_second_brain as _sb_sync_build
 from core.approval import create_build_approval
 from core.sandbox_manager import init_git_if_needed, cleanup_sandbox, get_build_branch
 
@@ -530,6 +531,19 @@ def _ensure_repo(build):
 def _record_if_terminal(build):
     if build.get("status") in TERMINAL_STATUSES:
         record_build_outcome(build)
+        # Mirror terminal build events to Second Brain (additive — failures silent)
+        try:
+            _sb_sync_build(
+                build_id=build.get("id"),
+                event_type=f"build_{build['status'].lower()}",
+                details={
+                    "name": build.get("name"),
+                    "template": build.get("template"),
+                    "failure_reason": build.get("failure_reason"),
+                },
+            )
+        except Exception:
+            pass
 
 
 # Confirmed live 2026-07-29 (13P, then again on 13Y's own plan -- a plan

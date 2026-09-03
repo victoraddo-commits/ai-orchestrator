@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime
 
 from core import memory_manager
+from core.second_brain.stores.operational.adapters.memory_adapter import sync_to_second_brain as _sb_sync
 
 
 PRODUCTION_MEMORY_DIR = Path("memory")
@@ -44,6 +45,12 @@ def save(name, data, directory=None):
         )
 
     memory_manager.write(directory / name, data)
+
+    # Mirror to Second Brain (additive — failures are silent)
+    try:
+        _sb_sync(name, data)
+    except Exception:
+        pass
 
 
 def update(name, mutate_fn, directory=None):

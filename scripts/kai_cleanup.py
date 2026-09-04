@@ -18,7 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -50,6 +50,14 @@ JSON_TRIM = {
 
 # Files exceeding these sizes get trimmed regardless
 JSON_MAX_SIZE = 50 * 1024**2  # 50MB — any JSON over this gets trimmed
+
+# SQLite databases to purge old data from (keeps last N days of records)
+SQLITE_PURGE = {
+    "memory/health_observability.db": 7,   # keep 7 days of health events
+}
+
+# Max size for SQLite DBs before aggressive purge
+SQLITE_MAX_SIZE = 10 * 1024**2  # 10MB — warn if any SQLite DB exceeds this
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -224,6 +232,44 @@ def remove_old_backups(base_dir: str, keep_days: int = 7):
             log.warning(f"failed to remove backup {path}: {e}")
 
 
+def purge_sqlite_dbs(base_dir: str):
+    """Delete records older than N days from tracked SQLite databases."""
+    import sqlite3
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+
+    for rel_path, keep_days in SQLITE_PURGE.items():
+        db_path = os.path.join(base_dir, rel_path)
+        if not os.path.isfile(db_path):
+            continue
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).isoformat()
+        size_before = os.path.getsize(db_path)
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            # Get list of tables
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [r[0] for r in cur.fetchall()]
+            total_deleted = 0
+            for table in tables:
+                # Try to delete rows with a ts/timestamp/created_at column older than cutoff
+                for col in ("ts", "timestamp", "created_at", "recorded_at"):
+                    try:
+                        cur.execute(f"DELETE FROM {table} WHERE {col} < ?", (cutoff,))
+                        total_deleted += cur.rowcount
+                        break
+                    except sqlite3.OperationalError:
+                        continue
+            conn.commit()
+            conn.close()
+            # Vacuum to reclaim space
+            sqlite3.connect(db_path).execute("VACUUM").close()
+            size_after = os.path.getsize(db_path)
+            if total_deleted > 0:
+                log.info(f"purged {total_deleted} old rows from {rel_path} ({human(size_before)}→{human(size_after)})")
+        except Exception as e:
+            log.warning(f"failed to purge {rel_path}: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -240,6 +286,7 @@ def run_cleanup():
     trim_memory_jsons(str(base_dir))
     trim_oversized_jsons(str(base_dir))
     remove_old_backups(str(base_dir))
+    purge_sqlite_dbs(str(base_dir))
 
     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
     log.info(f"=== cleanup cycle finished ({elapsed:.1f}s) ===")

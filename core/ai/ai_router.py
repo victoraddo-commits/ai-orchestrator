@@ -266,12 +266,15 @@ ROLE_PROVIDERS = {
     # all entries in place, reorder only; restore original order once the
     # accounts are funded. gemini/geminix/openrouter live-probed OK;
     # local/llama3 availability-gated on Ollama.
-    "planning": ["local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "architecture": ["local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "log_analysis": ["llama3", "local", "groq", "gemini", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["llama3", "local", "gemini", "groq", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
-    "review": ["local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "classification": ["llama3", "local", "groq", "gemini", "geminix", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
+    # KAI 2.0 Model Fabric (2026-09-08): local_brain_fast (Qwen2.5-7B on Tesla P40)
+    # is PRIMARY for all planning/reasoning/analysis tasks (41 t/s generation).
+    # local_coder (Qwen2.5-Coder-7B) handles code-specific text tasks.
+    "planning": ["local_brain_fast", "local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "architecture": ["local_brain_fast", "local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "log_analysis": ["local_brain_fast", "llama3", "local", "groq", "gemini", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
+    "documentation": ["local_brain_fast", "llama3", "local", "gemini", "groq", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
+    "review": ["local_brain_fast", "local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
+    "classification": ["local_brain_fast", "llama3", "local", "groq", "gemini", "geminix", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
 }
 
 # 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
@@ -334,6 +337,10 @@ ROLE_PROVIDERS["legal_coding"] = ["claude", "omniroute_deepseek_coding"]
 # 2026-08-27: free_coding (cohere/nemotron/poolside free OpenRouter models
 # via Free Model Manager) inserted as the FIRST free fallback before any
 # paid option — verified free, circuit-broken, pool-rotating.
+# KAI 2.0 Model Fabric (2026-09-08): local_coder added as text-task fallback
+# for code-related questions (not full coding_agent capability, which requires
+# file access). For actual code generation with tool use, the chain below
+# (free_coding → claude → ...) still applies.
 ROLE_PROVIDERS["coding"] = [
     "free_coding",
     "claude",
@@ -341,6 +348,8 @@ ROLE_PROVIDERS["coding"] = [
     "omniroute",
     "gpuai_minimax",
 ]
+# Add local_coder to a new "code_review" role for text-only code analysis
+ROLE_PROVIDERS["code_review"] = ["local_coder", "local_brain_fast", "gemini", "claude"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -739,6 +748,53 @@ def _classify_failure_reason(provider_name, detail):
     return "error"
 
 
+# Phase 1: Last alert time tracking to prevent notification spam
+_last_failover_alert = {}
+_FAILOVER_ALERT_COOLDOWN = 300  # 5 minutes between failover alerts for same provider pair
+
+
+def _send_failover_notification(from_provider, to_provider, task_type, attempts_failed):
+    """Send Telegram notification when provider failover occurs.
+
+    KAI Phase 1: Automatic failover notification when primary provider fails
+    and backup provider is used successfully.
+
+    Args:
+        from_provider: Primary provider that failed
+        to_provider: Backup provider that succeeded
+        task_type: Type of task being executed
+        attempts_failed: Number of failed attempts before success
+    """
+    import time
+
+    # Check cooldown to avoid spam
+    alert_key = f"{from_provider}->{to_provider}"
+    now = time.time()
+    last_alert = _last_failover_alert.get(alert_key, 0)
+
+    if now - last_alert < _FAILOVER_ALERT_COOLDOWN:
+        return  # Skip alert, too soon since last one
+
+    try:
+        from core.telegram_bridge import send_telegram_alert
+
+        message = "🔄 PROVIDER FAILOVER\n\n"
+        message += f"Primary provider '{from_provider}' failed.\n"
+        message += f"Automatically switched to '{to_provider}'.\n\n"
+        message += f"Task type: {task_type}\n"
+        message += f"Failed attempts: {attempts_failed}\n"
+        message += f"Status: Work continuing without interruption\n"
+
+        send_telegram_alert(message)
+        _last_failover_alert[alert_key] = now
+
+        info(f"Sent failover notification: {from_provider} → {to_provider} (task_type={task_type})")
+
+    except Exception as exc:
+        # Never let notification failure break the main flow
+        logger.error(f"Failed to send failover notification: {exc}")
+
+
 # 13W: pull the provider-reported cost out of a response, if any. Only
 # coding-agent responses (dicts from opencode_bridge/coding_bridge) can carry
 # one today; text_task responses are plain strings and yield None.
@@ -940,6 +996,9 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
                      "error": "denied"} for c in candidates],
             )
 
+    # Track first provider tried for failover detection
+    first_provider_attempted = None
+
     for name in candidates:
         provider = ai_provider.get_provider(name)
 
@@ -955,6 +1014,10 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         if not provider.get("enabled", True):
             record_failure(name, "disabled", "operator disabled this provider")
             continue
+
+        # Track first provider we actually try (not just iterate over)
+        if first_provider_attempted is None:
+            first_provider_attempted = name
 
         # Only a verified quota_exceeded status skips the call outright --
         # a plain "error" status is deliberately not treated the same way
@@ -1047,6 +1110,15 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         # 17R: success clears circuit breaker and records healthy latency
         circuit_breaker.record_success(name)
         provider_latency.record_latency(name, duration_ms)
+
+        # KAI Phase 1: Failover notification when non-primary provider is used
+        if first_provider_attempted and name != first_provider_attempted and len(attempts) > 0:
+            _send_failover_notification(
+                from_provider=first_provider_attempted,
+                to_provider=name,
+                task_type=resolved_type,
+                attempts_failed=len(attempts)
+            )
 
         result = {
             "provider": name,

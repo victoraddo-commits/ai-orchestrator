@@ -137,6 +137,8 @@ async def lifespan(app: FastAPI):
     from core.notifications import NotificationManager
     nm = NotificationManager.get_instance()
     nm.register_event_subscriptions()
+    # Start KLAUS legal acquisition scheduler
+    start_klaus_scheduler()
     yield
 
 
@@ -404,6 +406,67 @@ def list_second_brain_stores(
             "record_count": manifest.get("record_count", 0),
         }
     return result
+
+
+@app.get("/kai/tools/world")
+def get_world_model(
+    limit: int = Query(default=100, ge=1, le=500),
+):
+    """World Model API - returns entities from Second Brain for kai-voice-hud.
+
+    Queries project and relationship stores to build a world model view.
+    Returns WorldEntity objects compatible with kai-voice-hud interface.
+
+    KAI 2.0 Integration - deployed 2026-09-08
+    """
+    from core.second_brain.router import SecondBrainRouter
+    from core.second_brain.types import MemoryType
+
+    router = SecondBrainRouter()
+
+    # Query relevant memory types for world model
+    result = router.query({
+        "memory_types": [
+            MemoryType.PROJECT,
+            MemoryType.RELATIONSHIP,
+            MemoryType.BUSINESS,
+            MemoryType.INFRASTRUCTURE,
+        ],
+        "require_confirmation": False,  # Include all confidence levels
+        "limit": limit,
+    })
+
+    # Transform Second Brain records to WorldEntity format
+    entities = []
+    for record in result.get("records", []):
+        # Map entity_type to WorldEntity type
+        entity_type = record.get("entity_type", "fact")
+        type_mapping = {
+            "person": "person",
+            "project": "project",
+            "company": "company",
+            "service": "topic",
+            "infrastructure": "topic",
+            "location": "location",
+        }
+        world_type = type_mapping.get(entity_type, "fact")
+
+        # Extract fact content
+        fact = record.get("fact", {})
+        name = record.get("entity") or fact.get("name") or fact.get("title") or "Unknown"
+        summary = fact.get("summary") or fact.get("description") or fact.get("content") or ""
+
+        entity = {
+            "id": record.get("id", ""),
+            "type": world_type,
+            "name": str(name),
+            "summary": str(summary)[:500],  # Truncate long summaries
+            "tags": fact.get("tags", []) if isinstance(fact.get("tags"), list) else [],
+            "updated_at": record.get("timestamp", ""),
+        }
+        entities.append(entity)
+
+    return {"entities": entities}
 
 
 @app.get("/")
@@ -1528,6 +1591,40 @@ def health():
     }
 
 
+@app.get("/health/providers")
+def get_all_provider_health():
+    """Get health status of all AI providers.
+
+    Part of KAI Phase 1 - Provider Health Monitoring.
+    Returns current health snapshots for all registered providers.
+    """
+    import core.ai.provider_health as provider_health
+
+    snapshots = provider_health.get_all_quota_snapshots()
+
+    return {
+        "providers": snapshots,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.get("/health/providers/{provider}")
+def get_provider_health(provider: str):
+    """Get health status of a specific provider.
+
+    Part of KAI Phase 1 - Provider Health Monitoring.
+    Returns current health snapshot for the specified provider.
+    """
+    import core.ai.provider_health as provider_health
+
+    snapshot = provider_health.get_quota_snapshot(provider)
+
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Provider {provider} not found or no health data available")
+
+    return snapshot
+
+
 @app.get("/incidents")
 def incidents():
     return load_incidents()
@@ -2506,29 +2603,48 @@ def scheduler_snapshot_endpoint():
     return get_scheduler_snapshot()
 
 
+# ── 13O Command Center summary ─────────────────────────────────────────────
+# In-memory cache for expensive per-request computations.
+# Pre-warmed at import time so the endpoint is always fast.
+import time as _cc_time, threading as _cc_threading
+_cc_workforce_cache: dict = {"pd": None, "providers": None, "expires_at": 0.0}
+_CC_WORKFORCE_TTL = 30   # seconds before provider lookups are refreshed
+_CC_CACHE_LOCK = _cc_threading.Lock()
+
+def _cc_warm_cache():
+    """Warm the provider cache in the background.  Runs once at import and
+    then periodically via a background thread."""
+    from core.ai.ai_router import get_provider_dashboard
+    from core.ai_provider import list_providers
+    try:
+        pd = get_provider_dashboard()
+        providers = list_providers()
+        with _CC_CACHE_LOCK:
+            _cc_workforce_cache["pd"] = pd
+            _cc_workforce_cache["providers"] = providers
+            _cc_workforce_cache["expires_at"] = _cc_time.time() + _CC_WORKFORCE_TTL
+    except Exception:
+        pass
+
+# Warm immediately in background thread so import is not blocked
+_cc_warm_thread = _cc_threading.Thread(target=_cc_warm_cache, daemon=True)
+_cc_warm_thread.start()
+
 @app.get("/api/command-center/summary")
 def command_center_summary_endpoint():
-    """13O: consolidated read-only payload for the Kai Command Center tab.
-
-    Aggregates every section the Command Center renders from existing
-    backend services/registries/workflows -- no duplicated business logic,
-    no parallel data sources.  Fetch-on-open, no polling responsibility."""
-    from datetime import datetime, timezone
-
-    from core.ai.ai_router import get_usage_history, ROLE_PROVIDERS
-    from core.ai.provider_health import get_all_quota_snapshots
-    from core.build_manager import load_builds as _load_builds
-    from core.build_manager import _RUNNING_STATUSES, _WAITING_STATUSES
-    from core.build_learning import summarize_lessons, get_build_history
-    from core.approval import load_requests
-    from core.learning import summarize as learning_summarize
-
+    """13O: aggregated Kai Command Center summary for the ops dashboard."""
     now = datetime.now(timezone.utc)
 
-    # ── 1. AI Workforce ────────────────────────────────────────────────
-    pd = get_provider_dashboard()
-    providers = list_providers()
-    history = get_usage_history()
+    # Use pre-warmed cache when available; fall back to direct calls on cold cache
+    with _CC_CACHE_LOCK:
+        pd = _cc_workforce_cache.get("pd")
+        providers = _cc_workforce_cache.get("providers")
+
+    if pd is None or providers is None:
+        from core.ai.ai_router import get_provider_dashboard
+        from core.ai_provider import list_providers
+        pd = get_provider_dashboard()
+        providers = list_providers()
 
     workforce = {}
     for name, info in providers.items():
@@ -2608,6 +2724,8 @@ def command_center_summary_endpoint():
     recently_completed = recently_completed[-10:]
 
     # ── 3. Provider Health (extended) ──────────────────────────────────
+    from core.ai.provider_health import get_all_quota_snapshots
+    history = _load_audit_source("ai_usage_history")
     quota_snapshots = get_all_quota_snapshots()
     provider_health_data = {}
     for name, info in providers.items():

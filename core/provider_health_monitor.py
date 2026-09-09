@@ -294,7 +294,7 @@ def start_monitor(interval: int = CHECK_INTERVAL) -> ProviderHealthMonitor:
     """Start the default provider health monitor. Returns the instance."""
     global _default_monitor
     if _default_monitor is None:
-        _default_monitor = ProviderHealthMonitor(interval=interval)
+        _default_monitor = ProviderHealthMonitor(check_interval=interval)
     if not _default_monitor.is_running:
         _default_monitor.start()
     return _default_monitor

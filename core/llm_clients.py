@@ -617,3 +617,64 @@ def call_ollama_llama(prompt, model=OLLAMA_LLAMA_MODEL, timeout=120):
         except requests.RequestException as error:
             provider_health.capture_provider_error("ollama_llama", detail=str(error)[:300])
             raise RuntimeError(f"ollama_llama request failed: {type(error).__name__}") from None
+
+# === OLLAMA LOCAL MODEL CONFIGURATION ===
+# Added 2026-09-09: VM 104 Ollama server
+
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_MODEL = "qwen2.5:7b"
+
+def call_ollama(prompt, max_tokens=2048, temperature=0.7, model=None, cognitive_role=None, timeout=120):
+    """Call Ollama server on VM 104 with cognitive routing support.
+
+    Args:
+        prompt: Text prompt
+        max_tokens: Maximum tokens to generate
+        temperature: Sampling temperature
+        model: Explicit model name (e.g., "qwen2.5:7b", "kai-brain:27b")
+        cognitive_role: Route via cognitive router (e.g., "reasoning", "coding", "fast")
+                       Takes precedence over model parameter
+
+    Returns:
+        Generated text string
+    """
+    import requests
+
+    # Determine which model to use
+    target_model = OLLAMA_MODEL  # Default: qwen2.5:7b
+
+    if cognitive_role:
+        # Use cognitive router
+        try:
+            from core.ai.cognitive_router import get_model_for_role
+            target_model = get_model_for_role(cognitive_role)
+        except (ImportError, Exception):
+            # Fallback to default if cognitive router unavailable
+            pass
+    elif model:
+        # Explicit model override
+        target_model = model
+
+    try:
+        response = requests.post(
+            f"{OLLAMA_BASE_URL}/api/generate",
+            json={
+                "model": target_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "num_predict": max_tokens,
+                    "temperature": temperature,
+                }
+            },
+            timeout=120
+        )
+        response.raise_for_status()
+        return response.json()["response"]
+    except Exception as e:
+        raise RuntimeError(f"Ollama server unavailable: {e}")
+
+# Compatibility aliases
+local_brain = call_ollama
+local_brain_fast = call_ollama
+local_brain_coder = call_ollama

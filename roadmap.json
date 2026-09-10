@@ -2901,11 +2901,13 @@
       "id": "DP1",
       "name": "Directive Processor - Phase 1: Intake Layer",
       "description": "Build intake adapters for Telegram, HTTP API, WebSocket, and Agent SDK. Implement input validation, normalization, and DirectiveRequest format.",
-      "status": "pending",
+      "status": "failed",
       "priority": 10,
       "assigned_agent": "local",
       "dependencies": [],
-      "estimated_tokens": 15000
+      "estimated_tokens": 15000,
+      "build_id": "d674e902",
+      "started_at": "2026-09-10 01:04:40"
     },
     {
       "id": "DP2",
@@ -2923,7 +2925,7 @@
       "id": "DP3",
       "name": "Directive Processor - Phase 3: Authorization & Risk Layer",
       "description": "Build IdentityVerifier, PermissionChecker, RiskAssessor, ApprovalRouter, and DryRunValidator. Implement RBAC/ABAC + risk levels + approval integration.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 12,
       "assigned_agent": "kai_coder",
       "dependencies": [
@@ -2935,7 +2937,7 @@
       "id": "DP4",
       "name": "Directive Processor - Phase 4: Execution Coordinator",
       "description": "Build ExecutorRouter, BuildQueueExecutor, ServiceAPIExecutor, TaskManager, EventPublisher, and CallbackHandler. Implement sync/async execution + events + callbacks.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 13,
       "assigned_agent": "kai_coder",
       "dependencies": [
@@ -2966,6 +2968,46 @@
         "DP5"
       ],
       "estimated_tokens": 17000
+    },
+    {
+      "id": "P100",
+      "name": "P17 Backup Architecture - Complete",
+      "description": "Complete P17: formal backup architecture doc, Proxmox CT backup inventory, automated off-site verification, fix IT Manager DB backup silent failures",
+      "status": "pending",
+      "priority": 5,
+      "assigned_agent": "kai_brain",
+      "dependencies": [],
+      "estimated_tokens": 12000
+    },
+    {
+      "id": "P101",
+      "name": "P19 Vault Recovery & Secrets",
+      "description": "Re-register vault passkey (recovery exhausted), migrate .env secrets to vault, create ai-orchestrator capability grants",
+      "status": "pending",
+      "priority": 3,
+      "assigned_agent": "kai_coder",
+      "dependencies": [],
+      "estimated_tokens": 15000
+    },
+    {
+      "id": "P102",
+      "name": "Telegram Bot Configuration",
+      "description": "Configure bot tokens for notifications, webhook integration for directives, inventory all bots (KAI core, legal, SUSU)",
+      "status": "pending",
+      "priority": 8,
+      "assigned_agent": "kai_coder",
+      "dependencies": [],
+      "estimated_tokens": 10000
+    },
+    {
+      "id": "P103",
+      "name": "P0 Discovery Complete",
+      "description": "Complete inventories: Telegram bots, Claude Code skills/MCP/hooks, agents, formal backups. Fix plaintext secrets",
+      "status": "pending",
+      "priority": 6,
+      "assigned_agent": "local",
+      "dependencies": [],
+      "estimated_tokens": 8000
     }
   ],
   "_audit": {

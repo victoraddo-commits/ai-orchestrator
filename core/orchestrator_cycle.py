@@ -16,6 +16,7 @@ import core.vpn_failover as vpn_failover
 # 2026-08-09: Notification Service — Kai Mobile Command Node sub-project 3
 import core.notifications as notifications
 from core.kai_event_bus import event_bus
+from core.agentguard import AgentGuard, ActionRequest, ActionType, RiskLevel
 
 
 def _safe_send(message_text):
@@ -142,6 +143,10 @@ def _safe_run_ecosystem_discovery():
 
 
 def run_cycle():
+
+    # Initialize AgentGuard (KAI 2.0 Security Layer)
+    _guard = AgentGuard({"enabled": True})
+    info("AgentGuard security layer active")
 
     info("=== orchestrator cycle started ===")
 

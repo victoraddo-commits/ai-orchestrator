@@ -53,17 +53,43 @@ ALLOWED_CHAT_ID = os.environ.get("KAI_TELEGRAM_CHAT_ID") or "612786480"
 
 
 def _load_token():
-    # Try vault first (AES-GCM + kai-vault), then dotenv fallback
-    from core.ai.credential_vault import retrieve_api_key
-    token = retrieve_api_key("kai_telegram")
-    if not token:
-        load_dotenv(AI_ORCHESTRATOR_ENV_PATH)
-        token = os.environ.get("KAI_TELEGRAM_BOT_TOKEN")
+    """Load Telegram bot token with validation to prevent corruption.
+
+    PERMANENT FIX (2026-09-10): Loads from env with format validation.
+    Vault lookup disabled until encryption bug is fixed.
+
+    Token format: <bot_id>:<secret>
+    Example: 8934555328:AAFLfgsXP9zkXK13FT_1uM8U3UHC0fTLiNo
+    """
+    def _is_valid_token(token):
+        """Validate Telegram bot token format."""
+        if not token or not isinstance(token, str):
+            return False
+        parts = token.split(':')
+        if len(parts) != 2:
+            return False
+        bot_id, secret = parts
+        # Bot ID: all digits; Secret: 30+ alphanumeric chars
+        return bot_id.isdigit() and len(secret) >= 30
+
+    # Load from environment
+    load_dotenv(AI_ORCHESTRATOR_ENV_PATH)
+    token = os.environ.get("KAI_TELEGRAM_BOT_TOKEN")
+
+    # Validate token format
     if not token:
         raise RuntimeError(
-            "KAI_TELEGRAM_BOT_TOKEN not found — store in vault or set in "
+            "KAI_TELEGRAM_BOT_TOKEN not found — set in "
             f"{AI_ORCHESTRATOR_ENV_PATH}"
         )
+
+    if not _is_valid_token(token):
+        raise RuntimeError(
+            f"KAI_TELEGRAM_BOT_TOKEN has invalid format. "
+            f"Expected: <bot_id>:<secret> "
+            f"Got: {token[:20]}... (showing first 20 chars)"
+        )
+
     return token
 
 

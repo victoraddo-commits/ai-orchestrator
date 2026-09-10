@@ -284,6 +284,19 @@ def _kai_coder_available():
         return False
 
 
+def _kai_deep_available():
+    """Check if kai-brain:27b (Qwen3.6-27B) model is available in ollama."""
+    try:
+        import requests
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if r.status_code == 200:
+            models = r.json().get("models", [])
+            return any("kai-brain:27b" == m.get("name", "") for m in models)
+        return False
+    except Exception:
+        return False
+
+
 def _llama_run_text_task(prompt, timeout=120, project_path=None):
     """llama3.2:3b via ollama on Proxmox B — faster, lighter fallback.
 
@@ -298,16 +311,15 @@ def _llama_run_text_task(prompt, timeout=120, project_path=None):
 
 
 def _kai_brain_run_text_task(prompt, timeout=240, project_path=None):
-    """kai-brain:27b via ollama — 16.4GB model for complex reasoning.
+    """kai-brain:latest (GLM-4.7-Flash) via ollama — Kai Brain.
 
-    Deployed 2026-09-10. Large parameter model optimized for:
-    - Complex reasoning and planning
-    - Multi-step problem solving
-    - Architectural decisions
-    - Strategic analysis
+    KAI MODEL TEAM role: kai.brain — primary brain + orchestrator. Handles
+    normal conversation, reasoning, planning, decisions, research, and
+    coordination; reviews/verifies ALL significant coder output; and writes
+    code itself when no higher-priority orchestration/review task requires it.
 
-    High timeout (240s) to accommodate large model inference time.
-    Model size confirmed: 16.4 GB (not 17GB as initially estimated).
+    GLM-4.7-Flash is ~4.3× faster than the 27B model (~47 vs ~11 tok/s) with
+    cleaner output. High timeout retained for headroom on long generations.
     """
     import requests
     import json
@@ -331,6 +343,38 @@ def _kai_brain_run_text_task(prompt, timeout=240, project_path=None):
         return data.get("response", "")
     except Exception as e:
         raise RuntimeError(f"kai-brain model call failed: {e}")
+
+
+def _kai_deep_run_text_task(prompt, timeout=240, project_path=None):
+    """kai-brain:27b (Qwen3.6-27B) via ollama — Kai Deep.
+
+    KAI MODEL TEAM role: kai.deep — deep-reasoning escalation model. Used for
+    unusually difficult architecture, reasoning, investigations, or failures
+    that Kai Brain cannot confidently solve. High timeout (240s) for the large
+    model's inference time.
+    """
+    import requests
+    import json
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "kai-brain:27b",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.6,
+                    "top_p": 0.9,
+                }
+            },
+            timeout=timeout
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", "")
+    except Exception as e:
+        raise RuntimeError(f"kai-deep (kai-brain:27b) model call failed: {e}")
 
 
 def _kai_coder_run_text_task(prompt, timeout=120, project_path=None):
@@ -799,22 +843,32 @@ register_provider(
     cost_tier="free",
 )
 
-# Register kai-brain - Ollama 27B model for complex reasoning (2026-09-10)
+# Register kai-brain — GLM-4.7-Flash (KAI MODEL TEAM: kai.brain)
 register_provider(
     "kai_brain",
     run_text_task=_kai_brain_run_text_task,
     available_fn=_kai_brain_available,
     kind="local",
-    description="kai-brain:27b via ollama (17GB) — large parameter model for complex reasoning, multi-step problem solving, architectural decisions, strategic analysis.",
+    description="kai-brain:latest (GLM-4.7-Flash) via ollama — KAI MODEL TEAM kai.brain: primary brain + orchestrator. Reviews all coder work and writes code itself when no higher-priority orchestration/review task requires it. ~47 tok/s.",
     cost_tier="free",
 )
 
-# Register kai-coder - Ollama 7B code specialist (2026-09-10)
+# Register kai-coder — Qwen2.5-Coder-7B (KAI MODEL TEAM: kai.coder.fast)
 register_provider(
     "kai_coder",
     run_text_task=_kai_coder_run_text_task,
     available_fn=_kai_coder_available,
     kind="local",
-    description="kai-coder:7b via ollama (4.7GB) — code-specialized model for generation, review, refactoring, bug detection, and technical documentation.",
+    description="kai-coder:7b (Qwen2.5-Coder-7B) via ollama (4.7GB) — KAI MODEL TEAM kai.coder.fast: fast everyday coding worker. Code generation, review, refactoring, bug detection, technical documentation.",
+    cost_tier="free",
+)
+
+# Register kai-deep — Qwen3.6-27B (KAI MODEL TEAM: kai.deep)
+register_provider(
+    "kai_deep",
+    run_text_task=_kai_deep_run_text_task,
+    available_fn=_kai_deep_available,
+    kind="local",
+    description="kai-brain:27b (Qwen3.6-27B) via ollama (17GB) — KAI MODEL TEAM kai.deep: deep-reasoning escalation for difficult architecture, reasoning, investigations, or failures Kai Brain cannot confidently solve.",
     cost_tier="free",
 )

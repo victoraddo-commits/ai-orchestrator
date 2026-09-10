@@ -2901,7 +2901,7 @@
       "id": "DP1",
       "name": "Directive Processor - Phase 1: Intake Layer",
       "description": "Build intake adapters for Telegram, HTTP API, WebSocket, and Agent SDK. Implement input validation, normalization, and DirectiveRequest format.",
-      "status": "failed",
+      "status": "completed",
       "priority": 10,
       "assigned_agent": "local",
       "dependencies": [],
@@ -2913,13 +2913,15 @@
       "id": "DP2",
       "name": "Directive Processor - Phase 2: Parser Layer",
       "description": "Implement PatternMatcher, LLMParser, StructuredParser, and EntityExtractor. Support pattern matching + LLM fallback + structured formats.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 11,
-      "assigned_agent": "local",
+      "assigned_agent": "kai_coder",
       "dependencies": [
         "DP1"
       ],
-      "estimated_tokens": 18000
+      "estimated_tokens": 18000,
+      "assigned_provider": "omniroute",
+      "build_id": "f85167c2"
     },
     {
       "id": "DP3",
@@ -2973,41 +2975,49 @@
       "id": "P100",
       "name": "P17 Backup Architecture - Complete",
       "description": "Complete P17: formal backup architecture doc, Proxmox CT backup inventory, automated off-site verification, fix IT Manager DB backup silent failures",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 5,
       "assigned_agent": "kai_brain",
       "dependencies": [],
-      "estimated_tokens": 12000
+      "estimated_tokens": 12000,
+      "assigned_provider": "omniroute",
+      "build_id": "259925de"
     },
     {
       "id": "P101",
       "name": "P19 Vault Recovery & Secrets",
       "description": "Re-register vault passkey (recovery exhausted), migrate .env secrets to vault, create ai-orchestrator capability grants",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 3,
       "assigned_agent": "kai_coder",
       "dependencies": [],
-      "estimated_tokens": 15000
+      "estimated_tokens": 15000,
+      "assigned_provider": "omniroute",
+      "build_id": "b1400a55"
     },
     {
       "id": "P102",
       "name": "Telegram Bot Configuration",
       "description": "Configure bot tokens for notifications, webhook integration for directives, inventory all bots (KAI core, legal, SUSU)",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 8,
       "assigned_agent": "kai_coder",
       "dependencies": [],
-      "estimated_tokens": 10000
+      "estimated_tokens": 10000,
+      "assigned_provider": "omniroute",
+      "build_id": "3b3e63f6"
     },
     {
       "id": "P103",
       "name": "P0 Discovery Complete",
       "description": "Complete inventories: Telegram bots, Claude Code skills/MCP/hooks, agents, formal backups. Fix plaintext secrets",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 6,
       "assigned_agent": "local",
       "dependencies": [],
-      "estimated_tokens": 8000
+      "estimated_tokens": 8000,
+      "assigned_provider": "omniroute",
+      "build_id": "e28a4fc9"
     }
   ],
   "_audit": {

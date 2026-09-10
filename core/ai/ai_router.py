@@ -98,6 +98,12 @@ ROLE_PROVIDERS["coding"] = [
 # Code review role — updated 2026-09-10 to kai_brain for thorough analysis
 ROLE_PROVIDERS["code_review"] = ["kai_brain", "local"]
 
+# KAI MODEL TEAM roles (2026-09-10):
+#   kai.deep    — Qwen3.6-27B (kai-brain:27b) deep-reasoning escalation
+#   kai.security— security advisory (qwen2.5:7b); deterministic controls authoritative
+ROLE_PROVIDERS["deep"] = ["kai_deep", "kai_brain", "local"]
+ROLE_PROVIDERS["security"] = ["local", "kai_brain"]
+
 CHAT_HISTORY_MAX_MESSAGES = 40
 
 DEFAULT_TASK_TYPE = "coding"
@@ -116,6 +122,7 @@ DEFAULT_TASK_TYPE = "coding"
 FIXED_ORDER_TASK_TYPES = frozenset({
     "architecture", "planning", "review", "log_analysis",
     "documentation", "classification",
+    "deep", "security",  # KAI MODEL TEAM: strict-priority escalation/advisory chains
     "law_document", "law_case_analysis", "law_teaching", "law_exam", "law_flashcards", "law_chat",
     "law_document_vision",
     "juris_legal_teaching", "juris_case_analysis", "juris_research",

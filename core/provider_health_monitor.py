@@ -173,8 +173,16 @@ class ProviderHealthMonitor:
 
         # Check if provider is available (credentials configured)
         # Skip credential check for Ollama-based providers (they don't need API keys)
+        # Also skip deprecated providers that are being phased out
         provider_type = provider_info.get('type', '')
         is_ollama = provider_type == 'ollama' or name.startswith('local')
+        is_deprecated = name in ['llama3', 'local_brain_fast', 'local_coder']
+
+        if is_deprecated:
+            # Deprecated provider - mark as disabled, don't alert
+            status['health'] = 'disabled'
+            status['reason'] = 'Deprecated provider (being phased out)'
+            return status
 
         if not is_ollama and not provider_info.get('available', False):
             status['health'] = 'unavailable'

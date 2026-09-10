@@ -297,8 +297,8 @@ def _llama_run_text_task(prompt, timeout=120, project_path=None):
     return llm_clients.call_ollama_llama(prompt, timeout=timeout)
 
 
-def _kai_brain_run_text_task(prompt, timeout=180, project_path=None):
-    """kai-brain:27b via ollama — 17GB model for complex reasoning.
+def _kai_brain_run_text_task(prompt, timeout=240, project_path=None):
+    """kai-brain:27b via ollama — 16.4GB model for complex reasoning.
 
     Deployed 2026-09-10. Large parameter model optimized for:
     - Complex reasoning and planning
@@ -306,7 +306,8 @@ def _kai_brain_run_text_task(prompt, timeout=180, project_path=None):
     - Architectural decisions
     - Strategic analysis
 
-    Higher timeout (180s) to accommodate larger model inference time.
+    High timeout (240s) to accommodate large model inference time.
+    Model size confirmed: 16.4 GB (not 17GB as initially estimated).
     """
     import requests
     import json

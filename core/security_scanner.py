@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 from core.sandbox import run_in_sandbox, SandboxUnavailable
 
@@ -7,6 +8,10 @@ from core.sandbox import run_in_sandbox, SandboxUnavailable
 PYTHON_IMAGE = "python:3.12-slim"
 NODE_IMAGE = "node:22-bookworm-slim"
 TRIVY_IMAGE = "aquasec/trivy:latest"
+# Pre-built image with semgrep + bandit installed to the system site-packages
+# (see docker/security-scanner/Dockerfile). Using it skips the per-build
+# `pip install semgrep` that re-downloaded ~150MB of dependencies every scan.
+SECURITY_IMAGE = "kai-security-scanner:latest"
 
 SEVERITY_ORDER = ["critical", "high", "medium", "low", "info", "unknown"]
 
@@ -23,6 +28,31 @@ def _has_python_files(project_path):
 
 def _has_package_json(project_path):
     return os.path.exists(os.path.join(project_path, "package.json"))
+
+
+_security_image_cached = None
+
+
+def _security_image_available():
+    """True when the pre-built kai-security-scanner image exists locally.
+
+    Cached after the first check (module-lifetime) so we don't shell out to
+    `docker image inspect` on every scan. If the image is absent (fresh
+    deploy, or the operator deleted it), callers fall back to the old
+    pip-install-inside-the-sandbox path rather than failing the scan.
+    """
+    global _security_image_cached
+    if _security_image_cached is not None:
+        return _security_image_cached
+    try:
+        result = subprocess.run(
+            ["docker", "image", "inspect", SECURITY_IMAGE],
+            capture_output=True, timeout=10,
+        )
+        _security_image_cached = result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        _security_image_cached = False
+    return _security_image_cached
 
 
 def _skip(tool, reason):
@@ -65,10 +95,15 @@ def run_bandit(project_path):
     if not _has_python_files(project_path):
         return _skip("bandit", "no Python files found")
 
+    if _security_image_available():
+        command = "bandit -r . -f json -q || true"
+        image = SECURITY_IMAGE
+    else:
+        command = "pip install --quiet bandit 2>/dev/null && bandit -r . -f json -q || true"
+        image = PYTHON_IMAGE
+
     data, failure = _run_scan(
-        "bandit", project_path,
-        "pip install --quiet bandit 2>/dev/null && bandit -r . -f json -q || true",
-        image=PYTHON_IMAGE, timeout=180,
+        "bandit", project_path, command, image=image, timeout=180,
     )
     if failure:
         return failure
@@ -116,13 +151,19 @@ def run_npm_audit(project_path):
 
 
 def run_semgrep(project_path):
+    if _security_image_available():
+        command = "semgrep --config=auto --json -q . || true"
+        image = SECURITY_IMAGE
+    else:
+        command = "pip install --quiet semgrep 2>/dev/null && semgrep --config=auto --json -q . || true"
+        image = PYTHON_IMAGE
+
     data, failure = _run_scan(
-        "semgrep", project_path,
-        "pip install --quiet semgrep 2>/dev/null && semgrep --config=auto --json -q . || true",
+        "semgrep", project_path, command,
         # semgrep's own dependency tree (opentelemetry, httpx, jsonschema,
         # semgrep-core...) is heavy enough to OOM under the default 512m --
         # confirmed live (`pip install` got SIGKILL'd mid-install at 512m).
-        image=PYTHON_IMAGE, timeout=240, memory="1536m",
+        image=image, timeout=240, memory="1536m",
     )
     if failure:
         return failure

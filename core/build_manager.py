@@ -1138,6 +1138,33 @@ def _mark_worker_degraded(provider_name, reason):
         pass
 
 
+def _status_entry_time(build, status):
+    """Epoch seconds when ``build`` entered ``status``, or None.
+
+    ``history`` records a ``{status, timestamp}`` entry on every transition
+    (see core.lifecycle.transition), so it is the authoritative source for
+    "how long has this build been in its current status". ``_v3_started_at``
+    is build *creation* time and must not be used for per-status timeouts: a
+    build that sat in GENERATING for a long time before deploy approval would
+    otherwise be falsely flagged "stuck in DEPLOYING" the instant it entered
+    that status (observed 2026-09-10: P100/P101/DP2 failed after ~2min in
+    DEPLOYING with a bogus ~2933s elapsed).
+    """
+    ts = None
+    for entry in build.get("history") or []:
+        if entry.get("status") == status:
+            ts = entry.get("timestamp")
+    if not ts:
+        return None
+    try:
+        if isinstance(ts, (int, float)):
+            return float(ts)
+        from datetime import datetime as _dt
+        return _dt.fromisoformat(str(ts)).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
 def _check_timeouts(builds):
     """Auto-fail builds stuck beyond their timeout. Returns list of events."""
     now = time.time()
@@ -1147,7 +1174,7 @@ def _check_timeouts(builds):
         status = build.get("status", "")
 
         if status == "GENERATING":
-            started = build.get("_v3_started_at") or build.get("updated")
+            started = _status_entry_time(build, status) or build.get("_v3_started_at") or build.get("updated")
             if started:
                 try:
                     if isinstance(started, str):
@@ -1175,7 +1202,7 @@ def _check_timeouts(builds):
                     pass
 
         elif status == "DEPLOYING":
-            started = build.get("_v3_started_at") or build.get("updated")
+            started = _status_entry_time(build, status) or build.get("_v3_started_at") or build.get("updated")
             if started:
                 try:
                     if isinstance(started, str):

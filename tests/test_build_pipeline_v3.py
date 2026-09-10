@@ -118,6 +118,57 @@ class TestTimeoutProtection:
         assert build["status"] == "GENERATING"  # Not failed
         assert len([e for e in events if e["build_id"] == "active-gen"]) == 0
 
+    def test_recently_deploying_build_not_falsely_failed(self, monkeypatch):
+        """A build freshly in DEPLOYING is not failed by a stale creation time.
+
+        Regression: _v3_started_at is set once at build creation and never
+        reset, so a build that sat in GENERATING ~49min then entered DEPLOYING
+        was flagged "stuck in DEPLOYING for 2933s" after only ~2min. The fix
+        derives per-status start time from ``history`` instead.
+        """
+        from datetime import datetime, timedelta
+        from core.build_manager import _check_timeouts
+
+        now = datetime.now()
+        build = {
+            "id": "fresh-deploy",
+            "status": "DEPLOYING",
+            "name": "deploy-build",
+            "_v3_started_at": time.time() - 3000,  # creation ~50min ago
+            "history": [
+                {"status": "REQUESTED", "timestamp": (now - timedelta(minutes=50)).isoformat()},
+                {"status": "GENERATING", "timestamp": (now - timedelta(minutes=49)).isoformat()},
+                {"status": "DEPLOYING", "timestamp": (now - timedelta(minutes=2)).isoformat()},
+            ],
+        }
+
+        events = _check_timeouts([build])
+        assert build["status"] == "DEPLOYING"  # Not failed
+        assert not any(e["build_id"] == "fresh-deploy" for e in events)
+
+    def test_stuck_deploying_build_still_fails(self, monkeypatch):
+        """A build genuinely stuck in DEPLOYING past the limit still fails."""
+        from datetime import datetime, timedelta
+        from core.build_manager import _check_timeouts, _persist_build
+
+        now = datetime.now()
+        build = {
+            "id": "stuck-deploy",
+            "status": "DEPLOYING",
+            "name": "stuck-deploy-build",
+            "history": [
+                {"status": "DEPLOYING", "timestamp": (now - timedelta(minutes=40)).isoformat()},
+            ],
+        }
+        monkeypatch.setattr(
+            "core.build_manager._persist_build", lambda b: None)
+        monkeypatch.setattr(
+            "core.build_manager._record_if_terminal", lambda b: None)
+
+        events = _check_timeouts([build])
+        assert build["status"] == "FAILED"
+        assert "stuck in DEPLOYING" in build.get("failure_reason", "")
+
 
 class TestDuplicatePrevention:
     """V3: duplicate build detection."""

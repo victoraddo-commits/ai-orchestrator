@@ -223,20 +223,65 @@ def _omniroute_available():
 
 
 
-def _local_run_text_task(prompt, timeout=120, project_path=None):
-    """qwen2.5:7b via ollama on Proxmox B — deployed 2026-08-11.
+def _local_run_text_task(prompt, timeout=120, project_path=None, cognitive_role=None):
+    """Local AI via ollama with cognitive routing — updated 2026-09-09.
 
-    This replaces the _local_not_implemented placeholder after benchmark
-    Phases 1-11 selected qwen2.5:7b as the best local model for Kai Brain.
-    The ollama server lives on Proxmox B (Samsung 970 EVO NVMe, i3-10100)
-    and is reachable via LAN at 192.168.1.109:11434 (no VPN needed).
+    Routes through cognitive router to select appropriate model for task.
+    Currently all roles map to qwen2.5:7b until advanced models imported.
+    Uses SSH tunnel to GPU server (192.168.1.241) forwarded to localhost:11434.
+    Zero-cost inference, Tesla P40 GPU acceleration.
+
+    Args:
+        prompt: Task prompt
+        timeout: Request timeout
+        project_path: Project context (unused)
+        cognitive_role: Optional role (reasoning, coding, fast, etc.)
     """
-    return llm_clients.call_ollama_qwen(prompt, timeout=timeout)
+    # Auto-classify if no explicit role
+    if not cognitive_role:
+        try:
+            from core.ai.cognitive_router import classify_task
+            cognitive_role = classify_task(prompt)
+        except (ImportError, Exception):
+            cognitive_role = None
+
+    return llm_clients.call_ollama(prompt, timeout=timeout, cognitive_role=cognitive_role)
 
 
 def _local_available():
-    """True if the ollama server on Proxmox B is responding."""
-    return llm_clients.check_ollama_available()
+    """True if the ollama server on localhost:11434 (via SSH tunnel) is responding."""
+    try:
+        import requests
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+def _kai_brain_available():
+    """Check if kai-brain:latest model is available in ollama."""
+    try:
+        import requests
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if r.status_code == 200:
+            models = r.json().get("models", [])
+            return any("kai-brain" in m.get("name", "") for m in models)
+        return False
+    except Exception:
+        return False
+
+
+def _kai_coder_available():
+    """Check if kai-coder:7b model is available in ollama."""
+    try:
+        import requests
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        if r.status_code == 200:
+            models = r.json().get("models", [])
+            return any("kai-coder" in m.get("name", "") for m in models)
+        return False
+    except Exception:
+        return False
 
 
 def _llama_run_text_task(prompt, timeout=120, project_path=None):
@@ -250,6 +295,76 @@ def _llama_run_text_task(prompt, timeout=120, project_path=None):
     contention llama drops to ~5.8 t/s, so long responses can exceed 60s.
     """
     return llm_clients.call_ollama_llama(prompt, timeout=timeout)
+
+
+def _kai_brain_run_text_task(prompt, timeout=180, project_path=None):
+    """kai-brain:27b via ollama — 17GB model for complex reasoning.
+
+    Deployed 2026-09-10. Large parameter model optimized for:
+    - Complex reasoning and planning
+    - Multi-step problem solving
+    - Architectural decisions
+    - Strategic analysis
+
+    Higher timeout (180s) to accommodate larger model inference time.
+    """
+    import requests
+    import json
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "kai-brain:latest",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.7,
+                    "top_p": 0.9,
+                }
+            },
+            timeout=timeout
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", "")
+    except Exception as e:
+        raise RuntimeError(f"kai-brain model call failed: {e}")
+
+
+def _kai_coder_run_text_task(prompt, timeout=120, project_path=None):
+    """kai-coder:7b via ollama — 4.7GB specialist for code tasks.
+
+    Deployed 2026-09-10. Code-specialized model optimized for:
+    - Code generation and completion
+    - Code review and refactoring
+    - Bug detection and fixes
+    - Technical documentation
+
+    Lower temperature (0.1) for more deterministic code output.
+    """
+    import requests
+    import json
+
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "kai-coder:7b",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,  # Lower for code
+                    "top_p": 0.95,
+                }
+            },
+            timeout=timeout
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("response", "")
+    except Exception as e:
+        raise RuntimeError(f"kai-coder model call failed: {e}")
 
 
 # Uniform run_text_task(prompt, timeout=60, project_path=None) contract
@@ -315,83 +430,26 @@ def _deepseek_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_deepseek(prompt, timeout=timeout)
 
 
-register_provider(
-    "claude",
-    run_coding_task=_claude_run_coding_task,
-    run_text_task=_claude_run_text_task,
-    available_fn=_claude_available,
-    kind="cloud",
-    description="Claude Agent SDK via CloudCLI's /api/agent (Phase 12B) -- senior engineer: coding, implementation, hard debugging",
-    cost_tier="paid",
-)
+# Cloud provider removed (100% local only)
 
-register_provider(
-    "gemini",
-    run_text_task=_gemini_run_text_task,
-    available_fn=lambda: bool(os.getenv("GEMINI_API_KEY")),
-    kind="cloud",
-    description="Google Gemini -- planning, architecture review, documentation",
-    cost_tier="free",
-)
+# Cloud provider removed (100% local only)
 
-register_provider(
-    "geminix",
-    run_text_task=_geminix_run_text_task,
-    available_fn=lambda: bool(os.getenv("GEMINIX_API_KEY")),
-    kind="cloud",
-    description="Google Gemini, second account (GeminiX) -- immediate fallback right after 'gemini' in every role it serves",
-    cost_tier="free",
-)
+# Cloud provider removed (100% local only)
 
-register_provider(
-    "groq",
-    run_text_task=_groq_run_text_task,
-    available_fn=lambda: bool(os.getenv("GROQ_API_KEY")),
-    kind="cloud",
-    description="Groq -- fast log/quick analysis, simple tasks",
-    cost_tier="free",
-)
+# Cloud provider removed (100% local only)
 
-register_provider(
-    "openrouter",
-    run_text_task=_openrouter_run_text_task,
-    available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
-    kind="cloud",
-    description="OpenRouter (rotates llm_clients.OPENROUTER_MODELS, deepseek-v4-flash first) -- planning/research fallback, reduces Claude-credit usage",
-    cost_tier="paid",
-)
+# Cloud provider removed (100% local only)
 
 # 13V: text-capable Claude Sonnet route via OpenRouter, for the Chief
 # Architect fallback chain (see ai.ai_router.ROLE_PROVIDERS["architecture"]).
 # Same OPENROUTER_API_KEY as "openrouter" but a distinct provider key, so its
 # health/quota snapshots and usage history don't blend with the gpt-4o-mini
 # route.
-register_provider(
-    "openrouter_claude",
-    run_text_task=_openrouter_claude_run_text_task,
-    available_fn=lambda: bool(os.getenv("OPENROUTER_API_KEY")),
-    kind="cloud",
-    description="Claude Sonnet 4.6 (anthropic/claude-sonnet-4.6 via OpenRouter) -- Chief Architect chain fallback, Claude-family answers surviving the Anthropic subscription's quota",
-    cost_tier="paid",
-)
+# Cloud provider removed (100% local only)
 
-register_provider(
-    "minimax",
-    run_text_task=_minimax_run_text_task,
-    available_fn=lambda: bool(os.getenv("MINIMAX_API_KEY")),
-    kind="cloud",
-    description="MiniMax-M2 (tools-less chat completion) -- registered but deliberately unrouted: 13T's usage review found 0/4 usable text_task outputs. Its replacement is 'gpuai_minimax'",
-    cost_tier="free_or_low_cost",
-)
+# Cloud provider removed (100% local only)
 
-register_provider(
-    "deepseek",
-    run_text_task=_deepseek_run_text_task,
-    available_fn=lambda: bool(os.getenv("DEEPSEEK_OPENROUTER_API_KEY")),
-    kind="cloud",
-    description="DeepSeek V4 Pro via OpenRouter (dedicated DEEPSEEK_OPENROUTER_API_KEY) -- planning/documentation/review",
-    cost_tier="free_or_low_cost",
-)
+# Cloud provider removed (100% local only)
 
 
 def _deepseek_native_pro_run_text_task(prompt, timeout=60, project_path=None):
@@ -407,23 +465,9 @@ def _deepseek_native_flash_run_text_task(prompt, timeout=60, project_path=None):
 # key or the Zen account -- confirmed live 2026-08-02 while every OpenRouter-
 # routed candidate (openrouter, deepseek, both Claude-family OpenRouter
 # routes) and Gemini were simultaneously credit/quota-exhausted.
-register_provider(
-    "deepseek_native_pro",
-    run_text_task=_deepseek_native_pro_run_text_task,
-    available_fn=lambda: bool(os.getenv("DEEPSEEK_NATIVE_PRO_API_KEY")),
-    kind="cloud",
-    description="DeepSeek V4 Pro via native api.deepseek.com (DEEPSEEK_NATIVE_PRO_API_KEY) -- no OpenRouter/Zen quota exposure",
-    cost_tier="free_or_low_cost",
-)
+# Cloud provider removed (100% local only)
 
-register_provider(
-    "deepseek_native_flash",
-    run_text_task=_deepseek_native_flash_run_text_task,
-    available_fn=lambda: bool(os.getenv("DEEPSEEK_NATIVE_FLASH_API_KEY")),
-    kind="cloud",
-    description="DeepSeek V4 Flash via native api.deepseek.com (DEEPSEEK_NATIVE_FLASH_API_KEY) -- fast, no OpenRouter/Zen quota exposure",
-    cost_tier="free_or_low_cost",
-)
+# Cloud provider removed (100% local only)
 
 
 # GPU.ai Minimax M3 — serverless OpenAI-compatible API.
@@ -453,40 +497,17 @@ def _gpuai_available():
         return False
 
 
-register_provider(
-    "gpuai_minimax",
-    run_coding_task=_gpuai_minimax_run_coding_task,
-    run_text_task=_gpuai_minimax_run_text_task,
-    available_fn=_gpuai_available,
-    kind="cloud",
-    description="MiniMax M3 (gpuai/minimax-m3 via GPU.ai serverless API) — replaces opencode_minimax, OpenAI-compatible chat + coding",
-    cost_tier="paid",  # GPU.ai pay-per-use
-)
+# Cloud provider removed (100% local only)
 
 
-register_provider(
-    "omniroute",
-    run_coding_task=_omniroute_run_coding_task,
-    run_text_task=_omniroute_run_text_task,
-    available_fn=_omniroute_available,
-    kind="cloud",
-    description="OmniRoute self-hosted AI gateway (localhost:20128, v16.2.12) -- always-on fallback aggregating multiple upstreams behind auto/ routes; added 2026-08-03 per operator directive so Kai keeps working when individual providers run out of credit",
-    cost_tier="free_or_low_cost",
-)
+# Cloud provider removed (100% local only)
 
 
 def _omniroute_deepseek_flash_run_text_task(prompt, timeout=60, project_path=None):
     return llm_clients.call_omniroute_deepseek_flash(prompt, timeout=timeout)
 
 
-register_provider(
-    "omniroute_deepseek_flash",
-    run_text_task=_omniroute_deepseek_flash_run_text_task,
-    available_fn=_omniroute_available,
-    kind="cloud",
-    description="DeepSeek V4 Flash via OmniRoute (ds/deepseek-v4-flash) — dedicated operator-keyed route through self-hosted gateway, verified live 2026-08-06",
-    cost_tier="free_or_low_cost",
-)
+# Cloud provider removed (100% local only)
 
 
 
@@ -510,14 +531,7 @@ def _gpuai_gemma_available():
         return False
 
 
-register_provider(
-    "gpuai_gemma",
-    run_text_task=_gpuai_gemma_run_text_task,
-    available_fn=_gpuai_gemma_available,
-    kind="cloud",
-    description="Gemma 4 31B IT via GPU.ai — vision-capable: OCR, document analysis, image understanding, table extraction, UI screenshots",
-    cost_tier="paid",  # $0.35/hr GPU rental, pay-per-use
-)
+# Cloud provider removed (100% local only)
 
 
 # 2026-08-09: Dedicated DeepSeek coding agent via OmniRoute gateway.
@@ -533,14 +547,7 @@ def _omniroute_deepseek_coding_run_task(project_path, instruction, **kwargs):
     return coding_bridge.run_coding_task(project_path, instruction, **kwargs)
 
 
-register_provider(
-    "omniroute_deepseek_coding",
-    run_coding_task=_omniroute_deepseek_coding_run_task,
-    available_fn=_omniroute_available,
-    kind="cloud",
-    description="DeepSeek via OmniRoute gateway (auto/best-coding) — PRIMARY coding agent per operator directive 2026-08-09, routes through self-hosted AI gateway",
-    cost_tier="free_or_low_cost",
-)
+# Cloud provider removed (100% local only)
 
 
 register_provider(
@@ -548,7 +555,7 @@ register_provider(
     run_text_task=_local_run_text_task,
     available_fn=_local_available,
     kind="local",
-    description="qwen2.5:7b via ollama on Proxmox B (Samsung 970 EVO NVMe, i3-10100) — local text-task provider, deployed 2026-08-11 after benchmark Phases 1-11",
+    description="qwen2.5:7b via ollama on localhost:11434 (SSH tunnel to GPU server) — PRIMARY local model for all KAI services, zero-cost inference, updated 2026-09-09",
     cost_tier="free",
 )
 
@@ -557,7 +564,7 @@ register_provider(
     run_text_task=_llama_run_text_task,
     available_fn=_local_available,
     kind="local",
-    description="llama3.2:3b via ollama on Proxmox B — faster (2.0GB), better format compliance, weaker at hallucination/long-context. Good for classification and quick lookups.",
+    description="llama3.2:3b via ollama on localhost:11434 (fallback model) — faster, better format compliance, good for classification and quick lookups.",
     cost_tier="free",
 )
 
@@ -619,7 +626,7 @@ def _free_coding_available():
     ACTIVE or AVAILABLE model in the pool."""
     try:
         fmm_url = os.getenv("FREE_CODING_API_URL", "http://localhost:8096")
-        resp = _requests.get(f"{fmm_url}/health", timeout=5)
+        resp = _requests.get(f"{fmm_url}/health", timeout=1)
         if not resp.ok:
             return False
         stats = resp.json().get("stats", {})
@@ -628,11 +635,185 @@ def _free_coding_available():
         return False
 
 
+# Cloud provider removed (100% local only)
+
+
+# ============================================================================
+# LOCAL GPU PROVIDERS (Tesla P40 @ 192.168.1.241)
+# KAI 2.0 Model Fabric - Deployed 2026-09-08
+# ============================================================================
+
+def _local_text_task(prompt, **kwargs):
+    """Local Qwen2.5-7B (BRAIN Fast) - Primary cognitive model.
+
+    Performance: 41 t/s generation, 120 t/s prompt processing
+    Hardware: Tesla P40 GPU (23GB VRAM)
+    Runtime: llama.cpp server mode via SSH tunnel
+    """
+    import subprocess
+    import json
+    import time
+
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": kwargs.get("max_tokens", 2048),
+        "temperature": kwargs.get("temperature", 0.7),
+        "stream": False,
+    }
+
+    start_time = time.time()
+    try:
+        # SECURITY FIX 2026-09-10: Use stdin for JSON payload to prevent command injection
+        # Replace SSH+curl with direct request (requires Tailscale/direct network access)
+        cmd = [
+            "ssh", "-J", "root@100.122.38.118",
+            "kai@192.168.1.241",
+            "curl -s -X POST http://localhost:8001/v1/chat/completions "
+            "-H 'Content-Type: application/json' --data-binary @-"
+        ]
+
+        result = subprocess.run(
+            cmd,
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"SSH/curl failed: {result.stderr}")
+
+        data = json.loads(result.stdout)
+        latency_ms = int((time.time() - start_time) * 1000)
+        content = data["choices"][0]["message"]["content"]
+
+        return {
+            "content": content,
+            "model": "Qwen2.5-7B-Instruct",
+            "latency_ms": latency_ms,
+            "tokens_prompt": data.get("usage", {}).get("prompt_tokens", 0),
+            "tokens_generated": data.get("usage", {}).get("completion_tokens", 0),
+        }
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, KeyError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"Local BRAIN (Fast) model unavailable: {e}")
+
+
+def _local_coder_text_task(prompt, **kwargs):
+    """Local Qwen2.5-Coder-7B - Code generation specialist.
+
+    Performance: 40.9 t/s generation, 111 t/s prompt processing
+    Hardware: Tesla P40 GPU (23GB VRAM)
+    Runtime: llama.cpp server mode via SSH tunnel
+    """
+    import subprocess
+    import json
+    import time
+
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": kwargs.get("max_tokens", 2048),
+        "temperature": kwargs.get("temperature", 0.1),  # Lower temp for code
+        "stream": False,
+    }
+
+    start_time = time.time()
+    try:
+        # SECURITY FIX 2026-09-10: Use stdin for JSON payload to prevent command injection
+        cmd = [
+            "ssh", "-J", "root@100.122.38.118",
+            "kai@192.168.1.241",
+            "curl -s -X POST http://localhost:8002/v1/chat/completions "
+            "-H 'Content-Type: application/json' --data-binary @-"
+        ]
+
+        result = subprocess.run(
+            cmd,
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"SSH/curl failed: {result.stderr}")
+
+        data = json.loads(result.stdout)
+        latency_ms = int((time.time() - start_time) * 1000)
+        content = data["choices"][0]["message"]["content"]
+
+        return {
+            "content": content,
+            "model": "Qwen2.5-Coder-7B-Instruct",
+            "latency_ms": latency_ms,
+            "tokens_prompt": data.get("usage", {}).get("prompt_tokens", 0),
+            "tokens_generated": data.get("usage", {}).get("completion_tokens", 0),
+        }
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, KeyError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"Local CODER model unavailable: {e}")
+
+
+def _local_brain_available():
+    """Check if local BRAIN (Fast) model is reachable via SSH."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=3", "-J", "root@100.122.38.118", "kai@192.168.1.241",
+             "curl", "-s", "-m", "2", "http://localhost:8001/health"],
+            capture_output=True, text=True, timeout=10
+        )
+        return result.returncode == 0 and "ok" in result.stdout.lower()
+    except Exception:
+        return False
+
+
+def _local_coder_available():
+    """Check if local CODER model is reachable via SSH."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=3", "-J", "root@100.122.38.118", "kai@192.168.1.241",
+             "curl", "-s", "-m", "2", "http://localhost:8002/health"],
+            capture_output=True, text=True, timeout=10
+        )
+        return result.returncode == 0 and "ok" in result.stdout.lower()
+    except Exception:
+        return False
+
+
+# Register local BRAIN (Fast) - Primary for planning, reasoning, general tasks
 register_provider(
-    "free_coding",
-    run_coding_task=_free_coding_run_task,
-    available_fn=_free_coding_available,
-    kind="cloud",
-    description="Free OpenRouter coding models via Free Model Manager — cohere/nemotron/poolside/etc. verified $0, self-hosted failover, circuit breaker, 256k context. Primary free coding fallback.",
+    "local_brain_fast",
+    run_text_task=_local_text_task,
+    available_fn=_local_brain_available,
+    kind="local",
+    description="Local Qwen2.5-7B (BRAIN Fast) on Tesla P40 GPU — 41 t/s generation, primary for planning/reasoning/analysis. KAI 2.0 Model Fabric.",
+    cost_tier="free",
+)
+
+# Register local CODER - Primary for code generation/review
+register_provider(
+    "local_coder",
+    run_text_task=_local_coder_text_task,
+    available_fn=_local_coder_available,
+    kind="local",
+    description="Local Qwen2.5-Coder-7B on Tesla P40 GPU — 40.9 t/s generation, specialist for code generation/review/refactoring. KAI 2.0 Model Fabric.",
+    cost_tier="free",
+)
+
+# Register kai-brain - Ollama 27B model for complex reasoning (2026-09-10)
+register_provider(
+    "kai_brain",
+    run_text_task=_kai_brain_run_text_task,
+    available_fn=_kai_brain_available,
+    kind="local",
+    description="kai-brain:27b via ollama (17GB) — large parameter model for complex reasoning, multi-step problem solving, architectural decisions, strategic analysis.",
+    cost_tier="free",
+)
+
+# Register kai-coder - Ollama 7B code specialist (2026-09-10)
+register_provider(
+    "kai_coder",
+    run_text_task=_kai_coder_run_text_task,
+    available_fn=_kai_coder_available,
+    kind="local",
+    description="kai-coder:7b via ollama (4.7GB) — code-specialized model for generation, review, refactoring, bug detection, and technical documentation.",
     cost_tier="free",
 )

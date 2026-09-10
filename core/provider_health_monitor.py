@@ -172,7 +172,11 @@ class ProviderHealthMonitor:
         }
 
         # Check if provider is available (credentials configured)
-        if not provider_info.get('available', False):
+        # Skip credential check for Ollama-based providers (they don't need API keys)
+        provider_type = provider_info.get('type', '')
+        is_ollama = provider_type == 'ollama' or name.startswith('local')
+
+        if not is_ollama and not provider_info.get('available', False):
             status['health'] = 'unavailable'
             status['reason'] = 'No credentials configured'
             return status

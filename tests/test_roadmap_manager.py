@@ -17,6 +17,15 @@ def isolated_roadmap(tmp_path, monkeypatch):
     return roadmap_path
 
 
+@pytest.fixture(autouse=True)
+def no_telegram_send(monkeypatch):
+    # Roadmap task-completion now pings Telegram via core.telegram_bridge
+    # (which loads KAI_TELEGRAM_BOT_TOKEN from .env via load_dotenv). Neutralise
+    # it so the suite never emits real messages. Tests that assert on the
+    # notification re-patch this attribute with a recording stub.
+    monkeypatch.setattr("core.telegram_bridge.send_message", lambda text, **kwargs: None)
+
+
 def _write(path, phases):
     path.write_text(json.dumps({"schema_version": 1, "phases": phases}))
 
@@ -442,6 +451,39 @@ def test_advance_roadmap_marks_phase_failed_when_linked_build_fails_and_does_not
     assert roadmap_engine.get_phase("Y")["status"] == "in_progress"
     started_events = [e for e in result.get("events", []) if e.get("action") == "started_phase"]
     assert any(e["phase_id"] == "Y" for e in started_events)
+
+
+def test_advance_roadmap_notifies_telegram_on_phase_completion(isolated_roadmap, monkeypatch):
+    sent = []
+    monkeypatch.setattr("core.telegram_bridge.send_message", lambda text, **kwargs: sent.append(text))
+    _save_build("build-123", "COMPLETED")
+    _write(isolated_roadmap, [
+        {"id": "DP2", "name": "Parser Layer", "status": "in_progress",
+         "dependencies": [], "priority": 11, "build_id": "build-123"},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "phase_completed"
+    assert sent, "expected a Telegram notification on phase completion"
+    assert any("DP2" in m and "Parser Layer" in m for m in sent)
+
+
+def test_advance_roadmap_notifies_telegram_on_phase_failure(isolated_roadmap, monkeypatch):
+    sent = []
+    monkeypatch.setattr("core.telegram_bridge.send_message", lambda text, **kwargs: sent.append(text))
+    _save_build("build-123", "FAILED", failure_reason="tests failed")
+    _write(isolated_roadmap, [
+        {"id": "DP2", "name": "Parser Layer", "status": "in_progress",
+         "dependencies": [], "priority": 11, "build_id": "build-123"},
+    ])
+    roadmap_manager.enable_autonomous_mode()
+
+    result = roadmap_manager.advance_roadmap()
+
+    assert result["action"] == "phase_failed"
+    assert any("DP2" in m and "tests failed" in m for m in sent)
 
 
 def test_advance_roadmap_does_not_start_a_new_phase_while_another_is_still_waiting(isolated_roadmap, monkeypatch, tmp_path):

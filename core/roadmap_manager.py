@@ -721,7 +721,62 @@ def advance_roadmap():
     return _finalize(events)
 
 
+def _notify_phase_transitions(events):
+    """Ping the operator over Telegram whenever a roadmap task finishes.
+
+    Part of Kai's architecture: every time a task reaches a terminal state
+    (completed or failed), the operator gets a Telegram update so autonomous
+    progress is visible without watching the dashboard.
+
+    Best-effort only — a notification failure must never block or crash the
+    roadmap cycle. A missing/unconfigured bot or a network error is a silent
+    no-op (logged at info level where possible).
+    """
+    terminal = [
+        e for e in events
+        if e.get("action") in ("phase_completed", "phase_failed")
+    ]
+    if not terminal:
+        return
+
+    # Resolve phase id -> name for a human-readable message.
+    try:
+        names = {
+            p["id"]: p.get("name", p["id"])
+            for p in _load_roadmap_raw().get("phases", [])
+        }
+    except Exception:
+        names = {}
+
+    try:
+        # Lazy import: avoids a module-load cycle (telegram_bridge imports
+        # build_manager/memory) and picks up test monkeypatches.
+        from core.telegram_bridge import send_message
+    except Exception:
+        return  # bridge unavailable — never block the cycle
+
+    for e in terminal:
+        pid = e.get("phase_id", "?")
+        name = names.get(pid, pid)
+        if e.get("action") == "phase_completed":
+            text = f"✅ Kai finished task {pid} — {name}"
+        else:
+            text = f"❌ Kai task failed: {pid} — {name}"
+            reason = (e.get("reason") or "").strip()
+            if reason:
+                text += f"\n{reason[:300]}"
+        try:
+            send_message(text)
+        except Exception as err:
+            try:
+                from core.logger import info
+                info(f"telegram task-notify failed for {pid}: {type(err).__name__}")
+            except Exception:
+                pass
+
+
 def _finalize(events):
+    _notify_phase_transitions(events)
     top = dict(_select_top_event(events))
     top["events"] = events
     return top

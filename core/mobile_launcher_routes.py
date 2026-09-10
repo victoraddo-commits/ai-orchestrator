@@ -259,7 +259,7 @@ TILES = [
         "description": "Passkey login, secrets, identity, audit",
         "icon": "shield-check",
         "color": "#7C3AED",
-        "url": "https://vault.sso.deerude.com",
+        "url": "https://sso.deerude.com",
         "type": "external",
         "tags": ["identity", "security", "core"],
     },
@@ -1285,7 +1285,7 @@ function loadStaticTiles(){
     {id:'juris-kai',name:'Juris Kai',description:'Ghana legal corpus search & analysis',icon:'scale',color:'#D97706',url:'/command-center#legal',type:'internal',status:'unknown',tags:['legal']},
     {id:'portfolio',name:'Portfolio',description:'Investment & asset tracker',icon:'chart-line',color:'#10B981',url:'http://192.168.99.11:3000',type:'external',status:'unknown',tags:['finance']},
     {id:'money-center',name:'Money Center',description:'KAI Money Ecosystem — treasury, operations, KAI account',icon:'banknote',color:'#059669',url:'http://192.168.1.118:8095',type:'external',status:'unknown',tags:['money','production']},
-    {id:'kai-vault',name:'Kai Vault',description:'Passkey login, secrets, identity, audit',icon:'shield-check',color:'#7C3AED',url:'https://vault.sso.deerude.com',type:'external',status:'unknown',tags:['identity','security','core']},
+    {id:'kai-vault',name:'Kai Vault',description:'Passkey login, secrets, identity, audit',icon:'shield-check',color:'#7C3AED',url:'https://sso.deerude.com',type:'external',status:'unknown',tags:['identity','security','core']},
     {id:'deerude',name:'Deerude',description:'Public site — ventures & careers portal',icon:'globe',color:'#0EA5E9',url:'https://deerude.com',type:'external',status:'unknown',tags:['web','public']},
     // KAI Ultimate feature surfaces (mirror of TILES in Python)
     {id:'feature-home',name:'Home',description:'Executive summary, priorities, world model',icon:'home',color:'#16A34A',url:'/mobile/api/home',endpoint:'/mobile/api/home',type:'feature',status:'unknown',tags:['core','jarvis']},

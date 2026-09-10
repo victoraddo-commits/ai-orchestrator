@@ -61,7 +61,7 @@ STATIC_EDGES = [
     {"src": "app:deerude-site", "dst": "ct:105", "kind": "runs_on"},
     {"src": "app:kai-android-factory", "dst": "ct:109", "kind": "runs_on"},
     # service-level: NPM fronts everything public
-    {"src": "public:vault.sso.deerude.com", "dst": "service:npm-ct104", "kind": "fronted_by"},
+    {"src": "public:sso.deerude.com", "dst": "service:npm-ct104", "kind": "fronted_by"},
     {"src": "public:it.local", "dst": "service:npm-ct104", "kind": "fronted_by"},
     {"src": "public:susu.local", "dst": "service:npm-ct104", "kind": "fronted_by"},
     {"src": "public:bet.local", "dst": "service:npm-ct104", "kind": "fronted_by"},

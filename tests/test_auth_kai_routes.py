@@ -22,7 +22,7 @@ def client():
 # ---------------------------------------------------------------------------
 
 def _mock_get_auth_url():
-    return "https://vault.sso.deerude.com/sso/authorize?...", "secretstate123"
+    return "https://sso.deerude.com/sso/authorize?...", "secretstate123"
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ def test_auth_kai_start_redirects_to_vault(client):
 
     assert response.status_code == 302
     assert "Location" in response.headers
-    assert response.headers["Location"].startswith("https://vault.sso.deerude.com")
+    assert response.headers["Location"].startswith("https://sso.deerude.com")
     assert response.headers.get("X-OIDC-State") == "secretstate123"
 
 

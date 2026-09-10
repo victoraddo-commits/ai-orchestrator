@@ -1,7 +1,7 @@
 """OIDC client for kai-vault SSO flow.
 
 Environment variables:
-    KAI_ID_VAULT_URL       - vault base URL (default: https://vault.sso.deerude.com)
+    KAI_ID_VAULT_URL       - vault base URL (default: https://sso.deerude.com)
     KAI_ID_CLIENT_ID       - OIDC client ID (default: ai-orchestrator)
     KAI_ID_SECRET_FILE     - path to file containing client_secret (PREFERRED)
     KAI_ID_SECRET          - fallback env var for client_secret
@@ -35,7 +35,7 @@ class OIDCClient:
     """Manages the OIDC authorization code flow against kai-vault."""
 
     VAULT_URL: str = os.environ.get(
-        "KAI_ID_VAULT_URL", "https://vault.sso.deerude.com"
+        "KAI_ID_VAULT_URL", "https://sso.deerude.com"
     ).rstrip("/")
     CLIENT_ID: str = os.environ.get("KAI_ID_CLIENT_ID", "ai-orchestrator")
     CALLBACK_URL: str = os.environ.get(

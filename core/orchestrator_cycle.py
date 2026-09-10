@@ -17,6 +17,7 @@ import core.vpn_failover as vpn_failover
 import core.notifications as notifications
 from core.kai_event_bus import event_bus
 from core.agentguard import AgentGuard, ActionRequest, ActionType, RiskLevel
+from core.ai.cognitive_integration import cognitive_delegate, is_cognitive_routing_enabled
 
 
 def _safe_send(message_text):
@@ -147,6 +148,13 @@ def run_cycle():
     # Initialize AgentGuard (KAI 2.0 Security Layer)
     _guard = AgentGuard({"enabled": True})
     info("AgentGuard security layer active")
+
+    # Initialize Cognitive Model Routing (KAI 2.0 Multi-Brain System)
+    _cognitive_enabled = is_cognitive_routing_enabled()
+    if _cognitive_enabled:
+        info("Cognitive routing active: kai-brain, kai-coder, kai-agent, kai-security")
+    else:
+        info("Cognitive routing available but not enabled")
 
     info("=== orchestrator cycle started ===")
 

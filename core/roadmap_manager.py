@@ -767,6 +767,11 @@ def _notify_phase_transitions(events):
                 text += f"\n{reason[:300]}"
         try:
             send_message(text)
+            try:
+                from core.logger import info
+                info(f"telegram task-notify sent: {text.splitlines()[0]}")
+            except Exception:
+                pass
         except Exception as err:
             try:
                 from core.logger import info

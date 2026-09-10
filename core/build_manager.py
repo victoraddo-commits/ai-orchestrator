@@ -963,25 +963,23 @@ def _code_review_prompt(build):
 # by a fixed, known reviewer chain -- not whichever provider happens to be
 # up for "review" that call.
 #
-# Was a single hardcoded "claude" call until 2026-08-02, then a single
-# "opencode_claude" call, now a fallback chain -- opencode_claude (Fable 5,
-# billed through OpenCode Zen) primary, deepseek_native_pro (native
-# api.deepseek.com, no OpenRouter/Zen quota exposure) behind it, per
-# explicit operator directive ("add DeepSeek-V4-Pro as fallback reviewer
-# and approver behind fable 5"). Each candidate is skipped individually --
-# for unavailability, a failed call, OR being the build's own generator
-# (reviewing your own generated code isn't independent oversight) -- and
-# the next candidate still gets a real attempt; only when every candidate
-# is skipped does the whole review come back skipped.
+# Was a single hardcoded "claude" call until 2026-08-02, then a fallback
+# chain through the cloud providers (opencode_claude / deepseek_native_pro
+# / gpuai_minimax). With those cloud coding paths deregistered, the review
+# chain is now the local KAI MODEL TEAM: kai_brain (GLM-4.7-Flash) primary,
+# kai_coder (Qwen2.5-Coder-7B) behind it. Each candidate is skipped
+# individually -- for unavailability, a failed call, OR being the build's
+# own generator (reviewing your own generated code isn't independent
+# oversight) -- and the next candidate still gets a real attempt; only when
+# every candidate is skipped does the whole review come back skipped.
 #
-# "fable... approves" / "DeepSeek... approver" is advisory only, same as
-# this step always was -- findings are surfaced at the
-# WAITING_FOR_DEPLOY_APPROVAL human gate, never used to auto-approve or
-# auto-block (see _run_code_review below and
+# Findings are advisory only, same as this step always was -- they're
+# surfaced at the WAITING_FOR_DEPLOY_APPROVAL human gate, never used to
+# auto-approve or auto-block (see _run_code_review below and
 # tests/test_kai_identity.py's structural guarantee that nothing under
 # core/kai/ -- or here -- calls approve_architecture/approve_deploy). A
 # human makes every approve/reject decision.
-CODE_REVIEW_CANDIDATES = ["deepseek_native_pro"]
+CODE_REVIEW_CANDIDATES = ["kai_brain", "kai_coder"]
 
 
 def _advisory_code_review(build):

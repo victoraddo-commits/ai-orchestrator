@@ -90,10 +90,13 @@ ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
 # via Free Model Manager) inserted as the FIRST free fallback before any
 # paid option — verified free, circuit-broken, pool-rotating.
 # Coding role — updated 2026-09-10 to kai_coder specialist
-# Note: local providers are text-task only (no file access/tool use capability)
+# Note: local Ollama models are text-completion only, but kai_coder and
+# kai_brain both register a run_coding_task via core.local_coding_bridge —
+# a deterministic harness that turns their fenced-file output into real
+# writes + git commits — so they satisfy the coding_agent capability.
 ROLE_PROVIDERS["coding"] = [
-    "kai_coder",  # Specialist code model, 7.6s response time
-    "local",      # General purpose fallback
+    "kai_coder",  # kai.coder.fast — Qwen2.5-Coder-7B code specialist
+    "kai_brain",  # kai.brain — GLM-4.7-Flash, "manager AND worker" writes code itself
 ]
 # Code review role — updated 2026-09-10 to kai_brain for thorough analysis
 ROLE_PROVIDERS["code_review"] = ["kai_brain", "local"]

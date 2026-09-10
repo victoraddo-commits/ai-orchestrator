@@ -26,6 +26,7 @@ except ImportError:
 
 from core.coding_bridge import run_coding_task as _claude_run_coding_task
 import core.coding_bridge as coding_bridge
+import core.local_coding_bridge as local_coding_bridge
 import core.llm_clients as llm_clients
 import core.ai.provider_health as provider_health
 from core.memory import update
@@ -410,6 +411,28 @@ def _kai_coder_run_text_task(prompt, timeout=120, project_path=None):
         return data.get("response", "")
     except Exception as e:
         raise RuntimeError(f"kai-coder model call failed: {e}")
+
+
+def _kai_coder_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    """kai.coder.fast (Qwen2.5-Coder-7B) as an agentic coding worker.
+
+    The local model is text-only, so this routes through
+    local_coding_bridge — a deterministic harness that turns the model's
+    fenced file output into real writes + git commits — rather than the
+    CloudCLI/Claude path that coding_bridge represents.
+    """
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model="kai-coder:7b", timeout=timeout
+    )
+
+
+def _kai_brain_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    """kai.brain (GLM-4.7-Flash) as a coding worker — the "manager AND
+    worker" rule: Kai Brain writes code itself when it isn't busy reviewing.
+    Same local_coding_bridge harness, different model."""
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model="kai-brain:latest", timeout=timeout
+    )
 
 
 # Uniform run_text_task(prompt, timeout=60, project_path=None) contract
@@ -846,6 +869,7 @@ register_provider(
 # Register kai-brain — GLM-4.7-Flash (KAI MODEL TEAM: kai.brain)
 register_provider(
     "kai_brain",
+    run_coding_task=_kai_brain_run_coding_task,
     run_text_task=_kai_brain_run_text_task,
     available_fn=_kai_brain_available,
     kind="local",
@@ -856,6 +880,7 @@ register_provider(
 # Register kai-coder — Qwen2.5-Coder-7B (KAI MODEL TEAM: kai.coder.fast)
 register_provider(
     "kai_coder",
+    run_coding_task=_kai_coder_run_coding_task,
     run_text_task=_kai_coder_run_text_task,
     available_fn=_kai_coder_available,
     kind="local",

@@ -186,20 +186,51 @@ class AppendOnlyStore:
         return self._get_by_id(record_id)
 
     def _get_by_id(self, record_id: str) -> SecondBrainRecord | None:
-        """Find a record by ID. Scans records.jsonl."""
+        """Find a record by ID, scanning records.jsonl from the end.
+
+        records.jsonl is append-only and get_current() always looks up the
+        latest record per entity (the index stores the newest id on every
+        append), so the target is almost always near the tail. Scanning
+        backwards finds it in a handful of lines instead of json.loads-ing
+        the whole file -- which had grown to ~1GB / 61K records and was
+        stalling the scheduler cycle inside the workforce sync on every
+        get_current() call (fixed 2026-09-10).
+        """
         if not self.records_file.exists():
             return None
-        with open(self.records_file) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    rec = json.loads(line)
+        chunk_size = 1 << 16  # 64 KiB -- memory-bounded, never loads the file
+        with open(self.records_file, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            pos = f.tell()
+            buf = b""
+            while pos > 0:
+                read_size = min(chunk_size, pos)
+                pos -= read_size
+                f.seek(pos)
+                buf = f.read(read_size) + buf
+                # buf.split yields complete lines everywhere except the first
+                # fragment (whose start is in an earlier, not-yet-read chunk).
+                fragments = buf.split(b"\n")
+                buf = fragments[0]
+                for raw in reversed(fragments[1:]):
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    try:
+                        rec = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
                     if rec.get("id") == record_id:
                         return SecondBrainRecord.from_dict(rec)
+            # The very first line of the file (no preceding newline).
+            if buf.strip():
+                try:
+                    rec = json.loads(buf)
                 except json.JSONDecodeError:
-                    continue
+                    pass
+                else:
+                    if rec.get("id") == record_id:
+                        return SecondBrainRecord.from_dict(rec)
         return None
 
     def scan(

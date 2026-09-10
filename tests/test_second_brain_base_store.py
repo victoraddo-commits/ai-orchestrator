@@ -171,6 +171,46 @@ class TestGetCurrent:
         assert result.fact == {"v": 2}
 
 
+class TestGetById:
+    def test_finds_last_record(self, store):
+        r = SecondBrainRecord(entity="a", entity_type="t", fact={"v": 1})
+        store.append(r)
+        assert store._get_by_id(r.id).id == r.id
+
+    def test_finds_middle_record_not_at_tail(self, store):
+        # Reverse scan must locate records that are not the final line.
+        r1 = SecondBrainRecord(id="id1", entity="a", entity_type="t", fact={"v": 1})
+        r2 = SecondBrainRecord(id="id2", entity="b", entity_type="t", fact={"v": 2})
+        r3 = SecondBrainRecord(id="id3", entity="c", entity_type="t", fact={"v": 3})
+        store.append(r1)
+        store.append(r2)
+        store.append(r3)
+
+        assert store._get_by_id("id1").fact == {"v": 1}
+        assert store._get_by_id("id2").fact == {"v": 2}
+        assert store._get_by_id("id3").fact == {"v": 3}
+
+    def test_returns_none_for_unknown_id(self, store):
+        r = SecondBrainRecord(entity="a", entity_type="t")
+        store.append(r)
+        assert store._get_by_id("does-not-exist") is None
+
+    def test_returns_none_for_empty_store(self, store):
+        assert store._get_by_id("anything") is None
+
+    def test_finds_record_larger_than_chunk_size(self, store):
+        # The chunked backward read must reassemble a record spanning several
+        # 64 KiB chunks without truncation or OOM.
+        big_fact = {"payload": "x" * 200_000}  # ~200 KB serialized record
+        r = SecondBrainRecord(id="big", entity="large", entity_type="t", fact=big_fact)
+        store.append(r)
+
+        found = store._get_by_id("big")
+        assert found is not None
+        assert found.id == "big"
+        assert found.fact["payload"] == "x" * 200_000
+
+
 class TestScan:
     def setup_method(self):
         self._now = datetime.now(timezone.utc)

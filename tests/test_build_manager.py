@@ -1556,6 +1556,42 @@ class TestLooksLikeToolCallLeak:
         ) is False
 
 
+# -- 2026-09-10: reasoning-block strip (GLM/Qwen/R1 </think> leakage) --------
+
+_REASONING_LEAK_PLAN = (
+    "1. **Analyze the Request:** consider the goal and constraints.\n"
+    "10. **Final Output Generation:** (Proceed to generate the response).</think>"
+    "### Architecture and Implementation Plan\n\n"
+    "Use FastAPI + PostgreSQL with a React frontend."
+)
+
+
+class TestStripReasoningBlock:
+    def test_strips_trailing_think_closing_tag(self):
+        cleaned = build_manager._strip_reasoning_block(
+            "some chain-of-thought narration\n</think>### The Real Plan"
+        )
+        assert cleaned == "### The Real Plan"
+
+    def test_strips_wrapped_think_block(self):
+        cleaned = build_manager._strip_reasoning_block(
+            "<think>reasoning here</think>Real plan text"
+        )
+        assert cleaned == "Real plan text"
+
+    def test_clean_text_unchanged(self):
+        plan = "Architecture: FastAPI + React + PostgreSQL."
+        assert build_manager._strip_reasoning_block(plan) == plan
+
+    def test_none_unchanged(self):
+        assert build_manager._strip_reasoning_block(None) is None
+
+    def test_reasoning_plan_no_longer_flagged_as_leak(self):
+        assert build_manager._looks_like_tool_call_leak(
+            build_manager._strip_reasoning_block(_REASONING_LEAK_PLAN)
+        ) is False
+
+
 def test_bad_plan_stays_in_planning_and_does_not_reach_approval(monkeypatch):
     build = build_manager.create_build("todo-app", "Build a todo app", "/tmp/proj")
     _force_status(build["id"], "PLANNING")

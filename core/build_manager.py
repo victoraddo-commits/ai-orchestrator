@@ -478,7 +478,9 @@ def _planning_prompt(build):
         "You are in the planning phase of a new application build. "
         "Do NOT write, edit, or modify any files, and do NOT run commands that "
         "change anything -- only read the existing project if useful and respond "
-        "with text.\n\n"
+        "with text. Respond directly with the plan itself: do NOT narrate your "
+        "analysis or reasoning steps, and do NOT wrap any part of your response "
+        "in thinking/reasoning tags.\n\n"
         f"Requested application: {build['name']}\n"
         f"Description: {build['description']}\n"
         + _template_context(build)
@@ -647,6 +649,31 @@ def _has_hallucinated_tag(text):
             return True
     return False
 
+
+# Reasoning models (GLM-4.7-Flash, Qwen, DeepSeek-R1 family) served via
+# Ollama intermittently leak their chain-of-thought into the response, then
+# emit a bare </think> delimiter before the real answer — e.g.
+#   "1. Analyze the request ... 10. Generate output.</think>### Actual Plan"
+# (confirmed live 2026-09-10 on DP2/P100/P101/P103, planned_by kai_brain and
+# local). The leaked block is meta-commentary, not the deliverable, and its
+# </think> tag trips _has_hallucinated_tag as a false positive — "think" is a
+# legitimate reasoning-model delimiter, not a hallucinated tool-call tag.
+# Strip the reasoning block before plan validation.
+_REASONING_DELIM = re.compile(r"<\s*/?\s*think\s*>", re.IGNORECASE)
+
+
+def _strip_reasoning_block(text):
+    if not text:
+        return text
+    # Keep only the content after the final reasoning delimiter. A closing
+    # </think> marks the end of the leaked chain-of-thought; an unclosed
+    # opening <think> would likewise delimit leaked reasoning that follows it.
+    matches = list(_REASONING_DELIM.finditer(text))
+    if not matches:
+        return text
+    return text[matches[-1].end():].strip()
+
+
 # Anything shorter than this (after stripping whitespace) is considered
 # near-empty and not a usable plan.
 _MIN_PLAN_LENGTH = 10
@@ -801,7 +828,7 @@ def _run_planning(build):
         _record_if_terminal(build)
         return
 
-    build["plan"] = result.get("response", "")
+    build["plan"] = _strip_reasoning_block(result.get("response", ""))
     build["planned_by"] = result.get("provider")
 
     if _looks_like_tool_call_leak(build["plan"]):

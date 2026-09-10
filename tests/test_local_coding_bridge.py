@@ -104,6 +104,38 @@ class TestCommitMessage:
         assert lb._commit_message("") == "Kai: implement changes"
 
 
+# --- _strip_reasoning_block -------------------------------------------------
+
+class TestStripReasoningBlock:
+    def test_strips_everything_through_the_final_think_tag(self):
+        text = (
+            "1. Analyze the request ...\n"
+            "10. Generate output.\n"
+            "</think>\n"
+            "```main.py\nprint('hi')\n```\n"
+        )
+        assert lb._strip_reasoning_block(text) == "```main.py\nprint('hi')\n```"
+
+    def test_strips_glued_closing_tag_that_precedes_the_real_fence(self):
+        # GLM-4.7-Flash leaks its chain-of-thought and glues </think> onto the
+        # real opening fence on the same line (confirmed live 2026-09-10).
+        text = (
+            "reasoning prose\n"
+            "    ```</think>```main.py\n"
+            "print('hi')\n"
+            "```\n"
+        )
+        assert lb._strip_reasoning_block(text) == "```main.py\nprint('hi')\n```"
+
+    def test_no_think_tag_returns_text_unchanged(self):
+        text = "```main.py\nprint('hi')\n```\n"
+        assert lb._strip_reasoning_block(text) == text
+
+    def test_empty_and_none(self):
+        assert lb._strip_reasoning_block("") == ""
+        assert lb._strip_reasoning_block(None) is None
+
+
 # --- run_coding_task --------------------------------------------------------
 
 class TestRunCodingTask:
@@ -186,6 +218,26 @@ class TestRunCodingTask:
         assert result["success"] is True
         assert result["files_changed"] == ["ok.py"]
         assert not (tmp_path.parent / "evil.py").exists()
+
+    def test_strips_reasoning_model_think_leak_before_parsing(self, tmp_path, monkeypatch):
+        import requests
+
+        def fake_post(url, json=None, timeout=None):
+            return self._fake_generate(
+                "1. Analyze the request ...\n"
+                "    ```</think>```app.py\n"
+                "print('hi')\n"
+                "```\n"
+            )
+        monkeypatch.setattr(requests, "post", fake_post)
+        monkeypatch.setattr(lb.subprocess, "run",
+                           lambda args, **kw: subprocess.CompletedProcess(args, 0, "", ""))
+
+        result = lb.run_coding_task(str(tmp_path), "write a hello script")
+
+        assert result["success"] is True
+        assert result["files_changed"] == ["app.py"]
+        assert (tmp_path / "app.py").read_text() == "print('hi')\n"
 
 
 # --- provider wiring --------------------------------------------------------

@@ -41,6 +41,28 @@ _SPECIAL_FILENAMES = {
     "gemfile", "rakefile", "procfile", "justfile", "changelog", "authors",
 }
 
+# Reasoning models (GLM-4.7-Flash, Qwen, DeepSeek-R1 family) served via
+# Ollama intermittently leak their chain-of-thought into the response, then
+# emit a bare </think> delimiter before the real answer (confirmed live
+# 2026-09-10 on kai-brain:latest). The leaked block is meta-commentary, not
+# the deliverable, and its closing tag glues onto the real fence line,
+# corrupting the path info string. Strip it before parsing file blocks —
+# mirroring core.build_manager._strip_reasoning_block for the planning path.
+_REASONING_DELIM = re.compile(r"<\s*/?\s*think\s*>", re.IGNORECASE)
+
+
+def _strip_reasoning_block(text):
+    if not text:
+        return text
+    # Keep only the content after the final reasoning delimiter. A closing
+    # </think> marks the end of the leaked chain-of-thought; an unclosed
+    # opening <think> would likewise delimit leaked reasoning that follows it.
+    matches = list(_REASONING_DELIM.finditer(text))
+    if not matches:
+        return text
+    return text[matches[-1].end():].strip()
+
+
 # System prompt that pins the model to the parseable file-block convention.
 _CODING_SYSTEM = (
     "You are Kai's local coding worker. Implement the task by producing "
@@ -196,7 +218,7 @@ def run_coding_task(project_path, instruction, model="kai-coder:7b", timeout=120
             timeout=timeout,
         )
         resp.raise_for_status()
-        text = resp.json().get("response", "")
+        text = _strip_reasoning_block(resp.json().get("response", ""))
     except Exception as error:
         raise RuntimeError(f"local coding model ({model}) call failed: {error}")
 

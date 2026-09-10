@@ -26,7 +26,7 @@ def _safe_send(message_text):
     try:
         body = telegram_bridge.send_message(message_text)
     except Exception as error:
-        info(f"telegram outbound failed: {type(error).__name__}")
+        info(f"telegram outbound failed: {type(error).__name__}: {error}")
         return None
 
     return (body.get("result") or {}).get("message_id")
@@ -111,7 +111,7 @@ def _safe_run_ecosystem_discovery():
                 # may have been corrected), but preserve manually-added fields
                 # (notes, description, etc.) by only overwriting discovery fields.
                 merged_entities[entity_id] = {**old_entities[entity_id], **{
-                    k: v for k, v in new_entity.items()
+                    k: v for k, v in entity.items()
                     if k in ("type", "status", "path", "name", "description",
                              "docker_name", "docker_status", "canonical_owner")
                 }}

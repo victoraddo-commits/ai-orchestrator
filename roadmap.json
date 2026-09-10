@@ -2896,6 +2896,76 @@
       "completed": "2026-08-11",
       "build_id": "d5450269",
       "completion_correction": "Status corrected 2026-08-23: deliverables verified in code (completion note + date intact); the only failure_reason was a stale build_id reference to the purged 2026-08-07 build records."
+    },
+    {
+      "id": "DP1",
+      "name": "Directive Processor - Phase 1: Intake Layer",
+      "description": "Build intake adapters for Telegram, HTTP API, WebSocket, and Agent SDK. Implement input validation, normalization, and DirectiveRequest format.",
+      "status": "pending",
+      "priority": 10,
+      "assigned_agent": "local",
+      "dependencies": [],
+      "estimated_tokens": 15000
+    },
+    {
+      "id": "DP2",
+      "name": "Directive Processor - Phase 2: Parser Layer",
+      "description": "Implement PatternMatcher, LLMParser, StructuredParser, and EntityExtractor. Support pattern matching + LLM fallback + structured formats.",
+      "status": "pending",
+      "priority": 11,
+      "assigned_agent": "local",
+      "dependencies": [
+        "DP1"
+      ],
+      "estimated_tokens": 18000
+    },
+    {
+      "id": "DP3",
+      "name": "Directive Processor - Phase 3: Authorization & Risk Layer",
+      "description": "Build IdentityVerifier, PermissionChecker, RiskAssessor, ApprovalRouter, and DryRunValidator. Implement RBAC/ABAC + risk levels + approval integration.",
+      "status": "pending",
+      "priority": 12,
+      "assigned_agent": "kai_coder",
+      "dependencies": [
+        "DP2"
+      ],
+      "estimated_tokens": 20000
+    },
+    {
+      "id": "DP4",
+      "name": "Directive Processor - Phase 4: Execution Coordinator",
+      "description": "Build ExecutorRouter, BuildQueueExecutor, ServiceAPIExecutor, TaskManager, EventPublisher, and CallbackHandler. Implement sync/async execution + events + callbacks.",
+      "status": "pending",
+      "priority": 13,
+      "assigned_agent": "kai_coder",
+      "dependencies": [
+        "DP3"
+      ],
+      "estimated_tokens": 22000
+    },
+    {
+      "id": "DP5",
+      "name": "Directive Processor - Phase 5: Agent Fabric Integration",
+      "description": "Build AgentFabricExecutor for complex directive decomposition and orchestration. Route to specialized agents, aggregate results.",
+      "status": "pending",
+      "priority": 14,
+      "assigned_agent": "kai_brain",
+      "dependencies": [
+        "DP4"
+      ],
+      "estimated_tokens": 16000
+    },
+    {
+      "id": "DP6",
+      "name": "Directive Processor - Phase 6: State & Memory Layer",
+      "description": "Build DirectiveHistoryStore, SessionContextStore, SecondBrainIntegrator, MetricsCollector, CheckpointManager. Implement full state management + recovery.",
+      "status": "pending",
+      "priority": 15,
+      "assigned_agent": "local",
+      "dependencies": [
+        "DP5"
+      ],
+      "estimated_tokens": 17000
     }
   ],
   "_audit": {

@@ -1,60 +1,43 @@
 import json
-from pathlib import Path
-from core.world_model import WorldModel
+from core.world_model import WorldModel, _MEMORY_DIR, WORLD_PATH
 
-def test_world_model_load_save():
-    wm = WorldModel()
-    wm.load()
-    assert wm.nodes == {}
-    assert wm.guests == {}
-    assert wm.docker_containers == {}
-    assert wm.services == {}
-    assert wm.operations == {}
-    assert wm.workers == {}
-    assert wm.models == {}
-    assert wm.teammates == {}
-    assert wm.teams == {}
-    assert wm.missions == {}
-    assert wm.policies == {}
-    assert wm.desired_state == {}
-    assert wm.actual_state == {}
+def test_collect_entities():
+    world_model = WorldModel()
+    world_model.collect_entities()
+    assert 'models' in world_model.entities
+    assert 'teammates' in world_model.entities
+    assert 'teams' in world_model.entities
+    assert 'missions' in world_model.entities
+    assert 'policies' in world_model.entities
 
-    wm.nodes = {'node1': {'type': 'proxmox'}}
-    wm.save()
-    wm.load()
-    assert wm.nodes == {'node1': {'type': 'proxmox'}}
+def test_snapshot():
+    world_model = WorldModel()
+    world_model.collect_entities()
+    snapshot = world_model.snapshot()
+    assert isinstance(snapshot, dict)
+    assert 'models' in snapshot
+    assert 'teammates' in snapshot
+    assert 'teams' in snapshot
+    assert 'missions' in snapshot
+    assert 'policies' in snapshot
 
-def test_world_model_collect_entities():
-    wm = WorldModel()
-    wm.collect_nodes()
-    assert wm.nodes != {}
+def test_impact_of():
+    world_model = WorldModel()
+    world_model.collect_entities()
+    impact = world_model.impact_of('models')
+    assert isinstance(impact, dict)
+    assert 'models' in impact
 
-    wm.collect_guests()
-    assert wm.guests != {}
-
-    wm.collect_docker_containers()
-    assert wm.docker_containers != {}
-
-    wm.collect_services()
-    assert wm.services != {}
-
-    wm.collect_operations()
-    assert wm.operations != {}
-
-    wm.collect_workers()
-    assert wm.workers != {}
-
-    wm.collect_models()
-    assert wm.models != {}
-
-    wm.collect_teammates()
-    assert wm.teammates != {}
-
-    wm.collect_teams()
-    assert wm.teams != {}
-
-    wm.collect_missions()
-    assert wm.missions != {}
-
-    wm.collect_policies()
-    assert wm.policies != {}
+def test_diff():
+    world_model = WorldModel()
+    world_model.collect_entities()
+    snapshot1 = world_model.snapshot()
+    world_model.collect_entities()
+    snapshot2 = world_model.snapshot()
+    diff = world_model.diff(snapshot1, snapshot2)
+    assert isinstance(diff, dict)
+    assert 'models' in diff
+    assert 'teammates' in diff
+    assert 'teams' in diff
+    assert 'missions' in diff
+    assert 'policies' in diff

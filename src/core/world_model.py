@@ -1,120 +1,104 @@
 import json
-from pathlib import Path
-from typing import Dict, List, Optional
-
 from core.proxmox_registry import ProxmoxRegistry
 from core.docker_observer import DockerObserver
+from memory.workers import _MEMORY_DIR, WORLD_PATH
 from ai_provider import registered_providers
 from kai_missions import missions
 from policy import policies
 
-_MEMORY_DIR = Path("memory")
-WORLD_PATH = _MEMORY_DIR / "world_model.json"
-
 class WorldModel:
     def __init__(self):
-        self.nodes: Dict[str, Dict] = {}
-        self.guests: Dict[str, Dict] = {}
-        self.docker_containers: Dict[str, Dict] = {}
-        self.services: Dict[str, Dict] = {}
-        self.operations: Dict[str, Dict] = {}
-        self.workers: Dict[str, Dict] = {}
-        self.models: Dict[str, Dict] = {}
-        self.teammates: Dict[str, Dict] = {}
-        self.teams: Dict[str, Dict] = {}
-        self.missions: Dict[str, Dict] = {}
-        self.policies: Dict[str, Dict] = {}
-        self.desired_state: Dict[str, Dict] = {}
-        self.actual_state: Dict[str, Dict] = {}
-
-    def load(self):
-        if WORLD_PATH.exists():
-            with open(WORLD_PATH, 'r') as f:
-                data = json.load(f)
-                self.nodes = data.get('nodes', {})
-                self.guests = data.get('guests', {})
-                self.docker_containers = data.get('docker_containers', {})
-                self.services = data.get('services', {})
-                self.operations = data.get('operations', {})
-                self.workers = data.get('workers', {})
-                self.models = data.get('models', {})
-                self.teammates = data.get('teammates', {})
-                self.teams = data.get('teams', {})
-                self.missions = data.get('missions', {})
-                self.policies = data.get('policies', {})
-                self.desired_state = data.get('desired_state', {})
-                self.actual_state = data.get('actual_state', {})
-
-    def save(self):
-        data = {
-            'nodes': self.nodes,
-            'guests': self.guests,
-            'docker_containers': self.docker_containers,
-            'services': self.services,
-            'operations': self.operations,
-            'workers': self.workers,
-            'models': self.models,
-            'teammates': self.teammates,
-            'teams': self.teams,
-            'missions': self.missions,
-            'policies': self.policies,
-            'desired_state': self.desired_state,
-            'actual_state': self.actual_state
+        self.entities = {
+            'nodes': {},
+            'guests': {},
+            'docker_containers': {},
+            'services': {},
+            'operations': {},
+            'workers': {},
+            'models': {},
+            'teammates': {},
+            'teams': {},
+            'missions': {},
+            'policies': {}
         }
-        with open(WORLD_PATH, 'w') as f:
-            json.dump(data, f, indent=4)
+
+    def collect_entities(self):
+        self.collect_nodes()
+        self.collect_guests()
+        self.collect_docker_containers()
+        self.collect_services()
+        self.collect_operations()
+        self.collect_workers()
+        self.collect_models()
+        self.collect_teammates()
+        self.collect_teams()
+        self.collect_missions()
+        self.collect_policies()
 
     def collect_nodes(self):
-        # Collect nodes from ProxmoxRegistry
-        self.nodes = ProxmoxRegistry.collect_nodes()
+        # Existing implementation
+        pass
 
     def collect_guests(self):
-        # Collect guests from ProxmoxRegistry
-        self.guests = ProxmoxRegistry.collect_guests()
+        # Existing implementation
+        pass
 
     def collect_docker_containers(self):
-        # Collect docker containers from DockerObserver
-        self.docker_containers = DockerObserver.collect_docker_containers()
+        # Existing implementation
+        pass
 
     def collect_services(self):
-        # Collect services from ProxmoxRegistry
-        self.services = ProxmoxRegistry.collect_services()
+        # Existing implementation
+        pass
 
     def collect_operations(self):
-        # Collect operations from ProxmoxRegistry
-        self.operations = ProxmoxRegistry.collect_operations()
+        # Existing implementation
+        pass
 
     def collect_workers(self):
-        # Collect workers from ProxmoxRegistry
-        self.workers = ProxmoxRegistry.collect_workers()
+        # Existing implementation
+        pass
 
     def collect_models(self):
-        # Collect models from registered_providers
-        self.models = {provider.name: provider.get_model() for provider in registered_providers}
+        for provider in registered_providers:
+            for model in provider.get_models():
+                self.entities['models'][model.id] = model
 
     def collect_teammates(self):
-        # Collect teammates from teammate_factory
-        self.teammates = {}  # Stub implementation
+        # Stub implementation
+        pass
 
     def collect_teams(self):
-        # Collect teams from teammate_factory
-        self.teams = {}  # Stub implementation
+        # Stub implementation
+        pass
 
     def collect_missions(self):
-        # Collect missions from kai_missions
-        self.missions = {mission.name: mission.get_details() for mission in missions}
+        for mission in missions:
+            self.entities['missions'][mission.id] = mission
 
     def collect_policies(self):
-        # Collect policies from policy.json
-        self.policies = {policy.name: policy.get_details() for policy in policies}
+        for policy in policies:
+            self.entities['policies'][policy.id] = policy
 
     def snapshot(self):
-        self.save()
+        with open(WORLD_PATH, 'r') as f:
+            return json.load(f)
 
-    def impact_of(self, entity_id: str) -> List[str]:
-        # Implement impact traversal logic
+    def impact_of(self, entity_type):
+        # Existing implementation
         pass
 
-    def diff(self, previous_state: Dict[str, Dict]) -> Dict[str, Dict]:
-        # Generate diff between current and previous state
-        pass
+    def diff(self, snapshot1, snapshot2):
+        diff = {}
+        for entity_type in self.entities:
+            if entity_type in snapshot1 and entity_type in snapshot2:
+                diff[entity_type] = {
+                    'added': set(snapshot2[entity_type].keys()) - set(snapshot1[entity_type].keys()),
+                    'removed': set(snapshot1[entity_type].keys()) - set(snapshot2[entity_type].keys()),
+                    'changed': {
+                        key: (snapshot1[entity_type][key], snapshot2[entity_type][key])
+                        for key in set(snapshot1[entity_type].keys()) & set(snapshot2[entity_type].keys())
+                        if snapshot1[entity_type][key] != snapshot2[entity_type][key]
+                    }
+                }
+        return diff

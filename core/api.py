@@ -1870,6 +1870,27 @@ def api_vpn_status():
         return {"error": str(e)}
 
 
+@app.get("/api/vpn/health")
+def api_vpn_health():
+    """TK-176d6efe: Tailscale subnet-route S2S health monitor.
+
+    Reports whether both LAN subnets (192.168.99.0/24 via pve-1,
+    192.168.1.0/24 via pve-2) are advertised, accepted, and forwarding
+    traffic. Complements /api/vpn/status which still measures the older
+    Proxmox B API tunnel (localhost:8007).
+
+    Returns {latest, history[]}. `latest` may be null if the monitor has
+    never run in this process — call with ?live=1 to force run_once first.
+    """
+    try:
+        from core import vpn_health_monitor as _vhm
+        # Cheap: force one live probe so the caller always sees fresh data.
+        _vhm.run_once()
+        return {"latest": _vhm.latest(), "history": _vhm.history(20)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Docker Container Management (Phase 19B)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -3627,11 +3648,29 @@ def network_discover(_: str = Depends(_require_write_capability("network.admin")
 # expect a bridge token — the SPA doesn't have one. These parallel routes
 # take a plain FastAPI session (auth handled by nginx auth_request against
 # kai-command-center-auth's /api/auth/me) and dispatch to the same underlying
-# approve()/reject() functions, so behavior stays identical.
+# approve()/reject() functions.
+#
+# DEFENSE IN DEPTH: nginx is the primary auth gate, but the backend ALSO
+# requires the X-Kai-User header (injected by nginx auth_request_set from
+# the /api/auth/me subrequest response). If someone bypasses nginx and hits
+# port 8000 directly, the missing header causes a 401.
+
+def _require_spa_user(
+    x_kai_user: str | None = Header(default=None, alias="X-Kai-User"),
+    x_kai_user_id: str | None = Header(default=None, alias="X-Kai-User-Id"),
+) -> str:
+    """Return the authenticated SPA user's email, or 401 if the identity
+    headers are missing / empty. Nginx auth_request_set injects these after
+    verifying the session cookie against kai-command-center-auth."""
+    if not x_kai_user or not x_kai_user_id:
+        raise HTTPException(status_code=401, detail="Missing authenticated user identity")
+    return x_kai_user
+
 
 @app.get("/api/approvals")
-def api_approvals_list():
-    """Return the approval queue (pending + recent). Session-auth via nginx."""
+def api_approvals_list(_user: str = Depends(_require_spa_user)):
+    """Return the approval queue (pending + recent). Session-auth via nginx +
+    X-Kai-User header presence enforced here."""
     try:
         from core.approval import load_requests
         data = load_requests() or {}
@@ -3639,8 +3678,11 @@ def api_approvals_list():
         if isinstance(items, dict):
             items = list(items.values())
         return {"approvals": items}
-    except Exception as e:
-        return {"approvals": [], "error": str(e)}
+    except Exception:
+        # Never leak exception details to the client.
+        import logging as _l
+        _l.getLogger(__name__).exception("approvals list failed")
+        return {"approvals": []}
 
 
 class _SPAApprovalAction(BaseModel):
@@ -3648,10 +3690,14 @@ class _SPAApprovalAction(BaseModel):
 
 
 @app.post("/api/approvals/{request_id}/approve")
-def api_approvals_approve(request_id: str, action: _SPAApprovalAction = _SPAApprovalAction()):
+def api_approvals_approve(
+    request_id: str,
+    action: _SPAApprovalAction = _SPAApprovalAction(),
+    operator: str = Depends(_require_spa_user),
+):
     from core.approval import approve, InvalidTransition
     try:
-        result = approve(request_id, note=action.note, operator="command-center")
+        result = approve(request_id, note=action.note, operator=operator)
     except InvalidTransition as e:
         raise HTTPException(status_code=409, detail=str(e))
     except PermissionError as e:
@@ -3662,10 +3708,14 @@ def api_approvals_approve(request_id: str, action: _SPAApprovalAction = _SPAAppr
 
 
 @app.post("/api/approvals/{request_id}/reject")
-def api_approvals_reject(request_id: str, action: _SPAApprovalAction = _SPAApprovalAction()):
+def api_approvals_reject(
+    request_id: str,
+    action: _SPAApprovalAction = _SPAApprovalAction(),
+    operator: str = Depends(_require_spa_user),
+):
     from core.approval import reject, InvalidTransition
     try:
-        result = reject(request_id, note=action.note, operator="command-center")
+        result = reject(request_id, note=action.note, operator=operator)
     except InvalidTransition as e:
         raise HTTPException(status_code=409, detail=str(e))
     except PermissionError as e:
@@ -4546,3 +4596,77 @@ async def sse_endpoint(request: Request):
         with _sse_connections_lock:
             if connection_id in _sse_connections:
                 _sse_connections.remove(connection_id)
+
+
+# ── Research Session Logger (KAI 2.0 phase 18D) ────────────────────────────
+# Lightweight ledger of research/Claude Code sessions. Reads are unauth so
+# the Command Center SPA can display recent sessions; writes go through the
+# same write-capability gate the rest of the orchestrator uses.
+from core.research_session_logger import (
+    finalize_session as _rs_finalize,
+    get_session as _rs_get,
+    list_sessions as _rs_list,
+    log_session as _rs_log,
+)
+
+
+class _ResearchSessionCreate(BaseModel):
+    purpose: str
+    operator: str
+    transcript_ref: str | None = None
+    tags: list[str] | None = None
+    artifacts: list[str] | None = None
+
+
+class _ResearchSessionFinalize(BaseModel):
+    outcome: str
+    artifacts: list[str] | None = None
+
+
+@app.get("/api/research/sessions")
+def api_research_sessions_list(
+    limit: int = Query(50, ge=1, le=500),
+    since: str | None = Query(None, description="ISO8601 lower bound on started_at"),
+):
+    """List recent research sessions, newest first."""
+    return {"sessions": _rs_list(limit=limit, since_iso=since)}
+
+
+@app.get("/api/research/sessions/{sid}")
+def api_research_sessions_get(sid: str):
+    """Fetch a single research session by id."""
+    rec = _rs_get(sid)
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Research session not found")
+    return rec
+
+
+@app.post("/api/research/sessions")
+def api_research_sessions_create(
+    body: _ResearchSessionCreate,
+    _: str = Depends(_require_write_capability("research.log")),
+):
+    """Create a new research session. Returns the record with a fresh id."""
+    return _rs_log(
+        purpose=body.purpose,
+        operator=body.operator,
+        transcript_ref=body.transcript_ref,
+        artifacts=body.artifacts,
+        tags=body.tags,
+    )
+
+
+@app.post("/api/research/sessions/{sid}/finalize")
+def api_research_sessions_finalize(
+    sid: str,
+    body: _ResearchSessionFinalize,
+    _: str = Depends(_require_write_capability("research.log")),
+):
+    """Set outcome + ended_at on a session; optionally add artifacts."""
+    try:
+        rec = _rs_finalize(sid, outcome=body.outcome, artifacts=body.artifacts)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if rec is None:
+        raise HTTPException(status_code=404, detail="Research session not found")
+    return rec

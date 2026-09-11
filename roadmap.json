@@ -2016,7 +2016,7 @@
       "id": "TK-176d6efe",
       "name": "configure VPN failover for Proxmox B",
       "description": "configure VPN failover for Proxmox B",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
@@ -2025,7 +2025,7 @@
       "completed_at": "2026-08-07T10:00:00Z",
       "notes": "VPN failover implementation: fallback host support in proxmox_monitor.py, vpn_failover.py module with WG health check + auto-recovery, orchestrator cycle integration, /api/vpn/status endpoint, 19 tests",
       "failure_reason": "Moot \u2014 VPN replaced by Tailscale, WireGuard/NetBird removed",
-      "build_id": "86ce07ab",
+      "build_id": "manual-claude",
       "assigned_provider": "omniroute"
     },
     {
@@ -2054,7 +2054,7 @@
       "id": "TK-41173c52",
       "name": "implement automated pod restart when gwen3 goes down",
       "description": "implement automated pod restart when gwen3 goes down",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
@@ -2684,7 +2684,7 @@
       "id": "18D",
       "title": "18D: Research Session Logging",
       "description": "Every legal query generates a reproducible Research Session: session_id, user_id, query, retrieved_authorities, search_strategy, citations used, model, confidence, brain_version, timestamp. Append-only log in Legal Brain's dedicated DB. API: GET /legal-brain/v1/sessions. Export to JSON/PDF. Privacy: user-uploaded docs NOT stored, only permanent corpus doc IDs.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "18C"
       ],
@@ -2695,7 +2695,7 @@
       "completed_at": "2026-08-07",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
       "name": "(empty placeholder 18D)",
-      "build_id": "85818418",
+      "build_id": "manual-claude",
       "assigned_provider": "omniroute"
     },
     {

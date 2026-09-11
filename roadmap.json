@@ -139,13 +139,15 @@
       "id": "17S",
       "name": "Wire in dedicated per-model OpenCode Zen keys (Claude Fable 5, Gemini 3.1 Pro)",
       "description": "Operator provided two new OpenCode Zen API keys 2026-08-02, each restricted by the operator's directive to exactly one model: CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY (opencode/claude-fable-5 -- note: this is the same key value previously stored as DEEPSEEK_OPENCODE_ZEN_API_KEY and confirmed live 2026-07-29 for opencode/deepseek-v4-pro; operator has now rescoped it to Fable 5, treat the old deepseek mapping as stale) and GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY (opencode/gemini-3.1-pro, genuinely new, no prior mapping). Both stored in .env, neither wired into core.ai_provider/core.ai.ai_router yet.\n\nThe real problem to solve: ~/.local/share/opencode/auth.json (the opencode CLI's own credential store, see scripts/setup_openrouter_opencode_auth.py) holds exactly ONE 'opencode' credential globally -- that single shared key is what opencode_claude/opencode_claude_sonnet/opencode_claude_opus/opencode_minimax/opencode_deepseek all currently authenticate with. These two new keys are each scoped to a single model on the platform side, which the current one-slot auth.json cannot represent for two different keys at once without breaking the existing shared credential's other models. Confirm with the opencode CLI docs/support whether it supports multiple named auth profiles (e.g. an --auth-path or profile flag per invocation); if not, this may need each key run through its own isolated opencode CLI invocation (separate auth.json per subprocess call, analogous to how core.coding_bridge already scopes work by project_path) rather than trying to force both into the single shared slot. Once resolved: register both as real providers via core.ai_provider.register_provider(), following the exact pattern 17R item (1) established for the native DeepSeek keys, and add them into core.ai.ai_router.ROLE_PROVIDERS as fallback capacity per the 17M/17R rule -- new providers slot in AFTER existing top-priority providers, never ahead of or displacing them. Operator directive: each key must only ever be used to reach its one named model -- do not let either fall back to or get reused for the other, and do not let either touch the existing shared 'opencode' auth.json slot's other models.\n\nPer operator directive 2026-08-02: Kai/Fable implements this, not Claude Code directly.\n\nOPERATOR OVERRIDE 2026-08-02: same directive as 17R's addendum -- once CLAUDE_FABLE5_OPENCODE_ZEN_API_KEY / GEMINI_3_1_PRO_OPENCODE_ZEN_API_KEY are wired as real providers, give them HIGHEST priority in ROLE_PROVIDERS for the roles they're eligible for, superseding the default 17M/17R 'slot in after' convention for these two specifically. Applies only to these two entries, not a general reordering.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 2,
       "completed_at": "2026-08-08",
       "completion_note": "Dedicated per-model OpenCode Zen keys wired: opencode_fable5 + opencode_gemini_pro with isolated XDG_DATA_HOME auth. Highest priority in all ROLE_PROVIDERS per operator directive. Dedicated per-model OpenCode Zen keys with isolated auth. Completed 2026-08-08.",
       "completed": "2026-08-08",
-      "failure_reason": "Moot \u2014 OpenCode providers removed 2026-08-10"
+      "failure_reason": "Moot \u2014 OpenCode providers removed 2026-08-10",
+      "build_id": "625c02f5",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "18B",
@@ -260,7 +262,7 @@
       "id": "17P",
       "title": "17P: Juris Kai Multi-Tenant Legal Bot",
       "description": "Legal bot with multi-tenant accounts, subscription tiers, disclaimer flow, query limits, Hubtel Mobile Money billing (test mode), document analysis billing, /account /subscribe /profile /document /argument /flashcards commands.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [
         "17O-D",
         "18A-b"
@@ -270,7 +272,9 @@
       "completed_at": "2026-08-06T00:00:00Z",
       "updated_at": "2026-08-07T03:11:36.950375+00:00",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
-      "name": "(empty placeholder 17P)"
+      "name": "(empty placeholder 17P)",
+      "build_id": "391a3532",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "18C",
@@ -1729,7 +1733,7 @@
       "completed_at": "2026-08-07T11:10:00Z",
       "notes": "Design spec written: scoped auto-approval with 12h operator veto window, architecture gate only, file-pattern allowlist (docs-only, test-only, template-confined), kill switch (default OFF), system audit identity, per operator directive. Spec at docs/superpowers/specs/2026-08-07-scoped-auto-approval-veto-window-design.md. Implementation deferred. NEVER auto-approves deploy gate.",
       "assigned_provider": "omniroute",
-      "build_id": "7d190a78"
+      "build_id": "c7ea91b6"
     },
     {
       "id": "17A",
@@ -1978,7 +1982,7 @@
       "tests_required": false,
       "note": "[2026-09-01 reconciliation] Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
       "assigned_provider": "omniroute",
-      "build_id": "36108e0d",
+      "build_id": "db6980a2",
       "failure_reason": null,
       "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note"
     },
@@ -2012,7 +2016,7 @@
       "id": "TK-176d6efe",
       "name": "configure VPN failover for Proxmox B",
       "description": "configure VPN failover for Proxmox B",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
@@ -2020,7 +2024,9 @@
       "note": "Auto-added by operator via Kai command on 2026-08-03 21:57 UTC",
       "completed_at": "2026-08-07T10:00:00Z",
       "notes": "VPN failover implementation: fallback host support in proxmox_monitor.py, vpn_failover.py module with WG health check + auto-recovery, orchestrator cycle integration, /api/vpn/status endpoint, 19 tests",
-      "failure_reason": "Moot \u2014 VPN replaced by Tailscale, WireGuard/NetBird removed"
+      "failure_reason": "Moot \u2014 VPN replaced by Tailscale, WireGuard/NetBird removed",
+      "build_id": "1efaa93d",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "TK-8650700c",
@@ -2048,13 +2054,15 @@
       "id": "TK-41173c52",
       "name": "implement automated pod restart when gwen3 goes down",
       "description": "implement automated pod restart when gwen3 goes down",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": false,
       "priority": 99,
       "note": "Fixed 2026-08-07: added auto_recover_pods() with exponential backoff (1m\u21922m\u21924m\u21928m\u219216m, max 5 attempts), should_attempt_restart(), exhaustion notification. Wired into orchestrator_cycle. 11 tests pass.",
-      "failure_reason": "Moot \u2014 RunPod pods decommissioned, local models primary"
+      "failure_reason": "Moot \u2014 RunPod pods decommissioned, local models primary",
+      "build_id": "b98c93f9",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "TK-36a0b3dd",
@@ -2676,7 +2684,7 @@
       "id": "18D",
       "title": "18D: Research Session Logging",
       "description": "Every legal query generates a reproducible Research Session: session_id, user_id, query, retrieved_authorities, search_strategy, citations used, model, confidence, brain_version, timestamp. Append-only log in Legal Brain's dedicated DB. API: GET /legal-brain/v1/sessions. Export to JSON/PDF. Privacy: user-uploaded docs NOT stored, only permanent corpus doc IDs.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [
         "18C"
       ],
@@ -2686,13 +2694,15 @@
       "updated_at": "2026-08-07T03:29:24.711749+00:00",
       "completed_at": "2026-08-07",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
-      "name": "(empty placeholder 18D)"
+      "name": "(empty placeholder 18D)",
+      "build_id": "7c63270e",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "18E",
       "title": "18E: Legal Brain Command Center",
       "description": "Three directive-specified Legal Brain Command Center dashboards integrated into Kai Command Center: (1) Corpus Coverage Dashboard \u2014 16-tier visual progress, counts vs coverage targets, gap analysis, empty-tier alerts; (2) Source Management Dashboard \u2014 source registry grid, trust score breakdown, source health/reachability, add/remove/validate actions; (3) Legal Knowledge Health Dashboard \u2014 integrity check results, citation graph stats, knowledge engine status, Telegram alert configuration. All read-only, using existing dashboard auth patterns from 13O.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [
         "18C",
         "18D",
@@ -2713,13 +2723,14 @@
       "completed_at": "2026-08-07",
       "completion_note": "Unblocked by 18C. Legislation Extraction Pipeline.",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
-      "name": "(empty placeholder 18E)"
+      "name": "(empty placeholder 18E)",
+      "build_id": null
     },
     {
       "id": "18F",
       "title": "18F: Legal Brain Domain Plugin Architecture",
       "description": "Design plugin interface for future non-Ghana jurisdictions: JSON schema for jurisdiction plugins, isolation guarantees (each domain = own DB + vector store + KG), domains disabled by default operator-activated, Ghana Legal Brain as reference implementation, stub interfaces for Medical/Family/Finance domains. Design only \u2014 implementation per-domain later.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [
         "18C"
       ],
@@ -2730,7 +2741,9 @@
       "completed_at": "2026-08-07T11:00:00Z",
       "notes": "Design spec written: domain plugin architecture with JSON manifest schema, Python ABC interface, storage isolation per domain, QC agent dispatch, Ghana reference implementation, Kenya/Medical/Family/Finance stubs. Spec at docs/superpowers/specs/2026-08-07-legal-domain-plugin-architecture-design.md. Implementation deferred to 18F-IMPL phases.",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
-      "name": "(empty placeholder 18F)"
+      "name": "(empty placeholder 18F)",
+      "build_id": "7a2b74d5",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "18G",

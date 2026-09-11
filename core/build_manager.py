@@ -170,16 +170,11 @@ def load_builds(include_terminal=False):
     default view. Terminal builds are periodically archived to
     memory/builds_archive.json.
     """
-    builds = load(BUILDS_FILE)
+    if include_terminal:
+        builds = load(BUILDS_FILE)
+        if not isinstance(builds, list):
+            builds = []
 
-    if not isinstance(builds, list):
-        builds = []
-
-    if not include_terminal:
-        # Archive terminal builds we haven't archived yet
-        _archive_terminal_builds(builds)
-        builds = [b for b in builds if b.get("status") not in _EXCLUDED_STATUSES]
-    else:
         # When including terminal builds, also merge in the archive
         # so builds that were already archived are still findable.
         archive = load(BUILDS_ARCHIVE_FILE)
@@ -190,57 +185,76 @@ def load_builds(include_terminal=False):
                 if a.get("id") not in active_ids:
                     builds.append(a)
 
-    return builds
+        return builds
+
+    # Active view: archive terminal builds atomically, then filter them out
+    # of the returned list.
+    builds = _archive_terminal_builds()
+    return [b for b in builds if b.get("status") not in _EXCLUDED_STATUSES]
 
 
-def _archive_terminal_builds(builds):
-    """Move terminal builds to the archive, keeping the archive capped.
+def _archive_terminal_builds():
+    """Atomically archive terminal builds and return the post-archive list.
+
+    The whole read -> archive -> filter-write sequence runs inside
+    core.memory.update()'s builds.json flock, so two concurrent callers (the
+    scheduler cycle and the review/approve cron) cannot interleave an unlocked
+    read-modify-write and clobber each other's terminal builds back into
+    builds.json -- the root cause of the recurring false "Build X missing from
+    builds.json" failures.
 
     V3 fix: builds whose roadmap phase is still in_progress are NOT
     archived — they must stay in builds.json so check_stale_roadmap_references
     can find them until the phase itself transitions.
     """
-    terminal = [b for b in builds if b.get("status") in _EXCLUDED_STATUSES]
 
-    if not terminal:
-        return
+    def _mutate(active):
+        if not isinstance(active, list):
+            active = []
 
-    # Don't archive builds for phases that are still in_progress —
-    # the stale-reference checker needs to find them.
-    try:
-        from core.roadmap_engine import load_roadmap as _load_roadmap
-        roadmap = _load_roadmap()
-        in_progress_build_ids = {
-            p.get("build_id") for p in roadmap.get("phases", [])
-            if p.get("status") == "in_progress" and p.get("build_id")
-        }
-    except Exception:
-        in_progress_build_ids = set()
+        terminal = [b for b in active if b.get("status") in _EXCLUDED_STATUSES]
 
-    archive = load(BUILDS_ARCHIVE_FILE)
-    if not isinstance(archive, list):
-        archive = []
+        if not terminal:
+            return active
 
-    # Only archive builds not already in the archive AND not referenced
-    # by an in_progress roadmap phase.
-    existing_ids = {a.get("id") for a in archive}
-    new_archives = [
-        b for b in terminal
-        if b.get("id") not in existing_ids
-        and b.get("id") not in in_progress_build_ids
-    ]
+        # Don't archive builds for phases that are still in_progress —
+        # the stale-reference checker needs to find them.
+        try:
+            from core.roadmap_engine import load_roadmap as _load_roadmap
+            roadmap = _load_roadmap()
+            in_progress_build_ids = {
+                p.get("build_id") for p in roadmap.get("phases", [])
+                if p.get("status") == "in_progress" and p.get("build_id")
+            }
+        except Exception:
+            in_progress_build_ids = set()
 
-    if new_archives:
-        archive.extend(new_archives)
-        # Cap archive size
-        if len(archive) > MAX_ARCHIVE_RECORDS:
-            archive = archive[-MAX_ARCHIVE_RECORDS:]
-        save(BUILDS_ARCHIVE_FILE, archive)
+        archive = load(BUILDS_ARCHIVE_FILE)
+        if not isinstance(archive, list):
+            archive = []
 
-    # Remove archived builds from active store
-    archived_ids = {b.get("id") for b in new_archives}
-    active = [b for b in builds if b.get("id") not in archived_ids]
-    save(BUILDS_FILE, active)
+        # Only archive builds not already in the archive AND not referenced
+        # by an in_progress roadmap phase.
+        existing_ids = {a.get("id") for a in archive}
+        new_archives = [
+            b for b in terminal
+            if b.get("id") not in existing_ids
+            and b.get("id") not in in_progress_build_ids
+        ]
+
+        if new_archives:
+            archive.extend(new_archives)
+            # Cap archive size
+            if len(archive) > MAX_ARCHIVE_RECORDS:
+                archive = archive[-MAX_ARCHIVE_RECORDS:]
+            save(BUILDS_ARCHIVE_FILE, archive)
+
+        # Remove archived builds from the active store (already-archived
+        # terminal builds remain; load_builds filters them out at read time).
+        archived_ids = {b.get("id") for b in new_archives}
+        return [b for b in active if b.get("id") not in archived_ids]
+
+    return update(BUILDS_FILE, _mutate)
 
 
 def save_builds(builds):
@@ -875,10 +889,135 @@ def _is_legal_phase(build):
     return is_legal
 
 
-def _run_generation(build):
+# ---------------------------------------------------------------------------
+# Plan decomposition — split a build plan into independent subtasks so each
+# can be assigned to a different coding worker in parallel.
+# ---------------------------------------------------------------------------
+
+_SUBTASK_HEADING = re.compile(
+    r"^(?:\d+\.\s+|\*\s+|-\s+)"                   # numbered or bulleted item
+    r"(?:\*\*)?(?:Create|Extend|Modify|Wire|Add|Implement|Build|Update|Write)"  # action verb
+    r"\s+[`'\"]?(\S+)",                              # target (file or module)
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _decompose_plan(plan_text):
+    """Split an approved build plan into independent subtasks.
+
+    Returns a list of (label, section_text) tuples. A plan that can't be
+    meaningfully split returns a single element with the full text.
+    """
+    if not plan_text or len(plan_text) < 200:
+        return [("full", plan_text or "")]
+
+    matches = list(_SUBTASK_HEADING.finditer(plan_text))
+    if len(matches) < 2:
+        return [("full", plan_text)]
+
+    subtasks = []
+    for idx, m in enumerate(matches):
+        start = m.start()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(plan_text)
+        section = plan_text[start:end].strip()
+        label = m.group(1).strip("`'\"*") or f"task-{idx}"
+        subtasks.append((label, section))
+
+    return subtasks
+
+
+def _available_coding_workers():
+    """Return coding providers that are currently up and have run_coding_task."""
+    from core.ai.ai_router import ROLE_PROVIDERS
+    workers = []
+    for name in ROLE_PROVIDERS.get("coding", []):
+        prov = ai_provider.get_provider(name)
+        if prov and prov["available_fn"]() and prov.get("enabled", True):
+            if prov.get("run_coding_task"):
+                workers.append(name)
+    return workers
+
+
+def _subtask_prompt(build, section_text):
+    """Build a generation prompt scoped to one subtask section."""
+    return (
+        GENERATION_DISCIPLINE_PREAMBLE
+        + "You are implementing ONE PART of a larger approved plan. "
+        "Other workers are handling other parts in parallel. "
+        "Implement ONLY the section below — do not touch files outside "
+        "your assigned scope.\n\n"
+        f"Application: {build['name']}\n"
+        f"Description: {build['description']}\n"
+        + _template_context(build)
+        + f"Your assigned section:\n{section_text}"
+    )
+
+
+def _delegate_subtask(args):
+    """Worker function for parallel subtask delegation."""
+    build, section_text, worker_name, task_type = args
     try:
-        _ensure_repo(build)
-        task_type = "legal_coding" if _is_legal_phase(build) else "coding"
+        delegated = delegate(
+            _subtask_prompt(build, section_text),
+            task_type=task_type,
+            project_path=build["project_path"],
+            timeout=GENERATION_TIMEOUT,
+            capability="coding_agent",
+            provider=worker_name,
+        )
+        return {"ok": True, "result": delegated["response"], "provider": delegated["provider"]}
+    except Exception as err:
+        return {"ok": False, "error": str(err), "provider": worker_name}
+
+
+def _merge_generation_results(outcomes):
+    """Merge results from parallel subtask delegations into one result."""
+    all_files = []
+    all_commits = []
+    all_errors = []
+    providers_used = set()
+    any_success = False
+
+    for o in outcomes:
+        if not o["ok"]:
+            all_errors.append({"tool": None, "content": f"{o['provider']}: {o['error']}"})
+            continue
+        r = o["result"]
+        if r.get("success"):
+            any_success = True
+        all_files.extend(r.get("files_changed") or [])
+        all_commits.extend(r.get("commits") or [])
+        all_errors.extend(r.get("tool_errors") or [])
+        providers_used.add(o["provider"])
+
+    return {
+        "success": any_success,
+        "aborted": False,
+        "session_id": None,
+        "response_text": f"Parallel generation by {', '.join(sorted(providers_used))}",
+        "files_changed": all_files,
+        "commits": all_commits,
+        "tool_errors": all_errors,
+    }, providers_used
+
+
+def _run_generation(build):
+    _ensure_repo(build)
+    task_type = "legal_coding" if _is_legal_phase(build) else "coding"
+    plan_text = build.get("plan") or ""
+
+    subtasks = _decompose_plan(plan_text)
+    workers = _available_coding_workers()
+
+    if len(subtasks) > 1 and len(workers) > 1:
+        _run_parallel_generation(build, subtasks, workers, task_type)
+    else:
+        _run_single_generation(build, task_type)
+
+
+def _run_single_generation(build, task_type):
+    """Original single-delegate path — one model, one call."""
+    try:
         delegated = delegate(
             _generation_prompt(build),
             task_type=task_type,
@@ -889,14 +1028,8 @@ def _run_generation(build):
     except Exception as error:
         from core.workforce.gate import NoCapableWorkerError
         if isinstance(error, NoCapableWorkerError):
-            # Workforce gate denied every candidate (all dead/paused/
-            # ineligible). Back off and retry later instead of failing —
-            # the workers should recover; killing the build helps nobody.
             _handle_provider_exhaustion(build["id"], error)
             return
-        # delegate() already tried every candidate coding-capable provider
-        # (Claude, then OpenCode) before raising -- a genuine every-provider
-        # failure, not just "Claude is busy".
         transition(build, "FAILED", BUILD_TRANSITIONS)
         build["failure_reason"] = str(error)
         _record_if_terminal(build)
@@ -920,10 +1053,40 @@ def _run_generation(build):
         _record_if_terminal(build)
         return
 
-    # Cascade straight into the advisory code review within this same call
-    # -- existing callers and tests rely on one advance_builds() taking a
-    # successful generation all the way to WAITING_FOR_DEPLOY_APPROVAL, not
-    # parking it in CODE_REVIEW for a later dispatch cycle to pick up.
+    transition(build, "CODE_REVIEW", BUILD_TRANSITIONS)
+    _run_code_review(build)
+
+
+def _run_parallel_generation(build, subtasks, workers, task_type):
+    """Decompose plan into subtasks and assign to multiple coding workers."""
+    assignments = []
+    for idx, (label, section) in enumerate(subtasks):
+        worker = workers[idx % len(workers)]
+        assignments.append((build, section, worker, task_type))
+
+    build["_delegation_assignments"] = [
+        {"label": subtasks[i][0], "worker": assignments[i][2]}
+        for i in range(len(subtasks))
+    ]
+
+    max_parallel = min(len(assignments), len(workers))
+    with ThreadPoolExecutor(max_workers=max_parallel) as pool:
+        outcomes = list(pool.map(_delegate_subtask, assignments))
+
+    result, providers_used = _merge_generation_results(outcomes)
+    build["generation_result"] = result
+    build["generated_by"] = ", ".join(sorted(providers_used)) if providers_used else "none"
+
+    if not result.get("success") or _looks_like_no_op_generation(result):
+        transition(build, "FAILED", BUILD_TRANSITIONS)
+        build["failure_reason"] = (
+            "Parallel generation: no worker produced successful output"
+            if not result.get("success")
+            else "Parallel generation: workers ran but produced no file changes"
+        )
+        _record_if_terminal(build)
+        return
+
     transition(build, "CODE_REVIEW", BUILD_TRANSITIONS)
     _run_code_review(build)
 

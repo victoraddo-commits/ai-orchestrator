@@ -715,9 +715,25 @@ def _koboldcpp_cpu_available():
         return False
 
 
+def _koboldcpp_cpu_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    """GLM-4.7-Flash Q4_K_M (CPU) as a coding worker via local_coding_bridge.
+
+    Same harness as kai_brain/kai_coder coding tasks — the model emits fenced
+    code blocks, the bridge writes files and commits. Routes through KoboldCpp
+    on VM 112 instead of ollama on VM 104, providing independent CPU capacity.
+    """
+    from core import local_coding_bridge
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction,
+        model="koboldcpp_cpu",  # special model name handled below
+        timeout=timeout,
+    )
+
+
 register_provider(
     "koboldcpp_cpu",
     run_text_task=_koboldcpp_cpu_run_text_task,
+    run_coding_task=_koboldcpp_cpu_run_coding_task,
     available_fn=_koboldcpp_cpu_available,
     kind="local",
     description="GLM-4.7-Flash Q4_K_M via KoboldCpp on VM 112 (kai-cpu) — CPU-only inference on 16 Xeon cores, dedicated capacity independent of GPU workloads. CPU Model Fabric.",

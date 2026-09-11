@@ -97,6 +97,7 @@ ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
 ROLE_PROVIDERS["coding"] = [
     "kai_coder",  # kai.coder.fast — Qwen2.5-Coder-7B code specialist
     "kai_brain",  # kai.brain — GLM-4.7-Flash, "manager AND worker" writes code itself
+    "koboldcpp_cpu",  # GLM-4.7-Flash Q4_K_M on VM 112 CPU — independent capacity
 ]
 # Code review role — updated 2026-09-10 to kai_brain for thorough analysis
 ROLE_PROVIDERS["code_review"] = ["kai_brain", "local"]

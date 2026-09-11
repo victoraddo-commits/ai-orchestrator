@@ -193,8 +193,43 @@ def _commit_message(instruction):
     return (first_line[:70] or "Kai: implement changes")
 
 
+def _call_koboldcpp_cpu(prompt, timeout=1200):
+    """Call KoboldCpp on VM 112 via SSH tunnel (CPU Model Fabric).
+
+    Same GLM-4.7-Flash model as kai-brain but running on dedicated CPU cores,
+    so it doesn't contend with GPU workloads on VM 104. Slower (~5-15 tok/s)
+    but provides independent parallel capacity for coding tasks.
+    """
+    import json as _json
+
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 4096,
+        "temperature": 0.1,
+        "stream": False,
+    }
+
+    cmd = [
+        "ssh", "-o", "ConnectTimeout=5",
+        "-J", "root@100.122.38.118",
+        "kai@192.168.1.242",
+        "curl -s -X POST http://localhost:8080/v1/chat/completions "
+        "-H 'Content-Type: application/json' --data-binary @-"
+    ]
+
+    result = subprocess.run(
+        cmd, input=_json.dumps(payload),
+        capture_output=True, text=True, timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"SSH/curl to KoboldCpp failed: {result.stderr}")
+
+    data = _json.loads(result.stdout)
+    return data["choices"][0]["message"]["content"]
+
+
 def run_coding_task(project_path, instruction, model="kai-coder:7b", timeout=1200):
-    """Run one coding task with a local Ollama model.
+    """Run one coding task with a local Ollama model (or KoboldCpp CPU).
 
     Generates code via the model, writes the emitted files into
     ``project_path``, commits them, and returns the coding_bridge-compatible
@@ -207,18 +242,22 @@ def run_coding_task(project_path, instruction, model="kai-coder:7b", timeout=120
     prompt = _CODING_SYSTEM + "\n\nTask:\n" + instruction
 
     try:
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.1, "top_p": 0.95},
-            },
-            timeout=timeout,
-        )
-        resp.raise_for_status()
-        text = _strip_reasoning_block(resp.json().get("response", ""))
+        if model == "koboldcpp_cpu":
+            # Route to KoboldCpp on VM 112 (CPU Model Fabric)
+            text = _strip_reasoning_block(_call_koboldcpp_cpu(prompt, timeout))
+        else:
+            resp = requests.post(
+                f"{OLLAMA_URL}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.1, "top_p": 0.95},
+                },
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            text = _strip_reasoning_block(resp.json().get("response", ""))
     except Exception as error:
         raise RuntimeError(f"local coding model ({model}) call failed: {error}")
 

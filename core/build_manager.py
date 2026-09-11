@@ -520,7 +520,53 @@ GENERATION_DISCIPLINE_PREAMBLE = (
 )
 
 
+MAX_PLAN_CHARS = 6000
+
+
+def _trim_plan(plan_text):
+    """Truncate overly long plans so coding models don't choke.
+
+    Brain models sometimes produce 10-15K char plans with full code drafts
+    embedded. Local 7B coders can't process that much context effectively.
+    Keep the structural outline and trim embedded code blocks.
+    """
+    if not plan_text or len(plan_text) <= MAX_PLAN_CHARS:
+        return plan_text
+    lines = plan_text.splitlines()
+    out = []
+    in_code = False
+    code_lines = 0
+    total = 0
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code = not in_code
+            if in_code:
+                code_lines = 0
+                out.append(line)
+                total += len(line) + 1
+            else:
+                if code_lines > 5:
+                    out.append("    # ... (code trimmed for brevity)")
+                out.append(line)
+                total += len(line) + 1
+            continue
+        if in_code:
+            code_lines += 1
+            if code_lines <= 5:
+                out.append(line)
+                total += len(line) + 1
+            continue
+        out.append(line)
+        total += len(line) + 1
+        if total > MAX_PLAN_CHARS:
+            out.append("\n[Plan truncated — implement the sections above]")
+            break
+    return "\n".join(out)
+
+
 def _generation_prompt(build):
+    plan = _trim_plan(build.get('plan') or '')
     return (
         GENERATION_DISCIPLINE_PREAMBLE
         + "The following architecture plan was reviewed and approved by the "
@@ -529,7 +575,7 @@ def _generation_prompt(build):
         f"Application: {build['name']}\n"
         f"Description: {build['description']}\n"
         + _template_context(build)
-        + f"Approved plan:\n{build.get('plan') or ''}"
+        + f"Approved plan:\n{plan}"
     )
 
 

@@ -151,7 +151,6 @@ class TelegramMonitor:
         # Gather current state
         builds = self._safe_load_builds()
         dashboard = self._safe_dashboard()
-        pool_status = self._safe_pool_status()
 
         # Detect build state changes
         changed_builds = self._detect_changed_builds(builds)
@@ -165,7 +164,7 @@ class TelegramMonitor:
             return
 
         # Build digest message
-        message = self._build_digest(builds, changed_builds, dashboard, pool_status, send_heartbeat)
+        message = self._build_digest(builds, changed_builds, dashboard, send_heartbeat)
 
         try:
             telegram_bridge.send_message(message, chat_id=self._chat_id)
@@ -187,14 +186,6 @@ class TelegramMonitor:
     def _safe_dashboard(self) -> dict:
         try:
             return ai_router.get_provider_dashboard()
-        except Exception:
-            return {}
-
-    def _safe_pool_status(self) -> dict:
-        try:
-            from core.workers.deepseek_pool import get_pool
-            pool = get_pool()
-            return pool.status()
         except Exception:
             return {}
 
@@ -229,7 +220,7 @@ class TelegramMonitor:
 
     # --- Digest formatting ---
 
-    def _build_digest(self, builds: list, changed: list, dashboard: dict, pool_status: dict, is_heartbeat: bool) -> str:
+    def _build_digest(self, builds: list, changed: list, dashboard: dict, is_heartbeat: bool) -> str:
         """Format a concise status digest for Telegram."""
         now = datetime.now(timezone.utc)
 
@@ -277,17 +268,7 @@ class TelegramMonitor:
                     lines.append(f"  {emoji} {name}: {info.get('health', '?')}")
                 lines.append("")
 
-        # --- Worker pool ---
-        if pool_status.get("running"):
-            lines.append(
-                f"👷 *DeepSeek Workers:* "
-                f"{pool_status.get('active', 0)}/{pool_status.get('workers', '?')} active, "
-                f"{pool_status.get('queued', 0)} queued, "
-                f"✅{pool_status.get('completed', 0)} ❌{pool_status.get('failed', 0)}"
-            )
-            lines.append("")
-
         # Footer
-        lines.append("_Kai AI Orchestrator — DeepSeek-powered_")
+        lines.append("_Kai AI Orchestrator — local-Ollama powered_")
 
         return "\n".join(lines)

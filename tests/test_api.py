@@ -330,9 +330,9 @@ def test_providers_dashboard_endpoint_returns_all_registered_providers():
 
     assert response.status_code == 200
     body = response.json()
-    assert "claude" in body
-    assert "gemini" in body
-    assert "percent_remaining" in body["groq"]
+    assert "kai_brain" in body
+    assert "local" in body
+    assert "percent_remaining" in body["kai_brain"]
 
 
 def test_delegate_endpoint_requires_auth():
@@ -344,18 +344,12 @@ def test_delegate_endpoint_requires_auth():
 def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
     import core.ai_provider as ai_provider
 
-    # PROVIDER_CONFIG_OVERRIDES["log_analysis"] starts with deepseek_native_flash
-    # and deepseek_native_pro. Disable them so groq is the first reachable
-    # candidate (after local/llama3 which the conftest already disables).
-    for name in ("deepseek_native_flash", "deepseek_native_pro", "qwen3_coder_text"):
-        p = ai_provider.get_provider(name)
-        if p is not None:
-            monkeypatch.setitem(p, "available_fn", lambda: False)
-
-    groq = ai_provider.get_provider("groq")
-    monkeypatch.setitem(groq, "enabled", True)  # re-enable from persisted state
-    monkeypatch.setitem(groq, "available_fn", lambda: True)
-    monkeypatch.setitem(groq, "run_text_task", lambda p, timeout=60, project_path=None: "log looks fine")
+    # log_analysis chain is ["local", "kai_brain"]; local/llama3 are already
+    # disabled by conftest, so kai_brain is the first reachable candidate.
+    kai_brain = ai_provider.get_provider("kai_brain")
+    monkeypatch.setitem(kai_brain, "enabled", True)
+    monkeypatch.setitem(kai_brain, "available_fn", lambda: True)
+    monkeypatch.setitem(kai_brain, "run_text_task", lambda p, timeout=60, project_path=None: "log looks fine")
 
     response = client.post(
         "/delegate",
@@ -365,7 +359,7 @@ def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
 
     assert response.status_code == 200
     body = response.json()
-    assert body["provider"] == "groq"
+    assert body["provider"] == "kai_brain"
     assert body["response"] == "log looks fine"
 
 
@@ -395,9 +389,9 @@ def test_providers_endpoint_lists_registered_providers():
 
     assert response.status_code == 200
     body = response.json()
-    assert "claude" in body
+    assert "kai_brain" in body
     assert "local" in body
-    assert "run_coding_task" not in body["claude"]
+    assert "run_coding_task" not in body["kai_brain"]
 
 
 def test_templates_endpoint_lists_available_templates():
@@ -1319,22 +1313,22 @@ def _mock_extraction(monkeypatch, response_text):
 
     monkeypatch.setattr(
         api_module, "delegate",
-        lambda prompt, **kwargs: {"provider": "gemini", "response": response_text},
+        lambda prompt, **kwargs: {"provider": "kai_brain", "response": response_text},
     )
 
 
 def test_extract_build_intent_uses_classification_task_type(monkeypatch):
     # 2026-07-31: this is intent classification, not architectural planning
-    # -- it must route through task_type="classification" (groq-first, fast
-    # structured extraction) rather than "planning" (gemini-first, long-
-    # context architecture), which it used before this fix.
+    # -- it must route through task_type="classification" (local-first, fast
+    # structured extraction) rather than "planning" (long-context
+    # architecture), which it used before this fix.
     import core.api as api_module
 
     captured = {}
 
     def spy_delegate(prompt, **kwargs):
         captured.update(kwargs)
-        return {"provider": "gemini", "response": '{"is_build_request": false}'}
+        return {"provider": "kai_brain", "response": '{"is_build_request": false}'}
 
     monkeypatch.setattr(api_module, "delegate", spy_delegate)
 
@@ -1602,7 +1596,7 @@ def test_kai_proposals_endpoint_returns_stored_proposals(monkeypatch):
         rationale="Recurring health finding",
         source_signals=["health:docker_unavailable"],
         target_roadmap_phase_draft=None,
-        synthesized_by="claude",
+        synthesized_by="kai_brain",
         roadmap_phase_id=None,
     )
     monkeypatch.setattr("core.kai.planner.load_proposals", lambda: [proposal])

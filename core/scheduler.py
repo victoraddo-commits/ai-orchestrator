@@ -18,14 +18,12 @@ load_dotenv()
 
 from core.orchestrator_cycle import run_cycle
 from core.logger import info
-from core.workers.deepseek_pool import start_pool, stop_pool
 from core.workers.telegram_monitor import TelegramMonitor
 from core.network_discovery_cycle import run_network_discovery_cycle
 from core.provider_health_monitor import start_monitor as start_provider_health_monitor
 
-# Worker pool, Telegram monitor, Health Worker, and Provider Health Monitor — started on first cycle,
+# Telegram monitor, Health Worker, and Provider Health Monitor — started on first cycle,
 # survive until shutdown.
-_pool = None
 _monitor = None
 _health_worker = None
 _provider_health_monitor = None
@@ -116,10 +114,7 @@ class WatchdogHeartbeat:
 
 def start():
 
-    global _pool, _monitor, _health_worker, _provider_health_monitor, _last_network_discovery
-
-    # 2026-08-09: DeepSeek worker pool — primary AI engine per operator directive.
-    _pool = start_pool(workers=8)
+    global _monitor, _health_worker, _provider_health_monitor, _last_network_discovery
 
     # Telegram monitor — periodic status digests per operator directive.
     _monitor = TelegramMonitor()
@@ -135,7 +130,7 @@ def start():
     # Monitors all AI providers every 30s, sends Telegram alerts on failures.
     _provider_health_monitor = start_provider_health_monitor()
 
-    info("scheduler started (DeepSeek pool + Telegram monitor + Health Worker + Provider Health Monitor)")
+    info("scheduler started (Telegram monitor + Health Worker + Provider Health Monitor)")
 
     if notify:
         notify("READY=1")

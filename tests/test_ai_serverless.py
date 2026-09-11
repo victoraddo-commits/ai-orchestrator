@@ -47,7 +47,7 @@ class TestHandleCompletion:
                           return_attempts=None, provider=None):
             return {
                 "response": "Hello!",
-                "provider": "gemini",
+                "provider": "local",
                 "attempts": [],
             }
 
@@ -59,7 +59,7 @@ class TestHandleCompletion:
         assert result["object"] == "chat.completion"
         assert len(result["choices"]) == 1
         assert result["choices"][0]["message"]["content"] == "Hello!"
-        assert result["model"] == "gemini"
+        assert result["model"] == "local"
         assert "usage" in result
         assert result["usage"]["completion_tokens"] > 0
 
@@ -74,7 +74,7 @@ class TestHandleCompletion:
             received_provider = provider
             return {
                 "response": "OK",
-                "provider": provider or "gemini",
+                "provider": provider or "local",
                 "attempts": [],
             }
 
@@ -82,9 +82,9 @@ class TestHandleCompletion:
             "core.ai.ai_router.delegate", fake_delegate
         )
 
-        result = handle_completion("Say hi", model="gemini")
-        assert received_provider == "gemini"
-        assert result["model"] == "gemini"
+        result = handle_completion("Say hi", model="local")
+        assert received_provider == "local"
+        assert result["model"] == "local"
 
     def test_unknown_model_returns_error(self, monkeypatch):
         from core.ai_serverless.handler import handle_completion
@@ -102,8 +102,8 @@ class TestHandleCompletion:
                           return_attempts=None, provider=None):
             return {
                 "response": "Test",
-                "provider": "groq",
-                "attempts": [{"provider": "groq", "ok": True}],
+                "provider": "local",
+                "attempts": [{"provider": "local", "ok": True}],
             }
 
         monkeypatch.setattr(
@@ -112,7 +112,7 @@ class TestHandleCompletion:
 
         result = handle_completion("Test")
         assert "_meta" in result
-        assert result["_meta"]["provider"] == "groq"
+        assert result["_meta"]["provider"] == "local"
         assert "elapsed_s" in result["_meta"]
         assert "task_type" in result["_meta"]
 
@@ -244,7 +244,7 @@ class TestVercelHandler:
         from io import BytesIO
 
         h = VercelHandler.__new__(VercelHandler)
-        body = json.dumps({"model": "gemini"}).encode()
+        body = json.dumps({"model": "local"}).encode()
         h.rfile = BytesIO(body)
         h.wfile = BytesIO()
         h.headers = {"Content-Length": str(len(body))}

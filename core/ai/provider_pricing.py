@@ -67,6 +67,18 @@ PRICING = {
     "llama3": {
         "llama3.2:3b": {"input_per_million": 0.00, "output_per_million": 0.00},
     },
+    # 2026-09-10: KAI MODEL TEAM local-only roles — self-hosted ollama on VM104.
+    # Free like every other local model; these entries close the calls_unknown
+    # gap so cost_tracker estimates the three team roles at $0.00, not "unknown".
+    "kai_brain": {
+        "glm-4.7-flash": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    "kai_coder": {
+        "qwen2.5-coder-7b": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    "kai_deep": {
+        "qwen3.6-27b": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
     # OpenRouter bills per-model; the rotation list spans cheap paid models,
     # so these are documented approximations of each model's published rate.
     # gpt-4o-mini is exact ($0.15/$0.60 per M); deepseek-v4-flash/pro match

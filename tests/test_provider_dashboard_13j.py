@@ -62,17 +62,22 @@ def test_provider_dashboard_queue_depth_counts_active_builds(isolated_memory, mo
 
 
 def test_provider_dashboard_shows_current_job_when_generating(isolated_memory, monkeypatch):
+    import core.ai_provider as ai_provider
+
     fake_builds = [
-        {"id": "b1", "name": "Test App", "status": "GENERATING", "generated_by": "claude"},
+        {"id": "b1", "name": "Test App", "status": "GENERATING", "generated_by": "kai_coder"},
     ]
     monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
+    # conftest stubs every local provider's available_fn to False; restore
+    # kai_coder so _derive_health reaches its "busy" branch.
+    monkeypatch.setitem(ai_provider._PROVIDERS["kai_coder"], "available_fn", lambda: True)
 
     dashboard = get_provider_dashboard()
 
-    claude = dashboard.get("claude", {})
-    assert claude.get("current_job") == "b1"
-    assert claude.get("current_job_name") == "Test App"
-    assert claude.get("health") == "busy"
+    kai_coder = dashboard.get("kai_coder", {})
+    assert kai_coder.get("current_job") == "b1"
+    assert kai_coder.get("current_job_name") == "Test App"
+    assert kai_coder.get("health") == "busy"
 
 
 # ── _derive_health ───────────────────────────────────────────────────────────
@@ -151,7 +156,7 @@ def test_scheduler_snapshot_waiting_builds(isolated_memory, monkeypatch):
     fake_builds = [
         {"id": "b1", "name": "pending-1", "status": "REQUESTED", "created_at": "2026-01-01T00:00:00"},
         {"id": "b2", "name": "pending-2", "status": "ARCHITECTURE_APPROVED", "created_at": "2026-01-01T00:01:00"},
-        {"id": "b3", "name": "running-1", "status": "GENERATING", "created_at": "2026-01-01T00:02:00", "generated_by": "claude"},
+        {"id": "b3", "name": "running-1", "status": "GENERATING", "created_at": "2026-01-01T00:02:00", "generated_by": "kai_coder"},
         {"id": "b4", "name": "done-1", "status": "COMPLETED", "created_at": "2026-01-01T00:03:00"},
     ]
     monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
@@ -165,7 +170,7 @@ def test_scheduler_snapshot_waiting_builds(isolated_memory, monkeypatch):
 
 def test_scheduler_snapshot_running_builds(isolated_memory, monkeypatch):
     fake_builds = [
-        {"id": "b1", "name": "gen-1", "status": "GENERATING", "created_at": "2026-01-01T00:00:00", "generated_by": "claude"},
+        {"id": "b1", "name": "gen-1", "status": "GENERATING", "created_at": "2026-01-01T00:00:00", "generated_by": "kai_coder"},
         {"id": "b2", "name": "plan-1", "status": "PLANNING", "created_at": "2026-01-01T00:01:00"},
     ]
     monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
@@ -179,13 +184,13 @@ def test_scheduler_snapshot_running_builds(isolated_memory, monkeypatch):
 
 def test_scheduler_snapshot_worker_assignments(isolated_memory, monkeypatch):
     fake_builds = [
-        {"id": "b1", "name": "gen-1", "status": "GENERATING", "created_at": "2026-01-01T00:00:00", "generated_by": "claude"},
+        {"id": "b1", "name": "gen-1", "status": "GENERATING", "created_at": "2026-01-01T00:00:00", "generated_by": "kai_coder"},
     ]
     monkeypatch.setattr(build_manager, "load_builds", lambda include_terminal=False: fake_builds)
 
     snapshot = get_scheduler_snapshot()
 
-    assert snapshot["worker_assignments"] == {"claude": "b1"}
+    assert snapshot["worker_assignments"] == {"kai_coder": "b1"}
 
 
 def test_scheduler_snapshot_empty(isolated_memory, monkeypatch):

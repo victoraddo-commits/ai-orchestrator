@@ -1,6 +1,5 @@
-"""Kai worker pool system — DeepSeek-powered concurrent task execution."""
+"""Kai worker pool system — Telegram status monitoring."""
 
-from core.workers.deepseek_pool import DeepSeekWorkerPool
 from core.workers.telegram_monitor import TelegramMonitor
 
-__all__ = ["DeepSeekWorkerPool", "TelegramMonitor"]
+__all__ = ["TelegramMonitor"]

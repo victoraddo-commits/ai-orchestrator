@@ -24,13 +24,8 @@ except ImportError:
     # dotenv not available, continue with existing environment
     pass
 
-from core.coding_bridge import run_coding_task as _claude_run_coding_task
-import core.coding_bridge as coding_bridge
 import core.local_coding_bridge as local_coding_bridge
 import core.llm_clients as llm_clients
-import core.ai.provider_health as provider_health
-from core.memory import update
-from core.repo_manager import create_local_repo
 
 
 _PROVIDERS = {}
@@ -65,12 +60,6 @@ def _save_provider_state(state):
 #                         tiers -- Fable 5 was chosen for the default Zen
 #                         route precisely because it's the cheap one).
 COST_TIERS = ("free", "free_or_low_cost", "paid")
-
-# Ad-hoc text-only Claude calls (e.g. router-delegated planning/review tasks
-# with no build attached) need *some* real directory for CloudCLI's
-# /api/agent to operate against -- this one is created once, lazily, and
-# reused rather than requiring every caller to supply a project.
-_SCRATCH_WORKSPACE = os.path.join(os.path.expanduser("~"), ".ai-orchestrator", "text-task-scratch")
 
 
 def register_provider(name, run_coding_task=None, run_text_task=None, available_fn=None, kind="cloud", description="", cost_tier="free_or_low_cost"):
@@ -154,73 +143,6 @@ def get_provider_enabled(name: str) -> bool:
     """Check if a provider is enabled (default True for all providers)."""
     entry = _PROVIDERS.get(name)
     return entry.get("enabled", True) if entry else False
-
-
-def _claude_available():
-    return coding_bridge.API_KEY_PATH.exists()
-
-
-def _claude_run_text_task(prompt, timeout=60, project_path=None):
-    if project_path is None:
-        create_local_repo(_SCRATCH_WORKSPACE)
-        project_path = _SCRATCH_WORKSPACE
-
-    instruction = (
-        "Answer the following as text only. Do NOT write, edit, or modify "
-        "any files, and do not run commands that change anything.\n\n"
-        f"{prompt}"
-    )
-    result = _claude_run_coding_task(project_path, instruction, timeout=timeout)
-
-    # Confirmed live 2026-08-01: a long/complex prompt got success=True back
-    # from the underlying coding_bridge run with an EMPTY response_text --
-    # not a real answer, but not flagged as a failure either, so delegate()
-    # had no reason to fall through to the next candidate and a caller got
-    # silently handed "". Treat that the same as any other failure so the
-    # router's fallback logic actually engages instead of returning nothing.
-    empty_response = not (result.get("response_text") or "").strip()
-
-    if not result.get("success") or empty_response:
-        # Surface whatever actually went wrong verbatim -- this is where a
-        # real "usage limit reached" message would show up, but we don't
-        # pattern-match for that specific wording since it's never been
-        # observed/verified from this account; any failure gets recorded
-        # and re-raised so the router's fallback logic engages.
-        errors = result.get("tool_errors") or []
-        detail = "; ".join(e.get("content", "") for e in errors) or "coding_bridge run did not succeed"
-        if empty_response and result.get("success"):
-            detail = f"succeeded but returned an empty response_text ({detail})"
-        provider_health.capture_provider_error("claude", detail=detail)
-        raise RuntimeError(f"Claude text task failed: {detail}")
-
-    return result.get("response_text", "")
-
-
-# 2026-08-03 operator directive: OmniRoute (localhost:20128) as Kai's
-# always-on fallback provider. The gateway exposes OpenAI-compatible /v1
-# endpoints with auto/ routes that pick the best upstream per request.
-# Text through llm_clients.call_omniroute; coding through the CloudCLI
-# bridge routing via omniroute as the backend model.
-# See llm_clients.OMNIROUTE_* config.
-OMNIROUTE_CODING_MODEL = llm_clients.OMNIROUTE_CODING_MODEL
-
-
-def _omniroute_run_coding_task(project_path, instruction, **kwargs):
-    """Route coding through CloudCLI bridge — omniroute is the backend model
-    configured in CloudCLI.  This replaces the opencode CLI path removed
-    2026-08-10."""
-    return coding_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-def _omniroute_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_omniroute(prompt, model=llm_clients.OMNIROUTE_TEXT_MODEL, timeout=timeout)
-
-
-def _omniroute_available():
-    # Key check + live TCP probe — prevents 60s hangs when the Docker
-    # container is down (the key alone always passes, root cause of the
-    # minimax-m3 job stall on 2026-08-27).
-    return llm_clients._omniroute_key() is not None and llm_clients._omniroute_port_open()
 
 
 
@@ -433,189 +355,6 @@ def _kai_brain_run_coding_task(project_path, instruction, timeout=1200, **kwargs
     return local_coding_bridge.run_coding_task(
         project_path, instruction, model="kai-brain:latest", timeout=timeout
     )
-
-
-# Uniform run_text_task(prompt, timeout=60, project_path=None) contract
-# across every provider -- project_path is accepted but ignored here since
-# plain chat-completion providers never touch a filesystem. Each wrapper
-# looks up its llm_clients function as a live module attribute (not a
-# captured reference) so monkeypatching core.llm_clients.call_* in tests
-# actually takes effect, same pattern as core.build_manager's imports.
-def _gemini_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_gemini(prompt, timeout=timeout)
-
-
-# 2026-08-02: second Gemini account ("GeminiX") -- see llm_clients.call_geminix.
-def _geminix_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_geminix(prompt, timeout=timeout)
-
-
-def _groq_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_groq(prompt, timeout=timeout)
-
-
-# 13M: the plain-text openrouter provider rotates across
-# llm_clients.OPENROUTER_MODELS instead of always using the single
-# OPENROUTER_DEFAULT_MODEL (which remains the default for direct
-# call_openrouter callers). Same rotation-state shape as ai_router's
-# provider_rotation.json, keyed by a fixed "index" since this provider has
-# no per-role model split. The read-increment-write goes through
-# core.memory.update()'s flock critical section (same reasoning as
-# ai_router._rotate_candidates, 13R): concurrent delegate() calls must not
-# read the same index and land on the same model.
-OPENROUTER_MODEL_ROTATION_FILE = "openrouter_model_rotation.json"
-
-
-def _next_openrouter_model():
-    models = llm_clients.OPENROUTER_MODELS
-    captured = {}
-
-    def mutate(state):
-        state = state if isinstance(state, dict) else {}
-        start = state.get("index", 0) % len(models)
-        captured["start"] = start
-        state["index"] = (start + 1) % len(models)
-        return state
-
-    update(OPENROUTER_MODEL_ROTATION_FILE, mutate)
-
-    return models[captured["start"]]
-
-
-def _openrouter_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_openrouter(prompt, model=_next_openrouter_model(), timeout=timeout)
-
-
-def _openrouter_claude_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_openrouter_claude(prompt, timeout=timeout)
-
-
-def _minimax_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_minimax(prompt, timeout=timeout)
-
-
-def _deepseek_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_deepseek(prompt, timeout=timeout)
-
-
-# Cloud provider removed (100% local only)
-
-# Cloud provider removed (100% local only)
-
-# Cloud provider removed (100% local only)
-
-# Cloud provider removed (100% local only)
-
-# Cloud provider removed (100% local only)
-
-# 13V: text-capable Claude Sonnet route via OpenRouter, for the Chief
-# Architect fallback chain (see ai.ai_router.ROLE_PROVIDERS["architecture"]).
-# Same OPENROUTER_API_KEY as "openrouter" but a distinct provider key, so its
-# health/quota snapshots and usage history don't blend with the gpt-4o-mini
-# route.
-# Cloud provider removed (100% local only)
-
-# Cloud provider removed (100% local only)
-
-# Cloud provider removed (100% local only)
-
-
-def _deepseek_native_pro_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_deepseek_native_pro(prompt, timeout=timeout)
-
-
-def _deepseek_native_flash_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_deepseek_native_flash(prompt, timeout=timeout)
-
-
-# 17R item 1: direct api.deepseek.com calls (not proxied through OpenRouter
-# or OpenCode Zen), so these have no shared-quota exposure to any OpenRouter
-# key or the Zen account -- confirmed live 2026-08-02 while every OpenRouter-
-# routed candidate (openrouter, deepseek, both Claude-family OpenRouter
-# routes) and Gemini were simultaneously credit/quota-exhausted.
-# Cloud provider removed (100% local only)
-
-# Cloud provider removed (100% local only)
-
-
-# GPU.ai Minimax M3 — serverless OpenAI-compatible API.
-# Replaces opencode_minimax (removed 2026-08-10). Uses the same GPU.ai
-# account key as gpuai_gemma but with the gpuai/minimax-m3 model.
-# See https://api.gpu.ai/v1 for API docs.
-GPUAI_MINIMAX_MODEL = "gpuai/minimax-m3"
-
-
-def _gpuai_minimax_run_text_task(prompt, timeout=60, project_path=None):
-    """GPU.ai Minimax M3 — text task via OpenAI-compatible chat API."""
-    return llm_clients.call_gpuai_minimax(prompt, timeout=timeout)
-
-
-def _gpuai_minimax_run_coding_task(project_path, instruction, **kwargs):
-    """GPU.ai Minimax M3 — coding task. Uses the CloudCLI bridge for the
-    agent loop; for direct text-only coding, falls through to the text-task
-    path (same as how _claude_run_text_task wraps coding results)."""
-    return coding_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-def _gpuai_available():
-    try:
-        from core.ai.secrets import get_api_key
-        return get_api_key("gpuai") is not None
-    except ImportError:
-        return False
-
-
-# Cloud provider removed (100% local only)
-
-
-# Cloud provider removed (100% local only)
-
-
-def _omniroute_deepseek_flash_run_text_task(prompt, timeout=60, project_path=None):
-    return llm_clients.call_omniroute_deepseek_flash(prompt, timeout=timeout)
-
-
-# Cloud provider removed (100% local only)
-
-
-
-# GPU.ai Gemma 4 31B IT — vision-capable, OpenAI-compatible.
-# Hosted on gpu.ai with multimodal support: image understanding, OCR, document
-# analysis, table extraction, UI screenshots, and all visual capabilities of
-# Gemma 4's capability registry.  Uses stored secrets (core.ai.secrets) rather
-# than env vars, same as the other post-17Z providers.
-GPUAI_GEMMA_MODEL = "gpuai/gemma-4-31b-it"
-
-
-def _gpuai_gemma_run_text_task(prompt, timeout=120, project_path=None):
-    return llm_clients.call_gpuai_gemma(prompt, timeout=timeout)
-
-
-def _gpuai_gemma_available():
-    try:
-        from core.ai.secrets import get_api_key
-        return get_api_key("gpuai") is not None
-    except ImportError:
-        return False
-
-
-# Cloud provider removed (100% local only)
-
-
-# 2026-08-09: Dedicated DeepSeek coding agent via OmniRoute gateway.
-# Per operator directive: "use deepseek" — routes through OmniRoute's
-# auto/best-coding slot which prefers DeepSeek models. Uses the CloudCLI
-# coding bridge for the agent loop (replaced opencode CLI 2026-08-10).
-OMNIROUTE_DEEPSEEK_CODING_MODEL = "auto/best-coding"
-
-
-def _omniroute_deepseek_coding_run_task(project_path, instruction, **kwargs):
-    """DeepSeek coding via OmniRoute gateway — routes through CloudCLI bridge.
-    Replaces the opencode CLI path removed 2026-08-10."""
-    return coding_bridge.run_coding_task(project_path, instruction, **kwargs)
-
-
-# Cloud provider removed (100% local only)
 
 
 register_provider(

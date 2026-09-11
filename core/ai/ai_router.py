@@ -269,7 +269,7 @@ def get_effective_providers(task_type: str) -> list[str]:
     override = provider_config_editor.get_fallback_order(task_type)
     if override:
         return override
-    return ROLE_PROVIDERS.get(task_type, ["claude"])
+    return ROLE_PROVIDERS.get(task_type, ["local"])
 
 
 def _candidates_for(task_type):

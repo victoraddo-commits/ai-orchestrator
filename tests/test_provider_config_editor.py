@@ -12,7 +12,7 @@ class TestLoadSaveDefaults:
         assert result == {"schema_version": 1, "overrides": {}}
 
     def test_load_overrides_persists_and_reloads(self, isolated_memory):
-        overrides = {"fallback_order": {"coding": ["claude", "gpuai_minimax"]}}
+        overrides = {"fallback_order": {"coding": ["kai_coder", "kai_brain"]}}
         success, errors, warnings = pce.save_overrides(overrides)
         assert success is True
         assert errors == []
@@ -27,8 +27,8 @@ class TestLoadSaveDefaults:
         assert pce.get_fallback_order("nonexistent_role") is None
 
     def test_get_fallback_order_returns_override_when_set(self, isolated_memory):
-        pce.save_overrides({"fallback_order": {"coding": ["claude", "gpuai_minimax"]}})
-        assert pce.get_fallback_order("coding") == ["claude", "gpuai_minimax"]
+        pce.save_overrides({"fallback_order": {"coding": ["kai_coder", "kai_brain"]}})
+        assert pce.get_fallback_order("coding") == ["kai_coder", "kai_brain"]
         assert pce.get_fallback_order("planning") is None  # not set
 
     def test_get_max_concurrent_builds_returns_none_when_not_set(self, isolated_memory):
@@ -64,14 +64,14 @@ class TestValidation:
 
     def test_rejects_duplicate_provider_names(self, isolated_memory):
         valid, errors, warnings = pce.validate_overrides(
-            {"fallback_order": {"coding": ["claude", "claude"]}}
+            {"fallback_order": {"coding": ["kai_coder", "kai_coder"]}}
         )
         assert valid is False
         assert any("duplicate" in e for e in errors)
 
     def test_accepts_valid_fallback_order(self, isolated_memory):
         valid, errors, warnings = pce.validate_overrides(
-            {"fallback_order": {"coding": ["claude", "gemini"]}}
+            {"fallback_order": {"coding": ["kai_coder", "kai_brain"]}}
         )
         assert valid is True
         assert errors == []
@@ -80,12 +80,12 @@ class TestValidation:
         import core.ai_provider as ai_provider
 
         monkeypatch.setattr(ai_provider, "_PROVIDERS", {
-            "claude": {"available_fn": lambda: False, "capabilities": ["coding_agent", "text_task", "file_access"], "kind": "cloud", "description": "test claude", "cost_tier": "paid", "enabled": True},
-            "gemini": {"available_fn": lambda: False, "capabilities": ["text_task"], "kind": "cloud", "description": "test gemini", "cost_tier": "free", "enabled": True},
+            "kai_coder": {"available_fn": lambda: False, "capabilities": ["coding_agent", "text_task", "file_access"], "kind": "local", "description": "test kai_coder", "cost_tier": "free", "enabled": True},
+            "local": {"available_fn": lambda: False, "capabilities": ["text_task"], "kind": "local", "description": "test local", "cost_tier": "free", "enabled": True},
         })
 
         valid, errors, warnings = pce.validate_overrides(
-            {"fallback_order": {"coding": ["claude", "gemini"]}}
+            {"fallback_order": {"coding": ["kai_coder", "local"]}}
         )
         assert valid is True
         assert any("unavailable" in w.lower() for w in warnings)
@@ -114,14 +114,14 @@ class TestValidation:
 class TestSaveOverrides:
     def test_save_overrides_writes_to_memory_file(self, isolated_memory):
         success, errors, warnings = pce.save_overrides(
-            {"fallback_order": {"coding": ["claude"]}}
+            {"fallback_order": {"coding": ["kai_coder"]}}
         )
         assert success is True
         assert errors == []
 
         data = load(pce.OVERRIDES_FILE)
         assert data["schema_version"] == 1
-        assert data["overrides"]["fallback_order"]["coding"] == ["claude"]
+        assert data["overrides"]["fallback_order"]["coding"] == ["kai_coder"]
 
     def test_save_overrides_returns_errors_on_invalid_input(self, isolated_memory):
         success, errors, warnings = pce.save_overrides(
@@ -131,39 +131,39 @@ class TestSaveOverrides:
         assert len(errors) > 0
 
     def test_save_overrides_merges_with_existing(self, isolated_memory):
-        pce.save_overrides({"fallback_order": {"coding": ["claude"]}})
+        pce.save_overrides({"fallback_order": {"coding": ["kai_coder"]}})
         pce.save_overrides({
-            "fallback_order": {"planning": ["gemini"]},
+            "fallback_order": {"planning": ["kai_brain"]},
         })
 
         result = pce.load_overrides()
-        assert result["overrides"]["fallback_order"]["coding"] == ["claude"]
-        assert result["overrides"]["fallback_order"]["planning"] == ["gemini"]
+        assert result["overrides"]["fallback_order"]["coding"] == ["kai_coder"]
+        assert result["overrides"]["fallback_order"]["planning"] == ["kai_brain"]
 
     def test_save_overrides_with_multiple_roles(self, isolated_memory):
         pce.save_overrides({
             "fallback_order": {
-                "coding": ["claude", "gpuai_minimax"],
-                "planning": ["gemini", "deepseek_native_flash"],
-                "review": ["deepseek_native_pro"],
+                "coding": ["kai_coder", "kai_brain"],
+                "planning": ["kai_brain", "local"],
+                "review": ["kai_deep"],
             },
             "max_concurrent_builds": 8,
         })
 
         result = pce.load_overrides()
-        assert result["overrides"]["fallback_order"]["coding"] == ["claude", "gpuai_minimax"]
-        assert result["overrides"]["fallback_order"]["planning"] == ["gemini", "deepseek_native_flash"]
-        assert result["overrides"]["fallback_order"]["review"] == ["deepseek_native_pro"]
+        assert result["overrides"]["fallback_order"]["coding"] == ["kai_coder", "kai_brain"]
+        assert result["overrides"]["fallback_order"]["planning"] == ["kai_brain", "local"]
+        assert result["overrides"]["fallback_order"]["review"] == ["kai_deep"]
         assert result["overrides"]["max_concurrent_builds"] == 8
 
 
 class TestGetFullConfig:
     def test_returns_schema_version_and_overrides(self, isolated_memory):
-        pce.save_overrides({"fallback_order": {"coding": ["claude"]}})
+        pce.save_overrides({"fallback_order": {"coding": ["kai_coder"]}})
         config = pce.get_full_config()
 
         assert config["schema_version"] == 1
-        assert config["overrides"]["fallback_order"]["coding"] == ["claude"]
+        assert config["overrides"]["fallback_order"]["coding"] == ["kai_coder"]
         assert "validation" in config
         assert config["validation"]["valid"] is True
 
@@ -198,8 +198,8 @@ class TestBackwardCompatibility:
 
     def test_partial_overrides_dont_affect_unconfigured_roles(self, isolated_memory):
         """Setting fallback_order for 'coding' should not affect 'planning'."""
-        pce.save_overrides({"fallback_order": {"coding": ["gpuai_minimax"]}})
-        assert pce.get_fallback_order("coding") == ["gpuai_minimax"]
+        pce.save_overrides({"fallback_order": {"coding": ["kai_coder"]}})
+        assert pce.get_fallback_order("coding") == ["kai_coder"]
         assert pce.get_fallback_order("planning") is None
 
 
@@ -209,13 +209,13 @@ class TestRouterIntegration:
     def test_router_uses_override_when_set(self, isolated_memory, monkeypatch):
         from core.ai import ai_router
 
-        pce.save_overrides({"fallback_order": {"planning": ["groq", "deepseek_native_flash"]}})
+        pce.save_overrides({"fallback_order": {"planning": ["kai_brain", "local"]}})
 
         # Mock rotation to be deterministic
         monkeypatch.setattr(ai_router, "_rotate_candidates", lambda task_type, candidates: candidates)
 
         candidates = ai_router._candidates_for("planning")
-        assert candidates == ["groq", "deepseek_native_flash"]
+        assert candidates == ["kai_brain", "local"]
 
     def test_router_falls_back_to_default_when_no_override(self, isolated_memory):
         from core.ai import ai_router
@@ -231,7 +231,7 @@ class TestRouterIntegration:
     def test_router_uses_override_for_coding_with_rotation(self, isolated_memory, monkeypatch):
         from core.ai import ai_router
 
-        pce.save_overrides({"fallback_order": {"coding": ["omniroute_deepseek_coding", "gpuai_minimax", "groq"]}})
+        pce.save_overrides({"fallback_order": {"coding": ["kai_coder", "kai_brain", "local"]}})
 
         # Make rotation deterministic
         monkeypatch.setattr(ai_router, "_rotate_candidates", lambda task_type, candidates: candidates)
@@ -239,15 +239,15 @@ class TestRouterIntegration:
         candidates = ai_router._candidates_for("coding")
         # The rotating front comes first (CODING_ROTATING_FRONT members in the override),
         # then the fixed tail
-        assert "omniroute_deepseek_coding" in candidates
-        assert "groq" in candidates
+        assert "kai_coder" in candidates
+        assert "local" in candidates
 
     def test_router_for_nonexistent_role_without_override(self, isolated_memory):
         from core.ai import ai_router
 
         assert pce.get_fallback_order("nonexistent_role") is None
         candidates = ai_router._candidates_for("nonexistent_role")
-        assert candidates == ["claude"]
+        assert candidates == ["local"]
 
 
 class TestGetFallbackOrderEdgeCases:
@@ -296,16 +296,16 @@ class TestAPIEndpoints:
     def test_put_config_sets_fallback_order(self, isolated_memory, client, auth_headers):
         body = {
             "fallback_order": {
-                "coding": ["claude", "gpuai_minimax"],
-                "planning": ["gemini", "deepseek_native_flash"],
+                "coding": ["kai_coder", "kai_brain"],
+                "planning": ["kai_brain", "local"],
             },
         }
         response = client.put("/providers/config", json=body, headers=auth_headers)
         assert response.status_code == 200, response.text
         data = response.json()
         assert data["saved"] is True
-        assert data["overrides"]["fallback_order"]["coding"] == ["claude", "gpuai_minimax"]
-        assert data["overrides"]["fallback_order"]["planning"] == ["gemini", "deepseek_native_flash"]
+        assert data["overrides"]["fallback_order"]["coding"] == ["kai_coder", "kai_brain"]
+        assert data["overrides"]["fallback_order"]["planning"] == ["kai_brain", "local"]
 
     def test_put_config_sets_max_concurrent_builds(self, isolated_memory, client, auth_headers):
         body = {"max_concurrent_builds": 6}
@@ -331,11 +331,11 @@ class TestAPIEndpoints:
 
     def test_delete_config_resets_overrides(self, isolated_memory, client, auth_headers):
         # First set an override
-        client.put("/providers/config", json={"fallback_order": {"coding": ["claude"]}}, headers=auth_headers)
+        client.put("/providers/config", json={"fallback_order": {"coding": ["kai_coder"]}}, headers=auth_headers)
 
         # Verify it's set
         get_resp = client.get("/providers/config")
-        assert get_resp.json()["overrides"]["fallback_order"]["coding"] == ["claude"]
+        assert get_resp.json()["overrides"]["fallback_order"]["coding"] == ["kai_coder"]
 
         # Delete
         response = client.delete("/providers/config", headers=auth_headers)
@@ -351,13 +351,13 @@ class TestAPIEndpoints:
         assert response.status_code == 401
 
     def test_put_config_merges_with_existing(self, isolated_memory, client, auth_headers):
-        client.put("/providers/config", json={"fallback_order": {"coding": ["claude"]}}, headers=auth_headers)
-        client.put("/providers/config", json={"fallback_order": {"planning": ["gemini"]}}, headers=auth_headers)
+        client.put("/providers/config", json={"fallback_order": {"coding": ["kai_coder"]}}, headers=auth_headers)
+        client.put("/providers/config", json={"fallback_order": {"planning": ["kai_brain"]}}, headers=auth_headers)
 
         get_resp = client.get("/providers/config")
         overrides = get_resp.json()["overrides"]["fallback_order"]
-        assert overrides["coding"] == ["claude"]
-        assert overrides["planning"] == ["gemini"]
+        assert overrides["coding"] == ["kai_coder"]
+        assert overrides["planning"] == ["kai_brain"]
 
     def test_put_config_rejects_empty_fallback_list(self, isolated_memory, client, auth_headers):
         body = {"fallback_order": {"coding": []}}
@@ -365,7 +365,7 @@ class TestAPIEndpoints:
         assert response.status_code == 422
 
     def test_get_config_after_put_shows_validation(self, isolated_memory, client, auth_headers):
-        client.put("/providers/config", json={"fallback_order": {"coding": ["claude", "gemini"]}}, headers=auth_headers)
+        client.put("/providers/config", json={"fallback_order": {"coding": ["kai_coder", "kai_brain"]}}, headers=auth_headers)
 
         response = client.get("/providers/config")
         assert response.status_code == 200

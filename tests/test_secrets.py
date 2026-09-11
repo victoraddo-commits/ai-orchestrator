@@ -114,61 +114,6 @@ class TestSecretsStorage:
         assert secret["api_key"] == "persistent-key"
 
 
-class TestSecretsIntegration:
-    """Integration with llm_clients and AI Gateway."""
-
-    def test_require_key_reads_from_secrets_store(self, monkeypatch):
-        from core.ai.secrets import set_secret
-        set_secret("deepseek", api_key="integration-test-key-abcdef")
-
-        import core.llm_clients as llm
-        # Clear any cached env var
-        for k in ("DEEPSEEK_NATIVE_PRO_API_KEY", "DEEPSEEK_NATIVE_FLASH_API_KEY"):
-            monkeypatch.delenv(k, raising=False)
-
-        key = llm._require_key("DEEPSEEK_NATIVE_PRO_API_KEY")
-        assert key == "integration-test-key-abcdef"
-
-        # Cleanup
-        from core.ai.secrets import delete_secret
-        delete_secret("deepseek")
-
-    def test_require_key_falls_back_to_env(self, monkeypatch):
-        import core.llm_clients as llm
-
-        monkeypatch.setenv("GROQ_API_KEY", "groq-from-env")
-        # Ensure no secret is stored for groq
-        from core.ai.secrets import delete_secret
-        delete_secret("groq")
-
-        key = llm._require_key("GROQ_API_KEY")
-        assert key == "groq-from-env"
-
-    def test_require_key_raises_when_no_source(self, monkeypatch):
-        import core.llm_clients as llm
-
-        monkeypatch.delenv("UNKNOWN_PROVIDER_KEY", raising=False)
-        from core.ai.secrets import delete_secret
-        delete_secret("unknown_provider")
-
-        with pytest.raises(llm.ProviderUnavailable):
-            llm._require_key("UNKNOWN_PROVIDER_KEY")
-
-    def test_deepseek_pro_and_flash_use_same_secret(self, monkeypatch):
-        from core.ai.secrets import set_secret, delete_secret
-        import core.llm_clients as llm
-
-        # Use the test key
-        set_secret("deepseek", api_key="unified-deepseek-key")
-        for k in ("DEEPSEEK_NATIVE_PRO_API_KEY", "DEEPSEEK_NATIVE_FLASH_API_KEY"):
-            monkeypatch.delenv(k, raising=False)
-
-        pro_key = llm._require_key("DEEPSEEK_NATIVE_PRO_API_KEY")
-        flash_key = llm._require_key("DEEPSEEK_NATIVE_FLASH_API_KEY")
-        assert pro_key == flash_key == "unified-deepseek-key"
-
-        delete_secret("deepseek")
-
 
 class TestAuditLogging:
     """Access logging for secrets."""

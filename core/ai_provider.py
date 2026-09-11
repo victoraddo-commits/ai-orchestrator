@@ -705,10 +705,10 @@ def _koboldcpp_cpu_available():
     import subprocess
     try:
         result = subprocess.run(
-            ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes",
+            ["ssh", "-o", "ConnectTimeout=8", "-o", "BatchMode=yes",
              "-J", "root@100.122.38.118", "kai@192.168.1.242",
-             "curl", "-s", "-m", "3", "http://localhost:8080/api/v1/model"],
-            capture_output=True, text=True, timeout=15
+             "curl", "-s", "-m", "5", "http://localhost:8080/api/v1/model"],
+            capture_output=True, text=True, timeout=20
         )
         return result.returncode == 0 and "koboldcpp" in result.stdout
     except Exception:

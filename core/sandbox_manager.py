@@ -114,6 +114,12 @@ def _init_branch(repo_path: Path, branch: str):
         return
 
     try:
+        for key, val in [("user.name", "Kai Orchestrator"), ("user.email", "kai@orchestrator.local")]:
+            subprocess.run(
+                ["git", "-C", str(repo_path), "config", key, val],
+                capture_output=True, timeout=10,
+            )
+
         # Create branch (ignore if it already exists)
         result = subprocess.run(
             ["git", "-C", str(repo_path), "checkout", "-b", branch],

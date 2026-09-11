@@ -2913,14 +2913,14 @@
       "id": "DP2",
       "name": "Directive Processor - Phase 2: Parser Layer",
       "description": "Implement PatternMatcher, LLMParser, StructuredParser, and EntityExtractor. Support pattern matching + LLM fallback + structured formats.",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 11,
       "dependencies": [
         "DP1"
       ],
       "estimated_tokens": 18000,
       "assigned_provider": "omniroute",
-      "build_id": "8b992edf"
+      "build_id": "0a88eb8f"
     },
     {
       "id": "DP3",
@@ -2931,7 +2931,8 @@
       "dependencies": [
         "DP2"
       ],
-      "estimated_tokens": 20000
+      "estimated_tokens": 20000,
+      "assigned_provider": "kai_coder"
     },
     {
       "id": "DP4",
@@ -2942,7 +2943,8 @@
       "dependencies": [
         "DP3"
       ],
-      "estimated_tokens": 22000
+      "estimated_tokens": 22000,
+      "assigned_provider": "kai_coder"
     },
     {
       "id": "DP5",
@@ -2954,7 +2956,8 @@
       "dependencies": [
         "DP4"
       ],
-      "estimated_tokens": 16000
+      "estimated_tokens": 16000,
+      "assigned_provider": "kai_coder"
     },
     {
       "id": "DP6",
@@ -2966,29 +2969,30 @@
       "dependencies": [
         "DP5"
       ],
-      "estimated_tokens": 17000
+      "estimated_tokens": 17000,
+      "assigned_provider": "kai_coder"
     },
     {
       "id": "P100",
       "name": "P17 Backup Architecture - Complete",
       "description": "Complete P17: formal backup architecture doc, Proxmox CT backup inventory, automated off-site verification, fix IT Manager DB backup silent failures",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 5,
       "dependencies": [],
       "estimated_tokens": 12000,
       "assigned_provider": "omniroute",
-      "build_id": "1f007847"
+      "build_id": "d830607e"
     },
     {
       "id": "P101",
       "name": "P19 Vault Recovery & Secrets",
       "description": "Re-register vault passkey (recovery exhausted), migrate .env secrets to vault, create ai-orchestrator capability grants",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 3,
       "dependencies": [],
       "estimated_tokens": 15000,
       "assigned_provider": "omniroute",
-      "build_id": "48995a55"
+      "build_id": "d12dafb6"
     },
     {
       "id": "P102",
@@ -2999,18 +3003,19 @@
       "dependencies": [],
       "estimated_tokens": 10000,
       "assigned_provider": "omniroute",
-      "build_id": "d7932bdb"
+      "build_id": "55c612ca",
+      "failure_reason": "Build 55c612ca missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "P103",
       "name": "P0 Discovery Complete",
       "description": "Complete inventories: Telegram bots, Claude Code skills/MCP/hooks, agents, formal backups. Fix plaintext secrets",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 6,
       "dependencies": [],
       "estimated_tokens": 8000,
       "assigned_provider": "omniroute",
-      "build_id": "76ef73a6"
+      "build_id": "10e54e42"
     },
     {
       "id": "KX1",
@@ -3023,21 +3028,20 @@
       "priority": 10,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
       "assigned_provider": "omniroute",
-      "build_id": "5b2a1f26"
+      "build_id": "77d8a03a"
     },
     {
       "id": "KX2",
       "name": "DP1 hardening: fix 5 TypeScript type errors + write intake tests",
       "description": "In /project/src/kai-directive-processor: fix tsc errors (agent-adapter.ts:180,202 unknown casts; http-adapter.ts:61,79 undefined args; telegram-adapter.ts:124 index signature). tests/ dir is empty \u2014 add unit tests for all 4 intake adapters. npx tsc --noEmit must pass.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": true,
       "priority": 12,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
       "assigned_provider": "omniroute",
-      "build_id": "44812917",
-      "failure_reason": "Build 44812917 missing from builds.json (deleted or stale reference)"
+      "build_id": "5a03c7bc"
     },
     {
       "id": "KX5",
@@ -3050,7 +3054,7 @@
       "priority": 15,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
       "assigned_provider": "omniroute",
-      "build_id": "9d23b5fd"
+      "build_id": "75ceb9de"
     },
     {
       "id": "KX6",
@@ -3063,39 +3067,37 @@
       "priority": 18,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
       "assigned_provider": "omniroute",
-      "build_id": "74c7f0ff"
+      "build_id": "22543577"
     },
     {
       "id": "KX7",
       "name": "Juris-kai bot: single home + restart",
       "description": "Remove duplicate unit (juris-kai.service vs ai-orchestrator-juris-kai.service), keep one, re-enable it, verify @Juriskai_bot responds without 409s.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": true,
       "priority": 20,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
-      "assigned_provider": "omniroute",
-      "build_id": "dd857cd3"
+      "assigned_provider": "omniroute"
     },
     {
       "id": "KX8",
       "name": "Register Telegram bot command menus",
       "description": "setMyCommands: @KaiEnzo_bot full menu (money + build approve/reject + enhancements + chat); @Susugh_bot all 23 commands; @vadomfeh_bot 13 commands + remove or implement /weblink. Menus must match implemented handlers exactly.",
-      "status": "in_progress",
+      "status": "pending",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": true,
       "priority": 22,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
-      "assigned_provider": "omniroute",
-      "build_id": "4277b061"
+      "assigned_provider": "omniroute"
     },
     {
       "id": "KX9",
       "name": "builds.json archive pruning fix",
       "description": "builds.json (26MB) holds only terminal records \u2014 archive cycle rewrites instead of pruning them. Fix build_manager archive logic so terminal records move to builds_archive.json and are removed from builds.json; clean stale .tmp/.lock artifacts.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": true,
@@ -3108,28 +3110,26 @@
       "id": "KX10",
       "name": "Kai self-audit and comparison",
       "description": "Run your own full ecosystem audit: provider registry vs live models, roadmap statuses vs code reality, service health, memory-file integrity, Telegram bot inventory. Write findings to /project/uploads/kai-self-audit.md and a comparison against /project/uploads/ecosystem-audit-2026-09-11.md listing agreements, disagreements, and anything the Claude audit missed.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": true,
       "priority": 26,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
-      "assigned_provider": "omniroute",
-      "build_id": "f952e513",
-      "failure_reason": "Build f952e513 missing from builds.json (deleted or stale reference)"
+      "assigned_provider": "omniroute"
     },
     {
       "id": "KX4",
       "name": "Execute Money Module Integration directive",
       "description": "Execute docs/directives/money_module_integration.md in full (operator priority HIGH, 'BEGIN EXECUTION IMMEDIATELY'): MoneyCenter.tsx + money-center card in plugin ModuleRegistry, /api/money/summary endpoint in core/api.py, core/task_progress_monitor.py, tests/test_money_integration.py, docs. 0/5 tasks currently done.",
-      "status": "failed",
+      "status": "in_progress",
       "dependencies": [],
       "completion_criteria": [],
       "tests_required": true,
       "priority": 13,
       "note": "Added from ecosystem audit 2026-09-11 (operator-directed fix roadmap)",
       "assigned_provider": "omniroute",
-      "build_id": "b5d600d7"
+      "build_id": "444c45a1"
     }
   ],
   "_audit": {

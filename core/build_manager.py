@@ -1076,9 +1076,13 @@ def _run_generation(build):
         _run_single_generation(build, task_type, workers)
 
 
+_SLOW_WORKERS = frozenset({"koboldcpp_cpu"})
+
+
 def _run_single_generation(build, task_type, workers=None):
     """Single-delegate path with round-robin worker assignment."""
-    worker = _next_worker(workers) if workers else None
+    fast_workers = [w for w in (workers or []) if w not in _SLOW_WORKERS]
+    worker = _next_worker(fast_workers or workers) if workers else None
     try:
         delegated = delegate(
             _generation_prompt(build),

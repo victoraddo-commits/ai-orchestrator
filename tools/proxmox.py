@@ -87,17 +87,17 @@ def status():
 
 
 def status_b():
-    """Proxmox B status via direct LAN (192.168.1.109:8006).
+    """Proxmox B status via the proxmox-b-tunnel SSH tunnel (localhost:8007).
 
     Uses PROXMOX_B_TOKEN_ID + PROXMOX_B_TOKEN_SECRET (or falls back to
     PROXMOX_B_TOKEN env var) for authentication.
     """
     token_id = os.getenv("PROXMOX_B_TOKEN_ID", "")
     token_secret = os.getenv("PROXMOX_B_TOKEN_SECRET", os.getenv("PROXMOX_B_TOKEN", ""))
-    # Direct LAN — no SSH tunnel needed
-    host = os.getenv("PROXMOX_B_HOST", "192.168.1.109")
+    # Tunnel endpoint carries its own port; bare host gets :8006 appended.
+    host = os.getenv("PROXMOX_B_HOST", "localhost:8007")
     port = os.getenv("PROXMOX_B_PORT", "8006")
-    endpoint = f"{host}:{port}"
+    endpoint = host if ":" in host else f"{host}:{port}"
     return {
         "node": get_node_status(host=endpoint, token_id=token_id, token_secret=token_secret),
         "lxc": get_lxc(host=endpoint, token_id=token_id, token_secret=token_secret),

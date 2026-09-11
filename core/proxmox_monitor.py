@@ -41,7 +41,7 @@ def _get_node_configs():
         },
         {
             "name": "pve-b",
-            "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.109"),
+            "host": os.environ.get("PROXMOX_B_HOST", "localhost:8007"),
             "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
             "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
             "token_secret": retrieve_api_key("proxmox_b_secret") or os.environ.get("PROXMOX_B_TOKEN_SECRET", ""),
@@ -51,7 +51,7 @@ def _get_node_configs():
 
 # Module-level config for non-secret fields only — used for discovery/shell commands
 _PROXMOX_HOST = os.environ.get("PROXMOX_HOST", "192.168.99.2")
-_PROXMOX_B_HOST = os.environ.get("PROXMOX_B_HOST", "192.168.1.109")
+_PROXMOX_B_HOST = os.environ.get("PROXMOX_B_HOST", "localhost:8007")
 
 # TK-176d6efe: retry constants
 _MAX_RETRIES = int(os.environ.get("PROXMOX_RETRY_COUNT", "3"))
@@ -78,9 +78,15 @@ def _do_request(host, headers, path, timeout=_REQUEST_TIMEOUT):
     error_type is one of: "connection" (network unreachable), "auth" (401/403),
     or None (success).
     """
+    # Tunnel hosts (e.g. localhost:8008) already carry their port; bare IPs
+    # need :8006 appended.
+    if ":" not in host:
+        url_host = f"{host}:8006"
+    else:
+        url_host = host
     try:
         resp = requests.get(
-            f"https://{host}:8006/api2/json/{path}",
+            f"https://{url_host}/api2/json/{path}",
             headers=headers, timeout=timeout, verify=_get_verify(),
         )
         if resp.status_code == 200:

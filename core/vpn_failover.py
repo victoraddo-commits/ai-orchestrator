@@ -1,11 +1,11 @@
 """TK-176d6efe: Proxmox B LAN health check.
 
-Proxmox B is reached directly via LAN at 192.168.1.109 (no VPN tunnel).
+Proxmox B is reached via the proxmox-b-tunnel SSH tunnel (localhost:8007).
 This module provides a health check + recovery loop: if Proxmox B becomes
 unreachable, retry a few times before alerting the operator.
 
 Architecture:
-    1. Health check — can we reach 192.168.1.109:8006?
+    1. Health check — can we reach localhost:8007 (Proxmox B API via tunnel)?
     2. Retry up to MAX_RECOVERY_ATTEMPTS on failure
     3. Emit alert when all retries exhausted
 """
@@ -21,15 +21,25 @@ from core.logger import info
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Probe target — Proxmox B on the LAN
-PROBE_HOST = os.environ.get("VPN_FAILOVER_PROBE_HOST", "192.168.1.109")
-PROBE_PORT = int(os.environ.get("VPN_FAILOVER_PROBE_PORT", "8006"))
+# Probe target — Proxmox B API via the proxmox-b-tunnel SSH tunnel (localhost:8007)
+PROBE_HOST = os.environ.get("VPN_FAILOVER_PROBE_HOST", "localhost")
+PROBE_PORT = int(os.environ.get("VPN_FAILOVER_PROBE_PORT", "8007"))
 
 # Max recovery attempts per cycle (prevents thrashing on transient network glitches)
 MAX_RECOVERY_ATTEMPTS = int(os.environ.get("VPN_FAILOVER_MAX_ATTEMPTS", "3"))
 
 # Seconds to wait between retry attempts
 RETRY_DELAY = int(os.environ.get("VPN_FAILOVER_RETRY_DELAY", "10"))
+
+# Seconds between repeated "still down" critical alerts when Proxmox B stays
+# unreachable. Once a persistent outage is already known, re-running the full
+# retry loop + re-alerting every scheduler cycle both blocks the cycle ~40s
+# and spams the operator — so suppress repeats within this window. A single
+# cheap probe per cycle still detects recovery.
+ALERT_COOLDOWN = int(os.environ.get("VPN_FAILOVER_ALERT_COOLDOWN", "1800"))  # 30 min
+
+# Module-level state: timestamp of the last "still down" critical alert.
+_last_down_alert_at: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -77,11 +87,21 @@ def attempt_recovery() -> list[dict]:
         [] if Proxmox B is reachable (no action needed)
         [alert_event] if all retries exhausted
     """
+    global _last_down_alert_at
+
     events: list[dict] = []
 
     health = check_tunnel_health()
     if health["reachable"]:
+        _last_down_alert_at = 0.0  # recovered — reset cooldown
         return events  # nothing to do
+
+    # Persistently down: if we already alerted recently, skip the expensive
+    # retry loop and don't re-alert. A single probe per cycle is enough to
+    # notice recovery without blocking the scheduler or spamming Telegram.
+    now = time.time()
+    if _last_down_alert_at and (now - _last_down_alert_at) < ALERT_COOLDOWN:
+        return events
 
     info(f"vpn_failover: Proxmox B ({PROBE_HOST}:{PROBE_PORT}) unreachable — attempting recovery")
 
@@ -90,6 +110,7 @@ def attempt_recovery() -> list[dict]:
         time.sleep(RETRY_DELAY)
 
         if _proxmox_b_is_reachable():
+            _last_down_alert_at = 0.0
             events.append({
                 "type": "vpn_recovered",
                 "severity": "info",
@@ -101,6 +122,7 @@ def attempt_recovery() -> list[dict]:
             return events
 
     # All attempts exhausted
+    _last_down_alert_at = now
     events.append({
         "type": "vpn_down",
         "severity": "critical",

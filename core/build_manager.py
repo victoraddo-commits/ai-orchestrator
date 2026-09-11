@@ -1076,7 +1076,7 @@ def _run_generation(build):
         _run_single_generation(build, task_type, workers)
 
 
-_SLOW_WORKERS = frozenset({"koboldcpp_cpu"})
+_SLOW_WORKERS = frozenset()
 
 
 def _run_single_generation(build, task_type, workers=None):
@@ -1209,7 +1209,7 @@ def _code_review_prompt(build):
 # tests/test_kai_identity.py's structural guarantee that nothing under
 # core/kai/ -- or here -- calls approve_architecture/approve_deploy). A
 # human makes every approve/reject decision.
-CODE_REVIEW_CANDIDATES = ["kai_brain", "kai_coder"]
+CODE_REVIEW_CANDIDATES = ["kai_coder"]
 
 
 def _advisory_code_review(build):

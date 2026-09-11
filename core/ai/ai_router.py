@@ -96,17 +96,16 @@ ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
 # writes + git commits — so they satisfy the coding_agent capability.
 ROLE_PROVIDERS["coding"] = [
     "kai_coder",  # kai.coder.fast — Qwen2.5-Coder-7B code specialist
-    "kai_brain",  # kai.brain — GLM-4.7-Flash, "manager AND worker" writes code itself
     "koboldcpp_cpu",  # GLM-4.7-Flash Q4_K_M on VM 112 CPU — independent capacity
 ]
 # Code review role — updated 2026-09-10 to kai_brain for thorough analysis
-ROLE_PROVIDERS["code_review"] = ["kai_brain", "local"]
+ROLE_PROVIDERS["code_review"] = ["kai_coder", "local"]
 
 # KAI MODEL TEAM roles (2026-09-10):
 #   kai.deep    — Qwen3.6-27B (kai-brain:27b) deep-reasoning escalation
 #   kai.security— security advisory (qwen2.5:7b); deterministic controls authoritative
-ROLE_PROVIDERS["deep"] = ["kai_deep", "kai_brain", "local"]
-ROLE_PROVIDERS["security"] = ["local", "kai_brain"]
+ROLE_PROVIDERS["deep"] = ["kai_deep", "local"]
+ROLE_PROVIDERS["security"] = ["local"]
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 

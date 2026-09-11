@@ -1047,6 +1047,21 @@ def _merge_generation_results(outcomes):
     }, providers_used
 
 
+_worker_round_robin = 0
+
+
+def _next_worker(workers):
+    """Round-robin across available coding workers so builds spread
+    across kai_coder, kai_brain, and koboldcpp_cpu instead of always
+    hitting the first provider in the chain."""
+    global _worker_round_robin
+    if not workers:
+        return None
+    idx = _worker_round_robin % len(workers)
+    _worker_round_robin += 1
+    return workers[idx]
+
+
 def _run_generation(build):
     _ensure_repo(build)
     task_type = "legal_coding" if _is_legal_phase(build) else "coding"
@@ -1058,11 +1073,12 @@ def _run_generation(build):
     if len(subtasks) > 1 and len(workers) > 1:
         _run_parallel_generation(build, subtasks, workers, task_type)
     else:
-        _run_single_generation(build, task_type)
+        _run_single_generation(build, task_type, workers)
 
 
-def _run_single_generation(build, task_type):
-    """Original single-delegate path — one model, one call."""
+def _run_single_generation(build, task_type, workers=None):
+    """Single-delegate path with round-robin worker assignment."""
+    worker = _next_worker(workers) if workers else None
     try:
         delegated = delegate(
             _generation_prompt(build),
@@ -1070,6 +1086,7 @@ def _run_single_generation(build, task_type):
             project_path=build["project_path"],
             timeout=GENERATION_TIMEOUT,
             capability="coding_agent",
+            provider=worker,
         )
     except Exception as error:
         from core.workforce.gate import NoCapableWorkerError

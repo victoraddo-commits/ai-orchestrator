@@ -3621,6 +3621,60 @@ def network_discover(_: str = Depends(_require_write_capability("network.admin")
     return {"ok": True, "graph": graph}
 
 
+# ── Approvals: session-authenticated wrappers for the SPA ─────────────────
+#
+# The write-capability-gated /approvals/{id}/approve|reject endpoints above
+# expect a bridge token — the SPA doesn't have one. These parallel routes
+# take a plain FastAPI session (auth handled by nginx auth_request against
+# kai-command-center-auth's /api/auth/me) and dispatch to the same underlying
+# approve()/reject() functions, so behavior stays identical.
+
+@app.get("/api/approvals")
+def api_approvals_list():
+    """Return the approval queue (pending + recent). Session-auth via nginx."""
+    try:
+        from core.approval import load_requests
+        data = load_requests() or {}
+        items = data.get("records") or data.get("items") or []
+        if isinstance(items, dict):
+            items = list(items.values())
+        return {"approvals": items}
+    except Exception as e:
+        return {"approvals": [], "error": str(e)}
+
+
+class _SPAApprovalAction(BaseModel):
+    note: str | None = None
+
+
+@app.post("/api/approvals/{request_id}/approve")
+def api_approvals_approve(request_id: str, action: _SPAApprovalAction = _SPAApprovalAction()):
+    from core.approval import approve, InvalidTransition
+    try:
+        result = approve(request_id, note=action.note, operator="command-center")
+    except InvalidTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+    return result
+
+
+@app.post("/api/approvals/{request_id}/reject")
+def api_approvals_reject(request_id: str, action: _SPAApprovalAction = _SPAApprovalAction()):
+    from core.approval import reject, InvalidTransition
+    try:
+        result = reject(request_id, note=action.note, operator="command-center")
+    except InvalidTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Approval request not found")
+    return result
+
+
 @app.get("/api/network/overview")
 def api_network_overview():
     """Aggregate read-only Network Dashboard payload — OBSERVE only, no control.

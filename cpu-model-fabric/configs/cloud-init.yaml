@@ -1,0 +1,37 @@
+#cloud-config
+hostname: kai-cpu
+manage_etc_hosts: true
+users:
+  - name: kai
+    groups: sudo
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIWgt3qy99b+l+ttMg54rGszRMxua/8/yRlAW63oziLA root@claude-code
+    lock_passwd: false
+    passwd: $6$rounds=4096$saltsalt$IxDD3jeSOb0eB2z3vBXhxTmwh.gz9YoDUiDLhqL8dHPr9V8mxhNBqoHVt7Bl/2TZYxQFvXGNQPYBUQxcJnXRC.
+ssh_pwauth: true
+chpasswd:
+  list: |
+    kai:Vsquare20
+  expire: false
+package_update: true
+package_upgrade: false
+packages:
+  - build-essential
+  - git
+  - wget
+  - curl
+  - vim
+  - cmake
+  - htop
+  - sysstat
+runcmd:
+  - systemctl set-default multi-user.target
+  - mkdir -p /opt/kai-cpu-models
+  - mkdir -p /opt/koboldcpp
+  - mkdir -p /opt/llama.cpp
+  - mkdir -p /var/log/kai-cpu
+  - mkdir -p /var/lib/kai/model-fabric
+  - chown -R kai:kai /opt/kai-cpu-models /opt/koboldcpp /opt/llama.cpp /var/log/kai-cpu /var/lib/kai
+  - echo "kai-cpu VM setup complete" > /var/log/cloud-init-done.log

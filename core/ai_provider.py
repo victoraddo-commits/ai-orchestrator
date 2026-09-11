@@ -636,3 +636,90 @@ register_provider(
     description="kai-brain:27b (Qwen3.6-27B) via ollama (17GB) — KAI MODEL TEAM kai.deep: deep-reasoning escalation for difficult architecture, reasoning, investigations, or failures Kai Brain cannot confidently solve.",
     cost_tier="free",
 )
+
+
+# ============================================================================
+# CPU MODEL FABRIC — KoboldCpp on VM 112 (192.168.1.242)
+# Deployed 2026-09-11 — GLM-4.7-Flash Q4_K_M GGUF via KoboldCpp CPU-only
+# ============================================================================
+
+def _koboldcpp_cpu_run_text_task(prompt, timeout=300, project_path=None):
+    """GLM-4.7-Flash Q4_K_M via KoboldCpp on dedicated CPU VM (112).
+
+    CPU-only inference on 16 Xeon cores. Slower than GPU but provides
+    independent capacity that doesn't contend with GPU workloads on VM 104.
+    OpenAI-compatible API on port 8080.
+
+    Higher timeout (300s) because CPU inference is significantly slower
+    than GPU — expect ~5-15 tok/s depending on context length.
+    """
+    import subprocess
+    import json
+    import time
+
+    payload = {
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 2048,
+        "temperature": 0.7,
+        "stream": False,
+    }
+
+    start_time = time.time()
+    try:
+        cmd = [
+            "ssh", "-o", "ConnectTimeout=5",
+            "-J", "root@100.122.38.118",
+            "kai@192.168.1.242",
+            "curl -s -X POST http://localhost:8080/v1/chat/completions "
+            "-H 'Content-Type: application/json' --data-binary @-"
+        ]
+
+        result = subprocess.run(
+            cmd,
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"SSH/curl to KoboldCpp failed: {result.stderr}")
+
+        data = json.loads(result.stdout)
+        latency_ms = int((time.time() - start_time) * 1000)
+        content = data["choices"][0]["message"]["content"]
+
+        return {
+            "content": content,
+            "model": "GLM-4.7-Flash-Q4_K_M-CPU",
+            "latency_ms": latency_ms,
+            "tokens_prompt": data.get("usage", {}).get("prompt_tokens", 0),
+            "tokens_generated": data.get("usage", {}).get("completion_tokens", 0),
+        }
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError,
+            KeyError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"KoboldCpp CPU model unavailable: {e}")
+
+
+def _koboldcpp_cpu_available():
+    """Check if KoboldCpp on VM 112 (kai-cpu) is reachable."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes",
+             "-J", "root@100.122.38.118", "kai@192.168.1.242",
+             "curl", "-s", "-m", "3", "http://localhost:8080/api/v1/model"],
+            capture_output=True, text=True, timeout=15
+        )
+        return result.returncode == 0 and "koboldcpp" in result.stdout
+    except Exception:
+        return False
+
+
+register_provider(
+    "koboldcpp_cpu",
+    run_text_task=_koboldcpp_cpu_run_text_task,
+    available_fn=_koboldcpp_cpu_available,
+    kind="local",
+    description="GLM-4.7-Flash Q4_K_M via KoboldCpp on VM 112 (kai-cpu) — CPU-only inference on 16 Xeon cores, dedicated capacity independent of GPU workloads. CPU Model Fabric.",
+    cost_tier="free",
+)

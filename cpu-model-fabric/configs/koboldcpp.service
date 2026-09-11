@@ -1,0 +1,33 @@
+[Unit]
+Description=KoboldCpp CPU Model Server - GLM-4.7-Flash Q4_K_M
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kai
+Group=kai
+WorkingDirectory=/opt/koboldcpp
+ExecStart=/opt/koboldcpp/koboldcpp \
+    --model /opt/kai-cpu-models/zai-org_GLM-4.7-Flash-Q4_K_M.gguf \
+    --port 8080 \
+    --host 0.0.0.0 \
+    --contextsize 4096 \
+    --threads 14 \
+    --batchsize 512 \
+    --usecpu \
+    --usemlock \
+    --quiet \
+    --skiplauncher
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+# Resource limits
+MemoryMax=30G
+CPUQuota=1400%
+
+[Install]
+WantedBy=multi-user.target

@@ -44,3 +44,7 @@ key.pem
 
 # Vault OIDC client secret
 .vault_oidc_client_secret
+
+# Second Brain operational data (runtime state, not source)
+core/second_brain/stores/operational/records.jsonl
+core/second_brain/stores/operational/*.jsonl

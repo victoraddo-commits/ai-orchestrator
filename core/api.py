@@ -4670,3 +4670,161 @@ def api_research_sessions_finalize(
     if rec is None:
         raise HTTPException(status_code=404, detail="Research session not found")
     return rec
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KAI 2.0 phase 18E — Legal Brain Command Center dashboards
+# Three read endpoints + light source-registry CRUD. Session-authed via
+# nginx auth_request → X-Kai-User header (same gate as /api/approvals).
+# ─────────────────────────────────────────────────────────────────────────────
+from core.legal_brain import corpus_coverage as _lb_coverage
+from core.legal_brain import source_registry as _lb_sources
+from core.legal_brain import knowledge_health as _lb_health
+
+
+class _LegalSourceCreate(BaseModel):
+    url: str
+    name: str
+    trust_score: int | float = 50
+    tier: int | None = None
+
+
+@app.get("/api/legal/corpus-coverage")
+def api_legal_corpus_coverage(_user: str = Depends(_require_spa_user)):
+    """16-tier corpus coverage — targets, actuals, gaps, empty-tier alerts."""
+    return _lb_coverage.get_coverage()
+
+
+@app.get("/api/legal/sources")
+def api_legal_sources_list(_user: str = Depends(_require_spa_user)):
+    """List legal-source registry entries + trust-score histogram."""
+    return {
+        "sources": _lb_sources.list_sources(),
+        "trust_breakdown": _lb_sources.trust_score_breakdown(),
+    }
+
+
+@app.post("/api/legal/sources")
+def api_legal_sources_add(
+    body: _LegalSourceCreate,
+    _user: str = Depends(_require_spa_user),
+):
+    """Register a new legal source. Idempotent on URL."""
+    try:
+        return _lb_sources.add_source(
+            url=body.url, name=body.name,
+            trust_score=body.trust_score, tier=body.tier or 0,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/api/legal/sources/{source_id}")
+def api_legal_sources_remove(
+    source_id: str,
+    _user: str = Depends(_require_spa_user),
+):
+    """Soft-delete a source (active=False, history preserved)."""
+    result = _lb_sources.remove_source(source_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return result
+
+
+@app.post("/api/legal/sources/{source_id}/validate")
+def api_legal_sources_validate(
+    source_id: str,
+    _user: str = Depends(_require_spa_user),
+):
+    """HTTP HEAD reachability check with a 5s timeout; result stored on the record."""
+    check = _lb_sources.validate_source(source_id)
+    if check.get("error") == "not_found":
+        raise HTTPException(status_code=404, detail="Source not found")
+    return check
+
+
+@app.get("/api/legal/knowledge-health")
+def api_legal_knowledge_health(_user: str = Depends(_require_spa_user)):
+    """Integrity + freshness + citation-graph coverage rollup."""
+    return _lb_health.get_health()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 18F — Legal Brain Domain Plugin Architecture
+# ═══════════════════════════════════════════════════════════════════════════
+# Read-only list + health endpoints require an authenticated SPA user
+# (X-Kai-User header, propagated by nginx auth_request from /api/auth/me).
+# Activation / deactivation additionally require role == "admin" — only an
+# admin operator can switch which jurisdiction is live. Chosen the role-based
+# check (over the bridge-token write capability) because domain activation
+# is an operator UI action from the SPA, not a scripted deployment step.
+
+def _require_spa_admin(
+    x_kai_user: str | None = Header(default=None, alias="X-Kai-User"),
+    x_kai_user_role: str | None = Header(default=None, alias="X-Kai-User-Role"),
+) -> str:
+    """Require an authenticated SPA user with role == "admin"."""
+    if not x_kai_user:
+        raise HTTPException(status_code=401, detail="Missing authenticated user identity")
+    if (x_kai_user_role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="admin role required")
+    return x_kai_user
+
+
+@app.get("/api/legal/domains")
+def api_legal_domains_list(_user: str = Depends(_require_spa_user)):
+    """List every domain plugin manifest along with its active-state."""
+    from core.legal_brain.domain_plugin import get_registry
+    reg = get_registry()
+    active = set(reg.active_ids())
+    manifests = reg.list_manifests()
+    return {
+        "domains": [
+            {**m, "active": m["id"] in active} for m in manifests
+        ],
+        "active": list(active),
+        "max_active": reg.max_active,
+    }
+
+
+@app.post("/api/legal/domains/{domain_id}/activate")
+def api_legal_domains_activate(
+    domain_id: str,
+    operator: str = Depends(_require_spa_admin),
+):
+    """Activate a domain (deactivates the oldest if max_active would be exceeded)."""
+    from core.legal_brain.domain_plugin import get_registry
+    reg = get_registry()
+    try:
+        result = reg.activate(domain_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown domain: {domain_id}")
+    return {**result, "operator": operator}
+
+
+@app.post("/api/legal/domains/{domain_id}/deactivate")
+def api_legal_domains_deactivate(
+    domain_id: str,
+    operator: str = Depends(_require_spa_admin),
+):
+    """Deactivate a domain; idempotent."""
+    from core.legal_brain.domain_plugin import get_registry
+    reg = get_registry()
+    try:
+        result = reg.deactivate(domain_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown domain: {domain_id}")
+    return {**result, "operator": operator}
+
+
+@app.get("/api/legal/domains/{domain_id}/health")
+def api_legal_domains_health(
+    domain_id: str,
+    _user: str = Depends(_require_spa_user),
+):
+    """Return the plugin's health verdict; 'unknown' if no impl is registered."""
+    from core.legal_brain.domain_plugin import get_registry
+    reg = get_registry()
+    if not reg.has(domain_id):
+        raise HTTPException(status_code=404, detail=f"unknown domain: {domain_id}")
+    return {"id": domain_id, **reg.health(domain_id)}

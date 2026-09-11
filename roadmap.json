@@ -262,7 +262,7 @@
       "id": "17P",
       "title": "17P: Juris Kai Multi-Tenant Legal Bot",
       "description": "Legal bot with multi-tenant accounts, subscription tiers, disclaimer flow, query limits, Hubtel Mobile Money billing (test mode), document analysis billing, /account /subscribe /profile /document /argument /flashcards commands.",
-      "status": "in_progress",
+      "status": "pending",
       "dependencies": [
         "17O-D",
         "18A-b"
@@ -273,7 +273,7 @@
       "updated_at": "2026-08-07T03:11:36.950375+00:00",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
       "name": "(empty placeholder 17P)",
-      "build_id": "9345141c",
+      "build_id": null,
       "assigned_provider": "omniroute"
     },
     {
@@ -1725,7 +1725,7 @@
       "id": "17Y",
       "name": "Scoped auto-approval with operator veto window (architecture gate only)",
       "description": "Operator directive 2026-08-02: operator asked me (Claude Code) to approve/deploy on their behalf; declined that specifically because it defeats the ARCHITECTURE_APPROVED/DEPLOY_APPROVAL invariant (nothing under core/kai/ calls those functions, by design, enforced by tests/test_kai_identity.py) and reintroduces Claude Code as exactly the single point of failure this whole 2026-08-02 session was about removing. Offered a narrower, real alternative instead: a scoped fast-path with a human veto window, not a blanket bypass. This phase specs that alternative; it does NOT implement or enable it.\n\nProposed design (first cut, needs real review before building, which is why this phase is left at status=proposed rather than pending -- it should not enter the queue without an explicit operator decision, unlike the routine wiring work tonight):\n\n(1) SCOPE: architecture-approval gate ONLY, at first. Deploy approval (the step that actually ships code) stays fully manual, no timeout, no exceptions -- revisit only after this is proven out on the lower-stakes gate.\n(2) ELIGIBILITY: a build's proposed plan/files_changed must match a narrow, explicit allowlist (starting point: docs-only changes, test-only changes, changes confined to a single app's own project_path under an already-approved template) AND must not touch core/security.py, core/action_policy.py, .env, systemd unit files, docker-compose files, or anything that would expand ALLOWED_ACTIONS. Any file outside the allowlist disqualifies auto-approval for that build entirely -- falls back to fully manual, no timeout, silently (operator sees a normal approval request, not an error).\n(3) VETO WINDOW: on entering WAITING_FOR_ARCHITECTURE_APPROVAL for an eligible build, notify via Telegram (now with the full plan text per this session's telegram_bridge.format_state_change fix) same as any other approval request. If the operator has not approved, rejected, or replied at all within a configurable window (starting point: 12 hours) AND the build is still eligible per (2), auto-approve.\n(4) AUDIT INTEGRITY: an auto-approval via this path must record a distinct, unambiguous operator identity (e.g. 'system(auto-approved-after-veto-window)'), never the operator's own name/identity -- the whole point raised when this was discussed is that the audit trail must never make it look like a human reviewed something they didn't.\n(5) KILL SWITCH: a single config flag to disable this fast-path entirely, checked before (1)-(4) ever apply, independent of autonomy level.\n\nOperator directive: if/when promoted, implemented by Kai/Fable, not Claude Code directly -- and Claude Code should not be the one deciding this is ready to promote either; that call is the operator's.",
-      "status": "in_progress",
+      "status": "proposed",
       "dependencies": [
         "17T"
       ],
@@ -1733,7 +1733,7 @@
       "completed_at": "2026-08-07T11:10:00Z",
       "notes": "Design spec written: scoped auto-approval with 12h operator veto window, architecture gate only, file-pattern allowlist (docs-only, test-only, template-confined), kill switch (default OFF), system audit identity, per operator directive. Spec at docs/superpowers/specs/2026-08-07-scoped-auto-approval-veto-window-design.md. Implementation deferred. NEVER auto-approves deploy gate.",
       "assigned_provider": "omniroute",
-      "build_id": "222f38f5"
+      "build_id": null
     },
     {
       "id": "17A",
@@ -2702,7 +2702,7 @@
       "id": "18E",
       "title": "18E: Legal Brain Command Center",
       "description": "Three directive-specified Legal Brain Command Center dashboards integrated into Kai Command Center: (1) Corpus Coverage Dashboard \u2014 16-tier visual progress, counts vs coverage targets, gap analysis, empty-tier alerts; (2) Source Management Dashboard \u2014 source registry grid, trust score breakdown, source health/reachability, add/remove/validate actions; (3) Legal Knowledge Health Dashboard \u2014 integrity check results, citation graph stats, knowledge engine status, Telegram alert configuration. All read-only, using existing dashboard auth patterns from 13O.",
-      "status": "pending",
+      "status": "completed",
       "dependencies": [
         "18C",
         "18D",
@@ -2724,13 +2724,14 @@
       "completion_note": "Unblocked by 18C. Legislation Extraction Pipeline.",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
       "name": "(empty placeholder 18E)",
-      "build_id": null
+      "build_id": "manual-claude",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "18F",
       "title": "18F: Legal Brain Domain Plugin Architecture",
       "description": "Design plugin interface for future non-Ghana jurisdictions: JSON schema for jurisdiction plugins, isolation guarantees (each domain = own DB + vector store + KG), domains disabled by default operator-activated, Ghana Legal Brain as reference implementation, stub interfaces for Medical/Family/Finance domains. Design only \u2014 implementation per-domain later.",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "18C"
       ],
@@ -2742,7 +2743,7 @@
       "notes": "Design spec written: domain plugin architecture with JSON manifest schema, Python ABC interface, storage isolation per domain, QC agent dispatch, Ghana reference implementation, Kenya/Medical/Family/Finance stubs. Spec at docs/superpowers/specs/2026-08-07-legal-domain-plugin-architecture-design.md. Implementation deferred to 18F-IMPL phases.",
       "failure_reason": "Empty placeholder phase \u2014 no specification",
       "name": "(empty placeholder 18F)",
-      "build_id": "d3c3209e",
+      "build_id": "manual-claude",
       "assigned_provider": "omniroute"
     },
     {

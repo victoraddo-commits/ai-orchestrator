@@ -1,0 +1,22 @@
+{
+  "id": "family",
+  "name": "Family Law Domain (stub)",
+  "jurisdiction": {
+    "country": "GH",
+    "subdivision": null
+  },
+  "version": "0.0.1",
+  "enabled": false,
+  "db_path": "unknown",
+  "vector_store_path": "unknown",
+  "kg_path": "unknown",
+  "sources": [],
+  "citation_style": "Ghana-Bluebook",
+  "disclaimer": "The Family Law domain is a design-phase stub. It does not provide legal advice on marriage, divorce, custody, or inheritance and does not create an attorney-client relationship. When activated, every answer must be paired with a strong recommendation to consult a licensed family lawyer.",
+  "data_privacy": {
+    "user_docs_stored": false,
+    "permanent_corpus": true,
+    "retention_days": null
+  },
+  "implementation_notes": "Stub only. To become real: (1) extract family-law subset from the Ghana corpus (Matrimonial Causes Act, Children's Act, Intestate Succession Law), (2) build isolated storage under core/family_brain/, (3) implement a DomainPlugin subclass, (4) sensitive-topic filter for cases involving minors, (5) operator activation via POST /api/legal/domains/family/activate."
+}

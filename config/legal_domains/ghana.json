@@ -1,0 +1,28 @@
+{
+  "id": "ghana",
+  "name": "Ghana Legal Brain",
+  "jurisdiction": {
+    "country": "GH",
+    "subdivision": null
+  },
+  "version": "1.0.0",
+  "enabled": true,
+  "db_path": "core/legal_brain/legal_brain.db",
+  "vector_store_path": "unknown",
+  "kg_path": "unknown",
+  "sources": [
+    {"url": "https://parliament.gh", "name": "Parliament of Ghana", "trust_score": 1.0, "status": "permitted"},
+    {"url": "https://constituteproject.org", "name": "Constitute Project", "trust_score": 0.95, "status": "permitted"},
+    {"url": "https://judicial.gov.gh", "name": "Judicial Service of Ghana", "trust_score": 1.0, "status": "restricted"},
+    {"url": "https://ghalii.org", "name": "Ghana Legal Information Institute", "trust_score": 0.95, "status": "restricted"},
+    {"url": "https://ghanapublishing.gov.gh", "name": "Ghana Publishing Co.", "trust_score": 0.95, "status": "restricted"},
+    {"url": "https://fdaghana.gov.gh", "name": "Food and Drugs Authority", "trust_score": 0.9, "status": "permitted"}
+  ],
+  "citation_style": "Ghana-Bluebook",
+  "disclaimer": "Ghana Legal Brain provides general legal information based on public statutes, regulations, and case law. It is NOT legal advice, does not create an attorney-client relationship, and should not be relied upon in place of a licensed Ghanaian legal practitioner. Verify every citation against the primary source before acting on it.",
+  "data_privacy": {
+    "user_docs_stored": false,
+    "permanent_corpus": true,
+    "retention_days": null
+  }
+}

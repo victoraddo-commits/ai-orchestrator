@@ -1,0 +1,22 @@
+{
+  "id": "medical",
+  "name": "Medical Domain (stub)",
+  "jurisdiction": {
+    "country": "GH",
+    "subdivision": null
+  },
+  "version": "0.0.1",
+  "enabled": false,
+  "db_path": "unknown",
+  "vector_store_path": "unknown",
+  "kg_path": "unknown",
+  "sources": [],
+  "citation_style": "AMA",
+  "disclaimer": "The Medical domain is a design-phase stub. It does not provide medical advice, does not diagnose, and does not substitute for a licensed clinician. When activated, every answer must show a disclaimer stronger than this one and route to a human on any high-risk symptom.",
+  "data_privacy": {
+    "user_docs_stored": false,
+    "permanent_corpus": false,
+    "retention_days": 0
+  },
+  "implementation_notes": "Stub only. To become real: (1) pick an authoritative corpus (WHO / MoH Ghana / peer-reviewed journals), (2) build a domain-isolated SQLite + vector store under core/medical_brain/, (3) implement a DomainPlugin subclass with a red-flag classifier that refuses high-risk questions, (4) legal-team review of the disclaimer, (5) operator activation via POST /api/legal/domains/medical/activate."
+}

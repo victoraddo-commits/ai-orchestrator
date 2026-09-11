@@ -1,0 +1,22 @@
+{
+  "id": "finance",
+  "name": "Financial Regulation Domain (stub)",
+  "jurisdiction": {
+    "country": "GH",
+    "subdivision": null
+  },
+  "version": "0.0.1",
+  "enabled": false,
+  "db_path": "unknown",
+  "vector_store_path": "unknown",
+  "kg_path": "unknown",
+  "sources": [],
+  "citation_style": "Ghana-Bluebook",
+  "disclaimer": "The Financial Regulation domain is a design-phase stub. It does not provide financial, investment, tax, or securities advice and does not create an advisor-client relationship. Every answer must recommend consultation with a licensed adviser and the relevant regulator (BoG, SEC-Ghana, GRA) before any transaction.",
+  "data_privacy": {
+    "user_docs_stored": false,
+    "permanent_corpus": true,
+    "retention_days": null
+  },
+  "implementation_notes": "Stub only. To become real: (1) acquire regulatory corpus (Bank of Ghana, Securities and Exchange Commission, Ghana Revenue Authority, Companies Act 2019 sections on financial services), (2) build isolated storage under core/finance_brain/, (3) implement a DomainPlugin subclass with a mandatory 'not investment advice' preface, (4) trust-score weighting favoring primary regulator sources, (5) operator activation via POST /api/legal/domains/finance/activate."
+}

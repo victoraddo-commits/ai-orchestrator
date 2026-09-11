@@ -1206,6 +1206,61 @@ def module_config_put(
         return {"name": name, "error": str(e), "saved": False}
 
 
+# ── Money Center Integration ───────────────────────────────────────────────
+
+_MONEY_CENTER_BASE = os.environ.get("KAI_MONEY_URL", "http://192.168.1.118:8095")
+_money_summary_cache: dict = {}
+
+
+@app.get("/api/money/summary")
+async def money_summary():
+    """Proxy summary from Money Center backend, with graceful fallback."""
+    global _money_summary_cache
+    client = _get_proxy_client()
+    try:
+        pending_resp = await client.get(
+            f"{_MONEY_CENTER_BASE}/capital-requests",
+            params={"status": "pending"},
+            timeout=8,
+        )
+        pending = pending_resp.json() if pending_resp.status_code == 200 else []
+
+        treasury_resp = await client.get(
+            f"{_MONEY_CENTER_BASE}/treasury",
+            timeout=8,
+        )
+        treasury = treasury_resp.json() if treasury_resp.status_code == 200 else {}
+
+        ops_resp = await client.get(
+            f"{_MONEY_CENTER_BASE}/operations",
+            timeout=8,
+        )
+        ops = ops_resp.json() if ops_resp.status_code == 200 else {}
+
+        from datetime import datetime, timezone
+        result = {
+            "pending_requests": len(pending) if isinstance(pending, list) else 0,
+            "pending_details": pending[:10] if isinstance(pending, list) else [],
+            "total_treasury": treasury.get("total", 0) if isinstance(treasury, dict) else 0,
+            "operations": ops if isinstance(ops, (dict, list)) else {},
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "source": "live",
+        }
+        _money_summary_cache = result
+        return result
+    except Exception:
+        if _money_summary_cache:
+            return {**_money_summary_cache, "source": "cache"}
+        return {
+            "pending_requests": 0,
+            "pending_details": [],
+            "total_treasury": 0,
+            "operations": {},
+            "last_updated": None,
+            "source": "unavailable",
+        }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Juris Kai Admin API — Account management, referrals, payments
 # ═══════════════════════════════════════════════════════════════════════════

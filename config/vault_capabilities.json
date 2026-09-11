@@ -1,0 +1,39 @@
+{
+  "service": "ai-orchestrator",
+  "vault_url": "https://vault.sso.deerude.com",
+  "fallback_url": "https://vault.local",
+  "capabilities": {
+    "read": [
+      "secrets/ai-providers/gemini",
+      "secrets/ai-providers/geminix",
+      "secrets/ai-providers/groq",
+      "secrets/ai-providers/openai",
+      "secrets/ai-providers/openrouter",
+      "secrets/ai-providers/minimax",
+      "secrets/ai-providers/deepseek-native-pro",
+      "secrets/ai-providers/deepseek-native-flash",
+      "secrets/ai-providers/deepseek-openrouter",
+      "secrets/ai-providers/claude-fable5",
+      "secrets/ai-providers/gemini-3-1-pro",
+      "secrets/telegram/kai-enzo-bot",
+      "secrets/telegram/susu-bot",
+      "secrets/telegram/law-tutor-bot",
+      "secrets/telegram/juris-kai-bot",
+      "secrets/infrastructure/proxmox-a",
+      "secrets/infrastructure/proxmox-b",
+      "secrets/infrastructure/opnsense",
+      "secrets/infrastructure/ddwrt",
+      "secrets/infrastructure/redis",
+      "secrets/infrastructure/proxdash",
+      "secrets/external/odds-api-io"
+    ],
+    "write": [
+      "audit/ai-orchestrator/rotation-log",
+      "audit/ai-orchestrator/access-log"
+    ]
+  },
+  "notes": {
+    "prerequisite": "Vault passkey must be re-registered before migration — recovery codes are exhausted",
+    "fallback": "core/vault_client.py falls back to .env when vault is unreachable"
+  }
+}

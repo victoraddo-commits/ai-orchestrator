@@ -1,0 +1,10 @@
+{
+  "name": "money-center",
+  "version": "1.0.0",
+  "description": "Capital requests, treasury management, operation balances, and mobile money tracking",
+  "endpoints": ["/api/money/summary"],
+  "capabilities": ["capital-requests", "treasury-monitoring", "operation-balances", "mobile-money"],
+  "dependencies": [],
+  "settings_schema": {},
+  "ops_actions": ["pending_requests", "treasury_balance"]
+}

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "description": "Telegram bot inventory for KAI ecosystem",
+  "updated_at": "2026-09-11T19:45:00Z",
+  "bots": [
+    {
+      "username": "@KaiEnzo_bot",
+      "name": "Kai",
+      "bot_id": 8934555328,
+      "env_var": "KAI_TELEGRAM_BOT_TOKEN",
+      "chat_id_var": "KAI_TELEGRAM_CHAT_ID",
+      "default_chat_id": "612786480",
+      "purpose": "KAI core operations — build notifications, approvals, money commands, enhancements, chat",
+      "mode": "polling",
+      "webhook_url": null,
+      "bridge_module": "core/telegram_bridge.py",
+      "status": "active",
+      "commands_registered": true,
+      "command_count": 10
+    },
+    {
+      "username": "@Susugh_bot",
+      "name": "SUSU",
+      "bot_id": 8232992533,
+      "env_var": "SUSU_BOT_TOKEN",
+      "chat_id_var": null,
+      "purpose": "SUSU savings group management — group creation, payments, payouts, KYC",
+      "mode": "polling",
+      "webhook_url": null,
+      "bridge_module": "src/susu/telegram/bot.py",
+      "status": "active",
+      "commands_registered": true,
+      "command_count": 17
+    },
+    {
+      "username": "@vadomfeh_bot",
+      "name": "The Law",
+      "bot_id": 5803923871,
+      "env_var": "LAW_TUTOR_BOT_TOKEN",
+      "chat_id_var": "LAW_TUTOR_CHAT_ID",
+      "default_chat_id": "5310449666",
+      "purpose": "Ghana law tutor — case studies, quizzes, flashcards, IRAC analysis, study plans",
+      "mode": "polling",
+      "webhook_url": null,
+      "bridge_module": "core/law_tutor/bot.py",
+      "status": "active",
+      "commands_registered": true,
+      "command_count": 13
+    },
+    {
+      "username": "@Juriskai_bot",
+      "name": "Juris Kai",
+      "bot_id": 8968355425,
+      "env_var": "JURIS_KAI_BOT_TOKEN",
+      "chat_id_var": null,
+      "purpose": "Legal research assistant — Ghana legal corpus queries",
+      "mode": "polling",
+      "webhook_url": null,
+      "bridge_module": null,
+      "status": "active",
+      "commands_registered": false,
+      "command_count": 0
+    }
+  ]
+}

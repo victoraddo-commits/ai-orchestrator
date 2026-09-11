@@ -78,10 +78,10 @@ def get_cost_summary(days: int = 30) -> dict:
             calls_with_cost += 1
         else:
             # Estimate from pricing
-            prompt_tokens = entry.get("usage", {}).get(
+            prompt_tokens = (entry.get("usage") or {}).get(
                 "prompt_tokens", (len(entry.get("description", "")) // 4)
             )
-            completion_tokens = entry.get("usage", {}).get(
+            completion_tokens = (entry.get("usage") or {}).get(
                 "completion_tokens", 0
             )
             if isinstance(prompt_tokens, dict):
@@ -173,8 +173,8 @@ def get_provider_cost_detail(provider: str, days: int = 30) -> dict:
             estimated = _compute_call_cost(
                 provider,
                 None,
-                int(entry.get("usage", {}).get("prompt_tokens", 0) or 0),
-                int(entry.get("usage", {}).get("completion_tokens", 0) or 0),
+                int((entry.get("usage") or {}).get("prompt_tokens", 0) or 0),
+                int((entry.get("usage") or {}).get("completion_tokens", 0) or 0),
             )
             cost = estimated if estimated is not None else 0.0
 
@@ -271,8 +271,8 @@ def get_monthly_summary(year: Optional[int] = None, month: Optional[int] = None)
             estimated = _compute_call_cost(
                 provider,
                 None,
-                int(entry.get("usage", {}).get("prompt_tokens", 0) or 0),
-                int(entry.get("usage", {}).get("completion_tokens", 0) or 0),
+                int((entry.get("usage") or {}).get("prompt_tokens", 0) or 0),
+                int((entry.get("usage") or {}).get("completion_tokens", 0) or 0),
             )
             cost = estimated if estimated is not None else 0.0
 
@@ -333,8 +333,8 @@ def get_cost_export(days: int = 30) -> list[dict]:
             cost = float(recorded_cost)
             cost_source = "recorded"
         else:
-            prompt_tokens = entry.get("usage", {}).get("prompt_tokens", 0)
-            completion_tokens = entry.get("usage", {}).get("completion_tokens", 0)
+            prompt_tokens = (entry.get("usage") or {}).get("prompt_tokens", 0)
+            completion_tokens = (entry.get("usage") or {}).get("completion_tokens", 0)
             if isinstance(prompt_tokens, dict):
                 prompt_tokens = 0
             if isinstance(completion_tokens, dict):

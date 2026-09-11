@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "merge_policy": "newest_wins",
-  "record_count": 152499,
+  "record_count": 152542,
   "store_name": "operational"
 }

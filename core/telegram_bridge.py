@@ -928,6 +928,27 @@ def route_inbound_reply(message, pending_builds=None):
     chat_id = str((message.get("chat") or {}).get("id", ALLOWED_CHAT_ID))
     send_typing(chat_id=chat_id)
 
+    # KAI Control Center commands (/status, /network, /vpn, /missions, /approvals,
+    # /health, /help) — routed through the KAI Command Bus so AgentGuard
+    # authorization + audit fires on every command. The bus in turn calls the
+    # FastAPI backend, so Telegram is another interface into the SAME backend.
+    _ctl_text = (message.get("text") or "").strip()
+    if _ctl_text:
+        try:
+            from core.kai_control_commands import handle_control_command
+            _ctl_reply = handle_control_command(
+                _ctl_text,
+                via_bus=True,
+                source=f"telegram:{chat_id}",
+                user=str((message.get("from") or {}).get("id") or "operator"),
+            )
+            if _ctl_reply is not None:
+                return {"routed": True, "action": "control_command",
+                        "reply": _ctl_reply}
+        except Exception as _ctl_exc:
+            return {"routed": True, "action": "control_command",
+                    "reply": f"Control command error: {_ctl_exc}"}
+
     # Money Ecosystem commands (/pending, treasury, cr approve N, …) route
     # before build matching — explicit money syntax always wins; a bare
     # "approve" still falls through to the software-factory matcher.

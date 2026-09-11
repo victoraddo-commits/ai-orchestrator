@@ -217,6 +217,14 @@ app.include_router(capability_registry_router)
 from core.kai_event_bus_routes import router as event_bus_router
 app.include_router(event_bus_router)
 
+# KX1 Mission Engine — mission creation, checkpointing, control (pause/resume/stop/redirect)
+try:
+    from core.kai.mission_api import router as mission_router
+    app.include_router(mission_router)
+except Exception as _mission_exc:  # pragma: no cover — degrade gracefully if wiring fails
+    import logging as _mlog
+    _mlog.getLogger(__name__).warning("mission_api unavailable: %s", _mission_exc)
+
 # Phase 18A-ai: Kai OIDC auth routes — vault SSO callback, step-up, userinfo, logout
 from core.auth_kai_routes import router as auth_kai_router
 app.include_router(auth_kai_router)
@@ -3611,6 +3619,121 @@ def network_discover(_: str = Depends(_require_write_capability("network.admin")
     """Trigger immediate full network discovery — tailscale + proxmox + topology + connectivity."""
     graph = run_network_discovery_cycle()
     return {"ok": True, "graph": graph}
+
+
+@app.get("/api/network/overview")
+def api_network_overview():
+    """Aggregate read-only Network Dashboard payload — OBSERVE only, no control.
+
+    Reads from existing sources (no new discovery runs):
+    - network_topology.json (sites, tailscale peers, tunnel status, connectivity)
+    - ecosystem_graph.json (entities + relationships)
+    - vpn_failover / proxmox_monitor (VPN health for Proxmox B)
+
+    UI-friendly: flattened peer + interface lists so the SPA can render without
+    graph-shape decisions. Session-cookie safe (no bridge token) — data is
+    observational, non-secret.
+    """
+    payload = {
+        "generated_at": None,
+        "last_discovery": None,
+        "sites": [],
+        "peers": [],
+        "interfaces": [],
+        "tunnel": {},
+        "connectivity": {},
+        "vpn": {},
+        "counts": {},
+        "warnings": [],
+    }
+
+    try:
+        graph = load_graph() or {}
+        payload["generated_at"] = graph.get("generated_at")
+        payload["last_discovery"] = graph.get("last_discovery")
+        payload["tunnel"] = graph.get("tunnel", {})
+        payload["connectivity"] = graph.get("connectivity", {})
+
+        sites = graph.get("sites", {}) or {}
+        for site_key, site in sites.items():
+            pm = site.get("proxmox", {}) or {}
+            payload["sites"].append({
+                "id": site_key,
+                "name": site.get("name") or site_key,
+                "lan_subnet": site.get("lan_subnet"),
+                "gateway": site.get("gateway"),
+                "proxmox": {
+                    "name": pm.get("name"),
+                    "online": pm.get("online"),
+                    "lan_ip": pm.get("lan_ip"),
+                    "tailscale_ip": pm.get("tailscale_ip"),
+                },
+                "lxc_count": len(site.get("lxcs") or []),
+                "vm_count": len(site.get("vms") or []),
+                "service_count": len(site.get("services") or []),
+            })
+
+            # Flatten proxmox interfaces
+            for iface in (pm.get("interfaces") or []):
+                payload["interfaces"].append({
+                    "site": site_key,
+                    "host": pm.get("name"),
+                    "name": iface.get("name"),
+                    "ip": iface.get("ip"),
+                    "type": iface.get("type", "ethernet"),
+                })
+
+        ts_peers = (graph.get("tailscale") or {}).get("peers", {}) or {}
+        for peer_id, peer in ts_peers.items():
+            payload["peers"].append({
+                "id": peer_id,
+                "name": peer.get("hostname") or peer.get("name") or peer_id,
+                "type": "tailscale",
+                "ip": peer.get("ip") or peer.get("tailscale_ip"),
+                "online": peer.get("online"),
+                "os": peer.get("os"),
+            })
+    except Exception as e:
+        payload["warnings"].append(f"topology load failed: {e}")
+
+    # VPN health (Proxmox B WireGuard)
+    try:
+        import core.vpn_failover as _vf
+        import core.proxmox_monitor as _pm
+        vpn = _vf.check_tunnel_health() or {}
+        vpn["nodes"] = _pm.get_vpn_status()
+        payload["vpn"] = vpn
+    except Exception as e:
+        payload["warnings"].append(f"vpn status unavailable: {e}")
+
+    # Ecosystem graph counts (services, capabilities)
+    try:
+        import json as _json
+        from pathlib import Path as _Path
+        eg = _Path("memory/ecosystem_graph.json")
+        if eg.exists():
+            with eg.open() as f:
+                data = _json.load(f)
+            payload["counts"]["entities"] = len(data.get("entities") or {})
+            payload["counts"]["capabilities"] = len(data.get("capabilities") or {})
+            payload["counts"]["relationships"] = len(data.get("relationships") or [])
+    except Exception as e:
+        payload["warnings"].append(f"ecosystem graph unavailable: {e}")
+
+    payload["counts"]["sites"] = len(payload["sites"])
+    payload["counts"]["peers"] = len(payload["peers"])
+    payload["counts"]["interfaces"] = len(payload["interfaces"])
+
+    # Health summary
+    tunnel_status = (payload["tunnel"] or {}).get("status")
+    if tunnel_status in ("DEGRADED", "DOWN"):
+        payload["health"] = "degraded"
+    elif payload["warnings"]:
+        payload["health"] = "partial"
+    else:
+        payload["health"] = "ok"
+
+    return payload
 
 
 # ── JARVIS P6: Voice surface (STT/TTS router, local-first) ─────────────────

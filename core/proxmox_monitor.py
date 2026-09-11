@@ -41,8 +41,14 @@ def _get_node_configs():
         },
         {
             "name": "pve-b",
+            # ProxB no longer directly routable from this LXC. Use Tailscale IP
+            # with a ProxyJump on pve for SSH-based discovery. API requests
+            # continue to use whatever PROXMOX_B_HOST resolves to (default:
+            # localhost:8007 = SSH tunnel port from proxmox-b-tunnel.service).
             "host": os.environ.get("PROXMOX_B_HOST", "localhost:8007"),
             "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
+            "ssh_host": os.environ.get("PROXMOX_B_SSH_HOST", "100.122.38.118"),
+            "ssh_jump": os.environ.get("PROXMOX_B_SSH_JUMP", "root@192.168.99.2"),
             "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
             "token_secret": retrieve_api_key("proxmox_b_secret") or os.environ.get("PROXMOX_B_TOKEN_SECRET", ""),
         },

@@ -21,9 +21,12 @@ def _ssh(node: dict, cmd: str) -> tuple[str, str, int]:
         "ssh", "-i", key,
         "-o", "StrictHostKeyChecking=no",
         "-o", "ConnectTimeout=10",
-        f"root@{node['host']}",
-        cmd,
+        "-o", "BatchMode=yes",
     ]
+    jump = node.get("ssh_jump")
+    if jump:
+        full_cmd.extend(["-J", jump])
+    full_cmd.extend([f"root@{node['host']}", cmd])
     try:
         r = subprocess.run(full_cmd, capture_output=True, text=True, timeout=30)
         return r.stdout, r.stderr, r.returncode
@@ -152,9 +155,19 @@ def _correlate_tailscale_to_node(ts_data: dict, px_nodes: dict) -> dict:
 
 
 def discover_all_nodes() -> dict:
-    """Full network-aware Proxmox discovery across all configured nodes."""
+    """Full network-aware Proxmox discovery across all configured nodes.
+
+    Uses `ssh_host` when set on the node config (falls back to `host`),
+    and propagates `ssh_jump` so nodes behind a ProxyJump are reachable.
+    """
     results = {}
     for node in _get_node_configs():
-        net = discover_node_networking(node)
+        # Build an SSH-facing view of the node so `host` used by _ssh is the
+        # right one for shelling in (Tailscale IP for pve-b, LAN IP for pve).
+        ssh_node = dict(node)
+        if node.get("ssh_host"):
+            ssh_node["host"] = node["ssh_host"]
+        # ssh_jump on the config is honored by _ssh directly.
+        net = discover_node_networking(ssh_node)
         results[node["name"]] = net
     return results

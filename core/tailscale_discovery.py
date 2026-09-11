@@ -21,12 +21,17 @@ TAILSCALE_NODES = [
         "host": os.environ.get("PROXMOX_HOST", "192.168.99.2"),
         "ssh_user": "root",
         "ssh_key": os.environ.get("PROXMOX_SSH_KEY", "/root/.ssh/id_rsa"),
+        "ssh_jump": None,
     },
     {
         "name": "pve-b",
-        "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.109"),
+        # Direct 192.168.1.x is no longer routable from this LXC. Reach via
+        # Tailscale IP through a ProxyJump on pve (100.83.4.27) since the
+        # tailscale mesh isn't fully advertised for LAN.
+        "host": os.environ.get("PROXMOX_B_HOST", "100.122.38.118"),
         "ssh_user": "root",
         "ssh_key": os.environ.get("PROXMOX_SSH_KEY", "/root/.ssh/id_rsa"),
+        "ssh_jump": os.environ.get("PROXMOX_B_JUMP", "root@192.168.99.2"),
     },
 ]
 
@@ -42,9 +47,12 @@ def _ssh(node: dict, cmd: str) -> tuple[str, str, int]:
         "ssh", "-i", key,
         "-o", "StrictHostKeyChecking=no",
         "-o", "ConnectTimeout=10",
-        f"{node['ssh_user']}@{node['host']}",
-        cmd,
+        "-o", "BatchMode=yes",
     ]
+    jump = node.get("ssh_jump")
+    if jump:
+        full_cmd.extend(["-J", jump])
+    full_cmd.extend([f"{node['ssh_user']}@{node['host']}", cmd])
     try:
         r = subprocess.run(full_cmd, capture_output=True, text=True, timeout=30)
         return r.stdout, r.stderr, r.returncode

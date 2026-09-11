@@ -29,11 +29,47 @@ httpx (already in requirements) and stores the result on the record.
 """
 from __future__ import annotations
 
+import ipaddress
+import socket
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from core.memory import load, save
+
+
+def _url_is_safe_to_probe(url: str) -> tuple[bool, str]:
+    """SSRF guard for validate_source().
+
+    Only http/https URLs whose hostname resolves to a GLOBAL routable
+    address may be probed. Rejects loopback (127.x, ::1), private (RFC1918,
+    fc00::/7), link-local (169.254.0.0/16, fe80::/10), reserved, multicast,
+    and unspecified addresses. Returns (allowed, reason).
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception as e:
+        return False, f"invalid url: {e}"
+    if parsed.scheme not in ("http", "https"):
+        return False, f"scheme not allowed: {parsed.scheme!r}"
+    host = parsed.hostname
+    if not host:
+        return False, "no hostname"
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except Exception as e:
+        return False, f"dns lookup failed: {e}"
+    for info in infos:
+        sockaddr = info[4]
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except Exception:
+            continue
+        if not ip.is_global or ip.is_loopback or ip.is_link_local or \
+           ip.is_private or ip.is_reserved or ip.is_multicast or ip.is_unspecified:
+            return False, f"non-global address {ip}"
+    return True, "ok"
 
 _STORE = "legal_sources.json"
 _SCHEMA_VERSION = 1
@@ -151,6 +187,21 @@ def validate_source(source_id: str, http_client: Any = None) -> dict[str, Any]:
     reachable = False
     http_status: int | None = None
 
+    # SSRF guard: refuse to probe non-global / private / loopback / link-local
+    # addresses. Prevents this endpoint from being turned into a scanner for
+    # internal services.
+    allowed, reason = _url_is_safe_to_probe(url)
+    if not allowed:
+        check = {
+            "reachable": False,
+            "http_status": None,
+            "checked_at": _now_iso(),
+            "error": f"blocked: {reason}",
+        }
+        target["last_check"] = check
+        _save(data)
+        return check
+
     if http_client is None:
         try:
             import httpx as _httpx
@@ -167,7 +218,9 @@ def validate_source(source_id: str, http_client: Any = None) -> dict[str, Any]:
             return check
 
     try:
-        response = http_client.head(url, timeout=5.0, follow_redirects=True)
+        # follow_redirects=False: each hop can re-target a private IP, so we
+        # only trust the initial (validated) hostname.
+        response = http_client.head(url, timeout=5.0, follow_redirects=False)
         http_status = int(response.status_code)
         reachable = 200 <= http_status < 400
     except Exception as e:

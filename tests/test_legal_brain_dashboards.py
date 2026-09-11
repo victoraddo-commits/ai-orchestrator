@@ -87,11 +87,13 @@ def test_validate_source_uses_injected_client():
             _FakeClient.calls.append((url, timeout))
             return _FakeResp(200)
 
-    src = source_registry.add_source("https://y.test", "Y", 90, 4)
+    # example.com resolves to a global address so the SSRF guard passes;
+    # the injected fake client short-circuits the real HTTP call.
+    src = source_registry.add_source("https://example.com/laws", "Y", 90, 4)
     check = source_registry.validate_source(src["id"], http_client=_FakeClient)
     assert check["reachable"] is True
     assert check["http_status"] == 200
-    assert _FakeClient.calls[0][0] == "https://y.test"
+    assert _FakeClient.calls[0][0] == "https://example.com/laws"
     # Persisted on the record
     stored = source_registry.get_source(src["id"])
     assert stored["last_check"]["reachable"] is True
@@ -104,7 +106,7 @@ def test_validate_source_records_failure():
         @staticmethod
         def head(url, timeout, follow_redirects): raise RuntimeError("dns fail")
 
-    src = source_registry.add_source("https://z.test", "Z", 60, 5)
+    src = source_registry.add_source("https://example.com/z", "Z", 60, 5)
     check = source_registry.validate_source(src["id"], http_client=_Boom)
     assert check["reachable"] is False
     assert check["http_status"] is None
@@ -170,3 +172,23 @@ def test_knowledge_health_computes_from_index():
     # source counts
     assert out["sources"]["active_count"] == 1
     assert out["sources"]["total_count"] == 2
+
+
+def test_validate_source_blocks_private_ip(tmp_path, monkeypatch):
+    """SSRF guard: RFC1918 hostnames must be refused."""
+    monkeypatch.setattr("core.memory._default_memory_dir", lambda: str(tmp_path))
+    from core.legal_brain import source_registry
+    src = source_registry.add_source("http://10.0.0.1/admin", "internal", 50, 6)
+    check = source_registry.validate_source(src["id"])
+    assert check["reachable"] is False
+    assert "blocked" in (check.get("error") or "")
+
+
+def test_validate_source_blocks_loopback(tmp_path, monkeypatch):
+    """SSRF guard: 127.x/localhost must be refused."""
+    monkeypatch.setattr("core.memory._default_memory_dir", lambda: str(tmp_path))
+    from core.legal_brain import source_registry
+    src = source_registry.add_source("http://127.0.0.1:8000/", "loop", 50, 6)
+    check = source_registry.validate_source(src["id"])
+    assert check["reachable"] is False
+    assert "blocked" in (check.get("error") or "")

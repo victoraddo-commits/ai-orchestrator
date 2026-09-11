@@ -1,8 +1,19 @@
 import json
+import os
+import shutil
+import time
 from pathlib import Path
 
 
-ROADMAP_PATH = Path(__file__).resolve().parent.parent / "roadmap.json"
+# Overridable so test/isolated runs never touch the production roadmap
+# (AI_ORCHESTRATOR_MEMORY_DIR does NOT cover this file — a 2026-09-10 test
+# snippet relied on that and wiped production; see save_roadmap guard).
+ROADMAP_PATH = Path(
+    os.environ.get(
+        "AI_ORCHESTRATOR_ROADMAP_PATH",
+        str(Path(__file__).resolve().parent.parent / "roadmap.json"),
+    )
+)
 
 VALID_STATUSES = {"proposed", "pending", "in_progress", "completed", "failed", "blocked"}
 
@@ -15,7 +26,23 @@ def load_roadmap():
 
 
 def save_roadmap(roadmap):
-    ROADMAP_PATH.write_text(json.dumps(roadmap, indent=2) + "\n")
+    # A non-atomic write_text here let an ancient 1-phase copy silently
+    # replace all 181 phases on 2026-09-10. Guard: snapshot the old file
+    # before any drastic phase-count shrink, and always write atomically.
+    new_count = len(roadmap.get("phases", []))
+    if ROADMAP_PATH.exists():
+        try:
+            old_count = len(json.loads(ROADMAP_PATH.read_text()).get("phases", []))
+        except (json.JSONDecodeError, OSError):
+            old_count = 0
+        if old_count >= 10 and new_count < old_count // 2:
+            snapshot = ROADMAP_PATH.with_name(
+                f"roadmap.json.pre-shrink-{time.strftime('%Y%m%d-%H%M%S')}"
+            )
+            shutil.copy2(ROADMAP_PATH, snapshot)
+    tmp = ROADMAP_PATH.with_name("roadmap.json.tmp")
+    tmp.write_text(json.dumps(roadmap, indent=2) + "\n")
+    os.replace(tmp, ROADMAP_PATH)
 
 
 def get_phase(phase_id):

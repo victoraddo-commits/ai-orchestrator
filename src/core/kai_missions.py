@@ -1,79 +1,115 @@
-import json
-import time
-from core.memory import memory
+from datetime import datetime
+import memory
 
 class Mission:
-    def __init__(self, mission_id, task_id, task_steps, budgets):
+    def __init__(self, mission_id, task_id, step, state, budgets=None, checkpoints=None):
         self.mission_id = mission_id
         self.task_id = task_id
-        self.task_steps = task_steps
-        self.budgets = budgets
-        self.current_step = 0
-        self.state = 'PENDING'
-        self.checkpoints = []
-        self.tokens_used = 0
-        self.start_time = time.time()
-        self.time_elapsed = 0
-
-    def run(self):
-        while self.current_step < len(self.task_steps) and self.state == 'RUNNING':
-            step_name = self.task_steps[self.current_step]
-            result = self._run_step(step_name)
-            if result:
-                self.state = 'DONE'
-            else:
-                self.state = 'BLOCKED'
-            self._record_checkpoint(self.mission_id, self.task_id, step_name, result)
-            self.current_step += 1
-
-    def _run_step(self, step_name):
-        # Simulate task execution
-        time.sleep(1)
-        self.tokens_used += 1
-        self.time_elapsed = time.time() - self.start_time
-        return True
+        self.step = step
+        self.state = state
+        self.budgets = budgets if budgets else {
+            'token_budget': 1000,
+            'time_budget_seconds': 3600,
+            'retry_budget': 5,
+            'tokens_used': 0,
+            'start_time': datetime.now(),
+            'time_elapsed': 0
+        }
+        self.checkpoints = checkpoints if checkpoints else []
 
     def _record_checkpoint(self, mission_id, task_id, step_name, state_snapshot):
-        checkpoint_id = f"{mission_id}_{task_id}_{step_name}_{int(time.time())}"
+        checkpoint_id = f"{mission_id}_{task_id}_{step_name}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         checkpoint = {
             'checkpoint_id': checkpoint_id,
             'mission_id': mission_id,
             'task_id': task_id,
             'step': step_name,
             'state_snapshot': state_snapshot,
-            'timestamp': time.time()
+            'timestamp': datetime.now()
         }
         self.checkpoints.append(checkpoint)
         memory.save(mission_id, self)
 
+    def _check_budgets(self):
+        current_time = datetime.now()
+        self.budgets['time_elapsed'] = (current_time - self.budgets['start_time']).total_seconds()
+
+        if self.budgets['tokens_used'] >= self.budgets['token_budget']:
+            self.state = 'BLOCKED'
+            return False
+        if self.budgets['time_elapsed'] >= self.budgets['time_budget_seconds']:
+            self.state = 'BLOCKED'
+            return False
+        if self.budgets['retry_budget'] <= 0:
+            self.state = 'FAILED'
+            return False
+        return True
+
 class MissionEngine:
     def __init__(self, max_concurrent_missions):
         self.max_concurrent_missions = max_concurrent_missions
-        self.missions = []
+        self.missions = {}
 
-    def start_mission(self, mission_id, task_id, task_steps, budgets):
+    def start_mission(self, mission_id, task_id, step):
+        if mission_id in self.missions:
+            raise ValueError("Mission already in progress")
         if len(self.missions) >= self.max_concurrent_missions:
-            return False
-        mission = Mission(mission_id, task_id, task_steps, budgets)
-        self.missions.append(mission)
-        mission.run()
-        return True
+            raise ValueError("Maximum concurrent missions reached")
+        mission = Mission(mission_id, task_id, step, 'PENDING')
+        self.missions[mission_id] = mission
+        return mission
 
-    def _check_budgets(self, mission):
-        if mission.tokens_used >= mission.budgets['token_budget']:
-            mission.state = 'BLOCKED'
-            return False
-        if mission.time_elapsed >= mission.budgets['time_budget_seconds']:
-            mission.state = 'BLOCKED'
-            return False
-        if mission.budgets['retry_budget'] > 0 and mission.state == 'BLOCKED':
-            mission.budgets['retry_budget'] -= 1
-            mission.state = 'RUNNING'
-        return True
+    def complete_task(self, mission_id, task_id, step, result):
+        if mission_id not in self.missions:
+            raise ValueError("Mission not found")
+        mission = self.missions[mission_id]
+        if mission.state != 'RUNNING':
+            raise ValueError("Mission not in running state")
+        if mission.task_id != task_id or mission.step != step:
+            raise ValueError("Task mismatch")
+
+        mission.state = 'DONE'
+        mission.budgets['tokens_used'] += result['tokens_used']
+        mission._record_checkpoint(mission_id, task_id, step, result)
+        return mission
+
+    def block_task(self, mission_id, task_id, step):
+        if mission_id not in self.missions:
+            raise ValueError("Mission not found")
+        mission = self.missions[mission_id]
+        if mission.state != 'RUNNING':
+            raise ValueError("Mission not in running state")
+        if mission.task_id != task_id or mission.step != step:
+            raise ValueError("Task mismatch")
+
+        mission.state = 'BLOCKED'
+        mission._record_checkpoint(mission_id, task_id, step, None)
+        return mission
+
+    def fail_task(self, mission_id, task_id, step):
+        if mission_id not in self.missions:
+            raise ValueError("Mission not found")
+        mission = self.missions[mission_id]
+        if mission.state != 'RUNNING':
+            raise ValueError("Mission not in running state")
+        if mission.task_id != task_id or mission.step != step:
+            raise ValueError("Task mismatch")
+
+        mission.state = 'FAILED'
+        mission._record_checkpoint(mission_id, task_id, step, None)
+        return mission
 
     def resume_mission(self, mission_id):
-        mission = memory.load(mission_id)
-        if mission:
-            mission.run()
-            return True
-        return False
+        if mission_id not in self.missions:
+            raise ValueError("Mission not found")
+        mission = self.missions[mission_id]
+        if mission.state != 'BLOCKED':
+            raise ValueError("Mission not in blocked state")
+
+        mission.state = 'RUNNING'
+        return mission
+
+    def get_mission_state(self, mission_id):
+        if mission_id not in self.missions:
+            raise ValueError("Mission not found")
+        return self.missions[mission_id].state

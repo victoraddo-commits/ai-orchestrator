@@ -91,7 +91,9 @@ class TestMonitorLifecycle:
         monitor.start()
 
         initial_count = monitor.check_count
-        time.sleep(0.3)  # Wait for ~2-3 checks
+        deadline = time.time() + 5.0
+        while monitor.check_count <= initial_count and time.time() < deadline:
+            time.sleep(0.05)
 
         assert monitor.check_count > initial_count
 
@@ -117,6 +119,24 @@ class TestProviderHealthChecking:
 
         assert status['health'] == 'unavailable'
         assert 'credentials' in status['reason'].lower()
+
+    def test_local_provider_not_flagged_unavailable(self):
+        """Local providers (kind='local') never get 'unavailable' — they need no credentials."""
+        from core.provider_health_monitor import ProviderHealthMonitor
+
+        monitor = ProviderHealthMonitor()
+
+        # kai_brain is a local Ollama provider. available_fn() returning False
+        # means ollama is unreachable, NOT "no credentials configured".
+        provider_info = {
+            'kind': 'local',
+            'available': False,
+            'enabled': True,
+        }
+
+        status = monitor._check_provider("kai_brain", provider_info)
+
+        assert status['health'] == 'ok'
 
     def test_check_disabled_provider(self):
         """Disabled provider reports 'disabled'."""
@@ -259,6 +279,24 @@ class TestTelegramAlerts:
         assert "quota_exceeded" in call_args
 
     @patch('core.provider_health_monitor.send_telegram_alert')
+    def test_disabled_provider_does_not_alert(self, mock_send):
+        """Disabled providers are intentional, not failures — no Telegram alert."""
+        from core.provider_health_monitor import ProviderHealthMonitor
+        import core.ai_provider as ai_provider
+
+        monitor = ProviderHealthMonitor()
+
+        # Simulate a registry containing only deprecated (disabled) providers.
+        with patch.object(ai_provider, 'list_providers', return_value={
+            'llama3': {'type': 'ollama', 'enabled': True, 'available': True},
+            'local_brain_fast': {'type': 'ollama', 'enabled': True, 'available': True},
+            'local_coder': {'type': 'ollama', 'enabled': True, 'available': True},
+        }):
+            monitor.check_all_providers()
+
+        assert not mock_send.called
+
+    @patch('core.provider_health_monitor.send_telegram_alert')
     def test_alert_cooldown_prevents_spam(self, mock_send):
         """Alert cooldown prevents repeated alerts for same provider."""
         from core.provider_health_monitor import ProviderHealthMonitor
@@ -311,9 +349,17 @@ class TestAPIIntegration:
 
         monitor = ProviderHealthMonitor()
         monitor.start()
-        time.sleep(0.2)  # Let it run briefly
 
-        state = load("provider_health_monitor_state.json")
+        # Poll — the first check_all_providers() does several atomic memory
+        # writes, so a fixed sleep is racy.
+        state = None
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            state = load("provider_health_monitor_state.json")
+            if state and 'running' in state:
+                break
+            time.sleep(0.1)
+
         assert state is not None
         assert state['running'] == True
         assert 'check_count' in state
@@ -344,36 +390,50 @@ class TestEndToEnd:
     def test_monitor_detects_and_alerts_on_failure(self, mock_send):
         """Full flow: provider fails → monitor detects → alert sent."""
         import core.ai.circuit_breaker as cb
+        import core.ai_provider as ai_provider
         from core.provider_health_monitor import ProviderHealthMonitor
 
-        # Trip circuit breaker to simulate failure
-        cb.record_failure("test_provider")
-        cb.record_failure("test_provider")
-        cb.record_failure("test_provider")
+        # Trip circuit breaker for a provider the monitor will actually check.
+        cb.record_failure("kai_brain")
+        cb.record_failure("kai_brain")
+        cb.record_failure("kai_brain")
+        assert cb.is_open("kai_brain")
 
-        monitor = ProviderHealthMonitor(check_interval=0.1)
-        monitor.start()
+        # Pin the registry to just that provider so the check is deterministic
+        # and fast (no ollama/network calls).
+        with patch.object(ai_provider, 'list_providers', return_value={
+            'kai_brain': {'type': 'ollama', 'enabled': True, 'available': True}
+        }):
+            monitor = ProviderHealthMonitor(check_interval=0.1)
+            monitor.start()
 
-        # Wait for at least one check cycle
-        time.sleep(0.3)
+            deadline = time.time() + 5.0
+            while not mock_send.called and time.time() < deadline:
+                time.sleep(0.05)
 
-        # Should have sent an alert
+            monitor.stop()
+
         assert mock_send.called
-
-        monitor.stop()
 
     def test_summary_logging(self):
         """Monitor logs summary every N checks."""
+        import core.ai_provider as ai_provider
         from core.provider_health_monitor import ProviderHealthMonitor
-        import logging
 
-        # Capture log output
-        with patch.object(ProviderHealthMonitor, '_log_summary') as mock_log:
+        # Pin the registry to one fast provider and stub the alert path so the
+        # check loop is deterministic (no ollama/network calls).
+        with patch.object(ProviderHealthMonitor, '_log_summary') as mock_log, \
+             patch('core.provider_health_monitor.send_telegram_alert'), \
+             patch.object(ai_provider, 'list_providers', return_value={
+                 'local': {'type': 'ollama', 'enabled': True, 'available': True}
+             }):
             monitor = ProviderHealthMonitor(check_interval=0.05)  # Very fast
             monitor.start()
 
             # Wait for ~20+ checks (SUMMARY_EVERY_N = 20)
-            time.sleep(1.2)
+            deadline = time.time() + 5.0
+            while not mock_log.called and time.time() < deadline:
+                time.sleep(0.05)
 
             monitor.stop()
 

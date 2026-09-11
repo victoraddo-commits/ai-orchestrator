@@ -1,0 +1,130 @@
+{
+  "queue_name": "KAI Autonomous Tier 1 Tasks",
+  "created": "2026-09-09T11:30:00Z",
+  "priority": "CRITICAL",
+  "total_tasks": 12,
+  "tasks": [
+    {
+      "id": "T1.1",
+      "name": "Import Missing Models to Ollama",
+      "status": "ready",
+      "complexity": "low",
+      "eta_minutes": 30,
+      "dependencies": [],
+      "models_to_import": [
+        "qwen2.5-coder:7b",
+        "qwen3.6:27b",
+        "glm-4-flash:7b"
+      ],
+      "files": [
+        "/home/kai/models/Qwen2.5-Coder-7B-GGUF/",
+        "/home/kai/models/Qwen3.6-27B-GGUF/"
+      ]
+    },
+    {
+      "id": "T1.2",
+      "name": "Wire All Services to Local Models",
+      "status": "completed",
+      "completed_by": "Agent ab8c08f357fe6bec6",
+      "files_modified": 4,
+      "services_configured": "ALL"
+    },
+    {
+      "id": "T1.3",
+      "name": "Migrate to Proxmox B",
+      "status": "planning",
+      "complexity": "high",
+      "eta_minutes": 45,
+      "dependencies": ["T1.2"],
+      "agent": "af122c8902be789b1"
+    },
+    {
+      "id": "T1.4",
+      "name": "Fix .env Plaintext Secrets",
+      "status": "ready",
+      "complexity": "medium",
+      "eta_minutes": 30,
+      "dependencies": [],
+      "security": "CRITICAL"
+    },
+    {
+      "id": "T1.5",
+      "name": "Configure Task-Based Model Routing",
+      "status": "blocked",
+      "complexity": "medium",
+      "eta_minutes": 30,
+      "dependencies": ["T1.1"],
+      "blocked_by": "Need models imported first"
+    },
+    {
+      "id": "T1.6",
+      "name": "Fix Backup Restoration",
+      "status": "ready",
+      "complexity": "medium",
+      "eta_minutes": 60,
+      "dependencies": []
+    },
+    {
+      "id": "T1.7",
+      "name": "Complete Ecosystem Inventory",
+      "status": "ready",
+      "complexity": "low",
+      "eta_minutes": 30,
+      "dependencies": []
+    },
+    {
+      "id": "T1.8",
+      "name": "Build Model Performance Monitoring",
+      "status": "blocked",
+      "complexity": "medium",
+      "eta_minutes": 60,
+      "dependencies": ["T1.1"],
+      "blocked_by": "Need all models active"
+    },
+    {
+      "id": "T1.9",
+      "name": "Implement Agent Supervisor",
+      "status": "blocked",
+      "complexity": "high",
+      "eta_minutes": 120,
+      "dependencies": ["T1.5"]
+    },
+    {
+      "id": "T1.10",
+      "name": "Build Tool Registry",
+      "status": "ready",
+      "complexity": "medium",
+      "eta_minutes": 60,
+      "dependencies": []
+    },
+    {
+      "id": "T1.11",
+      "name": "Advanced Semantic Search",
+      "status": "blocked",
+      "complexity": "high",
+      "eta_minutes": 120,
+      "dependencies": ["T1.1"]
+    },
+    {
+      "id": "T1.12",
+      "name": "Live World Model",
+      "status": "ready",
+      "complexity": "medium",
+      "eta_minutes": 60,
+      "dependencies": []
+    }
+  ],
+  "execution_strategy": {
+    "mode": "autonomous",
+    "approval_required": true,
+    "safety": "AgentGuard enabled",
+    "rollback": "git branches + automatic"
+  },
+  "progress": {
+    "completed": 1,
+    "in_progress": 1,
+    "ready": 6,
+    "blocked": 4,
+    "completion_percentage": 8.3
+  }
+}

@@ -329,22 +329,25 @@ class TestPodRoutingV3:
         assert "claude" not in CODING_ROTATING_FRONT
         assert "gpuai_minimax" not in CODING_ROTATING_FRONT
 
-    # 2026-08-12 operator directive: local qwen2.5:7b (Ollama on Proxmox B) is
-    # Kai's main brain -- primary for planning/architecture/review. The old
-    # deepseek_native_pro-primary assertions predate that change.
-    def test_local_is_review_primary(self):
+    # 2026-09-10 KAI MODEL TEAM directive: local Ollama models are the only
+    # providers. kai_brain (GLM-4.7-Flash) is primary for
+    # planning/architecture/review; cloud/3rd-party providers (deepseek_native,
+    # gemini, qwen4, gpuai_minimax, etc.) were removed from every chain.
+    def test_kai_brain_is_review_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["review"][0] == "local"
+        assert ROLE_PROVIDERS["review"][0] == "kai_brain"
 
-    def test_local_is_architecture_primary(self):
+    def test_kai_brain_is_architecture_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["architecture"][0] == "local"
+        assert ROLE_PROVIDERS["architecture"][0] == "kai_brain"
 
-    def test_local_is_planning_primary(self):
+    def test_kai_brain_is_planning_primary(self):
         from core.ai.ai_router import ROLE_PROVIDERS
-        assert ROLE_PROVIDERS["planning"][0] == "local"
+        assert ROLE_PROVIDERS["planning"][0] == "kai_brain"
 
-    def test_deepseek_native_pro_stays_in_fallback_chains(self):
+    def test_cloud_providers_removed_from_fallback_chains(self):
         from core.ai.ai_router import ROLE_PROVIDERS
         for role in ("review", "architecture", "planning"):
-            assert "deepseek_native_pro" in ROLE_PROVIDERS[role]
+            assert "deepseek_native_pro" not in ROLE_PROVIDERS[role]
+            assert "gemini" not in ROLE_PROVIDERS[role]
+            assert "gpuai_minimax" not in ROLE_PROVIDERS[role]

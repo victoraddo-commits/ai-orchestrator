@@ -1,49 +1,12 @@
 # How many ready builds advance_builds() may run at the same time (13R).
 # 2026-08-05 operator directive: raised 4 -> 8 for Qwen4 pod (RTX PRO 6000 96GB).
 # 8 concurrent requests confirmed live with 0.89-1.02s latency each.
+# 2026-09-10: cloud providers removed — 100% local Ollama models (KAI MODEL TEAM).
 max_concurrent_builds: 8
 
-providers:
-
-  qwen3_coder:
-    enabled: true
-    type: vllm
-    name: Qwen4 Pod A
-    gpu_acceleration: true
-    base_url: https://ldtqgcshb2dwsw-8000.proxy.runpod.net/v1
-    model: Qwen/Qwen3-32B-FP8
-    role:
-      - coding
-      - text_task
-
-  qwen3_pod_b:
-    enabled: true
-    type: vllm
-    name: Qwen4 Pod B
-    gpu_acceleration: true
-    base_url: https://60jwzf36623b0o-8000.proxy.runpod.net/v1
-    model: Qwen/Qwen3-32B-FP8
-    role:
-      - review
-      - architecture
-      - deployment
-
-  claude:
-    enabled: true
-    command: claude
-    role:
-      - architecture
-      - debugging
-      - planning
-      - system_design
-
-  codex:
-    enabled: true
-    command: codex
-    role:
-      - coding
-      - refactoring
-      - testing
+# Cloud providers (qwen3_coder/qwen3_pod_b RunPod, claude, codex) removed
+# 2026-09-10 per operator directive — all roles now route to local Ollama
+# models (kai_brain/kai_coder/kai_deep/local) via core/ai/ai_router.py.
 
 tools:
 

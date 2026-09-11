@@ -65,12 +65,16 @@ BOT_TOKEN: str = ""  # filled lazily on first use
 
 
 def _get_bot_token() -> str:
-    """Load JURIS_KAI_BOT_TOKEN from vault (fallback: env)."""
+    """Load JURIS_KAI_BOT_TOKEN from env (vault temporarily disabled).
+
+    HOTFIX 2026-09-09: credential_vault.retrieve_api_key() returns encrypted
+    token. Bypass vault until decryption is fixed.
+    """
     global BOT_TOKEN
     if BOT_TOKEN:
         return BOT_TOKEN
-    from core.ai.credential_vault import retrieve_api_key
-    BOT_TOKEN = retrieve_api_key("juris_kai") or os.environ.get("JURIS_KAI_BOT_TOKEN", "")
+    # Direct .env load (working)
+    BOT_TOKEN = os.environ.get("JURIS_KAI_BOT_TOKEN", "")
     return BOT_TOKEN
 ADMIN_IDS: set[int] = set()
 _raw_admin = os.environ.get("JURIS_KAI_ADMIN_IDS", "")

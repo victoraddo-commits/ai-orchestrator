@@ -25,6 +25,7 @@ import core.ai.provider_health as provider_health
 import core.ai.circuit_breaker as circuit_breaker
 from core.memory import save, load
 from core.logger import info
+from core.telegram_bridge import send_telegram_alert
 
 logger = logging.getLogger(__name__)
 
@@ -141,8 +142,10 @@ class ProviderHealthMonitor:
                 status = self._check_provider(name, provider_info)
                 self._store_health(name, status)
 
-                # Detect failures and notify
-                if status['health'] != 'ok':
+                # Detect failures and notify. 'disabled' is an intentional
+                # state (deprecated provider being phased out, or operator-
+                # disabled), not a failure — never alert on it.
+                if status['health'] not in ('ok', 'disabled'):
                     self._notify_failure(name, status)
             except Exception as exc:
                 logger.error(f"ProviderHealthMonitor: failed to check {name}: {exc}")
@@ -172,10 +175,12 @@ class ProviderHealthMonitor:
         }
 
         # Check if provider is available (credentials configured)
-        # Skip credential check for Ollama-based providers (they don't need API keys)
-        # Also skip deprecated providers that are being phased out
-        provider_type = provider_info.get('type', '')
-        is_ollama = provider_type == 'ollama' or name.startswith('local')
+        # Skip credential check for local providers (Ollama on localhost:11434 —
+        # they don't need API keys; available_fn() already reports reachability).
+        # The registry stores this as `kind` ("local"/"cloud"), NOT `type`.
+        # Also skip deprecated providers that are being phased out.
+        kind = provider_info.get('kind', '')
+        is_local = kind == 'local' or name.startswith('local')
         is_deprecated = name in ['llama3', 'local_brain_fast', 'local_coder']
 
         if is_deprecated:
@@ -184,7 +189,7 @@ class ProviderHealthMonitor:
             status['reason'] = 'Deprecated provider (being phased out)'
             return status
 
-        if not is_ollama and not provider_info.get('available', False):
+        if not is_local and not provider_info.get('available', False):
             status['health'] = 'unavailable'
             status['reason'] = 'No credentials configured'
             return status
@@ -244,8 +249,6 @@ class ProviderHealthMonitor:
             return  # Skip alert, too soon since last one
 
         try:
-            from core.telegram_bridge import send_telegram_alert
-
             message = f"⚠️ PROVIDER HEALTH ALERT\n\n"
             message += f"Provider: {provider}\n"
             message += f"Status: {status['health']}\n"

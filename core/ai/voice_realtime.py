@@ -20,12 +20,11 @@ from typing import Optional
 from core import ai_provider
 from core.ai import circuit_breaker
 
-# Voice-specific provider chain — free tier first, local last resort
-# Updated 2026-08-28: groq/deepseek_native/gemini need API keys; using live providers
+# Voice-specific provider chain — local-only configuration
+# Updated 2026-09-09: All cloud providers removed, using only local Ollama models
 VOICE_CHAIN = [
-    "omniroute_deepseek_flash",  # DeepSeek Flash via self-hosted OmniRoute gateway
-    "geminix",                   # Gemini free tier
-    "local",                     # qwen2.5:7b via ollama (always-on local)
+    "local",     # qwen2.5:7b via ollama localhost:11434 (primary)
+    "llama3",    # llama3.2:3b via ollama localhost:11434 (fallback)
 ]
 
 # Per-provider timeouts — local ollama needs more time (120s default in llm_clients)

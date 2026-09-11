@@ -27,7 +27,7 @@ from core.sandbox_manager import init_git_if_needed, cleanup_sandbox, get_build_
 # the guaranteed-capable last resort) means the step that runs for every
 # roadmap phase attempt, and that caused every one of tonight's Claude-side
 # incidents, no longer needs to touch Claude at all in the common case.
-PLANNING_TIMEOUT = 180
+PLANNING_TIMEOUT = 360
 
 # Generation involves real file writes/tool calls/tests, not a quick text
 # response -- confirmed live: 13C's generation hit the 300s wall-clock

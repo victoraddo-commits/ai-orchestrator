@@ -141,7 +141,7 @@ def call_ollama_llama(prompt, model=OLLAMA_LLAMA_MODEL, timeout=120):
 OLLAMA_BASE_URL = "http://localhost:11434"
 OLLAMA_MODEL = "qwen2.5:7b"
 
-def call_ollama(prompt, max_tokens=2048, temperature=0.7, model=None, cognitive_role=None, timeout=120):
+def call_ollama(prompt, max_tokens=2048, temperature=0.7, model=None, cognitive_role=None, timeout=300):
     """Call Ollama server on VM 104 with cognitive routing support.
 
     Args:
@@ -184,7 +184,7 @@ def call_ollama(prompt, max_tokens=2048, temperature=0.7, model=None, cognitive_
                     "temperature": temperature,
                 }
             },
-            timeout=120
+            timeout=timeout
         )
         response.raise_for_status()
         return response.json()["response"]

@@ -1973,7 +1973,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "in_progress",
+      "status": "failed",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -3651,17 +3651,17 @@
       "id": "22J",
       "title": "MR: Android Factory + KAI Mobile audit",
       "description": "Discover CT109 kai-android-factory status. Verify APK build reproducible. Preserve existing v3.1.2 build state per memory kai-mobile-v31.md. Do not rebuild \u2014 just verify + document.",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 30,
       "dependencies": [
         "22A"
       ],
       "module": "android_factory",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T06:07:45.884820+00:00",
+      "updated_at": "2026-09-12T06:32:55.376574+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": "cdaa594c"
+      "build_id": "8d1eb73f"
     },
     {
       "id": "22K",
@@ -3771,7 +3771,7 @@
       "id": "23D",
       "title": "MR: kai doctor CLI + /api/doctor endpoint",
       "description": "New scripts/kai_doctor.py + /api/doctor endpoint. Inspects: core health, API, database, queues, event bus, command bus, Mission Engine, State Engine, World Model, Second Brain, workers, models, Model Fabric, Vault, identity, security, network, Proxmox, Telegram, Android, Command Center, KAI-NET, monitoring, storage, dependencies. Output per subsystem: HEALTHY / DEGRADED / BROKEN / MISSING / BLOCKED / UNKNOWN + remediation recommendation + evidence link. 8-12 tests.",
-      "status": "in_progress",
+      "status": "completed",
       "priority": 25,
       "dependencies": [
         "22A"
@@ -3787,7 +3787,7 @@
       "id": "23E",
       "title": "MR: Architecture Guardian",
       "description": "New core/architecture_guardian.py. Continuously scans for: duplicate services (grep systemd units + docker containers with overlapping ports), duplicate APIs (multiple handlers same path), duplicate dashboards, duplicate models, duplicate memory systems, dead services (systemd inactive+enabled), orphaned infrastructure, conflicting APIs, configuration drift, architectural violations, security regressions, unused infrastructure, abandoned projects. Recommends preserve/integrate/merge/consolidate/migrate/repair/deprecate. NEVER auto-destroys \u2014 requires operator authorization. Runs weekly + on-demand. 6-10 tests.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 30,
       "dependencies": [
         "22A"

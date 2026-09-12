@@ -3229,12 +3229,14 @@
       "id": "21A",
       "title": "TF Phase 1 \u2014 Teammate data model + Registry",
       "description": "Persistent teammate registry with lifecycle: CREATED/CONFIGURED/READY/ASSIGNED/EXECUTING/WAITING/REVIEW/VERIFIED/COMPLETED + failure states (FAILED/DEGRADED/BLOCKED/QUARANTINED/RECOVERING/RETIRED). Per-teammate: id, name, specialization, capabilities, skills, resource_limits, assigned_missions, active_tasks, parent/child, dependencies, created_at, updated_at, last_active, health, performance_metrics, verification_history, security_history, failure_history, audit_references. core/teammate/registry.py + tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 10,
       "dependencies": [],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
-      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+      "updated_at": "2026-09-12T02:42:37.949288+00:00",
+      "assigned_provider": "omniroute",
+      "build_id": "94933a7c"
     },
     {
       "id": "21B",
@@ -3492,6 +3494,200 @@
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
       "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "22A",
+      "title": "MR: Kai Core + Scheduler + Orchestrator Cycle audit-and-remediate",
+      "description": "Discover current core/scheduler.py + core/orchestrator_cycle.py state. Verify cycle actually completes (not stuck), advance_builds timeout config sensible, no silent failures. Remediate: reduce cycle stalls, fix timeout mismatches, add health probe endpoint. Live-verify: 3 successful cycles in journal. Register evidence in memory/verification_history.json. Update World Model.",
+      "status": "pending",
+      "priority": 10,
+      "dependencies": [],
+      "module": "kai_core",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22B",
+      "title": "MR: Kai Brain reasoning-authority audit",
+      "description": "Discover which module IS the Kai Brain (reasoning authority). Verify it can review architecture, tests, security findings, deploy results. Remediate: connect KX1 Mission Engine review checkpoints to the Brain. Do not create a second Brain. Update evidence.",
+      "status": "pending",
+      "priority": 15,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "kai_brain",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22C",
+      "title": "MR: Second Brain 6-stores population audit",
+      "description": "Discover current fill: operational (1678 rows), project (887), cognitive (0), conversational (0), relationship (0), legal_supplemental (0). Remediate: wire the 4 empty stores to their real writers. NO fake data. Live-verify counts change on real operator actions. Preserve the 2 populated stores.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "second_brain",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22D",
+      "title": "MR: Model Fabric integration audit",
+      "description": "Discover: kai_brain, kai_coder, kai_deep, koboldcpp_cpu, local \u2014 all registered? All routed via ai_router chains? All health-monitored? VM 112 koboldcpp_cpu keeps circuit-opening \u2014 root cause + fix. Preserve provider chain semantics \u2014 do not rewrite ai_router.py wholesale.",
+      "status": "pending",
+      "priority": 15,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "model_fabric",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22E",
+      "title": "MR: Mission Engine end-to-end verification",
+      "description": "Discover: KX1 mission_engine + store + control + api + dashboard. Live create a real test mission \u2192 approve \u2192 execute \u2192 checkpoint \u2192 complete. Evidence: mission_id + all state transitions + result artifact. Fix any state transition that hangs.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A",
+        "22B"
+      ],
+      "module": "mission_engine",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22F",
+      "title": "MR: Command Center pages real-data audit",
+      "description": "For each page (/, /network, /infrastructure, /world, /missions, /approvals, /legal, /modules, /settings): verify it fetches real backend data, no placeholders/mocks in the rendered path, session-auth enforced. Fix any page that ships mock data. Add missing directive-named pages iff their backend already exists.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "command_center",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22G",
+      "title": "MR: Network Dashboard + KAI-NET reconciliation",
+      "description": "Discover: network_discovery + /api/network + Tailscale subnet routes + OPNsense reachability. Verify Site A OPNsense (192.168.99.3), Tailscale subnet routes both directions. KAI-NET: decide MERGE (current infra IS KAI-NET) vs BUILD (make it a discrete module). Document decision. Update World Model with network entities (already partly done \u2014 verify).",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "network_dashboard",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22H",
+      "title": "MR: Telegram Control Center full path audit",
+      "description": "Path: Telegram \u2192 poller \u2192 bridge \u2192 Bus \u2192 AgentGuard \u2192 API \u2192 response. Live-test /status /network /missions from @KaiEnzo_bot chat 612786480. Verify audit event lands in memory/command_bus_audit. Add Vault identity link (core/telegram_manager/ scaffolded, not wired). NO second bot.",
+      "status": "pending",
+      "priority": 25,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "telegram_control_center",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22I",
+      "title": "MR: Kai Vault + Vaultwarden audit",
+      "description": "Discover: kai-vault container on this host (127.0.0.1:8120) + vaultwarden on CT107 (0.0.0.0:8222). Verify vault_client.py:112 mapping active. Verify auth service password change revokes other sessions. NO parallel vault. Test rotation + audit trail.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "kai_vault",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22J",
+      "title": "MR: Android Factory + KAI Mobile audit",
+      "description": "Discover CT109 kai-android-factory status. Verify APK build reproducible. Preserve existing v3.1.2 build state per memory kai-mobile-v31.md. Do not rebuild \u2014 just verify + document.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "android_factory",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22K",
+      "title": "MR: Infrastructure control-plane audit",
+      "description": "Docker containers (this host + CT107 + CT111 etc.), proxmox nodes, systemd services, network services. Discover full inventory via /api/infrastructure. Fix any container that's marked running but is actually unhealthy. Update World Model.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "infrastructure",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22L",
+      "title": "MR: World Model + Registries reconciliation",
+      "description": "World Model 101 entities. Ensure every VERIFIED subsystem from 22A-22K has entities + edges. Ensure Second Brain writes to relationship store when new entities land. Update capability_registry + service_registry from live probes.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A",
+        "22C",
+        "22G"
+      ],
+      "module": "world_model",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "22M",
+      "title": "MR: Autonomous Engineering acceptance",
+      "description": "Final acceptance gate: run one real remediation mission end-to-end with Kai owning it (Claude disconnected). Evidence: mission log, teammate assignments, code diff, tests, security scan, deploy record, verification result, World Model + roadmap updates. This mirrors phase 21T (Teammate Factory acceptance) but scoped to the whole ecosystem.",
+      "status": "pending",
+      "priority": 50,
+      "dependencies": [
+        "22A",
+        "22B",
+        "22C",
+        "22D",
+        "22E",
+        "22F",
+        "22G",
+        "22H",
+        "22I",
+        "22J",
+        "22K",
+        "22L"
+      ],
+      "module": "autonomous_engineering",
+      "created_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
     }
   ],
   "_audit": {

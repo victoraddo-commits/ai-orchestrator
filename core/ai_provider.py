@@ -640,18 +640,18 @@ register_provider(
 
 # ============================================================================
 # CPU MODEL FABRIC — KoboldCpp on VM 112 (192.168.1.242)
-# Deployed 2026-09-11 — GLM-4.7-Flash Q4_K_M GGUF via KoboldCpp CPU-only
+# Original deployment 2026-09-11: single instance, GLM-4.7-Flash Q4_K_M on 8080.
+# Updated 2026-09-11 (operator directive): replace GLM with two parallel
+# Qwen2.5-Coder-7B Q4_K_M instances on ports 5001 + 5002 for concurrent
+# coding capacity — same model, two servers, independent request queues.
 # ============================================================================
 
-def _koboldcpp_cpu_run_text_task(prompt, timeout=300, project_path=None):
-    """GLM-4.7-Flash Q4_K_M via KoboldCpp on dedicated CPU VM (112).
+def _koboldcpp_call(port: int, prompt: str, timeout: int = 300, max_tokens: int = 2048):
+    """One HTTP call to a KoboldCpp instance on VM 112 at the given port.
 
-    CPU-only inference on 16 Xeon cores. Slower than GPU but provides
-    independent capacity that doesn't contend with GPU workloads on VM 104.
-    OpenAI-compatible API on port 8080.
-
-    Higher timeout (300s) because CPU inference is significantly slower
-    than GPU — expect ~5-15 tok/s depending on context length.
+    Routes over SSH -J root@100.122.38.118 → kai@192.168.1.242 → localhost:PORT.
+    CPU-only inference on 16 Xeon cores. Higher default timeout (300s)
+    because CPU tokens/sec are lower than GPU — expect ~5-15 tok/s.
     """
     import subprocess
     import json
@@ -659,75 +659,123 @@ def _koboldcpp_cpu_run_text_task(prompt, timeout=300, project_path=None):
 
     payload = {
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 2048,
+        "max_tokens": max_tokens,
         "temperature": 0.7,
         "stream": False,
     }
-
-    start_time = time.time()
+    start = time.time()
     try:
-        cmd = [
-            "ssh", "-o", "ConnectTimeout=5",
-            "-J", "root@100.122.38.118",
-            "kai@192.168.1.242",
-            "curl -s -X POST http://localhost:8080/v1/chat/completions "
-            "-H 'Content-Type: application/json' --data-binary @-"
-        ]
-
         result = subprocess.run(
-            cmd,
+            [
+                "ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes",
+                "-J", "root@100.122.38.118",
+                "kai@192.168.1.242",
+                f"curl -s -X POST http://localhost:{port}/v1/chat/completions "
+                f"-H 'Content-Type: application/json' --data-binary @-",
+            ],
             input=json.dumps(payload),
-            capture_output=True,
-            text=True,
-            timeout=timeout
+            capture_output=True, text=True, timeout=timeout,
         )
         if result.returncode != 0:
-            raise RuntimeError(f"SSH/curl to KoboldCpp failed: {result.stderr}")
-
+            raise RuntimeError(f"SSH/curl to KoboldCpp:{port} failed: {result.stderr}")
         data = json.loads(result.stdout)
-        latency_ms = int((time.time() - start_time) * 1000)
-        content = data["choices"][0]["message"]["content"]
-
         return {
-            "content": content,
-            "model": "GLM-4.7-Flash-Q4_K_M-CPU",
-            "latency_ms": latency_ms,
-            "tokens_prompt": data.get("usage", {}).get("prompt_tokens", 0),
-            "tokens_generated": data.get("usage", {}).get("completion_tokens", 0),
+            "content": data["choices"][0]["message"]["content"],
+            "model": f"Qwen2.5-Coder-7B-Q4_K_M-CPU:{port}",
+            "latency_ms": int((time.time() - start) * 1000),
+            "tokens_prompt": (data.get("usage") or {}).get("prompt_tokens", 0),
+            "tokens_generated": (data.get("usage") or {}).get("completion_tokens", 0),
         }
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError,
             KeyError, json.JSONDecodeError) as e:
-        raise RuntimeError(f"KoboldCpp CPU model unavailable: {e}")
+        raise RuntimeError(f"KoboldCpp:{port} unavailable: {e}")
 
 
-def _koboldcpp_cpu_available():
-    """Check if KoboldCpp on VM 112 (kai-cpu) is reachable."""
+def _koboldcpp_available_at(port: int) -> bool:
+    """Reachability probe for one KoboldCpp instance on VM 112."""
     import subprocess
     try:
-        result = subprocess.run(
+        r = subprocess.run(
             ["ssh", "-o", "ConnectTimeout=8", "-o", "BatchMode=yes",
              "-J", "root@100.122.38.118", "kai@192.168.1.242",
-             "curl", "-s", "-m", "5", "http://localhost:8080/api/v1/model"],
-            capture_output=True, text=True, timeout=20
+             "curl", "-s", "-m", "5", f"http://localhost:{port}/api/v1/model"],
+            capture_output=True, text=True, timeout=20,
         )
-        return result.returncode == 0 and "koboldcpp" in result.stdout
+        return r.returncode == 0 and "koboldcpp" in r.stdout
     except Exception:
         return False
 
 
-def _koboldcpp_cpu_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
-    """GLM-4.7-Flash Q4_K_M (CPU) as a coding worker via local_coding_bridge.
+# ── Instance A on port 5001 ───────────────────────────────────────────────
 
-    Same harness as kai_brain/kai_coder coding tasks — the model emits fenced
-    code blocks, the bridge writes files and commits. Routes through KoboldCpp
-    on VM 112 instead of ollama on VM 104, providing independent CPU capacity.
-    """
+def _koboldcpp_cpu_a_run_text_task(prompt, timeout=300, project_path=None):
+    return _koboldcpp_call(5001, prompt, timeout=timeout)
+
+
+def _koboldcpp_cpu_a_available():
+    return _koboldcpp_available_at(5001)
+
+
+def _koboldcpp_cpu_a_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
     from core import local_coding_bridge
     return local_coding_bridge.run_coding_task(
-        project_path, instruction,
-        model="koboldcpp_cpu",  # special model name handled below
-        timeout=timeout,
+        project_path, instruction, model="koboldcpp_cpu_a", timeout=timeout,
     )
+
+
+register_provider(
+    "koboldcpp_cpu_a",
+    run_text_task=_koboldcpp_cpu_a_run_text_task,
+    run_coding_task=_koboldcpp_cpu_a_run_coding_task,
+    available_fn=_koboldcpp_cpu_a_available,
+    kind="local",
+    description="Qwen2.5-Coder-7B Q4_K_M via KoboldCpp on VM 112 port 5001 — CPU-only, 16 Xeon cores, independent capacity.",
+    cost_tier="free",
+)
+
+
+# ── Instance B on port 5002 (parallel capacity, same model) ───────────────
+
+def _koboldcpp_cpu_b_run_text_task(prompt, timeout=300, project_path=None):
+    return _koboldcpp_call(5002, prompt, timeout=timeout)
+
+
+def _koboldcpp_cpu_b_available():
+    return _koboldcpp_available_at(5002)
+
+
+def _koboldcpp_cpu_b_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    from core import local_coding_bridge
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model="koboldcpp_cpu_b", timeout=timeout,
+    )
+
+
+register_provider(
+    "koboldcpp_cpu_b",
+    run_text_task=_koboldcpp_cpu_b_run_text_task,
+    run_coding_task=_koboldcpp_cpu_b_run_coding_task,
+    available_fn=_koboldcpp_cpu_b_available,
+    kind="local",
+    description="Qwen2.5-Coder-7B Q4_K_M via KoboldCpp on VM 112 port 5002 — CPU-only, parallel to koboldcpp_cpu_a for concurrent coding requests.",
+    cost_tier="free",
+)
+
+
+# Backward-compat alias — anything still importing `koboldcpp_cpu` gets
+# routed to instance A. The legacy provider stays registered so old chains
+# don't 404; new work should reference _a or _b explicitly, or use the pair
+# via the router's rotation.
+def _koboldcpp_cpu_run_text_task(prompt, timeout=300, project_path=None):
+    return _koboldcpp_cpu_a_run_text_task(prompt, timeout=timeout, project_path=project_path)
+
+
+def _koboldcpp_cpu_available():
+    return _koboldcpp_cpu_a_available()
+
+
+def _koboldcpp_cpu_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    return _koboldcpp_cpu_a_run_coding_task(project_path, instruction, timeout=timeout, **kwargs)
 
 
 register_provider(
@@ -736,6 +784,6 @@ register_provider(
     run_coding_task=_koboldcpp_cpu_run_coding_task,
     available_fn=_koboldcpp_cpu_available,
     kind="local",
-    description="GLM-4.7-Flash Q4_K_M via KoboldCpp on VM 112 (kai-cpu) — CPU-only inference on 16 Xeon cores, dedicated capacity independent of GPU workloads. CPU Model Fabric.",
+    description="Alias for koboldcpp_cpu_a (Qwen2.5-Coder-7B Q4_K_M on VM 112 port 5001). Kept for backward compat.",
     cost_tier="free",
 )

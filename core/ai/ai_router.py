@@ -86,7 +86,10 @@ ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
 # silently fell through to length-1 `["local"]` chains (no redundancy).
 # Now: kai_brain (primary local reasoning) → koboldcpp_cpu (VM 112 CPU
 # fabric) → local (ollama on VM 104) — three fully-local fallbacks.
-_JURIS_CHAIN = ["kai_brain", "koboldcpp_cpu", "local"]
+# Two CPU instances give parallel capacity; koboldcpp_cpu_a and _b are both
+# Qwen2.5-Coder-7B Q4_K_M on VM 112 (ports 5001 + 5002). Put both in the chain
+# so the router can round-robin / fail over between them.
+_JURIS_CHAIN = ["kai_brain", "koboldcpp_cpu_a", "koboldcpp_cpu_b", "local"]
 for _t in (
     "juris_legal_teaching", "juris_case_analysis", "juris_research",
     "juris_argument_construction", "juris_flashcards", "juris_chat",

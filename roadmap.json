@@ -4042,20 +4042,21 @@
       "id": "25B",
       "title": "25B: Route coding jobs to the new koboldcpp_cpu_a/_b workers",
       "description": "Once phase 25A lands (both instances serving on 5001 + 5002), Kai must start ACTUALLY USING them. Success criteria: 5 successful coding-role delegate() calls that resolve to koboldcpp_cpu_a OR koboldcpp_cpu_b, recorded in memory/ai_usage_history.json. Kai should pick a pending coding-heavy phase from the queue (any of 20B/20C/21B/21C/etc \u2014 the pipeline picks by priority) and let ai_router try koboldcpp_cpu_a as the fallback after kai_coder \u2014 no code changes needed since ai_router.py already lists them in ROLE_PROVIDERS['coding']. Evidence required: 5 rows in ai_usage_history.json with model_used in {koboldcpp_cpu_a, koboldcpp_cpu_b} AND status=='success'. No mocks. If kai_coder never fails, force one fallback by exercising the pool via /kai/chat with provider='koboldcpp_cpu_a' explicitly to prove the plumbing works.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 5,
       "dependencies": [
         "25A"
       ],
       "module": "cpu_model_fabric",
       "created_at": "2026-09-12T07:12:07.234302+00:00",
-      "updated_at": "2026-09-12T07:12:07.234302+00:00"
+      "updated_at": "2026-09-12T07:12:07.234302+00:00",
+      "build_id": "15b1e492"
     },
     {
       "id": "25C",
       "title": "25C: Register kai_coder_cpu_a + kai_coder_cpu_b as Teammates",
       "description": "Uses the Teammate Registry (phase 21A, LANDED). Create two teammates with specialization='coder', capabilities=['coding_agent','text_task'], skills=['write_code','run_tests','diagnose_failure'], preferred_model=koboldcpp_cpu_a (or _b), fallback_models=[koboldcpp_cpu_b (or _a), kai_coder], via core.teammate.registry.TeammateRegistry.create(). Persist via save(). Assign to next available coding mission via assign_mission(). Evidence: 2 teammate records in memory/teammates.json with lifecycle state READY (or later).",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 5,
       "dependencies": [
         "21A",
@@ -4063,7 +4064,267 @@
       ],
       "module": "teammate_factory",
       "created_at": "2026-09-12T07:12:07.234302+00:00",
-      "updated_at": "2026-09-12T07:12:07.234302+00:00"
+      "updated_at": "2026-09-12T07:12:07.234302+00:00",
+      "build_id": "3d164c29"
+    },
+    {
+      "id": "26A",
+      "title": "OpenCode: install on Proxmox B (new CT kai-opencode, VMID 113 preferred)",
+      "description": "Create new LXC on Proxmox B for OpenCode. Ubuntu 24.04, 4 cores, 4G RAM, 40G disk. Install OpenCode via `curl -fsSL https://opencode.ai/install | bash` OR via npm. Verify `opencode --version`. DO NOT modify Proxmox A, Claude Code, or existing CTs. MUST NOT expose port to public internet.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26B",
+      "title": "FreeLLMAPI: install on the same CT (or dedicated CT if resources permit)",
+      "description": "Install FreeLLMAPI via docker one-liner `curl -fsSL https://freellmapi.co/install.sh | bash` OR git clone valorisa/FreeLLMAPI + npm. Start server, verify it listens on OpenAI-compatible /v1 endpoint. DO NOT expose to public internet. Encryption key generated + stored securely.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26A"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26C",
+      "title": "Wire OpenCode \u2192 FreeLLMAPI (Phase 10 of directive)",
+      "description": "Audit FreeLLMAPI: list actual providers/models/aliases/fallbacks/auth/limits/context/output/health. Select PRIMARY/FALLBACK/FAST/REVIEW coding models from what actually exists. Never invent model names. Do not replace existing Kai models. Configure OpenCode to point at FreeLLMAPI endpoint with the unified bearer token.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26A",
+        "26B"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26D",
+      "title": "Skill research + dedup + core skill install (directive phases 11-13)",
+      "description": "Research OpenCode ecosystem: Superpowers, osmontero/opencode-skills, OpenCode Power Pack, opencode-review, farmage/opencode-skills. Evaluate each on maintenance/compat/quality/dup/security/deps/license/risk. Dedup against existing Claude Code / Superpowers / OpenCode / other. Install high-value core skills for: dev / security / infra / AI / web. Never install irrelevant technology-specific skills.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26C"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26E",
+      "title": "Kai-specific skills \u2014 only where generic skills are insufficient (directive phase 14)",
+      "description": "Only create Kai skills for systems ACTUALLY DISCOVERED. Contents reflect the live env. Never invent architecture. Candidates: kai-system-discovery, kai-architecture, kai-security, kai-vault, kai-model-fabric, kai-agent-fabric, kai-teammate-factory, kai-proxmox, kai-networking, kai-airllm, kai-ollama, kai-freellmapi, kai-opencode, kai-testing, kai-deployment, kai-observability, kai-disaster-recovery, kai-second-brain, kai-command-center \u2014 pick only those with real matching subsystems.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26D"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26F",
+      "title": "Kai system knowledge reference (directive phase 15)",
+      "description": "FIRST: check whether Kai already has authoritative docs. If yes: extend/reference \u2014 do NOT create a competing source of truth. If not: create OpenCode-readable arch reference documenting discovered components/repos/services/ports/networks/auth/databases/model infra/deployment/critical paths/security boundaries/backup/testing.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26E"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26G",
+      "title": "Kai engineering team \u2014 agent roles where useful (directive phase 16)",
+      "description": "Where OpenCode supports agents/subagents, create specialized roles ONLY IF USEFUL for the discovered ecosystem: kai-architect / kai-security / kai-reviewer / kai-debugger / kai-devops / kai-model-engineer / kai-network-engineer / kai-qa. Each: responsibility/boundaries/tools/skills/review expectations/security restrictions. Do not create fake complexity.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26F"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26H",
+      "title": "Kai security reviewer (directive phase 17)",
+      "description": "Dedicated security review capability. Must check auth/authz/secrets/API+network exposure/TLS/tokens/creds/perms (file+service+container)/DB access/command exec/prompt injection/tool abuse/agent perms/supply-chain+dependency risk. MUST be able to REJECT unsafe implementation.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26G"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26I",
+      "title": "Discovery-aware development workflow (directive phase 18)",
+      "description": "Wire the 15-step workflow into OpenCode when modifying Kai: identify subsystem \u2192 read docs \u2192 inspect impl \u2192 deps \u2192 skills \u2192 agents \u2192 tests \u2192 svc state \u2192 propose \u2192 implement minimally \u2192 test \u2192 security review \u2192 self-review \u2192 fix \u2192 re-test \u2192 report. Never code from assumptions.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26H"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26J",
+      "title": "Test skill discovery (directive phase 19)",
+      "description": "Launch OpenCode FROM the actual Kai project. Verify it can discover: existing Claude skills / OpenCode skills / Superpowers / Kai-specific skills / CLAUDE.md / AGENTS.md / project instructions. Use actual OpenCode commands \u2014 prove it can LOAD them, not just see the files.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26D"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26K",
+      "title": "Test Superpowers end-to-end (directive phase 20)",
+      "description": "Harmless test that OpenCode can discover / load / follow Superpowers workflow / use associated scripts/resources. Do NOT modify production Kai during this test.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26J"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26L",
+      "title": "Test coding workflow on disposable repo (directive phase 21)",
+      "description": "Disposable test repo. OpenCode must: inspect repo / plan change / create+edit file / run cmd / run test / review change / show diff / correct intentional failure / re-run test. All must work.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26K"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26M",
+      "title": "Test Kai read-only audit (directive phase 22)",
+      "description": "Instruct OpenCode from the real Kai project: 'Audit Kai. Do not change anything. Discover architecture/services/repos/model infra/auth/networking/DBs/skills/agents/deployment. Report + identify anything unverifiable.' Must succeed.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26L"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26N",
+      "title": "Security test (directive phase 23)",
+      "description": "Verify OpenCode does NOT automatically without explicit auth: expose ports / publish creds / delete repos / destroy VMs+CTs / modify Proxmox config / modify prod networking / delete DBs / overwrite secrets. Use least privilege.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26M"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26O",
+      "title": "Git safety verification (directive phase 24)",
+      "description": "Verify OpenCode: runs `git status`, `git branch`, `git remote -v` BEFORE modifying repos. Never automatically: force push / reset --hard / delete branches+worktrees / rewrite history \u2014 unless explicitly instructed by operator.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26N"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26P",
+      "title": "Preserve verification (directive phases 25-26)",
+      "description": "Confirm: Claude Code on Proxmox A untouched. OmniRoute untouched. Kai NOT renamed/restructured/merged/replaced. OpenCode is an ADDITIONAL interface, not a replacement.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26O"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26Q",
+      "title": "Mobile/remote access via Tailscale/NetBird ONLY (directive phase 27)",
+      "description": "Prepare OpenCode for secure remote/mobile access. Use existing Tailscale (100.122.38.118 for pve-2) OR NetBird OR authenticated reverse proxy. DO NOT expose OpenCode directly to public Internet. Do not introduce unnecessary networking changes.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26P"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26R",
+      "title": "Persistence + reboot survival test (directive phase 28)",
+      "description": "Verify OpenCode / FreeLLMAPI / config / skills / agents / credentials survive a reboot. After reboot verify: FreeLLMAPI + OpenCode + skills + providers + models + Kai connectivity. Reboot only if safe.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26Q"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26S",
+      "title": "Final end-to-end system test (directive phase 29)",
+      "description": "Full chain: USER \u2192 OpenCode \u2192 FreeLLMAPI \u2192 model/provider \u2192 OpenCode tool execution \u2192 file modification \u2192 tests \u2192 review. Verify every layer.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26R"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+    },
+    {
+      "id": "26T",
+      "title": "Final acceptance checklist + report (directive phase 30 + FINAL sections)",
+      "description": "Complete acceptance checklist: OpenCode installed+verified / FreeLLMAPI installed+verified / connection works / auth works / model discovery works / primary + fallback models work / streaming + tool exec + file r/w + shell + tests + session continuation / Claude-compat skills discovered / Superpowers discovered+tested / dedup done / community skills evaluated+installed / Kai skills created where justified / Kai arch+docs+repos+svcs+model infra+networking discovered / security boundaries identified / git safety verified / mobile+remote path evaluated / no unnecessary public exposure / persistence+reboot verified / Kai+Proxmox A+Claude Code+OmniRoute+models+DBs+creds preserved. If ANY failure: report honestly per directive phase 30.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26S"
+      ],
+      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
     }
   ],
   "_audit": {

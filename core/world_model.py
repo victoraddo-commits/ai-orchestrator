@@ -136,12 +136,40 @@ def collect_entities() -> dict:
     except Exception:
         pass
 
-    # AI workforce workers
+    # AI workforce workers — filter to LOCAL providers only so the World
+    # Model reflects only the hardware the operator owns (no cloud/3rd-party
+    # workers). Kept: local Ollama, kai_brain (GLM GPU), kai_coder,
+    # kai_deep, koboldcpp_cpu (VM 112), pool workers, role routers.
+    # Rejected: claude/gemini/geminix/groq/openrouter/minimax/deepseek/gpuai/
+    # omniroute/free_coding/runpod/qwen4/openai/anthropic/cohere/nemotron/
+    # poolside/opencode/cerebras.
+    _CLOUD_KW = (
+        "claude", "gemini", "geminix", "groq", "openrouter", "minimax",
+        "deepseek", "gpuai", "omniroute", "free_coding", "openai",
+        "anthropic", "cerebras", "poolside", "cohere", "nemotron",
+        "runpod", "qwen4", "opencode", "gpt-",
+    )
+    _LOCAL_KW = (
+        "local", "llama3", "kai_brain", "kai_coder", "kai_deep",
+        "koboldcpp_cpu", "qwen2.5", "llama3.2",
+    )
+
+    def _keep_worker(wid: str) -> bool:
+        # Non-provider workers (pool-worker-N, role:*, direct local:*) always kept.
+        if not wid.startswith("provider:"):
+            return True
+        low = wid.lower()
+        if any(k in low for k in _CLOUD_KW):
+            return False
+        if any(k in low for k in _LOCAL_KW):
+            return True
+        return False  # unknown provider → err on the safe side, drop
+
     try:
         from core.workforce import registry
         for w in registry.list_workers() or []:
             wid = getattr(w, "worker_id", None) or (w.get("worker_id") if isinstance(w, dict) else None)
-            if wid:
+            if wid and _keep_worker(wid):
                 st = getattr(w, "status", None) or (w.get("status") if isinstance(w, dict) else None)
                 entities[f"worker:{wid}"] = {
                     "type": "ai_worker", "label": wid, "status": st,

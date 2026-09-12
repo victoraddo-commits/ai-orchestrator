@@ -3725,6 +3725,75 @@ def api_approvals_reject(
     return result
 
 
+@app.get("/api/infrastructure")
+async def api_infrastructure(_user: str = Depends(_require_spa_user)):
+    """Aggregate infrastructure view: docker containers on this host + proxmox
+    nodes + LXC/VM inventory + summary counts. Session-authed. Read-only.
+    """
+    result: dict[str, Any] = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "docker": {"containers": [], "error": None},
+        "proxmox": {"nodes": [], "error": None},
+        "counts": {},
+        "warnings": [],
+    }
+
+    # Docker on this host
+    try:
+        client = _get_docker_client()
+        resp = await client.get("/containers/json?all=true")
+        resp.raise_for_status()
+        containers = resp.json()
+        rows = []
+        for c in containers:
+            name = (c.get("Names") or ["unknown"])[0].lstrip("/")
+            rows.append({
+                "name": name,
+                "id": c.get("Id", "")[:12],
+                "image": c.get("Image", ""),
+                "state": c.get("State", "unknown"),
+                "status": c.get("Status", ""),
+            })
+        result["docker"]["containers"] = rows
+    except Exception as e:
+        result["docker"]["error"] = f"docker unavailable: {e}"
+
+    # Proxmox nodes (uses existing proxmox_monitor)
+    try:
+        import core.proxmox_monitor as _pm
+        nodes = _pm.collect_all_nodes() or {}
+        if isinstance(nodes, dict):
+            for name, info in nodes.items():
+                result["proxmox"]["nodes"].append({
+                    "name": name,
+                    "reachable": (info or {}).get("reachable"),
+                    "lxcs": len((info or {}).get("lxcs") or []),
+                    "vms": len((info or {}).get("vms") or []),
+                    "load": (info or {}).get("load"),
+                    "memory_pct": (info or {}).get("memory_pct"),
+                    "uptime": (info or {}).get("uptime"),
+                })
+    except Exception as e:
+        result["proxmox"]["error"] = f"proxmox unavailable: {e}"
+
+    # Counts
+    result["counts"] = {
+        "docker_containers": len(result["docker"]["containers"]),
+        "docker_running": sum(1 for c in result["docker"]["containers"] if c.get("state") == "running"),
+        "proxmox_nodes": len(result["proxmox"]["nodes"]),
+        "proxmox_reachable": sum(1 for n in result["proxmox"]["nodes"] if n.get("reachable")),
+        "lxcs": sum(n.get("lxcs", 0) for n in result["proxmox"]["nodes"]),
+        "vms": sum(n.get("vms", 0) for n in result["proxmox"]["nodes"]),
+    }
+
+    if result["docker"]["error"]:
+        result["warnings"].append(result["docker"]["error"])
+    if result["proxmox"]["error"]:
+        result["warnings"].append(result["proxmox"]["error"])
+
+    return result
+
+
 @app.get("/api/world_model")
 def api_world_model(_user: str = Depends(_require_spa_user)):
     """Return the World Model snapshot: entities + edges + last update.

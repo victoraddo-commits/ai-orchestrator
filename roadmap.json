@@ -1973,7 +1973,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "failed",
+      "status": "pending",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1983,9 +1983,10 @@
       "tests_required": false,
       "note": "[2026-09-01 reconciliation] Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
       "assigned_provider": "omniroute",
-      "build_id": "e8738e64",
+      "build_id": null,
       "failure_reason": null,
-      "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note"
+      "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note",
+      "updated_at": "2026-09-12T03:00:06.931088+00:00"
     },
     {
       "id": "17Q",
@@ -3185,58 +3186,62 @@
       "id": "20A",
       "title": "20A: Diagnostics Page + /api/diagnostics endpoint",
       "description": "Command Center page at /diagnostics + /api/diagnostics aggregate endpoint. Wraps existing /kai/circuit-breakers + /api/vpn/health + /kai/agents + health_observatory anomalies. Backend module core/diagnostics.py that composes the response. Frontend page follows the pattern of NetworkPage/WorldModelPage/InfrastructurePage (PageContainer + Panel + metric cards + data-table). Sidebar entry with Activity icon. Nginx auth_request gate for /api/diagnostics/. Auto-refresh 15s. 4-6 pytest tests for the compose logic.",
-      "status": "in_progress",
+      "status": "pending",
       "priority": 20,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": "08366258"
+      "build_id": null,
+      "assigned_provider": "omniroute"
     },
     {
       "id": "20B",
       "title": "20B: Vault Page + /api/vault/status endpoint",
       "description": "Command Center page at /vault. Wraps existing /kai/vault + /kai/vault/rotation + kai-vault container health. Shows: total secrets, secrets by category, last rotation, recent audit events. Sidebar entry with Lock icon. Read-only. 4-6 tests.",
-      "status": "in_progress",
+      "status": "pending",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": "52fc1f48"
+      "build_id": null,
+      "assigned_provider": "omniroute"
     },
     {
       "id": "20C",
       "title": "20C: Audit Trail Page + /api/audit endpoint",
       "description": "Command Center page at /audit. Merges memory/command_bus_audit + gateway_audit.json + execution_audit.json + secret_access_audit.json into a unified timeline. Filter by source, user, outcome. Sidebar entry with FileText icon. Read-only. 4-6 tests.",
-      "status": "in_progress",
+      "status": "pending",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": "b0c4047e"
+      "build_id": null,
+      "assigned_provider": "omniroute"
     },
     {
       "id": "20D",
       "title": "20D: Telegram bot pause/resume/stop/redirect commands for Missions",
       "description": "Add /pause, /resume, /stop, /redirect commands to core/kai_control_commands.py. Map to Mission Engine POST /kai/missions/{id}/steer and /execute. Follow the existing Bus dispatch pattern (Bus \u2192 AgentGuard \u2192 audit \u2192 handler). Parse mission_id from message (e.g. /pause msn_abc123). Update /help. 3-5 tests. Do NOT touch Mission Engine itself.",
-      "status": "in_progress",
+      "status": "pending",
       "priority": 30,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": "082553de"
+      "build_id": null,
+      "assigned_provider": "omniroute"
     },
     {
       "id": "21A",
       "title": "TF Phase 1 \u2014 Teammate data model + Registry",
       "description": "Persistent teammate registry with lifecycle: CREATED/CONFIGURED/READY/ASSIGNED/EXECUTING/WAITING/REVIEW/VERIFIED/COMPLETED + failure states (FAILED/DEGRADED/BLOCKED/QUARANTINED/RECOVERING/RETIRED). Per-teammate: id, name, specialization, capabilities, skills, resource_limits, assigned_missions, active_tasks, parent/child, dependencies, created_at, updated_at, last_active, health, performance_metrics, verification_history, security_history, failure_history, audit_references. core/teammate/registry.py + tests.",
-      "status": "in_progress",
+      "status": "completed",
       "priority": 10,
       "dependencies": [],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
       "updated_at": "2026-09-12T02:42:37.949288+00:00",
       "assigned_provider": "omniroute",
-      "build_id": "94933a7c"
+      "build_id": "manual-claude"
     },
     {
       "id": "21B",
@@ -3504,9 +3509,10 @@
       "dependencies": [],
       "module": "kai_core",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T03:06:17.778464+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null
     },
     {
       "id": "22B",

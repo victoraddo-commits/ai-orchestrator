@@ -4074,7 +4074,7 @@
       "id": "26A",
       "title": "OpenCode dir: complete environment discovery on Proxmox B (read-only)",
       "description": "Read-only audit on Proxmox B: hostname, hostnamectl, uname -a, /etc/os-release, lscpu, free -h, lsblk, df -h, ip -br addr, ip route, ip -br link, ss -tulpn, running+enabled services. Determine: whoami, id, sudo -n true. Dev tooling versions: node, npm, bun, pnpm, yarn, git, python3, docker, podman. Only run commands that exist. NO modifications. Record findings for phase 1+.",
-      "status": "in_progress",
+      "status": "pending",
       "priority": 1,
       "depends_on": [],
       "created_at": "2026-09-12T07:27:13.795782+00:00",
@@ -4100,13 +4100,15 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "63bc41f3"
+      "build_id": null,
+      "updated_at": "2026-09-12T07:53:28.182131+00:00",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "26B",
       "title": "OpenCode dir: discover the Kai ecosystem on Proxmox B",
       "description": "Search /home, /opt, /srv, /workspace(s), /root, /usr/local/src, /var/www for kai, kai-*, jarvis, ai-orchestrator, kai-vault, command-center, second-brain, model-fabric, agent-fabric, teammate, agent, brain, scheduler, telegram. Inspect: git repos, Docker containers+compose, systemd, PM2, Python/Node/FastAPI apps, DBs, reverse proxies, API gateways. DO NOT modify.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26A"
@@ -4134,13 +4136,16 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "dbf0b07f"
+      "build_id": "d155760b",
+      "updated_at": "2026-09-12T07:48:23.879787+00:00",
+      "assigned_provider": "omniroute",
+      "failure_reason": "Build d155760b missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26C",
       "title": "OpenCode dir: build a Kai system map",
       "description": "From phase-1 discovery, map: COMPUTE (Proxmox hosts, VMs, LXCs, GPU/CPU, storage, mem, GPU); NETWORK (interfaces, VLANs, subnets, gateways, DNS, reverse proxies, VPN/Tailscale/NetBird, svc-to-svc paths, exposed ports); SERVICES (Kai svcs, AI Gateway, Vault, Second Brain, Command Center, Agent systems, schedulers, Telegram, APIs, DBs, auth, notifications, dashboards); AI (Ollama, AirLLM, other inference, local+remote models, provider APIs, routing, fallback, aliases); DEVELOPMENT (git repos+branches+remotes+worktrees, existing coding agents, Claude Code, OpenCode, other frameworks, existing skills+agents+prompts, CLAUDE.md, AGENTS.md, README, arch docs).",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26B"
@@ -4168,13 +4173,15 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "d7056783"
+      "build_id": "d7056783",
+      "updated_at": "2026-09-12T07:48:23.879804+00:00",
+      "failure_reason": "Build d7056783 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26D",
       "title": "OpenCode dir: discover all existing skills",
       "description": "Search ~/.config/opencode/skills, ~/.claude/skills, ~/.agents/skills, .opencode/skills, .claude/skills, .agents/skills. Search Kai repos for SKILL.md, skill.md, skills/, agents/, workflows/, CLAUDE.md, AGENTS.md. Build inventory: name, location, source repo, purpose, deps, Claude-specific behavior, OpenCode compat, duplicate/conflict status.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26C"
@@ -4202,13 +4209,15 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "88f17776"
+      "build_id": "88f17776",
+      "updated_at": "2026-09-12T07:48:23.879809+00:00",
+      "failure_reason": "Build 88f17776 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26E",
       "title": "OpenCode dir: discover Superpowers",
       "description": "Determine whether Superpowers exists (search superpowers, obra/superpowers, SKILL.md, superpowers skills). Check install location, version/commit, available skills, OpenCode compat, Claude-specific deps, hooks, commands, agents, scripts. If exists AND OpenCode can natively discover: DO NOT COPY \u2014 use it. If adaptation required: DO NOT modify original; create OpenCode-compat adapter/copy in separate location. Preserve original.",
-      "status": "pending",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26D"
@@ -4236,13 +4245,15 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "038f87d6",
+      "failure_reason": "Build 038f87d6 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26F",
       "title": "OpenCode dir: discover Claude compatibility",
       "description": "Determine whether OpenCode can directly consume .claude/skills, ~/.claude/skills, CLAUDE.md. Use capabilities of INSTALLED OpenCode version. TEST actual discovery \u2014 not filesystem existence. If native: USE existing skill, do not duplicate. If not: create compat layer, preserve original.",
-      "status": "pending",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26E"
@@ -4270,7 +4281,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "6cebb341",
+      "failure_reason": "Build 6cebb341 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26G",
@@ -4310,7 +4323,7 @@
       "id": "26H",
       "title": "OpenCode dir: install / verify OpenCode",
       "description": "If absent: `curl -fsSL https://opencode.ai/install | bash` (or brew/npm/scoop per phase-0 tooling). If already installed: do NOT reinstall. Verify current/stable; upgrade only when safe+useful. Verify: `opencode --version`, `which opencode`.",
-      "status": "in_progress",
+      "status": "pending",
       "priority": 1,
       "depends_on": [
         "26G"
@@ -4338,7 +4351,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "5ffcafeb"
+      "build_id": null,
+      "updated_at": "2026-09-12T07:53:28.182160+00:00",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "26I",
@@ -4514,7 +4529,7 @@
       "id": "26N",
       "title": "OpenCode dir: skill deduplication",
       "description": "Before installing any skill CHECK: equivalent in Superpowers / Claude Code / OpenCode / other installed pkg? If yes: PRESERVE existing. Do not create dups. If overlap: prefer better-maintained; do not delete. Resolve precedence safely.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26M"
@@ -4542,7 +4557,10 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "d0c3079e"
+      "build_id": "b3c9849b",
+      "updated_at": "2026-09-12T07:48:23.879816+00:00",
+      "assigned_provider": "omniroute",
+      "failure_reason": "Build b3c9849b missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26O",
@@ -4650,7 +4668,7 @@
       "id": "26R",
       "title": "OpenCode dir: Kai security reviewer",
       "description": "Dedicated security review capability. Must check auth/authz, secrets, API+network exposure, TLS, tokens, creds, file+service+container perms, DB access, command exec, prompt injection, tool abuse, agent perms, supply-chain+dep risk. MUST be able to REJECT unsafe implementation.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26Q"
@@ -4678,7 +4696,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "50e7e677"
+      "build_id": "50e7e677",
+      "updated_at": "2026-09-12T07:48:23.879821+00:00",
+      "failure_reason": "Build 50e7e677 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26S",
@@ -5024,7 +5044,7 @@
       "id": "26AC",
       "title": "OpenCode dir: persistence + reboot survival",
       "description": "Verify OpenCode / FreeLLMAPI / config / skills / agents / credentials survive reboot. Reboot only if safe. After: verify FreeLLMAPI + OpenCode + skills + providers + models + Kai connectivity.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "depends_on": [
         "26AB"
@@ -5052,7 +5072,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": "e2d84105"
+      "build_id": "e2d84105",
+      "updated_at": "2026-09-12T07:48:23.879827+00:00",
+      "failure_reason": "Build e2d84105 missing from builds.json (deleted or stale reference)"
     },
     {
       "id": "26AD",

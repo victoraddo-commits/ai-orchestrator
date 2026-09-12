@@ -3186,48 +3186,48 @@
       "id": "20A",
       "title": "20A: Diagnostics Page + /api/diagnostics endpoint",
       "description": "Command Center page at /diagnostics + /api/diagnostics aggregate endpoint. Wraps existing /kai/circuit-breakers + /api/vpn/health + /kai/agents + health_observatory anomalies. Backend module core/diagnostics.py that composes the response. Frontend page follows the pattern of NetworkPage/WorldModelPage/InfrastructurePage (PageContainer + Panel + metric cards + data-table). Sidebar entry with Activity icon. Nginx auth_request gate for /api/diagnostics/. Auto-refresh 15s. 4-6 pytest tests for the compose logic.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 20,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": null,
+      "build_id": "08366258",
       "assigned_provider": "omniroute"
     },
     {
       "id": "20B",
       "title": "20B: Vault Page + /api/vault/status endpoint",
       "description": "Command Center page at /vault. Wraps existing /kai/vault + /kai/vault/rotation + kai-vault container health. Shows: total secrets, secrets by category, last rotation, recent audit events. Sidebar entry with Lock icon. Read-only. 4-6 tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": null,
+      "build_id": "eb90fe95",
       "assigned_provider": "omniroute"
     },
     {
       "id": "20C",
       "title": "20C: Audit Trail Page + /api/audit endpoint",
       "description": "Command Center page at /audit. Merges memory/command_bus_audit + gateway_audit.json + execution_audit.json + secret_access_audit.json into a unified timeline. Filter by source, user, outcome. Sidebar entry with FileText icon. Read-only. 4-6 tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": null,
+      "build_id": "b0c4047e",
       "assigned_provider": "omniroute"
     },
     {
       "id": "20D",
       "title": "20D: Telegram bot pause/resume/stop/redirect commands for Missions",
       "description": "Add /pause, /resume, /stop, /redirect commands to core/kai_control_commands.py. Map to Mission Engine POST /kai/missions/{id}/steer and /execute. Follow the existing Bus dispatch pattern (Bus \u2192 AgentGuard \u2192 audit \u2192 handler). Parse mission_id from message (e.g. /pause msn_abc123). Update /help. 3-5 tests. Do NOT touch Mission Engine itself.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 30,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T02:38:06.762896+00:00",
-      "build_id": null,
+      "build_id": "22f24d85",
       "assigned_provider": "omniroute"
     },
     {
@@ -3247,27 +3247,31 @@
       "id": "21B",
       "title": "TF Phase 2 \u2014 Skill Registry",
       "description": "Persistent Skill Registry. Each skill: skill_id, name, description, inputs, outputs, required_capabilities, required_permissions, allowed_tools, forbidden_tools, model_requirements, security_requirements, verification_method, timeout, resource_requirements, version, dependencies. Skills globally reusable. Seed 15 skills: inspect_repository, inspect_service, inspect_proxmox, inspect_network, inspect_opnsense, inspect_database, write_code, run_tests, run_security_scan, benchmark_model, deploy_service, rollback_service, verify_endpoint, inspect_logs, diagnose_failure. core/teammate/skills.py + tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 10,
       "dependencies": [
         "21A"
       ],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
-      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+      "updated_at": "2026-09-12T02:42:37.949288+00:00",
+      "assigned_provider": "omniroute",
+      "build_id": "bf1e3e31"
     },
     {
       "id": "21C",
       "title": "TF Phase 3 \u2014 Worker Registry integration",
       "description": "Wire teammate factory to existing worker registry (core/workforce/registry.py). Worker events: worker.started/failed/reassigned/completed on Event Bus. Track worker health per teammate assignment.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 15,
       "dependencies": [
         "21A"
       ],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
-      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+      "updated_at": "2026-09-12T02:42:37.949288+00:00",
+      "assigned_provider": "omniroute",
+      "build_id": "b3a11bae"
     },
     {
       "id": "21D",
@@ -3331,14 +3335,16 @@
       "id": "21H",
       "title": "TF Phase 8 \u2014 Permissions + Vault + AgentGuard",
       "description": "Every teammate execution path integrates with AgentGuard (core/agentguard/guard.py) + Vault (core/vault_client.py). Capability-scoped Vault access \u2014 never raw secrets in prompts/logs/reports. Every secret access audited via existing secret_access_audit.json.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 15,
       "dependencies": [
         "21A"
       ],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
-      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+      "updated_at": "2026-09-12T02:42:37.949288+00:00",
+      "assigned_provider": "omniroute",
+      "build_id": "e8980367"
     },
     {
       "id": "21I",
@@ -3504,7 +3510,7 @@
       "id": "22A",
       "title": "MR: Kai Core + Scheduler + Orchestrator Cycle audit-and-remediate",
       "description": "Discover current core/scheduler.py + core/orchestrator_cycle.py state. Verify cycle actually completes (not stuck), advance_builds timeout config sensible, no silent failures. Remediate: reduce cycle stalls, fix timeout mismatches, add health probe endpoint. Live-verify: 3 successful cycles in journal. Register evidence in memory/verification_history.json. Update World Model.",
-      "status": "pending",
+      "status": "completed",
       "priority": 10,
       "dependencies": [],
       "module": "kai_core",
@@ -3512,7 +3518,7 @@
       "updated_at": "2026-09-12T03:06:17.778464+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": "manual-claude"
     },
     {
       "id": "22B",

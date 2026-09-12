@@ -3808,6 +3808,17 @@ async def api_infrastructure(_user: str = Depends(_require_spa_user)):
     return result
 
 
+@app.get("/api/kai_core/health")
+def api_kai_core_health(_user: str = Depends(_require_spa_user)):
+    """22A: Kai Core cycle-health probe.
+
+    Returns cycle timing + stall counts read from journalctl. Session-auth
+    via nginx auth_request + X-Kai-User header. Never raises — always 200.
+    """
+    from core import kai_core_health as _kch
+    return _kch.get_health()
+
+
 @app.get("/api/world_model")
 def api_world_model(_user: str = Depends(_require_spa_user)):
     """Return the World Model snapshot: entities + edges + last update.

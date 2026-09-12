@@ -141,6 +141,60 @@ def _safe_run_ecosystem_discovery():
         return False
 
 
+def _detect_stalled_builds(builds):
+    """22A: WARN when an active build stays in the same status across cycles.
+
+    Loads per-build cycle counters from memory/build_stall_state.json,
+    increments for builds whose (status, updated) is unchanged, warns at
+    STALE_WARN_CYCLES threshold (default 2 — ~2 minutes on the 60s tick).
+    """
+    from pathlib import Path as _P
+    import json as _json
+    import os as _os
+    from datetime import datetime as _dt, timezone as _tz
+
+    _mem = _P("memory/build_stall_state.json")
+    try:
+        _prev = _json.loads(_mem.read_text()) if _mem.exists() else {"seen": {}}
+    except Exception:
+        _prev = {"seen": {}}
+    _seen = _prev.get("seen", {})
+    _now = {}
+
+    _threshold = int(_os.environ.get("KAI_STALE_WARN_CYCLES", "2"))
+    active_states = {"PLANNING", "GENERATING", "DEPLOYING", "CODE_REVIEW",
+                     "REQUESTED", "ARCHITECTURE_APPROVED",
+                     "WAITING_FOR_ARCHITECTURE_APPROVAL",
+                     "WAITING_FOR_DEPLOY_APPROVAL"}
+
+    for b in builds or []:
+        if not isinstance(b, dict):
+            continue
+        bid = b.get("id") or ""
+        st = b.get("status") or ""
+        upd = b.get("updated") or ""
+        name = b.get("name", "?")
+        if st not in active_states:
+            continue
+        key = f"{bid}"
+        entry = _seen.get(key) or {}
+        prev_st = entry.get("status")
+        prev_upd = entry.get("updated")
+        if prev_st == st and prev_upd == upd:
+            cycles = int(entry.get("cycles", 0)) + 1
+        else:
+            cycles = 1
+        _now[key] = {"status": st, "updated": upd, "cycles": cycles, "name": name}
+        if cycles >= _threshold:
+            info(f"WARNING: build {bid[:12]} ({name}) stuck in {st} for {cycles} cycles — last update {upd}")
+
+    try:
+        _mem.parent.mkdir(parents=True, exist_ok=True)
+        _mem.write_text(_json.dumps({"seen": _now, "updated_at": _dt.now(_tz.utc).isoformat()}, indent=2))
+    except Exception:
+        pass
+
+
 def run_cycle():
 
     info("=== orchestrator cycle started ===")
@@ -244,14 +298,28 @@ def run_cycle():
     # subprocess doesn't deadlock the entire cycle.  advance_roadmap() runs
     # BEFORE this call, so new phases are already spawned; the timeout just
     # means the next scheduler tick (300s later) gets a fresh cycle.
+    # 22A: default advance_builds timeout reduced from 900s → 300s so a hung
+    # provider doesn't stall the pipeline for 15 min; env-tunable for
+    # operators who need longer.
     import concurrent.futures as _cf
+    import os as _os
+    _advance_timeout = int(_os.environ.get("KAI_ADVANCE_BUILDS_TIMEOUT", "300"))
     with _cf.ThreadPoolExecutor(max_workers=1) as _timeout_pool:
         _future = _timeout_pool.submit(advance_builds)
         try:
-            builds = _future.result(timeout=900)
+            builds = _future.result(timeout=_advance_timeout)
         except _cf.TimeoutError:
-            info("advance_builds timed out after 900s — cycle continues, builds still in flight")
+            info(f"WARNING: advance_builds timed out after {_advance_timeout}s — cycle continues, builds still in flight")
             builds = load_builds()
+
+    # 22A: stall detector — WARN once per cycle if any active build has not
+    # changed status for more than STALE_WARN_MINUTES (default 30). Persists
+    # a per-build cycle counter to memory/build_stall_state.json so a build
+    # that's stuck across N cycles gets an escalating message.
+    try:
+        _detect_stalled_builds(builds or [])
+    except Exception as _err:
+        info(f"stall detector failed: {type(_err).__name__}: {_err}")
 
     # Workforce starvation detection (2026-08-22 spec §2) — safe, alerting +
     # bounded concurrency boost only.

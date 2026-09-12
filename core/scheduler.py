@@ -132,6 +132,18 @@ def start():
 
     info("scheduler started (Telegram monitor + Health Worker + Provider Health Monitor)")
 
+    # 22A: koboldcpp_cpu (VM 112) startup probe. If the endpoint is
+    # unreachable at boot, emit a clear WARNING so the operator knows the
+    # local CPU-model fabric is offline (circuit_open on the first request
+    # is the noisier alternative).
+    try:
+        import urllib.request as _req
+        _url = os.environ.get("KOBOLDCPP_CPU_URL", "http://192.168.1.242:5001") + "/api/v1/model"
+        _resp = _req.urlopen(_url, timeout=3)
+        info(f"koboldcpp_cpu (VM 112) probe: {_resp.status} OK")
+    except Exception as _err:
+        info(f"WARNING: koboldcpp_cpu (VM 112 at {os.environ.get('KOBOLDCPP_CPU_URL', 'http://192.168.1.242:5001')}) unreachable at startup: {type(_err).__name__}: {_err}. Circuit will open on first request. Local juris_* fallback chain will still route through kai_brain/local — koboldcpp_cpu just won't be an option until the VM comes back.")
+
     if notify:
         notify("READY=1")
 

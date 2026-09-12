@@ -3651,7 +3651,7 @@
       "id": "22J",
       "title": "MR: Android Factory + KAI Mobile audit",
       "description": "Discover CT109 kai-android-factory status. Verify APK build reproducible. Preserve existing v3.1.2 build state per memory kai-mobile-v31.md. Do not rebuild \u2014 just verify + document.",
-      "status": "in_progress",
+      "status": "completed",
       "priority": 30,
       "dependencies": [
         "22A"
@@ -4036,6 +4036,33 @@
       "updated_at": "2026-09-12T05:22:24.481794+00:00",
       "assigned_provider": "omniroute",
       "build_id": "c1b2d456"
+    },
+    {
+      "id": "25B",
+      "title": "25B: Route coding jobs to the new koboldcpp_cpu_a/_b workers",
+      "description": "Once phase 25A lands (both instances serving on 5001 + 5002), Kai must start ACTUALLY USING them. Success criteria: 5 successful coding-role delegate() calls that resolve to koboldcpp_cpu_a OR koboldcpp_cpu_b, recorded in memory/ai_usage_history.json. Kai should pick a pending coding-heavy phase from the queue (any of 20B/20C/21B/21C/etc \u2014 the pipeline picks by priority) and let ai_router try koboldcpp_cpu_a as the fallback after kai_coder \u2014 no code changes needed since ai_router.py already lists them in ROLE_PROVIDERS['coding']. Evidence required: 5 rows in ai_usage_history.json with model_used in {koboldcpp_cpu_a, koboldcpp_cpu_b} AND status=='success'. No mocks. If kai_coder never fails, force one fallback by exercising the pool via /kai/chat with provider='koboldcpp_cpu_a' explicitly to prove the plumbing works.",
+      "status": "pending",
+      "priority": 5,
+      "dependencies": [
+        "25A"
+      ],
+      "module": "cpu_model_fabric",
+      "created_at": "2026-09-12T07:12:07.234302+00:00",
+      "updated_at": "2026-09-12T07:12:07.234302+00:00"
+    },
+    {
+      "id": "25C",
+      "title": "25C: Register kai_coder_cpu_a + kai_coder_cpu_b as Teammates",
+      "description": "Uses the Teammate Registry (phase 21A, LANDED). Create two teammates with specialization='coder', capabilities=['coding_agent','text_task'], skills=['write_code','run_tests','diagnose_failure'], preferred_model=koboldcpp_cpu_a (or _b), fallback_models=[koboldcpp_cpu_b (or _a), kai_coder], via core.teammate.registry.TeammateRegistry.create(). Persist via save(). Assign to next available coding mission via assign_mission(). Evidence: 2 teammate records in memory/teammates.json with lifecycle state READY (or later).",
+      "status": "pending",
+      "priority": 5,
+      "dependencies": [
+        "21A",
+        "25A"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T07:12:07.234302+00:00",
+      "updated_at": "2026-09-12T07:12:07.234302+00:00"
     }
   ],
   "_audit": {

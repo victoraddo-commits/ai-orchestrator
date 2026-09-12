@@ -111,9 +111,14 @@ for _t in (
 # a deterministic harness that turns their fenced-file output into real
 # writes + git commits — so they satisfy the coding_agent capability.
 ROLE_PROVIDERS["coding"] = [
-    "kai_coder",  # kai.coder.fast — Qwen2.5-Coder-7B code specialist
-    "koboldcpp_cpu",  # GLM-4.7-Flash Q4_K_M on VM 112 CPU — independent capacity
+    "kai_coder",         # kai.coder.fast — Qwen2.5-Coder-7B on VM 104 GPU (primary)
+    "koboldcpp_cpu_a",   # Qwen2.5-Coder-7B on VM 112 port 5001 (CPU, independent capacity)
+    "koboldcpp_cpu_b",   # Qwen2.5-Coder-7B on VM 112 port 5002 (CPU, parallel to _a)
+    "local",             # ollama fallback
 ]
+# Fanout: allow a coding job to be dispatched to any of the two CPU instances
+# concurrently — the router selects based on health + queue depth.
+ROLE_PROVIDERS["coding_cpu_pool"] = ["koboldcpp_cpu_a", "koboldcpp_cpu_b"]
 # Code review role — updated 2026-09-10 to kai_brain for thorough analysis
 ROLE_PROVIDERS["code_review"] = ["kai_coder", "local"]
 

@@ -161,23 +161,22 @@ def _application_build_signals():
     ]
 
 
-# 2026-08-02 operator directive: "tell kai to prioritise everything that
-# will help qwen3 work better" -- qwen4_coding (self-hosted Qwen3-Coder on a
-# pay-per-use RunPod GPU) is the roadmap's primary builder as of the same
-# day (see core.ai.ai_router.ROLE_PROVIDERS["coding"]). Surfaced in every
-# proposal-generation cycle rather than a one-off chat message, since
-# Kai's chat history isn't fed into these signals/this prompt -- a durable
-# directive here is the only way it actually shapes future proposals.
+# 2026-09-12 operator directive: RunPod pods retired; "remove runpod
+# provider". Primary coder is now kai_coder (Qwen2.5-Coder-7B on VM 104
+# GPU / ollama) with koboldcpp_cpu_a + koboldcpp_cpu_b (VM 112 CPU) as
+# fallback pool. See core.ai.ai_router.ROLE_PROVIDERS["coding"]. Surfaced
+# in every proposal-generation cycle since Kai's chat history isn't fed
+# into these signals -- a durable directive here is the only way it
+# actually shapes future proposals.
 OPERATOR_PRIORITY = (
     "Operator priority: when weighing which improvements to propose, favor "
-    "ones that make qwen4_coding (the self-hosted Qwen3-Coder route, now "
-    "the roadmap's primary builder, billed per-second on a RunPod GPU) "
-    "more reliable or more capable -- e.g. monitoring its success/failure "
-    "rate in recent_ai_usage_failures, hardening its opencode tool-calling "
-    "integration, expanding what it can safely handle, or catching "
-    "regressions before they cost pay-per-use GPU time. This is a "
-    "standing priority, not a signal that only applies when qwen4_coding "
-    "appears in the signals below."
+    "ones that make the local coding stack (kai_coder on VM 104 GPU, with "
+    "koboldcpp_cpu_a + koboldcpp_cpu_b on VM 112 as CPU fallback) more "
+    "reliable or more capable -- e.g. monitoring its success/failure rate "
+    "in recent_ai_usage_failures, hardening its tool-calling integration, "
+    "expanding what it can safely handle, or catching regressions before "
+    "they force a fallback. This is a standing priority, not a signal "
+    "that only applies when these providers appear in the signals below."
 )
 
 

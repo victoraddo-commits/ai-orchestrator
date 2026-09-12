@@ -102,7 +102,7 @@ List available models (text_task providers + `"auto"`).
 {
   "object": "list",
   "data": [
-    {"id": "qwen4_text", "object": "model", "created": 1755379200, "owned_by": "kai"},
+    {"id": "kai_coder", "object": "model", "created": 1755379200, "owned_by": "kai"},
     {"id": "deepseek_native_flash", "object": "model", "created": 1755379200, "owned_by": "kai"},
     {"id": "gemini", "object": "model", "created": 1755379200, "owned_by": "kai"},
     {"id": "auto", "object": "model", "created": 1755379200, "owned_by": "kai"}

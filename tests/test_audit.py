@@ -87,7 +87,7 @@ def _make_secret(action="read", provider="gemini", success=True,
     }
 
 
-def _make_ai_usage(provider="qwen4_text", task_type="planning", success=True,
+def _make_ai_usage(provider="kai_coder", task_type="planning", success=True,
                    timestamp="2026-08-07T12:00:00Z"):
     return {
         "provider": provider, "task_type": task_type, "success": success,

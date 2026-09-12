@@ -422,7 +422,7 @@ COMMAND_PATTERNS += (
     (
         re.compile(r"^(?:kai,\s*)?(?:how\s+(?:is|are)\s+)?([a-z0-9_-]+)\s+(?:doing|status|health)\s*\.?$", re.IGNORECASE),
         lambda match: _handle_provider_status(str(match.group(1)).strip()),
-        "Check a specific provider's status — 'Kai, how is qwen4_coding doing?'",
+        "Check a specific provider's status — 'Kai, how is kai_coder doing?'",
     ),
     # SP6: Mobile Command Node self-diagnostics
     (

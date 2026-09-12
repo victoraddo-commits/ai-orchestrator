@@ -356,7 +356,7 @@ class TestProvidersCheck:
         from core.kai.mobile_diagnose import _check_providers
 
         providers = {
-            "qwen4_text": {"id": "qwen4_text", "enabled": True},
+            "kai_coder": {"id": "kai_coder", "enabled": True},
             "gemini": {"id": "gemini", "enabled": True},
         }
         with patch("core.ai_provider.list_providers", return_value=providers):

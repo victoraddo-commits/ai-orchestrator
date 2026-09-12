@@ -212,8 +212,11 @@ def classify_task(description):
 # auto/best-coding model which prefers DeepSeek models.
 # 2026-08-23: front rotation emptied while OmniRoute/DeepSeek is unfunded —
 # a rotating front member that 402s on every call just burns failover time.
-# Restore to ["omniroute_deepseek_coding"] when the account is topped up.
-CODING_ROTATING_FRONT = []
+# 2026-09-12: rotation restored across the 3 local Qwen2.5-Coder-7B workers
+# per operator directive — real parallelism when 2-3 coding jobs are in
+# flight, and preserves quality because all three serve the same base
+# model (kai_coder on VM 104 GPU, koboldcpp_cpu_a + _b on VM 112 CPU).
+CODING_ROTATING_FRONT = ["kai_coder", "koboldcpp_cpu_a", "koboldcpp_cpu_b"]
 
 # --- Purge disabled providers from all routing on import ---
 # Reads memory/provider_state.json and removes any provider whose persisted

@@ -719,7 +719,7 @@ def test_run_smoke_keep_output(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_config_defaults():
-    assert config.DEFAULT_CODING_PROVIDER in ("gpuai_minimax", "qwen4_coding")
+    assert config.DEFAULT_CODING_PROVIDER in ("gpuai_minimax", "kai_coder")
     assert isinstance(config.DEFAULT_TIMEOUT, int)
     assert config.DEFAULT_TIMEOUT > 0
     assert config.DEFAULT_TEST_RUNNER == "pytest"

@@ -43,27 +43,27 @@ class TestAgentCRUD:
         from core.ai.agent_registry import register_agent, get_agent
 
         agent = register_agent(
-            agent_id="qwen4_text",
-            name="Qwen4 Text",
-            provider_key="qwen4_text",
-            model_name="Qwen3-32B-FP8",
-            model_version="vLLM RunPod",
-            gpu_type="RTX PRO 6000",
-            gpu_memory_gb=96,
-            cost_per_hour=0.99,
+            agent_id="kai_coder",
+            name="Kai Coder",
+            provider_key="kai_coder",
+            model_name="Qwen2.5-Coder-7B-Instruct",
+            model_version="ollama VM 104",
+            gpu_type="local GPU",
+            gpu_memory_gb=24,
+            cost_per_hour=0.0,
             capabilities=["text_task"],
-            fallback_chain=["gemini", "deepseek_native_flash"],
-            description="Primary text generator on RunPod A",
+            fallback_chain=["koboldcpp_cpu_a", "koboldcpp_cpu_b", "local"],
+            description="Primary coder on VM 104 (ollama)",
         )
 
-        assert agent["id"] == "qwen4_text"
-        assert agent["name"] == "Qwen4 Text"
+        assert agent["id"] == "kai_coder"
+        assert agent["name"] == "Kai Coder"
         assert agent["status"] == "active"
         assert "text_task" in agent["capabilities"]
 
-        retrieved = get_agent("qwen4_text")
+        retrieved = get_agent("kai_coder")
         assert retrieved is not None
-        assert retrieved["id"] == "qwen4_text"
+        assert retrieved["id"] == "kai_coder"
 
     def test_register_updates_existing(self):
         """Registering an existing agent ID updates its metadata."""

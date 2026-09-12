@@ -49,62 +49,61 @@ Five lifecycle objects all share a common schema from `core/lifecycle.py::new_ob
 | `config/providers.yaml` | Provider config (mainly docker/proxmox tools) |
 | `memory/` | Runtime state (json files — gitignored) |
 
-## Provider routing (as of 2026-08-07)
+## Provider routing (as of 2026-09-12)
+
+**RunPod GPU pods retired 2026-09-12.** All coding + text-task roles now
+route to local providers on our own hardware. Cloud providers remain as
+fallback only. See `core/ai/ai_router.py::ROLE_PROVIDERS` for the live
+chain per role.
 
 ### Coding providers (agentic tool-use, build/self-modifying work)
 
 ```
-CODING_ROTATING_FRONT: ["qwen4_coding"]  (Qwen4 RunPod — primary)
-Coding fallback chain: omniroute_deepseek_coding → claude → omniroute → gpuai_minimax
+ROLE_PROVIDERS["coding"] = ["kai_coder", "koboldcpp_cpu_a",
+                            "koboldcpp_cpu_b", "local"]
+ROLE_PROVIDERS["coding_cpu_pool"] = ["koboldcpp_cpu_a", "koboldcpp_cpu_b"]
 ```
 
-- `qwen4_coding` — Qwen4 Pod A (Qwen3-32B-FP8), self-hosted vLLM on RunPod RTX PRO 6000 96GB. Primary — sole member of CODING_ROTATING_FRONT.
-- `qwen4Z` — Qwen4 Pod A via coding bridge. Full tool-use capability. Fallback.
-- `omniroute_deepseek_coding` — DeepSeek via OmniRoute self-hosted gateway. Coding fallback.
-- `claude` — Direct CloudCLI/Anthropic subscription. Out of credit currently.
-- `omniroute` — Self-hosted aggregator gateway on localhost:20128. Always-on fallback.
-- `gpuai_minimax` — MiniMax M3 via GPU.ai serverless API. Replaces opencode_minimax (removed 2026-08-10).
-- `openrouter_claude_opus`, `openrouter_claude_sonnet`, `opencode_deepseek` — DEREGISTERED (OpenRouter account out of credit; removed 2026-08-07).
-- All OpenCode Zen providers (`opencode`, `opencode_claude`, `opencode_claude_sonnet`, `opencode_claude_opus`, `opencode_minimax`, `opencode_fable5`, `opencode_gemini_pro`) — REMOVED 2026-08-10 (insufficient balance).
+- `kai_coder` — Qwen2.5-Coder-7B-Instruct on VM 104 (kai-gpu-benchmark),
+  served by ollama. Primary coder.
+- `koboldcpp_cpu_a` — Qwen2.5-Coder-7B-Instruct-Q4_K_M on VM 112
+  (kai-cpu, 192.168.1.242:5001), koboldcpp, 7 threads / 14G RAM.
+- `koboldcpp_cpu_b` — same model, port 5002, second instance for parallel
+  CPU inference.
+- `koboldcpp_cpu` — alias → koboldcpp_cpu_a (backwards compat).
+- `local` — always-on fallback (ollama on this host).
+- All RunPod providers (`qwen4_coding`, `qwen4_text`, `qwen4_pod_b`,
+  `qwen4Z`) — REMOVED 2026-09-12.
+- `omniroute*`, `gpuai_minimax`, `gemini*`, `groq`, `deepseek_*`,
+  `claude`, `openai` — remain registered as cloud fallback, subject to
+  circuit breaker and quota.
 
 ### Text-task providers (chat/completion, no tool use)
 
-The Provider rotation varies by task_type. Key roles:
-
-| Role | Primary | Fallback chain |
-|------|---------|----------------|
-| planning | qwen4_text | qwen4_pod_b → gemini → geminix → deepseek_native_flash → omniroute_deepseek_flash → deepseek_native_pro → claude |
-| architecture | qwen4_pod_b | qwen4_text → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → openai → claude |
-| review | qwen4_pod_b | qwen4_text → openai → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → claude |
-| classification | qwen4_pod_b | qwen4_text → groq → deepseek_native_flash → omniroute_deepseek_flash → gemini → geminix → claude |
-| documentation | qwen4_pod_b | qwen4_text → deepseek_native_flash → omniroute_deepseek_flash → groq → claude |
-| log_analysis | qwen4_pod_b | qwen4_text → groq → omniroute_deepseek_flash → claude |
-
-- `qwen4_text` — Qwen4 Pod A (GENERATOR pod, RTX PRO 6000 96GB). Primary text generator.
-- `qwen4_pod_b` — Qwen4 Pod B (REVIEW/DEPLOY pod, separate RTX PRO 6000 96GB). Primary reviewer.
-- `openai` — Slot removed 2026-08-07. Was aliasing qwen4_text. Use `qwen4_text` directly.
+All text roles now head with `kai_coder` (or `kai_brain` where a heavier
+model is warranted). Consult `core/ai/ai_router.py::ROLE_PROVIDERS` for
+the current chain per role; the previous per-role table listed RunPod
+pods that no longer exist.
 
 ### Provider status
 
 | Provider | Type | Status | Billing |
 |----------|------|--------|---------|
-| qwen4_coding (RunPod A) | coding | ✅ primary | $0.99/hr GPU |
-| qwen4Z (RunPod A via coding bridge) | coding | ✅ fallback | same GPU |
-| qwen4_text (RunPod A) | text | ✅ primary | same GPU |
-| qwen4_pod_b (RunPod B) | text | ✅ primary (review) | separate $0.99/hr GPU |
-| gpuai_minimax (GPU.ai) | both | ✅ fallback | GPU.ai serverless (paid) |
-| openai | text | ✅ aliases qwen4_text | same GPU |
-| omniroute | both | ✅ fallback | self-hosted |
-| omniroute_deepseek_flash | text | ✅ fallback | self-hosted |
+| kai_coder (VM 104 ollama) | both | ✅ primary | free (local GPU) |
+| koboldcpp_cpu_a (VM 112:5001) | coding | ✅ CPU fallback | free (local CPU) |
+| koboldcpp_cpu_b (VM 112:5002) | coding | ✅ CPU fallback | free (local CPU) |
+| local (this host ollama) | both | ✅ always-on fallback | free |
+| gpuai_minimax (GPU.ai) | both | ✅ cloud fallback | GPU.ai serverless (paid) |
+| omniroute | both | ✅ cloud fallback | self-hosted |
+| omniroute_deepseek_flash | text | ✅ cloud fallback | self-hosted |
 | omniroute_sonnet | coding | ✅ legal module | self-hosted |
-| gemini | text | ✅ healthy (credit reloaded) | Google billing |
-| geminix (2nd account) | text | ✅ fallback | Google billing |
-| groq | text | ✅ healthy | free tier |
-| deepseek_native_flash | text | ✅ healthy | native api.deepseek.com |
-| deepseek_native_pro | text | ✅ healthy | native api.deepseek.com |
+| gemini | text | ✅ cloud fallback | Google billing |
+| geminix (2nd account) | text | ✅ cloud fallback | Google billing |
+| groq | text | ✅ cloud fallback | free tier |
+| deepseek_native_flash | text | ✅ cloud fallback | native api.deepseek.com |
+| deepseek_native_pro | text | ✅ cloud fallback | native api.deepseek.com |
 | claude (direct) | both | ⚠️ out of credit | Anthropic subscription |
-| minimax | text | ⚠️ excluded (0/4 verified) | |
-| local | both | ❌ placeholder | N/A |
+| RunPod pods (qwen4_*) | — | ❌ RETIRED 2026-09-12 | — |
 
 ## Roadmap state
 

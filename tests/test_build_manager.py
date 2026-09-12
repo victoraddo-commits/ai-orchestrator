@@ -1001,7 +1001,7 @@ def test_code_review_attaches_kai_brain_findings_for_other_builds(monkeypatch, t
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "qwen4_coding", "task_type": "coding", "duration_ms": 10,
+            "provider": "local", "task_type": "coding", "duration_ms": 10,
             "response": {
                 "success": True, "response_text": "Done.",
                 "files_changed": ["app/main.py"],
@@ -1092,7 +1092,7 @@ def test_code_review_falls_back_to_kai_coder_when_kai_brain_is_unavailable(monke
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "qwen4_coding", "task_type": "coding", "duration_ms": 10,
+            "provider": "local", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )

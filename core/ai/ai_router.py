@@ -81,6 +81,19 @@ ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 # Legal module coding — updated 2026-09-10 to kai_coder
 ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
 
+# Juris Kai per-task_type chains — added 2026-09-11 after legal module
+# audit found the juris_* task_types had no ROLE_PROVIDERS entry and
+# silently fell through to length-1 `["local"]` chains (no redundancy).
+# Now: kai_brain (primary local reasoning) → koboldcpp_cpu (VM 112 CPU
+# fabric) → local (ollama on VM 104) — three fully-local fallbacks.
+_JURIS_CHAIN = ["kai_brain", "koboldcpp_cpu", "local"]
+for _t in (
+    "juris_legal_teaching", "juris_case_analysis", "juris_research",
+    "juris_argument_construction", "juris_flashcards", "juris_chat",
+    "juris_document_vision",
+):
+    ROLE_PROVIDERS[_t] = list(_JURIS_CHAIN)
+
 # 2026-08-23 (coding role): omniroute_deepseek_coding demoted below claude
 # for the same funding reason. NOTE: claude's own model path still resolves
 # through CloudCLI/Claude Code settings → ds/deepseek-v4-pro via OmniRoute

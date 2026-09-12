@@ -262,7 +262,7 @@
       "id": "17P",
       "title": "17P: Juris Kai Multi-Tenant Legal Bot",
       "description": "Legal bot with multi-tenant accounts, subscription tiers, disclaimer flow, query limits, Hubtel Mobile Money billing (test mode), document analysis billing, /account /subscribe /profile /document /argument /flashcards commands.",
-      "status": "pending",
+      "status": "blocked",
       "dependencies": [
         "17O-D",
         "18A-b"
@@ -274,7 +274,8 @@
       "failure_reason": "Empty placeholder phase \u2014 no specification",
       "name": "(empty placeholder 17P)",
       "build_id": null,
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "blocked_reason": "Scoped 2026-09-11 to 17P.a/b/c sub-phases. See uploads/17P-scope-2026-09-11.md. Needs operator decision on Hubtel creds + corpus readiness before proceeding."
     },
     {
       "id": "18C",

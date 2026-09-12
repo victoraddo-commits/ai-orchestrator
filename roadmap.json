@@ -3185,41 +3185,313 @@
       "id": "20A",
       "title": "20A: Diagnostics Page + /api/diagnostics endpoint",
       "description": "Command Center page at /diagnostics + /api/diagnostics aggregate endpoint. Wraps existing /kai/circuit-breakers + /api/vpn/health + /kai/agents + health_observatory anomalies. Backend module core/diagnostics.py that composes the response. Frontend page follows the pattern of NetworkPage/WorldModelPage/InfrastructurePage (PageContainer + Panel + metric cards + data-table). Sidebar entry with Activity icon. Nginx auth_request gate for /api/diagnostics/. Auto-refresh 15s. 4-6 pytest tests for the compose logic.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 20,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T02:38:06.762896+00:00"
+      "updated_at": "2026-09-12T02:38:06.762896+00:00",
+      "build_id": "08366258"
     },
     {
       "id": "20B",
       "title": "20B: Vault Page + /api/vault/status endpoint",
       "description": "Command Center page at /vault. Wraps existing /kai/vault + /kai/vault/rotation + kai-vault container health. Shows: total secrets, secrets by category, last rotation, recent audit events. Sidebar entry with Lock icon. Read-only. 4-6 tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T02:38:06.762896+00:00"
+      "updated_at": "2026-09-12T02:38:06.762896+00:00",
+      "build_id": "52fc1f48"
     },
     {
       "id": "20C",
       "title": "20C: Audit Trail Page + /api/audit endpoint",
       "description": "Command Center page at /audit. Merges memory/command_bus_audit + gateway_audit.json + execution_audit.json + secret_access_audit.json into a unified timeline. Filter by source, user, outcome. Sidebar entry with FileText icon. Read-only. 4-6 tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T02:38:06.762896+00:00"
+      "updated_at": "2026-09-12T02:38:06.762896+00:00",
+      "build_id": "b0c4047e"
     },
     {
       "id": "20D",
       "title": "20D: Telegram bot pause/resume/stop/redirect commands for Missions",
       "description": "Add /pause, /resume, /stop, /redirect commands to core/kai_control_commands.py. Map to Mission Engine POST /kai/missions/{id}/steer and /execute. Follow the existing Bus dispatch pattern (Bus \u2192 AgentGuard \u2192 audit \u2192 handler). Parse mission_id from message (e.g. /pause msn_abc123). Update /help. 3-5 tests. Do NOT touch Mission Engine itself.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 30,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T02:38:06.762896+00:00"
+      "updated_at": "2026-09-12T02:38:06.762896+00:00",
+      "build_id": "082553de"
+    },
+    {
+      "id": "21A",
+      "title": "TF Phase 1 \u2014 Teammate data model + Registry",
+      "description": "Persistent teammate registry with lifecycle: CREATED/CONFIGURED/READY/ASSIGNED/EXECUTING/WAITING/REVIEW/VERIFIED/COMPLETED + failure states (FAILED/DEGRADED/BLOCKED/QUARANTINED/RECOVERING/RETIRED). Per-teammate: id, name, specialization, capabilities, skills, resource_limits, assigned_missions, active_tasks, parent/child, dependencies, created_at, updated_at, last_active, health, performance_metrics, verification_history, security_history, failure_history, audit_references. core/teammate/registry.py + tests.",
+      "status": "pending",
+      "priority": 10,
+      "dependencies": [],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21B",
+      "title": "TF Phase 2 \u2014 Skill Registry",
+      "description": "Persistent Skill Registry. Each skill: skill_id, name, description, inputs, outputs, required_capabilities, required_permissions, allowed_tools, forbidden_tools, model_requirements, security_requirements, verification_method, timeout, resource_requirements, version, dependencies. Skills globally reusable. Seed 15 skills: inspect_repository, inspect_service, inspect_proxmox, inspect_network, inspect_opnsense, inspect_database, write_code, run_tests, run_security_scan, benchmark_model, deploy_service, rollback_service, verify_endpoint, inspect_logs, diagnose_failure. core/teammate/skills.py + tests.",
+      "status": "pending",
+      "priority": 10,
+      "dependencies": [
+        "21A"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21C",
+      "title": "TF Phase 3 \u2014 Worker Registry integration",
+      "description": "Wire teammate factory to existing worker registry (core/workforce/registry.py). Worker events: worker.started/failed/reassigned/completed on Event Bus. Track worker health per teammate assignment.",
+      "status": "pending",
+      "priority": 15,
+      "dependencies": [
+        "21A"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21D",
+      "title": "TF Phase 4 \u2014 Model Fabric integration",
+      "description": "Teammate \u2192 model selection routes through existing core/ai/ai_router.py + agent_registry. Never bypass Model Fabric. Test that a teammate created for 'coding' picks kai_coder, one for 'planning' picks kai_brain, etc \u2014 evidence via mock delegate calls.",
+      "status": "pending",
+      "priority": 15,
+      "dependencies": [
+        "21A",
+        "21C"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21E",
+      "title": "TF Phase 5 \u2014 Mission Engine integration",
+      "description": "Wire teammate factory into KX1 Mission Engine (core/kai/mission_*). Mission \u2192 team requirement \u2192 factory creates/reuses team \u2192 team executes \u2192 mission state updated. Add /kai/missions/{id}/team endpoint that returns the team assigned to a mission.",
+      "status": "pending",
+      "priority": 15,
+      "dependencies": [
+        "21A",
+        "21C",
+        "21D"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21F",
+      "title": "TF Phase 6 \u2014 Team Planner",
+      "description": "Given a mission, Team Planner returns proposed_team = [required_expertise, required_skills, required_tools, required_permissions, required_models, expected_workload, dependencies, parallelizable, sequential, verification_requirements, security_requirements, resource_requirements, risk_level]. Uses Skill Registry + specialist catalog. core/teammate/planner.py + tests.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "21A",
+        "21B"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21G",
+      "title": "TF Phase 7 \u2014 Dynamic Teammate Creation",
+      "description": "Factory.create_from_requirement(spec) that materializes a teammate: allocates worker, assigns skills, sets permissions, links to mission, registers in registry, emits teammate.created event. Reuse existing teammate if capabilities match + healthy + available (search Registry first). core/teammate/factory.py + tests.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "21A",
+        "21B",
+        "21F"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21H",
+      "title": "TF Phase 8 \u2014 Permissions + Vault + AgentGuard",
+      "description": "Every teammate execution path integrates with AgentGuard (core/agentguard/guard.py) + Vault (core/vault_client.py). Capability-scoped Vault access \u2014 never raw secrets in prompts/logs/reports. Every secret access audited via existing secret_access_audit.json.",
+      "status": "pending",
+      "priority": 15,
+      "dependencies": [
+        "21A"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21I",
+      "title": "TF Phase 9 \u2014 Sandboxing + Tool Fabric",
+      "description": "Teammate execution runs in isolated sandbox (existing /root/.ai-orchestrator/sandboxes/ pattern). Tool Fabric declares allowed tools per teammate; forbidden tools blocked at Tool Bus (core/kai/tool_bus.py). Verify prompt injection / malicious tool use is blocked.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "21H"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21J",
+      "title": "TF Phase 10 \u2014 Team Execution",
+      "description": "Team.execute(mission) \u2014 orchestrates tasks across teammates, respects dependencies, runs parallelizable work concurrently. Publishes teammate.progress + teammate.blocked events. core/teammate/execution.py + tests.",
+      "status": "pending",
+      "priority": 25,
+      "dependencies": [
+        "21G",
+        "21I"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21K",
+      "title": "TF Phase 11 \u2014 Supervision + Health",
+      "description": "Health probes per teammate: no-progress, repeated failures, malformed output, resource exhaustion, tool failures, unauthorized actions, circular behavior. States: HEALTHY/DEGRADED/STALLED/FAILED/BLOCKED/QUARANTINED/RECOVERING. Auto-recover or replace where safe. core/teammate/supervisor.py + tests.",
+      "status": "pending",
+      "priority": 25,
+      "dependencies": [
+        "21J"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21L",
+      "title": "TF Phase 12 \u2014 Verification Pipeline",
+      "description": "Independent verifier reviews teammate output (tests, security scan, endpoint checks). Verifier is a DIFFERENT teammate than the producer. Failure \u2192 back to producer with feedback. core/teammate/verification.py + tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "21J"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21M",
+      "title": "TF Phase 13 \u2014 Failure Recovery",
+      "description": "On teammate failure: preserve mission state, capture logs/evidence, classify, retry if safe, replace worker/model/teammate as needed, rollback if required, reassign remaining work. Do NOT restart mission for a single-worker failure. core/teammate/recovery.py + tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "21K"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21N",
+      "title": "TF Phase 14 \u2014 Checkpoint/Resume",
+      "description": "Long missions checkpoint: mission state, task state, teammate state, worker state, artifacts, Git state, test results, deployment state, World Model state, pending actions. If Kai crashes, mission resumes from latest valid checkpoint. Extend KX1 mission_engine's existing checkpoint infra.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "21M"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21O",
+      "title": "TF Phase 15 \u2014 Command Center Teams UI",
+      "description": "Command Center pages: /teams (list active teams), /teams/{id} (team detail \u2014 teammates, workers, skills, mission, progress, health, artifacts, security events, audit). Wraps /api/teams endpoints. Real state only \u2014 no mocks. Session-authed via nginx auth_request.",
+      "status": "pending",
+      "priority": 35,
+      "dependencies": [
+        "21G"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21P",
+      "title": "TF Phase 16 \u2014 Telegram Control Center for Teams",
+      "description": "Extend core/kai_control_commands.py: /teams (list), /team {id} (inspect), /create-team {mission_desc} (delegate to Factory), /assign {teammate_type} {mission_id}, /pause-team {id}, /resume-team {id}, /replace {teammate_id}, /why-failed {team_id}. Uses same Bus \u2192 Guard \u2192 audit chain.",
+      "status": "pending",
+      "priority": 35,
+      "dependencies": [
+        "21G"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21Q",
+      "title": "TF Phase 17 \u2014 Universal Session Center",
+      "description": "New /sessions page + endpoints: attach/detach/reconnect/inspect/interrupt/resume/approve on any teammate session. Show output, logs, artifacts, tool calls, mission context, verification. Browser/phone disconnect MUST NOT terminate mission. core/session_center.py + Command Center page + tests.",
+      "status": "pending",
+      "priority": 40,
+      "dependencies": [
+        "21J"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21R",
+      "title": "TF Phase 18 \u2014 Team Performance + Learning",
+      "description": "Track per-team: tasks completed, success rate, failure rate, avg execution time, verification failures, security findings, model usage, resource usage, retry rate, rollback rate, quality score, mission contribution. Learning: which models/workers/teammates/skills/team structures perform best per task type. Store validated evidence-based data. core/teammate/performance.py + tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "21J",
+        "21L"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21S",
+      "title": "TF Phase 19 \u2014 Autonomous Engineering Integration",
+      "description": "Factory.assemble_engineering_team(mission) auto-selects ARCHITECT/PLANNER/RESEARCHER/CODER/REVIEWER/QA/SECURITY/DEVOPS/VERIFIER per minimum sufficient team for the mission. Integrates with existing build pipeline so KAI can build code without Claude Code + without hardcoded pipeline.",
+      "status": "pending",
+      "priority": 40,
+      "dependencies": [
+        "21G",
+        "21J",
+        "21K"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
+    },
+    {
+      "id": "21T",
+      "title": "TF Phase 20 \u2014 Claude-Independent Autonomy Test",
+      "description": "REAL FUNCTIONAL ACCEPTANCE TEST: (1) start legitimate non-destructive mission, (2) Factory assembles team, (3) disconnect Claude Code, (4) mission continues, (5) workers stay operational, (6) Mission Engine retains state, (7) failed workers reassigned, (8) another model takes over if needed, (9) team completes work, (10) evidence collected, (11) World Model updated. Documented evidence bundle. This phase is the acceptance gate for the entire Teammate Factory.",
+      "status": "pending",
+      "priority": 45,
+      "dependencies": [
+        "21S"
+      ],
+      "module": "teammate_factory",
+      "created_at": "2026-09-12T02:42:37.949288+00:00",
+      "updated_at": "2026-09-12T02:42:37.949288+00:00"
     }
   ],
   "_audit": {

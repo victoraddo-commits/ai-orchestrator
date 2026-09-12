@@ -326,6 +326,55 @@ def _discover_via_generic(base_url: str, source_domain: str) -> List[Dict]:
 
 # ── Multi-Strategy Orchestrator ───────────────────────────────────────────
 
+
+
+# Strategy 5: Homepage PDF Harvest (permissive) - added 2026-09-11
+_HOMEPAGE_PDF_BLOCKED_KEYWORDS = (
+    "receipt", "invoice", "payment", "checkout", "billing", "cart",
+)
+
+
+def _discover_homepage_pdfs(base_url: str, source_domain: str) -> List[Dict]:
+    """Fetch base_url and collect every <a href> ending in .pdf, minus
+    paywall artifacts. Complements structured strategies for sites without
+    sitemaps or RSS."""
+    docs: List[Dict] = []
+    try:
+        resp = requests.get(base_url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+        if resp.status_code != 200:
+            return docs
+        soup = BeautifulSoup(resp.text, "html.parser")
+        seen = set()
+        for a in soup.find_all("a", href=True):
+            href = a.get("href", "").strip()
+            if not href or href.startswith("#"):
+                continue
+            if not href.lower().split("?", 1)[0].endswith(".pdf"):
+                continue
+            title = a.get_text(strip=True) or ""
+            haystack = (href + " " + title).lower()
+            if any(k in haystack for k in _HOMEPAGE_PDF_BLOCKED_KEYWORDS):
+                continue
+            full = _normalize_url(href, base_url)
+            if full in seen:
+                continue
+            seen.add(full)
+            docs.append({
+                "title": title or urlparse(full).path.rsplit("/", 1)[-1],
+                "url": full,
+                "type": "pdf",
+                "source_domain": source_domain,
+                "discovery_method": "homepage_pdfs",
+            })
+            if len(docs) >= MAX_DOCUMENTS_PER_SOURCE:
+                break
+    except Exception as e:
+        logger.debug(f"homepage_pdfs for {source_domain}: {e}")
+    if docs:
+        logger.info(f"homepage_pdfs: found {len(docs)} PDFs from {source_domain}")
+    return docs
+
+
 def multi_strategy_discover(source_url: str, source_domain: str,
                             discovery_urls: List[str] = None,
                             acquisition_status: str = "UNVERIFIED") -> List[Dict]:
@@ -378,6 +427,7 @@ def multi_strategy_discover(source_url: str, source_domain: str,
         ("rss", lambda: _discover_via_rss(source_url, source_domain)),
         ("html_scan", lambda: _discover_via_html_scan(source_url, source_domain, discovery_urls)),
         ("generic", lambda: _discover_via_generic(source_url, source_domain)),
+        ("homepage_pdfs", lambda: _discover_homepage_pdfs(source_url, source_domain)),
     ]
 
     for strategy_name, strategy_fn in strategies:

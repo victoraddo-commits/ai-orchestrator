@@ -41,8 +41,21 @@ def run_network_discovery_cycle():
         "b_to_a_direct": conn.get("b_to_a_direct", "UNKNOWN"),
         "a_subnet_to_b_subnet": conn.get("a_subnet_to_b_subnet", "UNKNOWN"),
     }
+    # Tunnel verdict: HEALTHY if EITHER a direct host-to-host path OR the
+    # subnet-route path works in either direction. The legacy OPNsense-WG
+    # topology required a_to_b_direct==PASS, but the current Tailscale
+    # subnet-route architecture makes that direct probe irrelevant — real
+    # cross-site LAN routing goes through subnet_to_subnet.
+    _direct = conn.get("a_to_b_direct") == "PASS" or conn.get("b_to_a_direct") == "PASS"
+    _subnet = conn.get("a_subnet_to_b_subnet") == "PASS"
+    if _direct and _subnet:
+        _tunnel_status = "HEALTHY"
+    elif _direct or _subnet:
+        _tunnel_status = "PARTIAL"
+    else:
+        _tunnel_status = "DEGRADED"
     graph["tunnel"] = {
-        "status": "HEALTHY" if conn.get("a_to_b_direct") == "PASS" else "DEGRADED",
+        "status": _tunnel_status,
         "a_to_b_latency_ms": conn.get("a_to_b_latency_ms"),
         "b_to_a_latency_ms": conn.get("b_to_a_latency_ms"),
         "packet_loss_pct": conn.get("packet_loss_pct", 0.0),

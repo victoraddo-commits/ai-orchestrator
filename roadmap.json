@@ -1973,7 +1973,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "failed",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1981,12 +1981,12 @@
         "No implementation work begins until that proposal is explicitly approved -- this phase alone is not authorization to write code"
       ],
       "tests_required": false,
-      "note": "[2026-09-01 reconciliation] Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work",
       "assigned_provider": "omniroute",
       "build_id": null,
       "failure_reason": null,
       "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00"
+      "updated_at": "2026-09-12T09:45:57.648373+00:00"
     },
     {
       "id": "17Q",
@@ -3186,49 +3186,53 @@
       "id": "20A",
       "title": "20A: Diagnostics Page + /api/diagnostics endpoint",
       "description": "Command Center page at /diagnostics + /api/diagnostics aggregate endpoint. Wraps existing /kai/circuit-breakers + /api/vpn/health + /kai/agents + health_observatory anomalies. Backend module core/diagnostics.py that composes the response. Frontend page follows the pattern of NetworkPage/WorldModelPage/InfrastructurePage (PageContainer + Panel + metric cards + data-table). Sidebar entry with Activity icon. Nginx auth_request gate for /api/diagnostics/. Auto-refresh 15s. 4-6 pytest tests for the compose logic.",
-      "status": "pending",
+      "status": "failed",
       "priority": 20,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "build_id": null,
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "20B",
       "title": "20B: Vault Page + /api/vault/status endpoint",
       "description": "Command Center page at /vault. Wraps existing /kai/vault + /kai/vault/rotation + kai-vault container health. Shows: total secrets, secrets by category, last rotation, recent audit events. Sidebar entry with Lock icon. Read-only. 4-6 tests.",
-      "status": "pending",
+      "status": "failed",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "build_id": null,
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "20C",
       "title": "20C: Audit Trail Page + /api/audit endpoint",
       "description": "Command Center page at /audit. Merges memory/command_bus_audit + gateway_audit.json + execution_audit.json + secret_access_audit.json into a unified timeline. Filter by source, user, outcome. Sidebar entry with FileText icon. Read-only. 4-6 tests.",
-      "status": "pending",
+      "status": "failed",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "build_id": null,
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "20D",
       "title": "20D: Telegram bot pause/resume/stop/redirect commands for Missions",
       "description": "Add /pause, /resume, /stop, /redirect commands to core/kai_control_commands.py. Map to Mission Engine POST /kai/missions/{id}/steer and /execute. Follow the existing Bus dispatch pattern (Bus \u2192 AgentGuard \u2192 audit \u2192 handler). Parse mission_id from message (e.g. /pause msn_abc123). Update /help. 3-5 tests. Do NOT touch Mission Engine itself.",
-      "status": "pending",
+      "status": "failed",
       "priority": 30,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "build_id": null,
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "21A",
@@ -3247,31 +3251,33 @@
       "id": "21B",
       "title": "TF Phase 2 \u2014 Skill Registry",
       "description": "Persistent Skill Registry. Each skill: skill_id, name, description, inputs, outputs, required_capabilities, required_permissions, allowed_tools, forbidden_tools, model_requirements, security_requirements, verification_method, timeout, resource_requirements, version, dependencies. Skills globally reusable. Seed 15 skills: inspect_repository, inspect_service, inspect_proxmox, inspect_network, inspect_opnsense, inspect_database, write_code, run_tests, run_security_scan, benchmark_model, deploy_service, rollback_service, verify_endpoint, inspect_logs, diagnose_failure. core/teammate/skills.py + tests.",
-      "status": "pending",
+      "status": "failed",
       "priority": 10,
       "dependencies": [
         "21A"
       ],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "21C",
       "title": "TF Phase 3 \u2014 Worker Registry integration",
       "description": "Wire teammate factory to existing worker registry (core/workforce/registry.py). Worker events: worker.started/failed/reassigned/completed on Event Bus. Track worker health per teammate assignment.",
-      "status": "pending",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "21A"
       ],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "21D",
@@ -3335,16 +3341,17 @@
       "id": "21H",
       "title": "TF Phase 8 \u2014 Permissions + Vault + AgentGuard",
       "description": "Every teammate execution path integrates with AgentGuard (core/agentguard/guard.py) + Vault (core/vault_client.py). Capability-scoped Vault access \u2014 never raw secrets in prompts/logs/reports. Every secret access audited via existing secret_access_audit.json.",
-      "status": "pending",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "21A"
       ],
       "module": "teammate_factory",
       "created_at": "2026-09-12T02:42:37.949288+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "21I",
@@ -3524,49 +3531,52 @@
       "id": "22B",
       "title": "MR: Kai Brain reasoning-authority audit",
       "description": "Discover which module IS the Kai Brain (reasoning authority). Verify it can review architecture, tests, security findings, deploy results. Remediate: connect KX1 Mission Engine review checkpoints to the Brain. Do not create a second Brain. Update evidence.",
-      "status": "pending",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "22A"
       ],
       "module": "kai_brain",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "22C",
       "title": "MR: Second Brain 6-stores population audit",
       "description": "Discover current fill: operational (1678 rows), project (887), cognitive (0), conversational (0), relationship (0), legal_supplemental (0). Remediate: wire the 4 empty stores to their real writers. NO fake data. Live-verify counts change on real operator actions. Preserve the 2 populated stores.",
-      "status": "pending",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "second_brain",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "22D",
       "title": "MR: Model Fabric integration audit",
       "description": "Discover: kai_brain, kai_coder, kai_deep, koboldcpp_cpu, local \u2014 all registered? All routed via ai_router chains? All health-monitored? VM 112 koboldcpp_cpu keeps circuit-opening \u2014 root cause + fix. Preserve provider chain semantics \u2014 do not rewrite ai_router.py wholesale.",
-      "status": "pending",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "22A"
       ],
       "module": "model_fabric",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "22E",
@@ -3587,49 +3597,52 @@
       "id": "22F",
       "title": "MR: Command Center pages real-data audit",
       "description": "For each page (/, /network, /infrastructure, /world, /missions, /approvals, /legal, /modules, /settings): verify it fetches real backend data, no placeholders/mocks in the rendered path, session-auth enforced. Fix any page that ships mock data. Add missing directive-named pages iff their backend already exists.",
-      "status": "pending",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "command_center",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "22G",
       "title": "MR: Network Dashboard + KAI-NET reconciliation",
       "description": "Discover: network_discovery + /api/network + Tailscale subnet routes + OPNsense reachability. Verify Site A OPNsense (192.168.99.3), Tailscale subnet routes both directions. KAI-NET: decide MERGE (current infra IS KAI-NET) vs BUILD (make it a discrete module). Document decision. Update World Model with network entities (already partly done \u2014 verify).",
-      "status": "pending",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "network_dashboard",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "22H",
       "title": "MR: Telegram Control Center full path audit",
       "description": "Path: Telegram \u2192 poller \u2192 bridge \u2192 Bus \u2192 AgentGuard \u2192 API \u2192 response. Live-test /status /network /missions from @KaiEnzo_bot chat 612786480. Verify audit event lands in memory/command_bus_audit. Add Vault identity link (core/telegram_manager/ scaffolded, not wired). NO second bot.",
-      "status": "pending",
+      "status": "failed",
       "priority": 25,
       "dependencies": [
         "22A"
       ],
       "module": "telegram_control_center",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "22I",
@@ -3667,17 +3680,18 @@
       "id": "22K",
       "title": "MR: Infrastructure control-plane audit",
       "description": "Docker containers (this host + CT107 + CT111 etc.), proxmox nodes, systemd services, network services. Discover full inventory via /api/infrastructure. Fix any container that's marked running but is actually unhealthy. Update World Model.",
-      "status": "pending",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "infrastructure",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "22L",
@@ -3724,33 +3738,35 @@
       "id": "23A",
       "title": "MR: Universal Command Bus unification",
       "description": "All interfaces (Web/Command Center/Android/Telegram/CLI/API/voice/automation/internal workers) route through core/command_bus.py. Flow: Interface \u2192 Identity \u2192 Session Trust \u2192 Vault/Secrets \u2192 Permission \u2192 Risk \u2192 Policy \u2192 Approval \u2192 Bus \u2192 Kai Core \u2192 Execution. Audit today: Telegram control commands already do this (kai_control_commands.handle_control_command via_bus=True); Command Center /api/approvals goes through it partially. Remaining: HTTP API POSTs (non-approvals) do not currently route through Bus. Add a shim decorator + apply to state-changing endpoints. Tests must verify audit event is emitted per dispatch.",
-      "status": "pending",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "22A"
       ],
       "module": "command_bus",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "23B",
       "title": "MR: Event Bus expansion to full spec",
       "description": "core/kai_event_bus exists. Add publishers for: infrastructure changes, server health, VM/LXC state, network changes, WAN failover, VPN state, security events, model state, worker state, teammate state, mission state, deployments, builds, failures, recovery, resource pressure, configuration drift, notifications. Subscribers: World Model, Mission Engine, Command Center (SSE), Telegram, Android, Model Fabric, Teammate Factory, KAI-NET, monitoring, self-healing, notifications. Do not create a second bus. 6-10 tests: publisher \u2192 subscriber round-trip per event type.",
-      "status": "pending",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "event_bus",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "23C",
@@ -3787,17 +3803,18 @@
       "id": "23E",
       "title": "MR: Architecture Guardian",
       "description": "New core/architecture_guardian.py. Continuously scans for: duplicate services (grep systemd units + docker containers with overlapping ports), duplicate APIs (multiple handlers same path), duplicate dashboards, duplicate models, duplicate memory systems, dead services (systemd inactive+enabled), orphaned infrastructure, conflicting APIs, configuration drift, architectural violations, security regressions, unused infrastructure, abandoned projects. Recommends preserve/integrate/merge/consolidate/migrate/repair/deprecate. NEVER auto-destroys \u2014 requires operator authorization. Runs weekly + on-demand. 6-10 tests.",
-      "status": "pending",
+      "status": "failed",
       "priority": 30,
       "dependencies": [
         "22A"
       ],
       "module": "architecture_guardian",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T09:44:54.972813+00:00",
+      "updated_at": "2026-09-12T09:45:57.648373+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": null,
+      "note": "kept in failed state \u2014 needed operator attention before 2026-09-12 session; not blocking 26* directive work"
     },
     {
       "id": "23F",
@@ -4448,7 +4465,7 @@
       "title": "OpenCode dir: audit FreeLLMAPI providers and models",
       "description": "Query FreeLLMAPI. Determine actual providers/models/aliases/fallbacks/auth/limits/context/output/health. Select PRIMARY + FALLBACK + OPTIONAL FAST + OPTIONAL REVIEW coding models from what actually exists. Never invent model names. Do not replace existing Kai models.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26J"
       ],
@@ -4484,7 +4501,7 @@
       "title": "OpenCode dir: skill research (OpenCode ecosystem)",
       "description": "Research: Superpowers, osmontero/opencode-skills, OpenCode Power Pack, opencode-review, farmage/opencode-skills, OpenCode agent kits, other maintained. Do NOT install everything. Evaluate each: maintenance, OpenCode compat, quality, dup, security, Claude-specific deps, usefulness to Kai, deps, license, risk. Prioritize high-value.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26K"
       ],
@@ -4520,7 +4537,7 @@
       "title": "OpenCode dir: install core skills (dev/security/infra/AI/web)",
       "description": "Install where not present. DEV: planning, brainstorming, implementation, TDD, testing, debugging, systematic-debugging, code-review, refactoring, documentation. SECURITY: security review, threat modeling, dep audit, secret detection, secure coding, authn+authz review, API security. INFRA: DevOps, Docker, Linux, networking, deployment, observability, performance, incident debugging. AI: LLM integration, prompt engineering, RAG, MCP, AI agents, model eval, AI gateway. WEB (if relevant): frontend, backend, API design, accessibility, Playwright, UI+UX review. Do not install irrelevant tech-specific skills.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26L"
       ],
@@ -4556,7 +4573,7 @@
       "title": "OpenCode dir: skill deduplication",
       "description": "Before installing any skill CHECK: equivalent in Superpowers / Claude Code / OpenCode / other installed pkg? If yes: PRESERVE existing. Do not create dups. If overlap: prefer better-maintained; do not delete. Resolve precedence safely.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26M"
       ],
@@ -4593,7 +4610,7 @@
       "title": "OpenCode dir: Kai-specific skills (only where justified)",
       "description": "Only create Kai skills for systems actually discovered. Never invent architecture. Candidates: kai-system-discovery, kai-architecture, kai-security, kai-vault, kai-model-fabric, kai-agent-fabric, kai-teammate-factory, kai-proxmox, kai-networking, kai-airllm, kai-ollama, kai-freellmapi, kai-opencode, kai-testing, kai-deployment, kai-observability, kai-disaster-recovery, kai-second-brain, kai-command-center. Pick only those with real matching subsystems from phase 2.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26N"
       ],
@@ -4629,7 +4646,7 @@
       "title": "OpenCode dir: Kai system knowledge reference",
       "description": "First check whether Kai already has authoritative docs. If yes: extend/reference, do NOT create competing source of truth. If not: create OpenCode-readable arch reference documenting discovered components/repos/services/ports/networks/auth/DBs/model infra/AI providers/deployment/deps/svc relationships/critical paths/security boundaries/backup/testing.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26O"
       ],
@@ -4665,7 +4682,7 @@
       "title": "OpenCode dir: Kai engineering team (agent roles)",
       "description": "Where OpenCode supports agents/subagents, create useful roles ONLY IF USEFUL: kai-architect, kai-security, kai-reviewer, kai-debugger, kai-devops, kai-model-engineer, kai-network-engineer, kai-qa. Each: responsibility, boundaries, tools, skills, review expectations, security restrictions. Do not create fake complexity.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26P"
       ],
@@ -4699,7 +4716,7 @@
       "title": "OpenCode dir: Kai security reviewer",
       "description": "Dedicated security review capability. Must check auth/authz, secrets, API+network exposure, TLS, tokens, creds, file+service+container perms, DB access, command exec, prompt injection, tool abuse, agent perms, supply-chain+dep risk. MUST be able to REJECT unsafe implementation.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26Q"
       ],
@@ -4735,7 +4752,7 @@
       "title": "OpenCode dir: discovery-aware development workflow",
       "description": "Wire the 16-step workflow: identify subsystem \u2192 read docs \u2192 inspect impl \u2192 deps \u2192 skills \u2192 agents \u2192 tests \u2192 svc state \u2192 propose \u2192 implement minimally \u2192 test \u2192 security review \u2192 self-review \u2192 fix \u2192 re-test \u2192 report exactly what changed. Never code from assumptions.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26R"
       ],
@@ -4769,7 +4786,7 @@
       "title": "OpenCode dir: test skill discovery",
       "description": "Launch OpenCode FROM real Kai project. Verify discovers existing Claude skills, OpenCode skills, Superpowers, Kai-specific skills, CLAUDE.md, AGENTS.md, project instructions. Use actual OpenCode commands \u2014 prove LOAD, not just filesystem.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26S"
       ],
@@ -4803,7 +4820,7 @@
       "title": "OpenCode dir: test Superpowers end-to-end",
       "description": "Harmless test: OpenCode discovers/loads/follows Superpowers workflow, uses associated scripts+resources. Do NOT modify production Kai during test.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26T"
       ],
@@ -4837,7 +4854,7 @@
       "title": "OpenCode dir: test coding workflow (disposable repo)",
       "description": "Disposable test repo. OpenCode must: inspect / plan / create+edit file / run cmd / run test / review / show diff / correct intentional failure / re-run test. All must work.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26U"
       ],
@@ -4871,7 +4888,7 @@
       "title": "OpenCode dir: test Kai read-only discovery",
       "description": "Instruct OpenCode from real Kai project: audit Kai without changes, discover arch/services/repos/model infra/auth/networking/DBs/skills/agents/deployment, report and identify anything unverifiable. Must succeed.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26V"
       ],
@@ -4905,7 +4922,7 @@
       "title": "OpenCode dir: security test",
       "description": "Verify OpenCode does NOT auto without explicit auth: expose ports, publish creds, delete repos, destroy VMs+CTs, modify Proxmox config, modify prod networking, delete DBs, overwrite secrets. Use least privilege.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26W"
       ],
@@ -4939,7 +4956,7 @@
       "title": "OpenCode dir: git safety verification",
       "description": "Verify OpenCode: runs git status + branch + remote -v BEFORE modifying repos. Never auto: force push, reset --hard, delete branches+worktrees, rewrite history \u2014 unless explicitly instructed.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26X"
       ],
@@ -4973,7 +4990,7 @@
       "title": "OpenCode dir: preserve Claude Code (Proxmox A)",
       "description": "Confirm Claude Code on Proxmox A untouched. Do not migrate/delete/break skills/modify OmniRoute. OpenCode on Proxmox B is an ADDITIONAL dev interface.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26Y"
       ],
@@ -5007,7 +5024,7 @@
       "title": "OpenCode dir: preserve Kai",
       "description": "Confirm Kai remains the source ecosystem. OpenCode is a dev interface/agent, not a replacement. Do not rename/restructure/merge repos for convenience. Do not replace existing Kai services.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26Z"
       ],
@@ -5041,7 +5058,7 @@
       "title": "OpenCode dir: mobile/remote access (Tailscale/NetBird/VPN ONLY)",
       "description": "Prepare OpenCode for secure remote/mobile access if supported. DO NOT expose directly to public Internet. Prefer Tailscale (100.122.38.118 for pve-2) / NetBird / VPN / authenticated reverse proxy. Do not introduce unnecessary networking changes.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26AA"
       ],
@@ -5075,7 +5092,7 @@
       "title": "OpenCode dir: persistence + reboot survival",
       "description": "Verify OpenCode / FreeLLMAPI / config / skills / agents / credentials survive reboot. Reboot only if safe. After: verify FreeLLMAPI + OpenCode + skills + providers + models + Kai connectivity.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26AB"
       ],
@@ -5111,7 +5128,7 @@
       "title": "OpenCode dir: final end-to-end system test",
       "description": "USER \u2192 OpenCode \u2192 FreeLLMAPI \u2192 model/provider \u2192 OpenCode tool exec \u2192 file modification \u2192 tests \u2192 review. Verify every layer.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26AC"
       ],
@@ -5145,7 +5162,7 @@
       "title": "OpenCode dir: acceptance checklist + final report",
       "description": "Complete the FULL acceptance checklist (43 items) from directive. Produce FINAL REPORT sections: SYSTEM, DISCOVERED KAI, SKILLS, AGENTS, TEST RESULTS, CHANGES, PROTECTED SYSTEMS, REMAINING ISSUES. If ANY failure: report honestly per directive phase 30 \u2014 do not fake success.",
       "status": "pending",
-      "priority": 1,
+      "priority": 0,
       "depends_on": [
         "26AD"
       ],

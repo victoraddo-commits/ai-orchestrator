@@ -1973,7 +1973,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "pending",
+      "status": "in_progress",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1983,7 +1983,7 @@
       "tests_required": false,
       "note": "[2026-09-01 reconciliation] Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
       "assigned_provider": "omniroute",
-      "build_id": null,
+      "build_id": "765ef6bd",
       "failure_reason": null,
       "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note",
       "updated_at": "2026-09-12T03:00:06.931088+00:00"
@@ -3222,7 +3222,7 @@
       "id": "20D",
       "title": "20D: Telegram bot pause/resume/stop/redirect commands for Missions",
       "description": "Add /pause, /resume, /stop, /redirect commands to core/kai_control_commands.py. Map to Mission Engine POST /kai/missions/{id}/steer and /execute. Follow the existing Bus dispatch pattern (Bus \u2192 AgentGuard \u2192 audit \u2192 handler). Parse mission_id from message (e.g. /pause msn_abc123). Update /help. 3-5 tests. Do NOT touch Mission Engine itself.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 30,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
@@ -3619,7 +3619,7 @@
       "id": "22H",
       "title": "MR: Telegram Control Center full path audit",
       "description": "Path: Telegram \u2192 poller \u2192 bridge \u2192 Bus \u2192 AgentGuard \u2192 API \u2192 response. Live-test /status /network /missions from @KaiEnzo_bot chat 612786480. Verify audit event lands in memory/command_bus_audit. Add Vault identity link (core/telegram_manager/ scaffolded, not wired). NO second bot.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 25,
       "dependencies": [
         "22A"
@@ -3635,7 +3635,7 @@
       "id": "22I",
       "title": "MR: Kai Vault + Vaultwarden audit",
       "description": "Discover: kai-vault container on this host (127.0.0.1:8120) + vaultwarden on CT107 (0.0.0.0:8222). Verify vault_client.py:112 mapping active. Verify auth service password change revokes other sessions. NO parallel vault. Test rotation + audit trail.",
-      "status": "in_progress",
+      "status": "completed",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3651,14 +3651,14 @@
       "id": "22J",
       "title": "MR: Android Factory + KAI Mobile audit",
       "description": "Discover CT109 kai-android-factory status. Verify APK build reproducible. Preserve existing v3.1.2 build state per memory kai-mobile-v31.md. Do not rebuild \u2014 just verify + document.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 30,
       "dependencies": [
         "22A"
       ],
       "module": "android_factory",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T06:07:45.884820+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
       "build_id": "cdaa594c"
@@ -3667,7 +3667,7 @@
       "id": "22K",
       "title": "MR: Infrastructure control-plane audit",
       "description": "Docker containers (this host + CT107 + CT111 etc.), proxmox nodes, systemd services, network services. Discover full inventory via /api/infrastructure. Fix any container that's marked running but is actually unhealthy. Update World Model.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3740,7 +3740,7 @@
       "id": "23B",
       "title": "MR: Event Bus expansion to full spec",
       "description": "core/kai_event_bus exists. Add publishers for: infrastructure changes, server health, VM/LXC state, network changes, WAN failover, VPN state, security events, model state, worker state, teammate state, mission state, deployments, builds, failures, recovery, resource pressure, configuration drift, notifications. Subscribers: World Model, Mission Engine, Command Center (SSE), Telegram, Android, Model Fabric, Teammate Factory, KAI-NET, monitoring, self-healing, notifications. Do not create a second bus. 6-10 tests: publisher \u2192 subscriber round-trip per event type.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3778,25 +3778,26 @@
       ],
       "module": "kai_doctor",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T05:42:34.449952+00:00",
+      "updated_at": "2026-09-12T06:02:43.259820+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": "63941a72"
+      "build_id": "b6e0b9d3"
     },
     {
       "id": "23E",
       "title": "MR: Architecture Guardian",
       "description": "New core/architecture_guardian.py. Continuously scans for: duplicate services (grep systemd units + docker containers with overlapping ports), duplicate APIs (multiple handlers same path), duplicate dashboards, duplicate models, duplicate memory systems, dead services (systemd inactive+enabled), orphaned infrastructure, conflicting APIs, configuration drift, architectural violations, security regressions, unused infrastructure, abandoned projects. Recommends preserve/integrate/merge/consolidate/migrate/repair/deprecate. NEVER auto-destroys \u2014 requires operator authorization. Runs weekly + on-demand. 6-10 tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 30,
       "dependencies": [
         "22A"
       ],
       "module": "architecture_guardian",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T06:07:45.884832+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "91aaa57a"
     },
     {
       "id": "23F",
@@ -4027,7 +4028,7 @@
       "id": "25A",
       "title": "25A: Deploy dual KoboldCpp Qwen2.5-Coder-7B on VM 112 (PRIORITY)",
       "description": "OPERATOR PRIORITY DIRECTIVE. Complete the CPU Model Fabric transition on VM 112 (kai-cpu, 192.168.1.242, user 'kai' via SSH key /root/.ssh/id_ed25519 on this LXC and on Proxmox B).\n\nPREP ALREADY DONE (already merged to main by Claude):\n1. Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf download STARTED from    HuggingFace (bartowski's build) to /opt/kai-cpu-models/ on VM 112    via `wget -O <file>.tmp <url>` \u2014 download was in flight when the    phase was created. When wget finishes, rename .tmp \u2192 .gguf.\n2. core/ai_provider.py: registered koboldcpp_cpu_a (port 5001) +    koboldcpp_cpu_b (port 5002) providers. koboldcpp_cpu kept as alias.\n3. core/ai/ai_router.py: _JURIS_CHAIN now    [kai_brain, koboldcpp_cpu_a, koboldcpp_cpu_b, local].\n\nREMAINING OPS WORK for Kai to execute:\n(a) Wait for download to complete (target file:     /opt/kai-cpu-models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf, ~4.4GB).     Rename .tmp when wget PID exits.\n(b) On VM 112, copy the .gguf to a second path so instance B can lock     its own mmap: e.g. cp -a Qwen...gguf Qwen...gguf.b \u2014 OR use the     same file with --nommap for both (test both, pick winner).\n(c) Stop + disable existing koboldcpp.service (was serving GLM on 8080).     Keep the GLM .gguf file on disk for now (do not delete \u2014 reversible).\n(d) Create /etc/systemd/system/koboldcpp-a.service and koboldcpp-b.service     mirroring the existing unit's shape (User=kai, Group=kai, WorkingDirectory=    /opt/koboldcpp, MemoryMax=14G each, CPUQuota=700% each) with:\n      --model /opt/kai-cpu-models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf[.b]       --port 5001 (or 5002) --host 0.0.0.0 --contextsize 8192       --threads 7 --batchsize 512 --usecpu --quiet --skiplauncher\n    Split resources: 7 threads each (14/16 cores used total, 2 left     for system + koboldcpp overhead).\n(e) systemctl daemon-reload && systemctl enable --now koboldcpp-a     koboldcpp-b\n(f) Live-verify from THIS LXC via SSH -J tunnel:\n      ssh -J root@100.122.38.118 kai@192.168.1.242 curl -s       http://localhost:5001/api/v1/model \u2192 must include 'koboldcpp'\n      (same for 5002)\n(g) Live inference test: POST a small prompt to both /v1/chat/completions     and confirm each responds within 60s.\n(h) Restart ai-orchestrator so the new providers register.\n(i) Verify via: .venv/bin/python -c 'from core.ai.ai_router import     get_effective_providers; print(get_effective_providers(\"juris_legal_teaching\"))'     \u2192 should show [kai_brain, koboldcpp_cpu_a, koboldcpp_cpu_b, local].\n(j) Record evidence in memory/verification_history.json.\n\nPRESERVE: do NOT delete the GLM .gguf, do NOT rewrite koboldcpp binary, do NOT change the SSH access model. The GLM koboldcpp.service can be removed only after both new instances are proven healthy.\n\nMEMORY REFERENCES: cpu-model-fabric-vm112.md, kai-model-team.md, proxmox-b-tailscale-access.md.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 1,
       "dependencies": [],
       "module": "cpu_model_fabric",

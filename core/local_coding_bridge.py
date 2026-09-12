@@ -228,7 +228,8 @@ def _call_koboldcpp_cpu(prompt, timeout=1200):
     return data["choices"][0]["message"]["content"]
 
 
-def run_coding_task(project_path, instruction, model="kai-coder:7b", timeout=1200):
+def run_coding_task(project_path, instruction, model="kai-coder:7b", timeout=1200,
+                    ollama_url=None):
     """Run one coding task with a local Ollama model (or KoboldCpp CPU).
 
     Generates code via the model, writes the emitted files into
@@ -236,10 +237,15 @@ def run_coding_task(project_path, instruction, model="kai-coder:7b", timeout=120
     result shape. Raises RuntimeError only when the model itself cannot be
     reached; a model that returns no parseable files is a returned failure
     (``success=False``) so the router falls through to the next candidate.
+
+    ``ollama_url`` overrides the default OLLAMA_URL for callers that want to
+    target a specific ollama instance (e.g. kai_coder_gpu_a on port 11435 or
+    kai_coder_gpu_b on 11436).
     """
     import requests
 
     prompt = _CODING_SYSTEM + "\n\nTask:\n" + instruction
+    base_url = ollama_url or OLLAMA_URL
 
     try:
         if model == "koboldcpp_cpu":
@@ -247,7 +253,7 @@ def run_coding_task(project_path, instruction, model="kai-coder:7b", timeout=120
             text = _strip_reasoning_block(_call_koboldcpp_cpu(prompt, timeout))
         else:
             resp = requests.post(
-                f"{OLLAMA_URL}/api/generate",
+                f"{base_url}/api/generate",
                 json={
                     "model": model,
                     "prompt": prompt,

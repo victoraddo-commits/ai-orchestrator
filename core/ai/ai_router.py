@@ -84,12 +84,12 @@ ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
 # Juris Kai per-task_type chains — added 2026-09-11 after legal module
 # audit found the juris_* task_types had no ROLE_PROVIDERS entry and
 # silently fell through to length-1 `["local"]` chains (no redundancy).
-# Now: kai_brain (primary local reasoning) → koboldcpp_cpu (VM 112 CPU
-# fabric) → local (ollama on VM 104) — three fully-local fallbacks.
-# Two CPU instances give parallel capacity; koboldcpp_cpu_a and _b are both
-# Qwen2.5-Coder-7B Q4_K_M on VM 112 (ports 5001 + 5002). Put both in the chain
-# so the router can round-robin / fail over between them.
-_JURIS_CHAIN = ["kai_brain", "koboldcpp_cpu_a", "koboldcpp_cpu_b", "local"]
+# Now: kai_brain (primary local reasoning) → kai_coder_gpu_a/_b (VM 104 P40
+# GPU dedicated coder replicas) → local (ollama on VM 104) — fully-local.
+# 2026-09-12: koboldcpp_cpu_a/_b (VM 112 CPU) retired and swapped for
+# kai_coder_gpu_a/_b (dedicated ollama instances on VM 104 P40, ports 11435
+# + 11436 via ssh -L tunnels). Same model (Qwen2.5-Coder-7B) but on GPU.
+_JURIS_CHAIN = ["kai_brain", "kai_coder_gpu_a", "kai_coder_gpu_b", "local"]
 for _t in (
     "juris_legal_teaching", "juris_case_analysis", "juris_research",
     "juris_argument_construction", "juris_flashcards", "juris_chat",
@@ -111,14 +111,14 @@ for _t in (
 # a deterministic harness that turns their fenced-file output into real
 # writes + git commits — so they satisfy the coding_agent capability.
 ROLE_PROVIDERS["coding"] = [
-    "kai_coder",         # kai.coder.fast — Qwen2.5-Coder-7B on VM 104 GPU (primary)
-    "koboldcpp_cpu_a",   # Qwen2.5-Coder-7B on VM 112 port 5001 (CPU, independent capacity)
-    "koboldcpp_cpu_b",   # Qwen2.5-Coder-7B on VM 112 port 5002 (CPU, parallel to _a)
+    "kai_coder",         # kai.coder.fast — Qwen2.5-Coder-7B on VM 104 P40 (primary ollama instance)
+    "kai_coder_gpu_a",   # Qwen2.5-Coder-7B on VM 104 P40 (dedicated instance A, port 11435)
+    "kai_coder_gpu_b",   # Qwen2.5-Coder-7B on VM 104 P40 (dedicated instance B, port 11436)
     "local",             # ollama fallback
 ]
-# Fanout: allow a coding job to be dispatched to any of the two CPU instances
-# concurrently — the router selects based on health + queue depth.
-ROLE_PROVIDERS["coding_cpu_pool"] = ["koboldcpp_cpu_a", "koboldcpp_cpu_b"]
+# Fanout: allow a coding job to be dispatched to either GPU replica concurrently.
+# 2026-09-12: was koboldcpp_cpu_a/_b on VM 112 CPU; migrated to GPU replicas.
+ROLE_PROVIDERS["coding_cpu_pool"] = ["kai_coder_gpu_a", "kai_coder_gpu_b"]
 # Code review role — updated 2026-09-10 to kai_brain for thorough analysis
 ROLE_PROVIDERS["code_review"] = ["kai_coder", "local"]
 
@@ -215,8 +215,10 @@ def classify_task(description):
 # 2026-09-12: rotation restored across the 3 local Qwen2.5-Coder-7B workers
 # per operator directive — real parallelism when 2-3 coding jobs are in
 # flight, and preserves quality because all three serve the same base
-# model (kai_coder on VM 104 GPU, koboldcpp_cpu_a + _b on VM 112 CPU).
-CODING_ROTATING_FRONT = ["kai_coder", "koboldcpp_cpu_a", "koboldcpp_cpu_b"]
+# model — kai_coder + kai_coder_gpu_a + kai_coder_gpu_b, all Qwen2.5-Coder-7B
+# on the VM 104 P40 GPU across 3 dedicated ollama instances (ports 11434,
+# 11435, 11436).  2026-09-12: koboldcpp_cpu_a/_b on VM 112 CPU retired.
+CODING_ROTATING_FRONT = ["kai_coder", "kai_coder_gpu_a", "kai_coder_gpu_b"]
 
 # --- Purge disabled providers from all routing on import ---
 # Reads memory/provider_state.json and removes any provider whose persisted

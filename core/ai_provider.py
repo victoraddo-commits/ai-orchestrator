@@ -639,12 +639,119 @@ register_provider(
 
 
 # ============================================================================
-# CPU MODEL FABRIC — KoboldCpp on VM 112 (192.168.1.242)
+# GPU MODEL FABRIC — dedicated kai-coder:7b replicas on VM 104 P40
+# Deployed 2026-09-12 (operator: "i want the cpu models to use the gpu too so
+# migrate the models so they can have their own instances"). Two additional
+# ollama systemd units (ollama-a on 11435, ollama-b on 11436) on VM 104, each
+# with OLLAMA_KEEP_ALIVE=-1 and OLLAMA_MAX_LOADED_MODELS=1 → dedicated instance
+# per port. Reachable from this LXC via ssh -L tunnels (ollama-tunnel-a/-b).
+# Same kai-coder:7b model as the primary kai_coder, weights shared on GPU
+# (ollama dedupes). Purpose: 3-way parallel dispatch across the coder pool.
+# ============================================================================
+
+def _ollama_call_port(port: int, model: str, prompt: str, timeout: int = 120,
+                      temperature: float = 0.1, top_p: float = 0.95):
+    """Hit a specific ollama instance (via SSH tunnel) with a text task.
+    Used by the GPU-replica providers so each hits its own dedicated port."""
+    import requests
+    try:
+        response = requests.post(
+            f"http://localhost:{port}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": temperature, "top_p": top_p},
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json().get("response", "")
+    except Exception as e:
+        raise RuntimeError(f"ollama:{port} model {model} call failed: {e}")
+
+
+def _ollama_available_port(port: int, model_prefix: str) -> bool:
+    """Reachability + model-presence probe for a specific ollama port."""
+    try:
+        import requests
+        r = requests.get(f"http://localhost:{port}/api/tags", timeout=2)
+        if r.status_code == 200:
+            models = r.json().get("models", [])
+            return any(model_prefix in m.get("name", "") for m in models)
+        return False
+    except Exception:
+        return False
+
+
+# ── kai_coder_gpu_a — dedicated ollama instance on VM 104 GPU port 11435 ──
+
+def _kai_coder_gpu_a_run_text_task(prompt, timeout=120, project_path=None):
+    return _ollama_call_port(11435, "kai-coder:7b", prompt, timeout=timeout)
+
+
+def _kai_coder_gpu_a_available():
+    return _ollama_available_port(11435, "kai-coder")
+
+
+def _kai_coder_gpu_a_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model="kai-coder:7b", timeout=timeout,
+        ollama_url="http://localhost:11435",
+    )
+
+
+register_provider(
+    "kai_coder_gpu_a",
+    run_text_task=_kai_coder_gpu_a_run_text_task,
+    run_coding_task=_kai_coder_gpu_a_run_coding_task,
+    available_fn=_kai_coder_gpu_a_available,
+    kind="local",
+    description="kai-coder:7b via ollama on VM 104 P40 (instance A, port 11435 via SSH tunnel) — dedicated GPU coder replica for parallel dispatch",
+    cost_tier="free",
+)
+
+
+# ── kai_coder_gpu_b — dedicated ollama instance on VM 104 GPU port 11436 ──
+
+def _kai_coder_gpu_b_run_text_task(prompt, timeout=120, project_path=None):
+    return _ollama_call_port(11436, "kai-coder:7b", prompt, timeout=timeout)
+
+
+def _kai_coder_gpu_b_available():
+    return _ollama_available_port(11436, "kai-coder")
+
+
+def _kai_coder_gpu_b_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model="kai-coder:7b", timeout=timeout,
+        ollama_url="http://localhost:11436",
+    )
+
+
+register_provider(
+    "kai_coder_gpu_b",
+    run_text_task=_kai_coder_gpu_b_run_text_task,
+    run_coding_task=_kai_coder_gpu_b_run_coding_task,
+    available_fn=_kai_coder_gpu_b_available,
+    kind="local",
+    description="kai-coder:7b via ollama on VM 104 P40 (instance B, port 11436 via SSH tunnel) — dedicated GPU coder replica for parallel dispatch",
+    cost_tier="free",
+)
+
+
+# ============================================================================
+# CPU MODEL FABRIC — KoboldCpp on VM 112 (192.168.1.242) — RETIRED 2026-09-12
 # Original deployment 2026-09-11: single instance, GLM-4.7-Flash Q4_K_M on 8080.
 # Updated 2026-09-11 (operator directive): replace GLM with two parallel
 # Qwen2.5-Coder-7B Q4_K_M instances on ports 5001 + 5002 for concurrent
 # coding capacity — same model, two servers, independent request queues.
+# 2026-09-12: superseded by kai_coder_gpu_a/_b GPU replicas above. VM 112
+# koboldcpp-a/-b services stopped + disabled; .gguf preserved for rollback.
+# Registrations below are gated on KAI_KEEP_KOBOLDCPP_CPU=1 for rollback.
 # ============================================================================
+
+_KOBOLDCPP_CPU_ENABLED = os.environ.get("KAI_KEEP_KOBOLDCPP_CPU", "").lower() in ("1", "true", "yes")
 
 def _koboldcpp_call(port: int, prompt: str, timeout: int = 300, max_tokens: int = 2048):
     """One HTTP call to a KoboldCpp instance on VM 112 at the given port.
@@ -723,15 +830,16 @@ def _koboldcpp_cpu_a_run_coding_task(project_path, instruction, timeout=1200, **
     )
 
 
-register_provider(
-    "koboldcpp_cpu_a",
-    run_text_task=_koboldcpp_cpu_a_run_text_task,
-    run_coding_task=_koboldcpp_cpu_a_run_coding_task,
-    available_fn=_koboldcpp_cpu_a_available,
-    kind="local",
-    description="Qwen2.5-Coder-7B Q4_K_M via KoboldCpp on VM 112 port 5001 — CPU-only, 16 Xeon cores, independent capacity.",
-    cost_tier="free",
-)
+if _KOBOLDCPP_CPU_ENABLED:
+    register_provider(
+        "koboldcpp_cpu_a",
+        run_text_task=_koboldcpp_cpu_a_run_text_task,
+        run_coding_task=_koboldcpp_cpu_a_run_coding_task,
+        available_fn=_koboldcpp_cpu_a_available,
+        kind="local",
+        description="Qwen2.5-Coder-7B Q4_K_M via KoboldCpp on VM 112 port 5001 — CPU-only, 16 Xeon cores, independent capacity. RETIRED 2026-09-12; set KAI_KEEP_KOBOLDCPP_CPU=1 to re-enable.",
+        cost_tier="free",
+    )
 
 
 # ── Instance B on port 5002 (parallel capacity, same model) ───────────────
@@ -751,15 +859,16 @@ def _koboldcpp_cpu_b_run_coding_task(project_path, instruction, timeout=1200, **
     )
 
 
-register_provider(
-    "koboldcpp_cpu_b",
-    run_text_task=_koboldcpp_cpu_b_run_text_task,
-    run_coding_task=_koboldcpp_cpu_b_run_coding_task,
-    available_fn=_koboldcpp_cpu_b_available,
-    kind="local",
-    description="Qwen2.5-Coder-7B Q4_K_M via KoboldCpp on VM 112 port 5002 — CPU-only, parallel to koboldcpp_cpu_a for concurrent coding requests.",
-    cost_tier="free",
-)
+if _KOBOLDCPP_CPU_ENABLED:
+    register_provider(
+        "koboldcpp_cpu_b",
+        run_text_task=_koboldcpp_cpu_b_run_text_task,
+        run_coding_task=_koboldcpp_cpu_b_run_coding_task,
+        available_fn=_koboldcpp_cpu_b_available,
+        kind="local",
+        description="Qwen2.5-Coder-7B Q4_K_M via KoboldCpp on VM 112 port 5002 — CPU-only, parallel to koboldcpp_cpu_a. RETIRED 2026-09-12; set KAI_KEEP_KOBOLDCPP_CPU=1 to re-enable.",
+        cost_tier="free",
+    )
 
 
 # Backward-compat alias — anything still importing `koboldcpp_cpu` gets
@@ -778,12 +887,13 @@ def _koboldcpp_cpu_run_coding_task(project_path, instruction, timeout=1200, **kw
     return _koboldcpp_cpu_a_run_coding_task(project_path, instruction, timeout=timeout, **kwargs)
 
 
-register_provider(
-    "koboldcpp_cpu",
-    run_text_task=_koboldcpp_cpu_run_text_task,
-    run_coding_task=_koboldcpp_cpu_run_coding_task,
-    available_fn=_koboldcpp_cpu_available,
-    kind="local",
-    description="Alias for koboldcpp_cpu_a (Qwen2.5-Coder-7B Q4_K_M on VM 112 port 5001). Kept for backward compat.",
-    cost_tier="free",
-)
+if _KOBOLDCPP_CPU_ENABLED:
+    register_provider(
+        "koboldcpp_cpu",
+        run_text_task=_koboldcpp_cpu_run_text_task,
+        run_coding_task=_koboldcpp_cpu_run_coding_task,
+        available_fn=_koboldcpp_cpu_available,
+        kind="local",
+        description="Alias for koboldcpp_cpu_a (Qwen2.5-Coder-7B Q4_K_M on VM 112 port 5001). RETIRED 2026-09-12; set KAI_KEEP_KOBOLDCPP_CPU=1 to re-enable.",
+        cost_tier="free",
+    )

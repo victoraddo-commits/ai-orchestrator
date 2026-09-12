@@ -4042,15 +4042,15 @@
       "id": "25B",
       "title": "25B: Route coding jobs to the new koboldcpp_cpu_a/_b workers",
       "description": "Once phase 25A lands (both instances serving on 5001 + 5002), Kai must start ACTUALLY USING them. Success criteria: 5 successful coding-role delegate() calls that resolve to koboldcpp_cpu_a OR koboldcpp_cpu_b, recorded in memory/ai_usage_history.json. Kai should pick a pending coding-heavy phase from the queue (any of 20B/20C/21B/21C/etc \u2014 the pipeline picks by priority) and let ai_router try koboldcpp_cpu_a as the fallback after kai_coder \u2014 no code changes needed since ai_router.py already lists them in ROLE_PROVIDERS['coding']. Evidence required: 5 rows in ai_usage_history.json with model_used in {koboldcpp_cpu_a, koboldcpp_cpu_b} AND status=='success'. No mocks. If kai_coder never fails, force one fallback by exercising the pool via /kai/chat with provider='koboldcpp_cpu_a' explicitly to prove the plumbing works.",
-      "status": "in_progress",
+      "status": "pending",
       "priority": 5,
       "dependencies": [
         "25A"
       ],
       "module": "cpu_model_fabric",
       "created_at": "2026-09-12T07:12:07.234302+00:00",
-      "updated_at": "2026-09-12T07:12:07.234302+00:00",
-      "build_id": "15b1e492"
+      "updated_at": "2026-09-12T07:28:15.227968+00:00",
+      "build_id": null
     },
     {
       "id": "25C",
@@ -4092,7 +4092,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26B",
@@ -4121,7 +4125,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26C",
@@ -4150,7 +4158,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26D",
@@ -4179,7 +4191,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26E",
@@ -4208,7 +4224,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26F",
@@ -4237,7 +4257,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26G",
@@ -4266,7 +4290,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26H",
@@ -4295,7 +4323,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26I",
@@ -4324,7 +4356,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26J",
@@ -4353,7 +4389,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26K",
@@ -4382,7 +4422,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26L",
@@ -4411,7 +4455,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26M",
@@ -4440,7 +4488,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26N",
@@ -4469,7 +4521,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26O",
@@ -4498,7 +4554,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26P",
@@ -4527,7 +4587,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26Q",
@@ -4556,7 +4620,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26R",
@@ -4585,7 +4653,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26S",
@@ -4614,7 +4686,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26T",
@@ -4643,7 +4719,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26U",
@@ -4672,7 +4752,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26V",
@@ -4701,7 +4785,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26W",
@@ -4730,7 +4818,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26X",
@@ -4759,7 +4851,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26Y",
@@ -4788,7 +4884,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26Z",
@@ -4817,7 +4917,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26AA",
@@ -4846,7 +4950,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26AB",
@@ -4875,7 +4983,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26AC",
@@ -4904,7 +5016,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26AD",
@@ -4933,7 +5049,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     },
     {
       "id": "26AE",
@@ -4962,7 +5082,11 @@
         "existing databases",
         "existing credentials",
         "existing networking"
-      ]
+      ],
+      "queue_priority": 100,
+      "expedited": true,
+      "expedited_at": "2026-09-12T07:28:06.528541+00:00",
+      "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'"
     }
   ],
   "_audit": {

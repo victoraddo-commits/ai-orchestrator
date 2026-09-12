@@ -4074,7 +4074,7 @@
       "id": "26A",
       "title": "OpenCode dir: complete environment discovery on Proxmox B (read-only)",
       "description": "Read-only audit on Proxmox B: hostname, hostnamectl, uname -a, /etc/os-release, lscpu, free -h, lsblk, df -h, ip -br addr, ip route, ip -br link, ss -tulpn, running+enabled services. Determine: whoami, id, sudo -n true. Dev tooling versions: node, npm, bun, pnpm, yarn, git, python3, docker, podman. Only run commands that exist. NO modifications. Record findings for phase 1+.",
-      "status": "pending",
+      "status": "completed",
       "priority": 1,
       "depends_on": [],
       "created_at": "2026-09-12T07:27:13.795782+00:00",
@@ -4100,9 +4100,10 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": null,
+      "build_id": "manual-claude",
       "updated_at": "2026-09-12T07:53:28.182131+00:00",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "completed_at": "2026-09-12T08:41:10.804396+00:00"
     },
     {
       "id": "26B",
@@ -4217,7 +4218,7 @@
       "id": "26E",
       "title": "OpenCode dir: discover Superpowers",
       "description": "Determine whether Superpowers exists (search superpowers, obra/superpowers, SKILL.md, superpowers skills). Check install location, version/commit, available skills, OpenCode compat, Claude-specific deps, hooks, commands, agents, scripts. If exists AND OpenCode can natively discover: DO NOT COPY \u2014 use it. If adaptation required: DO NOT modify original; create OpenCode-compat adapter/copy in separate location. Preserve original.",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 1,
       "depends_on": [
         "26D"
@@ -4247,13 +4248,14 @@
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
       "assigned_provider": "omniroute",
       "build_id": "038f87d6",
-      "failure_reason": "Build 038f87d6 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 038f87d6 missing from builds.json (deleted or stale reference)",
+      "updated_at": "2026-09-12T08:03:37.179531+00:00"
     },
     {
       "id": "26F",
       "title": "OpenCode dir: discover Claude compatibility",
       "description": "Determine whether OpenCode can directly consume .claude/skills, ~/.claude/skills, CLAUDE.md. Use capabilities of INSTALLED OpenCode version. TEST actual discovery \u2014 not filesystem existence. If native: USE existing skill, do not duplicate. If not: create compat layer, preserve original.",
-      "status": "failed",
+      "status": "in_progress",
       "priority": 1,
       "depends_on": [
         "26E"
@@ -4283,7 +4285,8 @@
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
       "assigned_provider": "omniroute",
       "build_id": "6cebb341",
-      "failure_reason": "Build 6cebb341 missing from builds.json (deleted or stale reference)"
+      "failure_reason": "Build 6cebb341 missing from builds.json (deleted or stale reference)",
+      "updated_at": "2026-09-12T08:03:37.179545+00:00"
     },
     {
       "id": "26G",
@@ -4317,13 +4320,15 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:28:59.775896+00:00"
     },
     {
       "id": "26H",
       "title": "OpenCode dir: install / verify OpenCode",
       "description": "If absent: `curl -fsSL https://opencode.ai/install | bash` (or brew/npm/scoop per phase-0 tooling). If already installed: do NOT reinstall. Verify current/stable; upgrade only when safe+useful. Verify: `opencode --version`, `which opencode`.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "depends_on": [
         "26G"
@@ -4351,7 +4356,7 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "build_id": null,
+      "build_id": "1f2dea24",
       "updated_at": "2026-09-12T07:53:28.182160+00:00",
       "assigned_provider": "omniroute"
     },
@@ -4387,7 +4392,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:28:59.775908+00:00"
     },
     {
       "id": "26J",
@@ -4421,7 +4428,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:28:59.775911+00:00"
     },
     {
       "id": "26K",
@@ -4455,7 +4464,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:28:59.775914+00:00"
     },
     {
       "id": "26L",
@@ -4489,7 +4500,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:34:01.164659+00:00"
     },
     {
       "id": "26M",
@@ -4523,7 +4536,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:34:01.164677+00:00"
     },
     {
       "id": "26N",
@@ -4594,7 +4609,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:34:01.164683+00:00"
     },
     {
       "id": "26P",
@@ -4628,7 +4645,9 @@
       "expedited": true,
       "expedited_at": "2026-09-12T07:28:06.528541+00:00",
       "expedited_reason": "operator directive 2026-09-12: 'move to front, build quickly'",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": null,
+      "updated_at": "2026-09-12T08:34:01.164688+00:00"
     },
     {
       "id": "26Q",

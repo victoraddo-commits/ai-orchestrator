@@ -57,19 +57,38 @@ def get_remaining_work():
     return [p for p in load_roadmap()["phases"] if p["status"] != "completed"]
 
 
+def _phase_deps(p):
+    """Extract the dependency list from a phase dict, accepting either
+    ``dependencies`` (original field name, used by historical phases) or
+    ``depends_on`` (newer field name, used by 26* OpenCode directive phases
+    and other post-2026-09-12 additions). Deduplicates across both.
+    """
+    deps = list(p.get("dependencies") or [])
+    for d in (p.get("depends_on") or []):
+        if d not in deps:
+            deps.append(d)
+    return deps
+
+
 def get_candidate_phases():
     """Pending phases whose dependencies are all completed -- i.e. everything
     eligible to start next, before any ordering/selection is applied. Split
     out from get_next_phase() so callers that need a different selection
     strategy (e.g. core.roadmap_manager's value-based scoring) can reuse the
-    same eligibility filter instead of duplicating it."""
+    same eligibility filter instead of duplicating it.
+
+    Accepts both ``dependencies`` and ``depends_on`` field names on a phase —
+    the field-name split predates 2026-09-12 and was silently causing the
+    engine to treat depends_on-only phases as having no deps (the 26*
+    OpenCode directive phases were affected — Kai raced ahead of 26A).
+    """
 
     roadmap = load_roadmap()
     completed_ids = {p["id"] for p in roadmap["phases"] if p["status"] == "completed"}
 
     return [
         p for p in roadmap["phases"]
-        if p["status"] == "pending" and all(dep in completed_ids for dep in p.get("dependencies", []))
+        if p["status"] == "pending" and all(dep in completed_ids for dep in _phase_deps(p))
     ]
 
 

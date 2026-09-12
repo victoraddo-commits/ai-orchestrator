@@ -4069,262 +4069,900 @@
     },
     {
       "id": "26A",
-      "title": "OpenCode: install on Proxmox B (new CT kai-opencode, VMID 113 preferred)",
-      "description": "Create new LXC on Proxmox B for OpenCode. Ubuntu 24.04, 4 cores, 4G RAM, 40G disk. Install OpenCode via `curl -fsSL https://opencode.ai/install | bash` OR via npm. Verify `opencode --version`. DO NOT modify Proxmox A, Claude Code, or existing CTs. MUST NOT expose port to public internet.",
+      "title": "OpenCode dir: complete environment discovery on Proxmox B (read-only)",
+      "description": "Read-only audit on Proxmox B: hostname, hostnamectl, uname -a, /etc/os-release, lscpu, free -h, lsblk, df -h, ip -br addr, ip route, ip -br link, ss -tulpn, running+enabled services. Determine: whoami, id, sudo -n true. Dev tooling versions: node, npm, bun, pnpm, yarn, git, python3, docker, podman. Only run commands that exist. NO modifications. Record findings for phase 1+.",
       "status": "pending",
       "priority": 1,
       "depends_on": [],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 0,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26B",
-      "title": "FreeLLMAPI: install on the same CT (or dedicated CT if resources permit)",
-      "description": "Install FreeLLMAPI via docker one-liner `curl -fsSL https://freellmapi.co/install.sh | bash` OR git clone valorisa/FreeLLMAPI + npm. Start server, verify it listens on OpenAI-compatible /v1 endpoint. DO NOT expose to public internet. Encryption key generated + stored securely.",
+      "title": "OpenCode dir: discover the Kai ecosystem on Proxmox B",
+      "description": "Search /home, /opt, /srv, /workspace(s), /root, /usr/local/src, /var/www for kai, kai-*, jarvis, ai-orchestrator, kai-vault, command-center, second-brain, model-fabric, agent-fabric, teammate, agent, brain, scheduler, telegram. Inspect: git repos, Docker containers+compose, systemd, PM2, Python/Node/FastAPI apps, DBs, reverse proxies, API gateways. DO NOT modify.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26A"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 1,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26C",
-      "title": "Wire OpenCode \u2192 FreeLLMAPI (Phase 10 of directive)",
-      "description": "Audit FreeLLMAPI: list actual providers/models/aliases/fallbacks/auth/limits/context/output/health. Select PRIMARY/FALLBACK/FAST/REVIEW coding models from what actually exists. Never invent model names. Do not replace existing Kai models. Configure OpenCode to point at FreeLLMAPI endpoint with the unified bearer token.",
+      "title": "OpenCode dir: build a Kai system map",
+      "description": "From phase-1 discovery, map: COMPUTE (Proxmox hosts, VMs, LXCs, GPU/CPU, storage, mem, GPU); NETWORK (interfaces, VLANs, subnets, gateways, DNS, reverse proxies, VPN/Tailscale/NetBird, svc-to-svc paths, exposed ports); SERVICES (Kai svcs, AI Gateway, Vault, Second Brain, Command Center, Agent systems, schedulers, Telegram, APIs, DBs, auth, notifications, dashboards); AI (Ollama, AirLLM, other inference, local+remote models, provider APIs, routing, fallback, aliases); DEVELOPMENT (git repos+branches+remotes+worktrees, existing coding agents, Claude Code, OpenCode, other frameworks, existing skills+agents+prompts, CLAUDE.md, AGENTS.md, README, arch docs).",
       "status": "pending",
       "priority": 1,
       "depends_on": [
-        "26A",
         "26B"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 2,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26D",
-      "title": "Skill research + dedup + core skill install (directive phases 11-13)",
-      "description": "Research OpenCode ecosystem: Superpowers, osmontero/opencode-skills, OpenCode Power Pack, opencode-review, farmage/opencode-skills. Evaluate each on maintenance/compat/quality/dup/security/deps/license/risk. Dedup against existing Claude Code / Superpowers / OpenCode / other. Install high-value core skills for: dev / security / infra / AI / web. Never install irrelevant technology-specific skills.",
+      "title": "OpenCode dir: discover all existing skills",
+      "description": "Search ~/.config/opencode/skills, ~/.claude/skills, ~/.agents/skills, .opencode/skills, .claude/skills, .agents/skills. Search Kai repos for SKILL.md, skill.md, skills/, agents/, workflows/, CLAUDE.md, AGENTS.md. Build inventory: name, location, source repo, purpose, deps, Claude-specific behavior, OpenCode compat, duplicate/conflict status.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26C"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 3,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26E",
-      "title": "Kai-specific skills \u2014 only where generic skills are insufficient (directive phase 14)",
-      "description": "Only create Kai skills for systems ACTUALLY DISCOVERED. Contents reflect the live env. Never invent architecture. Candidates: kai-system-discovery, kai-architecture, kai-security, kai-vault, kai-model-fabric, kai-agent-fabric, kai-teammate-factory, kai-proxmox, kai-networking, kai-airllm, kai-ollama, kai-freellmapi, kai-opencode, kai-testing, kai-deployment, kai-observability, kai-disaster-recovery, kai-second-brain, kai-command-center \u2014 pick only those with real matching subsystems.",
+      "title": "OpenCode dir: discover Superpowers",
+      "description": "Determine whether Superpowers exists (search superpowers, obra/superpowers, SKILL.md, superpowers skills). Check install location, version/commit, available skills, OpenCode compat, Claude-specific deps, hooks, commands, agents, scripts. If exists AND OpenCode can natively discover: DO NOT COPY \u2014 use it. If adaptation required: DO NOT modify original; create OpenCode-compat adapter/copy in separate location. Preserve original.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26D"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 4,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26F",
-      "title": "Kai system knowledge reference (directive phase 15)",
-      "description": "FIRST: check whether Kai already has authoritative docs. If yes: extend/reference \u2014 do NOT create a competing source of truth. If not: create OpenCode-readable arch reference documenting discovered components/repos/services/ports/networks/auth/databases/model infra/deployment/critical paths/security boundaries/backup/testing.",
+      "title": "OpenCode dir: discover Claude compatibility",
+      "description": "Determine whether OpenCode can directly consume .claude/skills, ~/.claude/skills, CLAUDE.md. Use capabilities of INSTALLED OpenCode version. TEST actual discovery \u2014 not filesystem existence. If native: USE existing skill, do not duplicate. If not: create compat layer, preserve original.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26E"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 5,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26G",
-      "title": "Kai engineering team \u2014 agent roles where useful (directive phase 16)",
-      "description": "Where OpenCode supports agents/subagents, create specialized roles ONLY IF USEFUL for the discovered ecosystem: kai-architect / kai-security / kai-reviewer / kai-debugger / kai-devops / kai-model-engineer / kai-network-engineer / kai-qa. Each: responsibility/boundaries/tools/skills/review expectations/security restrictions. Do not create fake complexity.",
+      "title": "OpenCode dir: discover existing OpenCode configuration",
+      "description": "If any OpenCode installation found (from phase 1), determine: version, install path, config path, project+global+provider+agent+skill+permission+MCP config. Inspect schema supported by installed version. Do NOT blindly apply older config examples.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26F"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 6,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26H",
-      "title": "Kai security reviewer (directive phase 17)",
-      "description": "Dedicated security review capability. Must check auth/authz/secrets/API+network exposure/TLS/tokens/creds/perms (file+service+container)/DB access/command exec/prompt injection/tool abuse/agent perms/supply-chain+dependency risk. MUST be able to REJECT unsafe implementation.",
+      "title": "OpenCode dir: install / verify OpenCode",
+      "description": "If absent: `curl -fsSL https://opencode.ai/install | bash` (or brew/npm/scoop per phase-0 tooling). If already installed: do NOT reinstall. Verify current/stable; upgrade only when safe+useful. Verify: `opencode --version`, `which opencode`.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26G"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 7,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26I",
-      "title": "Discovery-aware development workflow (directive phase 18)",
-      "description": "Wire the 15-step workflow into OpenCode when modifying Kai: identify subsystem \u2192 read docs \u2192 inspect impl \u2192 deps \u2192 skills \u2192 agents \u2192 tests \u2192 svc state \u2192 propose \u2192 implement minimally \u2192 test \u2192 security review \u2192 self-review \u2192 fix \u2192 re-test \u2192 report. Never code from assumptions.",
+      "title": "OpenCode dir: FreeLLMAPI integration",
+      "description": "Verify FreeLLMAPI. If installed: PRESERVE. If absent: `curl -fsSL https://freellmapi.co/install.sh | bash`. Do not assume port \u2014 determine actual listener. Verify service status, health endpoint, /v1/models, Anthropic-compat endpoint if applicable, OpenAI-compat endpoint. Do NOT expose provider creds directly to OpenCode. Architecture: OpenCode \u2192 FreeLLMAPI \u2192 Provider/model.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26H"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 8,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26J",
-      "title": "Test skill discovery (directive phase 19)",
-      "description": "Launch OpenCode FROM the actual Kai project. Verify it can discover: existing Claude skills / OpenCode skills / Superpowers / Kai-specific skills / CLAUDE.md / AGENTS.md / project instructions. Use actual OpenCode commands \u2014 prove it can LOAD them, not just see the files.",
+      "title": "OpenCode dir: configure OpenCode \u2192 FreeLLMAPI",
+      "description": "Configure OpenCode to use FreeLLMAPI. Use config schema of installed OpenCode version. OpenAI-compat endpoint: http://<host>:<port>/v1. Do NOT assume port. If `setup-opencode` exists in FreeLLMAPI: inspect first, validate generated config against installed schema, repair invalid fields, verify model+output limits, auth, streaming. Guard against missing `limit.output` if required.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
-        "26D"
+        "26I"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 9,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26K",
-      "title": "Test Superpowers end-to-end (directive phase 20)",
-      "description": "Harmless test that OpenCode can discover / load / follow Superpowers workflow / use associated scripts/resources. Do NOT modify production Kai during this test.",
+      "title": "OpenCode dir: audit FreeLLMAPI providers and models",
+      "description": "Query FreeLLMAPI. Determine actual providers/models/aliases/fallbacks/auth/limits/context/output/health. Select PRIMARY + FALLBACK + OPTIONAL FAST + OPTIONAL REVIEW coding models from what actually exists. Never invent model names. Do not replace existing Kai models.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26J"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 10,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26L",
-      "title": "Test coding workflow on disposable repo (directive phase 21)",
-      "description": "Disposable test repo. OpenCode must: inspect repo / plan change / create+edit file / run cmd / run test / review change / show diff / correct intentional failure / re-run test. All must work.",
+      "title": "OpenCode dir: skill research (OpenCode ecosystem)",
+      "description": "Research: Superpowers, osmontero/opencode-skills, OpenCode Power Pack, opencode-review, farmage/opencode-skills, OpenCode agent kits, other maintained. Do NOT install everything. Evaluate each: maintenance, OpenCode compat, quality, dup, security, Claude-specific deps, usefulness to Kai, deps, license, risk. Prioritize high-value.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26K"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 11,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26M",
-      "title": "Test Kai read-only audit (directive phase 22)",
-      "description": "Instruct OpenCode from the real Kai project: 'Audit Kai. Do not change anything. Discover architecture/services/repos/model infra/auth/networking/DBs/skills/agents/deployment. Report + identify anything unverifiable.' Must succeed.",
+      "title": "OpenCode dir: install core skills (dev/security/infra/AI/web)",
+      "description": "Install where not present. DEV: planning, brainstorming, implementation, TDD, testing, debugging, systematic-debugging, code-review, refactoring, documentation. SECURITY: security review, threat modeling, dep audit, secret detection, secure coding, authn+authz review, API security. INFRA: DevOps, Docker, Linux, networking, deployment, observability, performance, incident debugging. AI: LLM integration, prompt engineering, RAG, MCP, AI agents, model eval, AI gateway. WEB (if relevant): frontend, backend, API design, accessibility, Playwright, UI+UX review. Do not install irrelevant tech-specific skills.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26L"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 12,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26N",
-      "title": "Security test (directive phase 23)",
-      "description": "Verify OpenCode does NOT automatically without explicit auth: expose ports / publish creds / delete repos / destroy VMs+CTs / modify Proxmox config / modify prod networking / delete DBs / overwrite secrets. Use least privilege.",
+      "title": "OpenCode dir: skill deduplication",
+      "description": "Before installing any skill CHECK: equivalent in Superpowers / Claude Code / OpenCode / other installed pkg? If yes: PRESERVE existing. Do not create dups. If overlap: prefer better-maintained; do not delete. Resolve precedence safely.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26M"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 13,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26O",
-      "title": "Git safety verification (directive phase 24)",
-      "description": "Verify OpenCode: runs `git status`, `git branch`, `git remote -v` BEFORE modifying repos. Never automatically: force push / reset --hard / delete branches+worktrees / rewrite history \u2014 unless explicitly instructed by operator.",
+      "title": "OpenCode dir: Kai-specific skills (only where justified)",
+      "description": "Only create Kai skills for systems actually discovered. Never invent architecture. Candidates: kai-system-discovery, kai-architecture, kai-security, kai-vault, kai-model-fabric, kai-agent-fabric, kai-teammate-factory, kai-proxmox, kai-networking, kai-airllm, kai-ollama, kai-freellmapi, kai-opencode, kai-testing, kai-deployment, kai-observability, kai-disaster-recovery, kai-second-brain, kai-command-center. Pick only those with real matching subsystems from phase 2.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26N"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 14,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26P",
-      "title": "Preserve verification (directive phases 25-26)",
-      "description": "Confirm: Claude Code on Proxmox A untouched. OmniRoute untouched. Kai NOT renamed/restructured/merged/replaced. OpenCode is an ADDITIONAL interface, not a replacement.",
+      "title": "OpenCode dir: Kai system knowledge reference",
+      "description": "First check whether Kai already has authoritative docs. If yes: extend/reference, do NOT create competing source of truth. If not: create OpenCode-readable arch reference documenting discovered components/repos/services/ports/networks/auth/DBs/model infra/AI providers/deployment/deps/svc relationships/critical paths/security boundaries/backup/testing.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26O"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 15,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26Q",
-      "title": "Mobile/remote access via Tailscale/NetBird ONLY (directive phase 27)",
-      "description": "Prepare OpenCode for secure remote/mobile access. Use existing Tailscale (100.122.38.118 for pve-2) OR NetBird OR authenticated reverse proxy. DO NOT expose OpenCode directly to public Internet. Do not introduce unnecessary networking changes.",
+      "title": "OpenCode dir: Kai engineering team (agent roles)",
+      "description": "Where OpenCode supports agents/subagents, create useful roles ONLY IF USEFUL: kai-architect, kai-security, kai-reviewer, kai-debugger, kai-devops, kai-model-engineer, kai-network-engineer, kai-qa. Each: responsibility, boundaries, tools, skills, review expectations, security restrictions. Do not create fake complexity.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26P"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 16,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26R",
-      "title": "Persistence + reboot survival test (directive phase 28)",
-      "description": "Verify OpenCode / FreeLLMAPI / config / skills / agents / credentials survive a reboot. After reboot verify: FreeLLMAPI + OpenCode + skills + providers + models + Kai connectivity. Reboot only if safe.",
+      "title": "OpenCode dir: Kai security reviewer",
+      "description": "Dedicated security review capability. Must check auth/authz, secrets, API+network exposure, TLS, tokens, creds, file+service+container perms, DB access, command exec, prompt injection, tool abuse, agent perms, supply-chain+dep risk. MUST be able to REJECT unsafe implementation.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26Q"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 17,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26S",
-      "title": "Final end-to-end system test (directive phase 29)",
-      "description": "Full chain: USER \u2192 OpenCode \u2192 FreeLLMAPI \u2192 model/provider \u2192 OpenCode tool execution \u2192 file modification \u2192 tests \u2192 review. Verify every layer.",
+      "title": "OpenCode dir: discovery-aware development workflow",
+      "description": "Wire the 16-step workflow: identify subsystem \u2192 read docs \u2192 inspect impl \u2192 deps \u2192 skills \u2192 agents \u2192 tests \u2192 svc state \u2192 propose \u2192 implement minimally \u2192 test \u2192 security review \u2192 self-review \u2192 fix \u2192 re-test \u2192 report exactly what changed. Never code from assumptions.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26R"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 18,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     },
     {
       "id": "26T",
-      "title": "Final acceptance checklist + report (directive phase 30 + FINAL sections)",
-      "description": "Complete acceptance checklist: OpenCode installed+verified / FreeLLMAPI installed+verified / connection works / auth works / model discovery works / primary + fallback models work / streaming + tool exec + file r/w + shell + tests + session continuation / Claude-compat skills discovered / Superpowers discovered+tested / dedup done / community skills evaluated+installed / Kai skills created where justified / Kai arch+docs+repos+svcs+model infra+networking discovered / security boundaries identified / git safety verified / mobile+remote path evaluated / no unnecessary public exposure / persistence+reboot verified / Kai+Proxmox A+Claude Code+OmniRoute+models+DBs+creds preserved. If ANY failure: report honestly per directive phase 30.",
+      "title": "OpenCode dir: test skill discovery",
+      "description": "Launch OpenCode FROM real Kai project. Verify discovers existing Claude skills, OpenCode skills, Superpowers, Kai-specific skills, CLAUDE.md, AGENTS.md, project instructions. Use actual OpenCode commands \u2014 prove LOAD, not just filesystem.",
       "status": "pending",
       "priority": 1,
       "depends_on": [
         "26S"
       ],
-      "created_at": "2026-09-12T07:23:37.139988+00:00",
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
       "source": "opencode-freellmapi-directive-2026-09-12",
-      "note": "TRUNCATED DIRECTIVE \u2014 phases 1-9 of the original directive were not received; install method chosen from best-fit web research (sst/opencode + valorisa/FreeLLMAPI). Operator may correct."
+      "directive_phase": 19,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26U",
+      "title": "OpenCode dir: test Superpowers end-to-end",
+      "description": "Harmless test: OpenCode discovers/loads/follows Superpowers workflow, uses associated scripts+resources. Do NOT modify production Kai during test.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26T"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 20,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26V",
+      "title": "OpenCode dir: test coding workflow (disposable repo)",
+      "description": "Disposable test repo. OpenCode must: inspect / plan / create+edit file / run cmd / run test / review / show diff / correct intentional failure / re-run test. All must work.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26U"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 21,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26W",
+      "title": "OpenCode dir: test Kai read-only discovery",
+      "description": "Instruct OpenCode from real Kai project: audit Kai without changes, discover arch/services/repos/model infra/auth/networking/DBs/skills/agents/deployment, report and identify anything unverifiable. Must succeed.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26V"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 22,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26X",
+      "title": "OpenCode dir: security test",
+      "description": "Verify OpenCode does NOT auto without explicit auth: expose ports, publish creds, delete repos, destroy VMs+CTs, modify Proxmox config, modify prod networking, delete DBs, overwrite secrets. Use least privilege.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26W"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 23,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26Y",
+      "title": "OpenCode dir: git safety verification",
+      "description": "Verify OpenCode: runs git status + branch + remote -v BEFORE modifying repos. Never auto: force push, reset --hard, delete branches+worktrees, rewrite history \u2014 unless explicitly instructed.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26X"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 24,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26Z",
+      "title": "OpenCode dir: preserve Claude Code (Proxmox A)",
+      "description": "Confirm Claude Code on Proxmox A untouched. Do not migrate/delete/break skills/modify OmniRoute. OpenCode on Proxmox B is an ADDITIONAL dev interface.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26Y"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 25,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26AA",
+      "title": "OpenCode dir: preserve Kai",
+      "description": "Confirm Kai remains the source ecosystem. OpenCode is a dev interface/agent, not a replacement. Do not rename/restructure/merge repos for convenience. Do not replace existing Kai services.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26Z"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 26,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26AB",
+      "title": "OpenCode dir: mobile/remote access (Tailscale/NetBird/VPN ONLY)",
+      "description": "Prepare OpenCode for secure remote/mobile access if supported. DO NOT expose directly to public Internet. Prefer Tailscale (100.122.38.118 for pve-2) / NetBird / VPN / authenticated reverse proxy. Do not introduce unnecessary networking changes.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26AA"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 27,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26AC",
+      "title": "OpenCode dir: persistence + reboot survival",
+      "description": "Verify OpenCode / FreeLLMAPI / config / skills / agents / credentials survive reboot. Reboot only if safe. After: verify FreeLLMAPI + OpenCode + skills + providers + models + Kai connectivity.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26AB"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 28,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26AD",
+      "title": "OpenCode dir: final end-to-end system test",
+      "description": "USER \u2192 OpenCode \u2192 FreeLLMAPI \u2192 model/provider \u2192 OpenCode tool exec \u2192 file modification \u2192 tests \u2192 review. Verify every layer.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26AC"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 29,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
+    },
+    {
+      "id": "26AE",
+      "title": "OpenCode dir: acceptance checklist + final report",
+      "description": "Complete the FULL acceptance checklist (43 items) from directive. Produce FINAL REPORT sections: SYSTEM, DISCOVERED KAI, SKILLS, AGENTS, TEST RESULTS, CHANGES, PROTECTED SYSTEMS, REMAINING ISSUES. If ANY failure: report honestly per directive phase 30 \u2014 do not fake success.",
+      "status": "pending",
+      "priority": 1,
+      "depends_on": [
+        "26AD"
+      ],
+      "created_at": "2026-09-12T07:27:13.795782+00:00",
+      "source": "opencode-freellmapi-directive-2026-09-12",
+      "directive_phase": 30,
+      "governing_rule": "DISCOVER FIRST. PRESERVE WHAT WORKS. INSTALL WHAT IS MISSING. BUILD ONLY WHAT IS NEEDED. VERIFY EVERYTHING.",
+      "protected": [
+        "Proxmox A",
+        "Claude Code",
+        "OmniRoute",
+        "Kai Vault",
+        "existing Kai services",
+        "Ollama",
+        "AirLLM",
+        "VM 104",
+        "VM 112",
+        "all CTs on Proxmox B (100,101,102,103,105,106,107,108,109,110,111)",
+        "existing databases",
+        "existing credentials",
+        "existing networking"
+      ]
     }
   ],
   "_audit": {

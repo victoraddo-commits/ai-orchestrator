@@ -3505,7 +3505,8 @@
       "module": "kai_core",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
       "updated_at": "2026-09-12T02:46:52.889173+00:00",
-      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
+      "assigned_provider": "omniroute"
     },
     {
       "id": "22B",
@@ -3687,6 +3688,302 @@
       "module": "autonomous_engineering",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
       "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23A",
+      "title": "MR: Universal Command Bus unification",
+      "description": "All interfaces (Web/Command Center/Android/Telegram/CLI/API/voice/automation/internal workers) route through core/command_bus.py. Flow: Interface \u2192 Identity \u2192 Session Trust \u2192 Vault/Secrets \u2192 Permission \u2192 Risk \u2192 Policy \u2192 Approval \u2192 Bus \u2192 Kai Core \u2192 Execution. Audit today: Telegram control commands already do this (kai_control_commands.handle_control_command via_bus=True); Command Center /api/approvals goes through it partially. Remaining: HTTP API POSTs (non-approvals) do not currently route through Bus. Add a shim decorator + apply to state-changing endpoints. Tests must verify audit event is emitted per dispatch.",
+      "status": "pending",
+      "priority": 15,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "command_bus",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23B",
+      "title": "MR: Event Bus expansion to full spec",
+      "description": "core/kai_event_bus exists. Add publishers for: infrastructure changes, server health, VM/LXC state, network changes, WAN failover, VPN state, security events, model state, worker state, teammate state, mission state, deployments, builds, failures, recovery, resource pressure, configuration drift, notifications. Subscribers: World Model, Mission Engine, Command Center (SSE), Telegram, Android, Model Fabric, Teammate Factory, KAI-NET, monitoring, self-healing, notifications. Do not create a second bus. 6-10 tests: publisher \u2192 subscriber round-trip per event type.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "event_bus",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23C",
+      "title": "MR: State Engine (desired vs actual reconciliation)",
+      "description": "New core/state_engine.py. Compare DESIRED state (from config + roadmap + declared modules) vs ACTUAL state (from live probes: docker ps, systemctl list-units, ss -tlnp, network_topology.json, provider health). Detect: configuration drift, missing services, failed services, incorrect routes, incorrect model configuration, broken integrations, unauthorized changes, missing dependencies, stale deployments. Decide: repair / reconcile / notify / rollback / escalate / quarantine \u2014 never blindly overwrite. Emit state_engine.drift_detected events. 8-12 tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "22A",
+        "23B"
+      ],
+      "module": "state_engine",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23D",
+      "title": "MR: kai doctor CLI + /api/doctor endpoint",
+      "description": "New scripts/kai_doctor.py + /api/doctor endpoint. Inspects: core health, API, database, queues, event bus, command bus, Mission Engine, State Engine, World Model, Second Brain, workers, models, Model Fabric, Vault, identity, security, network, Proxmox, Telegram, Android, Command Center, KAI-NET, monitoring, storage, dependencies. Output per subsystem: HEALTHY / DEGRADED / BROKEN / MISSING / BLOCKED / UNKNOWN + remediation recommendation + evidence link. 8-12 tests.",
+      "status": "pending",
+      "priority": 25,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "kai_doctor",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23E",
+      "title": "MR: Architecture Guardian",
+      "description": "New core/architecture_guardian.py. Continuously scans for: duplicate services (grep systemd units + docker containers with overlapping ports), duplicate APIs (multiple handlers same path), duplicate dashboards, duplicate models, duplicate memory systems, dead services (systemd inactive+enabled), orphaned infrastructure, conflicting APIs, configuration drift, architectural violations, security regressions, unused infrastructure, abandoned projects. Recommends preserve/integrate/merge/consolidate/migrate/repair/deprecate. NEVER auto-destroys \u2014 requires operator authorization. Runs weekly + on-demand. 6-10 tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "22A"
+      ],
+      "module": "architecture_guardian",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23F",
+      "title": "MR: Emergency Mode",
+      "description": "New /api/emergency + core/emergency.py. Operator-triggered (or auto-triggered on critical incident). Ability to: pause missions, stop autonomous execution, freeze network changes, restrict Vault access, lock Telegram control, quarantine workers, force local-only operation, restore known-good state, disable dangerous automation. Every operation audited with reason. UI: red /emergency page in Command Center + /emergency Telegram command. 6-10 tests.",
+      "status": "pending",
+      "priority": 35,
+      "dependencies": [
+        "22A",
+        "23B"
+      ],
+      "module": "emergency",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23G",
+      "title": "MR: Resource Governor",
+      "description": "New core/resource_governor.py. Tracks CPU / RAM / VRAM / disk / network / concurrent workers / model memory / model load / queue pressure. Prevents resource exhaustion, uncontrolled worker spawning, model thrashing, GPU oversubscription, runaway missions. Priority-based preemption: critical system missions can constrain lower-priority workloads. Read from psutil + docker stats + nvidia-smi (where GPU available). Emit governor.pressure events on high water marks. 6-10 tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "22A",
+        "23B"
+      ],
+      "module": "resource_governor",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23H",
+      "title": "MR: Model Evaluation + benchmarks",
+      "description": "Extend agent_registry.benchmarks (already exists per api.py). Run benchmarks per model: prompt latency, generation speed, RAM/VRAM peak, CPU usage, reliability, context, coding score, reasoning score, tool-use success rate, security-refusal rate, failure rate. Store in memory/agent_benchmarks.json with schema_version. Nightly cron. /api/agents/{id}/benchmarks POST already exists \u2014 wire the scheduler. Do NOT choose models by reputation \u2014 evidence only. 6-10 tests.",
+      "status": "pending",
+      "priority": 25,
+      "dependencies": [
+        "22A",
+        "22D"
+      ],
+      "module": "model_evaluation",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23I",
+      "title": "MR: Project Integration Protocol",
+      "description": "New scripts/kai_integrate_project.py. Every new project registered under /project/src/ MUST auto-integrate with: KAI ID, Vault, permissions, security, audit, Command Center, Model Fabric, Teammate Factory, Task system, Mission Engine, Second Brain, World Model, notifications, documentation, deployment, monitoring. Read project's kai.json manifest (add one if missing). Emit project.integrated event on completion. Prevent standalone modules from bypassing Kai. 6-10 tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "22A",
+        "23B"
+      ],
+      "module": "project_integration",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23J",
+      "title": "MR: Network Change Safety pipeline",
+      "description": "New core/network_change_safety.py. All infrastructure changes flow: PRECHECK \u2192 SNAPSHOT/CHECKPOINT \u2192 PLAN \u2192 POLICY CHECK \u2192 RISK CLASSIFICATION \u2192 DRY RUN \u2192 APPLY \u2192 VERIFY \u2192 MONITOR \u2192 COMMIT. Rollback if any step fails. Apply to: OPNsense rule changes, Tailscale route changes, docker container recreates that touch published ports, systemd unit installs. Emit network_change.{stage} events. 8-12 tests, including a dry-run-only integration test.",
+      "status": "pending",
+      "priority": 35,
+      "dependencies": [
+        "22A",
+        "22G",
+        "23B"
+      ],
+      "module": "network_change_safety",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "23K",
+      "title": "MR: Self-Healing (autonomous recovery for known classes)",
+      "description": "New core/self_healing.py. On detected failure: diagnose \u2192 classify \u2192 determine risk \u2192 checkpoint if needed \u2192 repair \u2192 restart/redeploy \u2192 test \u2192 verify \u2192 update state \u2192 record incident. Handlers per known failure class: circuit-open provider, expired SSL cert on discovered source, stalled build, systemd unit failed, docker container OOMKilled. High-risk requires operator approval (existing approval_cli). Low-risk known recovery proceeds autonomously. 8-12 tests.",
+      "status": "pending",
+      "priority": 35,
+      "dependencies": [
+        "22A",
+        "22M",
+        "23B"
+      ],
+      "module": "self_healing",
+      "created_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24A",
+      "title": "MR: Observability \u2014 every action observable",
+      "description": "Track: mission, worker, teammate, model, command, event, deployment, infrastructure change, security event, recovery, approval, rollback, resource usage. Expose: health, logs, metrics, traces, timeline, audit trail, evidence. Wire through /api/observability + Command Center /diagnostics page (phase 20A). 8-12 tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "23B",
+        "23D"
+      ],
+      "module": "observability",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24B",
+      "title": "MR: Notifications for all critical events",
+      "description": "Extend approval_notifier + telegram_bridge to notify on: mission completion/failure/blocked, security event, infrastructure failure, VPN failure, WAN failover, model failure, worker failure, deployment failure, recovery, approval required, critical resource pressure, autonomous milestone, emergency mode. All via Event Bus (23B). 6-10 tests.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [
+        "23B"
+      ],
+      "module": "notifications",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24C",
+      "title": "MR: Failure Injection Testing suite",
+      "description": "New tests/test_failure_injection.py suite. Inject: worker failure, model failure, Claude disconnect, network interruption, API failure, database failure, queue failure, container restart, VM restart, malformed tool request, unauthorized request, expired session, revoked token, Vault unavailable, deployment failure, failed build, failed test, failed rollback, configuration drift, resource exhaustion. Verify each triggers correct recovery behavior. 20+ tests.",
+      "status": "pending",
+      "priority": 40,
+      "dependencies": [
+        "23K"
+      ],
+      "module": "failure_injection",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24D",
+      "title": "MR: Disaster Recovery verification",
+      "description": "Verify each: backups exist, backups usable, restore procedures work, config recoverable, mission state recoverable, World Model recoverable, Vault dependencies documented, critical artifacts recoverable, Git state recoverable, Android artifacts recoverable, infrastructure recovery documented + tested. Real restore test on a non-production copy. 8-12 tests + a manual runbook.",
+      "status": "pending",
+      "priority": 35,
+      "dependencies": [
+        "22A",
+        "22C"
+      ],
+      "module": "disaster_recovery",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24E",
+      "title": "MR: Autonomous Roadmap Generation",
+      "description": "Kai reads World Model + Capability Registry + Module Registry + failures + performance metrics + operator notes \u2192 generates the NEXT roadmap phases automatically. No hardcoded phase list. Uses KAI Brain review before adding. 6-10 tests.",
+      "status": "pending",
+      "priority": 40,
+      "dependencies": [
+        "23C",
+        "23E",
+        "22B"
+      ],
+      "module": "autonomous_roadmap",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24F",
+      "title": "MR: Continuous Improvement loop",
+      "description": "Kai periodically self-inspects: which capabilities under-perform, which have regressed, which are unused, which are duplicate. Generates improvement missions. Runs at low priority in the background. 6-10 tests.",
+      "status": "pending",
+      "priority": 40,
+      "dependencies": [
+        "23E",
+        "24E"
+      ],
+      "module": "continuous_improvement",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24G",
+      "title": "MR: Advanced Self-Healing + Ecosystem Optimization",
+      "description": "Extend 23K self-healing to handle novel failure classes via Kai Brain review. Ecosystem-wide optimization: model routing tuned by 23H benchmarks, resource allocation tuned by 23G governor pressure, worker composition tuned by 21R performance history. 8-12 tests.",
+      "status": "pending",
+      "priority": 45,
+      "dependencies": [
+        "23K",
+        "23H",
+        "23G",
+        "21R"
+      ],
+      "module": "advanced_self_healing",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
+      "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
+    },
+    {
+      "id": "24H",
+      "title": "MR: FIRST AUTONOMY MILESTONE \u2014 Claude-disabled Continue Improving KAI test",
+      "description": "The definitive test. Disable Claude Code as an execution dependency. Instruct Kai: 'CONTINUE IMPROVING KAI.' Kai must complete steps 1-27 of section 46 (inspect World Model \u2192 identify highest-value ready task \u2192 create mission \u2192 assemble team \u2192 select local workers/models \u2192 implement \u2192 build \u2192 test \u2192 diagnose \u2192 repair \u2192 rebuild \u2192 security review \u2192 KAI Brain review \u2192 live verify \u2192 evidence \u2192 commit \u2192 World Model update \u2192 roadmap update \u2192 next mission \u2192 continue). Record exactly which capability prevents continuation if any \u2014 that capability becomes the next priority. This phase is the acceptance gate for the entire directive.",
+      "status": "pending",
+      "priority": 50,
+      "dependencies": [
+        "22M",
+        "24A",
+        "24B",
+        "24C",
+        "24D",
+        "24E",
+        "23A",
+        "23C",
+        "23D",
+        "23E",
+        "23F",
+        "23G",
+        "23K",
+        "21T"
+      ],
+      "module": "first_autonomy_milestone",
+      "created_at": "2026-09-12T02:52:16.025322+00:00",
+      "updated_at": "2026-09-12T02:52:16.025322+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md"
     }
   ],

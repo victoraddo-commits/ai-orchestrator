@@ -3725,6 +3725,54 @@ def api_approvals_reject(
     return result
 
 
+@app.get("/api/world_model")
+def api_world_model(_user: str = Depends(_require_spa_user)):
+    """Return the World Model snapshot: entities + edges + last update.
+
+    The World Model is a runtime graph of KAI's known infrastructure —
+    sites, tunnels, firewalls, containers, VMs, tailscale peers, missions,
+    workers, etc. Persisted at memory/world_model.json, refreshed by the
+    orchestrator's world_model_refresh cycle + manual writers.
+
+    Session-authed. Read-only.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    wm_path = _Path("memory/world_model.json")
+    if not wm_path.exists():
+        return {
+            "schema_version": 1,
+            "entities": {},
+            "edges": [],
+            "updated_at": None,
+            "note": "world_model.json not populated yet",
+        }
+    try:
+        with wm_path.open() as f:
+            wm = _json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"world model unreadable: {e}")
+
+    ents = wm.get("entities", {})
+    # Also compute a type breakdown so the UI can render at-a-glance stats.
+    by_type: dict[str, int] = {}
+    if isinstance(ents, dict):
+        for entity in ents.values():
+            t = (entity or {}).get("type", "unknown")
+            by_type[t] = by_type.get(t, 0) + 1
+    return {
+        "schema_version": wm.get("schema_version"),
+        "updated_at": wm.get("updated_at"),
+        "counts": {
+            "entities": len(ents) if isinstance(ents, (dict, list)) else 0,
+            "edges": len(wm.get("edges", []) or []),
+            "by_type": by_type,
+        },
+        "entities": ents,
+        "edges": wm.get("edges", []) or [],
+    }
+
+
 @app.get("/api/network/overview")
 def api_network_overview():
     """Aggregate read-only Network Dashboard payload — OBSERVE only, no control.

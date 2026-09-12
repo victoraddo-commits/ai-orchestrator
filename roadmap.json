@@ -3186,7 +3186,7 @@
       "id": "20A",
       "title": "20A: Diagnostics Page + /api/diagnostics endpoint",
       "description": "Command Center page at /diagnostics + /api/diagnostics aggregate endpoint. Wraps existing /kai/circuit-breakers + /api/vpn/health + /kai/agents + health_observatory anomalies. Backend module core/diagnostics.py that composes the response. Frontend page follows the pattern of NetworkPage/WorldModelPage/InfrastructurePage (PageContainer + Panel + metric cards + data-table). Sidebar entry with Activity icon. Nginx auth_request gate for /api/diagnostics/. Auto-refresh 15s. 4-6 pytest tests for the compose logic.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 20,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
@@ -3210,7 +3210,7 @@
       "id": "20C",
       "title": "20C: Audit Trail Page + /api/audit endpoint",
       "description": "Command Center page at /audit. Merges memory/command_bus_audit + gateway_audit.json + execution_audit.json + secret_access_audit.json into a unified timeline. Filter by source, user, outcome. Sidebar entry with FileText icon. Read-only. 4-6 tests.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
@@ -3222,12 +3222,12 @@
       "id": "20D",
       "title": "20D: Telegram bot pause/resume/stop/redirect commands for Missions",
       "description": "Add /pause, /resume, /stop, /redirect commands to core/kai_control_commands.py. Map to Mission Engine POST /kai/missions/{id}/steer and /execute. Follow the existing Bus dispatch pattern (Bus \u2192 AgentGuard \u2192 audit \u2192 handler). Parse mission_id from message (e.g. /pause msn_abc123). Update /help. 3-5 tests. Do NOT touch Mission Engine itself.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 30,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T03:26:27.837207+00:00",
-      "build_id": null,
+      "build_id": "24f8432f",
       "assigned_provider": "omniroute"
     },
     {
@@ -3524,7 +3524,7 @@
       "id": "22B",
       "title": "MR: Kai Brain reasoning-authority audit",
       "description": "Discover which module IS the Kai Brain (reasoning authority). Verify it can review architecture, tests, security findings, deploy results. Remediate: connect KX1 Mission Engine review checkpoints to the Brain. Do not create a second Brain. Update evidence.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "22A"
@@ -3540,23 +3540,23 @@
       "id": "22C",
       "title": "MR: Second Brain 6-stores population audit",
       "description": "Discover current fill: operational (1678 rows), project (887), cognitive (0), conversational (0), relationship (0), legal_supplemental (0). Remediate: wire the 4 empty stores to their real writers. NO fake data. Live-verify counts change on real operator actions. Preserve the 2 populated stores.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "second_brain",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T03:31:31.419275+00:00",
+      "updated_at": "2026-09-12T04:47:13.162184+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": "5e0d6937"
+      "build_id": "c42e0e91"
     },
     {
       "id": "22D",
       "title": "MR: Model Fabric integration audit",
       "description": "Discover: kai_brain, kai_coder, kai_deep, koboldcpp_cpu, local \u2014 all registered? All routed via ai_router chains? All health-monitored? VM 112 koboldcpp_cpu keeps circuit-opening \u2014 root cause + fix. Preserve provider chain semantics \u2014 do not rewrite ai_router.py wholesale.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "22A"
@@ -3587,7 +3587,7 @@
       "id": "22F",
       "title": "MR: Command Center pages real-data audit",
       "description": "For each page (/, /network, /infrastructure, /world, /missions, /approvals, /legal, /modules, /settings): verify it fetches real backend data, no placeholders/mocks in the rendered path, session-auth enforced. Fix any page that ships mock data. Add missing directive-named pages iff their backend already exists.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3603,7 +3603,7 @@
       "id": "22G",
       "title": "MR: Network Dashboard + KAI-NET reconciliation",
       "description": "Discover: network_discovery + /api/network + Tailscale subnet routes + OPNsense reachability. Verify Site A OPNsense (192.168.99.3), Tailscale subnet routes both directions. KAI-NET: decide MERGE (current infra IS KAI-NET) vs BUILD (make it a discrete module). Document decision. Update World Model with network entities (already partly done \u2014 verify).",
-      "status": "pending",
+      "status": "failed",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3613,28 +3613,29 @@
       "updated_at": "2026-09-12T03:36:34.232183+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": "70486b91"
     },
     {
       "id": "22H",
       "title": "MR: Telegram Control Center full path audit",
       "description": "Path: Telegram \u2192 poller \u2192 bridge \u2192 Bus \u2192 AgentGuard \u2192 API \u2192 response. Live-test /status /network /missions from @KaiEnzo_bot chat 612786480. Verify audit event lands in memory/command_bus_audit. Add Vault identity link (core/telegram_manager/ scaffolded, not wired). NO second bot.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 25,
       "dependencies": [
         "22A"
       ],
       "module": "telegram_control_center",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T05:32:29.918330+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "394a7970"
     },
     {
       "id": "22I",
       "title": "MR: Kai Vault + Vaultwarden audit",
       "description": "Discover: kai-vault container on this host (127.0.0.1:8120) + vaultwarden on CT107 (0.0.0.0:8222). Verify vault_client.py:112 mapping active. Verify auth service password change revokes other sessions. NO parallel vault. Test rotation + audit trail.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3644,13 +3645,13 @@
       "updated_at": "2026-09-12T03:36:34.232186+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": "462fd6cb"
     },
     {
       "id": "22J",
       "title": "MR: Android Factory + KAI Mobile audit",
       "description": "Discover CT109 kai-android-factory status. Verify APK build reproducible. Preserve existing v3.1.2 build state per memory kai-mobile-v31.md. Do not rebuild \u2014 just verify + document.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 30,
       "dependencies": [
         "22A"
@@ -3659,22 +3660,24 @@
       "created_at": "2026-09-12T02:46:52.889173+00:00",
       "updated_at": "2026-09-12T02:46:52.889173+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "cdaa594c"
     },
     {
       "id": "22K",
       "title": "MR: Infrastructure control-plane audit",
       "description": "Docker containers (this host + CT107 + CT111 etc.), proxmox nodes, systemd services, network services. Discover full inventory via /api/infrastructure. Fix any container that's marked running but is actually unhealthy. Update World Model.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "infrastructure",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T02:46:52.889173+00:00",
+      "updated_at": "2026-09-12T05:22:24.481771+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "efc4fb89"
     },
     {
       "id": "22L",
@@ -3721,7 +3724,7 @@
       "id": "23A",
       "title": "MR: Universal Command Bus unification",
       "description": "All interfaces (Web/Command Center/Android/Telegram/CLI/API/voice/automation/internal workers) route through core/command_bus.py. Flow: Interface \u2192 Identity \u2192 Session Trust \u2192 Vault/Secrets \u2192 Permission \u2192 Risk \u2192 Policy \u2192 Approval \u2192 Bus \u2192 Kai Core \u2192 Execution. Audit today: Telegram control commands already do this (kai_control_commands.handle_control_command via_bus=True); Command Center /api/approvals goes through it partially. Remaining: HTTP API POSTs (non-approvals) do not currently route through Bus. Add a shim decorator + apply to state-changing endpoints. Tests must verify audit event is emitted per dispatch.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "22A"
@@ -3737,16 +3740,17 @@
       "id": "23B",
       "title": "MR: Event Bus expansion to full spec",
       "description": "core/kai_event_bus exists. Add publishers for: infrastructure changes, server health, VM/LXC state, network changes, WAN failover, VPN state, security events, model state, worker state, teammate state, mission state, deployments, builds, failures, recovery, resource pressure, configuration drift, notifications. Subscribers: World Model, Mission Engine, Command Center (SSE), Telegram, Android, Model Fabric, Teammate Factory, KAI-NET, monitoring, self-healing, notifications. Do not create a second bus. 6-10 tests: publisher \u2192 subscriber round-trip per event type.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 20,
       "dependencies": [
         "22A"
       ],
       "module": "event_bus",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T05:27:27.404328+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "0f5c1cce"
     },
     {
       "id": "23C",
@@ -3767,16 +3771,17 @@
       "id": "23D",
       "title": "MR: kai doctor CLI + /api/doctor endpoint",
       "description": "New scripts/kai_doctor.py + /api/doctor endpoint. Inspects: core health, API, database, queues, event bus, command bus, Mission Engine, State Engine, World Model, Second Brain, workers, models, Model Fabric, Vault, identity, security, network, Proxmox, Telegram, Android, Command Center, KAI-NET, monitoring, storage, dependencies. Output per subsystem: HEALTHY / DEGRADED / BROKEN / MISSING / BLOCKED / UNKNOWN + remediation recommendation + evidence link. 8-12 tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 25,
       "dependencies": [
         "22A"
       ],
       "module": "kai_doctor",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T02:49:40.960525+00:00",
+      "updated_at": "2026-09-12T05:42:34.449952+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
-      "assigned_provider": "omniroute"
+      "assigned_provider": "omniroute",
+      "build_id": "63941a72"
     },
     {
       "id": "23E",
@@ -4027,9 +4032,9 @@
       "dependencies": [],
       "module": "cpu_model_fabric",
       "created_at": "2026-09-12T03:50:13.457809+00:00",
-      "updated_at": "2026-09-12T03:50:13.457809+00:00",
+      "updated_at": "2026-09-12T05:22:24.481794+00:00",
       "assigned_provider": "omniroute",
-      "build_id": "e3d8c4f8"
+      "build_id": "c1b2d456"
     }
   ],
   "_audit": {

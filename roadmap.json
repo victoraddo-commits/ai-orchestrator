@@ -3190,15 +3190,15 @@
       "priority": 20,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
-      "updated_at": "2026-09-12T03:26:27.837184+00:00",
-      "build_id": "08366258",
+      "updated_at": "2026-09-12T04:06:53.814912+00:00",
+      "build_id": "db8f8b5f",
       "assigned_provider": "omniroute"
     },
     {
       "id": "20B",
       "title": "20B: Vault Page + /api/vault/status endpoint",
       "description": "Command Center page at /vault. Wraps existing /kai/vault + /kai/vault/rotation + kai-vault container health. Shows: total secrets, secrets by category, last rotation, recent audit events. Sidebar entry with Lock icon. Read-only. 4-6 tests.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
@@ -3210,12 +3210,12 @@
       "id": "20C",
       "title": "20C: Audit Trail Page + /api/audit endpoint",
       "description": "Command Center page at /audit. Merges memory/command_bus_audit + gateway_audit.json + execution_audit.json + secret_access_audit.json into a unified timeline. Filter by source, user, outcome. Sidebar entry with FileText icon. Read-only. 4-6 tests.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 25,
       "dependencies": [],
       "created_at": "2026-09-12T02:38:06.762896+00:00",
       "updated_at": "2026-09-12T03:46:40.919171+00:00",
-      "build_id": null,
+      "build_id": "b0c4047e",
       "assigned_provider": "omniroute"
     },
     {
@@ -3247,7 +3247,7 @@
       "id": "21B",
       "title": "TF Phase 2 \u2014 Skill Registry",
       "description": "Persistent Skill Registry. Each skill: skill_id, name, description, inputs, outputs, required_capabilities, required_permissions, allowed_tools, forbidden_tools, model_requirements, security_requirements, verification_method, timeout, resource_requirements, version, dependencies. Skills globally reusable. Seed 15 skills: inspect_repository, inspect_service, inspect_proxmox, inspect_network, inspect_opnsense, inspect_database, write_code, run_tests, run_security_scan, benchmark_model, deploy_service, rollback_service, verify_endpoint, inspect_logs, diagnose_failure. core/teammate/skills.py + tests.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 10,
       "dependencies": [
         "21A"
@@ -3262,7 +3262,7 @@
       "id": "21C",
       "title": "TF Phase 3 \u2014 Worker Registry integration",
       "description": "Wire teammate factory to existing worker registry (core/workforce/registry.py). Worker events: worker.started/failed/reassigned/completed on Event Bus. Track worker health per teammate assignment.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "21A"
@@ -3335,7 +3335,7 @@
       "id": "21H",
       "title": "TF Phase 8 \u2014 Permissions + Vault + AgentGuard",
       "description": "Every teammate execution path integrates with AgentGuard (core/agentguard/guard.py) + Vault (core/vault_client.py). Capability-scoped Vault access \u2014 never raw secrets in prompts/logs/reports. Every secret access audited via existing secret_access_audit.json.",
-      "status": "in_progress",
+      "status": "failed",
       "priority": 15,
       "dependencies": [
         "21A"
@@ -3531,16 +3531,16 @@
       ],
       "module": "kai_brain",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T03:36:34.232161+00:00",
+      "updated_at": "2026-09-12T04:16:59.713471+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": "c389cd54"
+      "build_id": "3bd3c565"
     },
     {
       "id": "22C",
       "title": "MR: Second Brain 6-stores population audit",
       "description": "Discover current fill: operational (1678 rows), project (887), cognitive (0), conversational (0), relationship (0), legal_supplemental (0). Remediate: wire the 4 empty stores to their real writers. NO fake data. Live-verify counts change on real operator actions. Preserve the 2 populated stores.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3550,7 +3550,7 @@
       "updated_at": "2026-09-12T03:31:31.419275+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": "5e0d6937"
     },
     {
       "id": "22D",
@@ -3563,7 +3563,7 @@
       ],
       "module": "model_fabric",
       "created_at": "2026-09-12T02:46:52.889173+00:00",
-      "updated_at": "2026-09-12T03:31:31.419292+00:00",
+      "updated_at": "2026-09-12T04:06:53.814971+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
       "build_id": "eba634b1"
@@ -3587,7 +3587,7 @@
       "id": "22F",
       "title": "MR: Command Center pages real-data audit",
       "description": "For each page (/, /network, /infrastructure, /world, /missions, /approvals, /legal, /modules, /settings): verify it fetches real backend data, no placeholders/mocks in the rendered path, session-auth enforced. Fix any page that ships mock data. Add missing directive-named pages iff their backend already exists.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 20,
       "dependencies": [
         "22A"
@@ -3597,7 +3597,7 @@
       "updated_at": "2026-09-12T03:36:34.232179+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
-      "build_id": null
+      "build_id": "ac5a6c8c"
     },
     {
       "id": "22G",
@@ -3728,7 +3728,7 @@
       ],
       "module": "command_bus",
       "created_at": "2026-09-12T02:49:40.960525+00:00",
-      "updated_at": "2026-09-12T03:31:31.419307+00:00",
+      "updated_at": "2026-09-12T04:06:53.814978+00:00",
       "directive_ref": "uploads/kai-2-0-master-remediation-directive-2026-09-12.md",
       "assigned_provider": "omniroute",
       "build_id": "f4323ae2"
@@ -4022,12 +4022,14 @@
       "id": "25A",
       "title": "25A: Deploy dual KoboldCpp Qwen2.5-Coder-7B on VM 112 (PRIORITY)",
       "description": "OPERATOR PRIORITY DIRECTIVE. Complete the CPU Model Fabric transition on VM 112 (kai-cpu, 192.168.1.242, user 'kai' via SSH key /root/.ssh/id_ed25519 on this LXC and on Proxmox B).\n\nPREP ALREADY DONE (already merged to main by Claude):\n1. Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf download STARTED from    HuggingFace (bartowski's build) to /opt/kai-cpu-models/ on VM 112    via `wget -O <file>.tmp <url>` \u2014 download was in flight when the    phase was created. When wget finishes, rename .tmp \u2192 .gguf.\n2. core/ai_provider.py: registered koboldcpp_cpu_a (port 5001) +    koboldcpp_cpu_b (port 5002) providers. koboldcpp_cpu kept as alias.\n3. core/ai/ai_router.py: _JURIS_CHAIN now    [kai_brain, koboldcpp_cpu_a, koboldcpp_cpu_b, local].\n\nREMAINING OPS WORK for Kai to execute:\n(a) Wait for download to complete (target file:     /opt/kai-cpu-models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf, ~4.4GB).     Rename .tmp when wget PID exits.\n(b) On VM 112, copy the .gguf to a second path so instance B can lock     its own mmap: e.g. cp -a Qwen...gguf Qwen...gguf.b \u2014 OR use the     same file with --nommap for both (test both, pick winner).\n(c) Stop + disable existing koboldcpp.service (was serving GLM on 8080).     Keep the GLM .gguf file on disk for now (do not delete \u2014 reversible).\n(d) Create /etc/systemd/system/koboldcpp-a.service and koboldcpp-b.service     mirroring the existing unit's shape (User=kai, Group=kai, WorkingDirectory=    /opt/koboldcpp, MemoryMax=14G each, CPUQuota=700% each) with:\n      --model /opt/kai-cpu-models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf[.b]       --port 5001 (or 5002) --host 0.0.0.0 --contextsize 8192       --threads 7 --batchsize 512 --usecpu --quiet --skiplauncher\n    Split resources: 7 threads each (14/16 cores used total, 2 left     for system + koboldcpp overhead).\n(e) systemctl daemon-reload && systemctl enable --now koboldcpp-a     koboldcpp-b\n(f) Live-verify from THIS LXC via SSH -J tunnel:\n      ssh -J root@100.122.38.118 kai@192.168.1.242 curl -s       http://localhost:5001/api/v1/model \u2192 must include 'koboldcpp'\n      (same for 5002)\n(g) Live inference test: POST a small prompt to both /v1/chat/completions     and confirm each responds within 60s.\n(h) Restart ai-orchestrator so the new providers register.\n(i) Verify via: .venv/bin/python -c 'from core.ai.ai_router import     get_effective_providers; print(get_effective_providers(\"juris_legal_teaching\"))'     \u2192 should show [kai_brain, koboldcpp_cpu_a, koboldcpp_cpu_b, local].\n(j) Record evidence in memory/verification_history.json.\n\nPRESERVE: do NOT delete the GLM .gguf, do NOT rewrite koboldcpp binary, do NOT change the SSH access model. The GLM koboldcpp.service can be removed only after both new instances are proven healthy.\n\nMEMORY REFERENCES: cpu-model-fabric-vm112.md, kai-model-team.md, proxmox-b-tailscale-access.md.",
-      "status": "pending",
+      "status": "in_progress",
       "priority": 1,
       "dependencies": [],
       "module": "cpu_model_fabric",
       "created_at": "2026-09-12T03:50:13.457809+00:00",
-      "updated_at": "2026-09-12T03:50:13.457809+00:00"
+      "updated_at": "2026-09-12T03:50:13.457809+00:00",
+      "assigned_provider": "omniroute",
+      "build_id": "e3d8c4f8"
     }
   ],
   "_audit": {

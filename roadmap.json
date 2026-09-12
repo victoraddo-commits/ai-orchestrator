@@ -3180,6 +3180,46 @@
       "assigned_provider": "omniroute",
       "build_id": "manual-claude",
       "completed_at": "2026-09-11T19:20:00Z"
+    },
+    {
+      "id": "20A",
+      "title": "20A: Diagnostics Page + /api/diagnostics endpoint",
+      "description": "Command Center page at /diagnostics + /api/diagnostics aggregate endpoint. Wraps existing /kai/circuit-breakers + /api/vpn/health + /kai/agents + health_observatory anomalies. Backend module core/diagnostics.py that composes the response. Frontend page follows the pattern of NetworkPage/WorldModelPage/InfrastructurePage (PageContainer + Panel + metric cards + data-table). Sidebar entry with Activity icon. Nginx auth_request gate for /api/diagnostics/. Auto-refresh 15s. 4-6 pytest tests for the compose logic.",
+      "status": "pending",
+      "priority": 20,
+      "dependencies": [],
+      "created_at": "2026-09-12T02:38:06.762896+00:00",
+      "updated_at": "2026-09-12T02:38:06.762896+00:00"
+    },
+    {
+      "id": "20B",
+      "title": "20B: Vault Page + /api/vault/status endpoint",
+      "description": "Command Center page at /vault. Wraps existing /kai/vault + /kai/vault/rotation + kai-vault container health. Shows: total secrets, secrets by category, last rotation, recent audit events. Sidebar entry with Lock icon. Read-only. 4-6 tests.",
+      "status": "pending",
+      "priority": 25,
+      "dependencies": [],
+      "created_at": "2026-09-12T02:38:06.762896+00:00",
+      "updated_at": "2026-09-12T02:38:06.762896+00:00"
+    },
+    {
+      "id": "20C",
+      "title": "20C: Audit Trail Page + /api/audit endpoint",
+      "description": "Command Center page at /audit. Merges memory/command_bus_audit + gateway_audit.json + execution_audit.json + secret_access_audit.json into a unified timeline. Filter by source, user, outcome. Sidebar entry with FileText icon. Read-only. 4-6 tests.",
+      "status": "pending",
+      "priority": 25,
+      "dependencies": [],
+      "created_at": "2026-09-12T02:38:06.762896+00:00",
+      "updated_at": "2026-09-12T02:38:06.762896+00:00"
+    },
+    {
+      "id": "20D",
+      "title": "20D: Telegram bot pause/resume/stop/redirect commands for Missions",
+      "description": "Add /pause, /resume, /stop, /redirect commands to core/kai_control_commands.py. Map to Mission Engine POST /kai/missions/{id}/steer and /execute. Follow the existing Bus dispatch pattern (Bus \u2192 AgentGuard \u2192 audit \u2192 handler). Parse mission_id from message (e.g. /pause msn_abc123). Update /help. 3-5 tests. Do NOT touch Mission Engine itself.",
+      "status": "pending",
+      "priority": 30,
+      "dependencies": [],
+      "created_at": "2026-09-12T02:38:06.762896+00:00",
+      "updated_at": "2026-09-12T02:38:06.762896+00:00"
     }
   ],
   "_audit": {

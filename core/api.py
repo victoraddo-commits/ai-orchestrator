@@ -3738,23 +3738,31 @@ async def api_infrastructure(_user: str = Depends(_require_spa_user)):
         "warnings": [],
     }
 
-    # Docker on this host
+    # Docker on this host — use `docker ps` via subprocess for reliability
+    # (bypasses httpx transport mismatches between sync/async in this build).
     try:
-        client = _get_docker_client()
-        resp = await client.get("/containers/json?all=true")
-        resp.raise_for_status()
-        containers = resp.json()
-        rows = []
-        for c in containers:
-            name = (c.get("Names") or ["unknown"])[0].lstrip("/")
-            rows.append({
-                "name": name,
-                "id": c.get("Id", "")[:12],
-                "image": c.get("Image", ""),
-                "state": c.get("State", "unknown"),
-                "status": c.get("Status", ""),
-            })
-        result["docker"]["containers"] = rows
+        import subprocess as _sp
+        r = _sp.run(
+            ["docker", "ps", "--all", "--format",
+             "{{.Names}}|{{.ID}}|{{.Image}}|{{.State}}|{{.Status}}"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if r.returncode == 0:
+            rows = []
+            for line in (r.stdout or "").strip().splitlines():
+                parts = line.split("|", 4)
+                if len(parts) < 5:
+                    continue
+                rows.append({
+                    "name": parts[0],
+                    "id": parts[1][:12],
+                    "image": parts[2],
+                    "state": parts[3],
+                    "status": parts[4],
+                })
+            result["docker"]["containers"] = rows
+        else:
+            result["docker"]["error"] = f"docker ps rc={r.returncode}: {r.stderr[:120]}"
     except Exception as e:
         result["docker"]["error"] = f"docker unavailable: {e}"
 
@@ -3764,14 +3772,20 @@ async def api_infrastructure(_user: str = Depends(_require_spa_user)):
         nodes = _pm.collect_all_nodes() or {}
         if isinstance(nodes, dict):
             for name, info in nodes.items():
+                info = info or {}
+                lxcs = info.get("lxcs")
+                vms = info.get("vms")
+                # collect_all_nodes may return counts as ints or full lists
+                lxc_count = lxcs if isinstance(lxcs, int) else len(lxcs or [])
+                vm_count = vms if isinstance(vms, int) else len(vms or [])
                 result["proxmox"]["nodes"].append({
                     "name": name,
-                    "reachable": (info or {}).get("reachable"),
-                    "lxcs": len((info or {}).get("lxcs") or []),
-                    "vms": len((info or {}).get("vms") or []),
-                    "load": (info or {}).get("load"),
-                    "memory_pct": (info or {}).get("memory_pct"),
-                    "uptime": (info or {}).get("uptime"),
+                    "reachable": info.get("reachable") if "reachable" in info else info.get("status") == "online",
+                    "lxcs": lxc_count,
+                    "vms": vm_count,
+                    "load": info.get("load") or info.get("cpu"),
+                    "memory_pct": info.get("memory_pct") or info.get("mem"),
+                    "uptime": info.get("uptime"),
                 })
     except Exception as e:
         result["proxmox"]["error"] = f"proxmox unavailable: {e}"

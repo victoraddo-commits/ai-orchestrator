@@ -70,10 +70,11 @@ class RecordStore:
         for existing in self.list():
             if existing.id in seen:
                 continue
-            if existing.source == "manual":
+            src = existing.source or ""
+            if src == "manual":
                 continue
-            if any(existing.source.startswith(s) for s in _AUTO_SOURCES) and not existing.source.endswith(":stale"):
-                existing.source = existing.source + ":stale"
+            if any(src.startswith(s) for s in _AUTO_SOURCES) and not src.endswith(":stale"):
+                existing.source = src + ":stale"
                 self.upsert(existing)
                 stale += 1
         return {"seen": len(seen), "stale": stale}

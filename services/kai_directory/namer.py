@@ -23,6 +23,16 @@ def assign_names(records: list[Record], proxy_for: dict[str, str]) -> list[Recor
     return records
 
 
+def proxy_node_for(ip: str) -> str:
+    """PVE-A services live on the 192.168.99.0/24 fabric; PVE-B on 192.168.1.0/24."""
+    ip = ip or ""
+    if ip.startswith("192.168.99."):
+        return "proxmox-a"
+    if ip.startswith("192.168.1."):
+        return "proxmox-b"
+    return ""
+
+
 def policy_block(records: list[Record]) -> str:
     services = {}
     for r in records:

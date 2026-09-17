@@ -32,3 +32,10 @@ def test_serve_commands_shape():
                    proxy_node="proxmox-b")]
     cmds = serve_commands(recs, node="proxmox-b")
     assert cmds and cmds[0] == "tailscale serve --bg --service=svc:money http://192.168.1.118:8095"
+
+
+def test_proxy_node_for():
+    from services.kai_directory.namer import proxy_node_for
+    assert proxy_node_for("192.168.1.118") == "proxmox-b"
+    assert proxy_node_for("192.168.99.11") == "proxmox-a"
+    assert proxy_node_for("10.0.0.1") == ""

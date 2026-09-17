@@ -8,8 +8,25 @@ from .discovery import discover_all
 from .health import check_all
 from .index import render_index
 from .models import Record
-from .namer import assign_names, policy_block, serve_commands
+from .namer import assign_names, policy_block, proxy_node_for, serve_commands
 from .store import RecordStore
+
+
+def persist_names(store: RecordStore) -> list[Record]:
+    """Assign tailnet names to every stored record and write them back."""
+    recs = store.list()
+    assign_names(recs, {r.id: proxy_node_for(r.ip) for r in recs})
+    for r in recs:
+        store.upsert(r)
+    return recs
+
+
+def _coerce_port(body: dict) -> None:
+    if "port" in body:
+        try:
+            body["port"] = int(body["port"])
+        except (TypeError, ValueError):
+            raise HTTPException(422, "invalid port")
 
 
 def create_app(store: RecordStore) -> FastAPI:
@@ -32,15 +49,24 @@ def create_app(store: RecordStore) -> FastAPI:
 
     @app.post("/services", status_code=201)
     def create_service(body: dict):
-        body["source"] = body.get("source", "manual")
+        sid = body.get("id")
+        if not isinstance(sid, str) or not sid:
+            raise HTTPException(422, "id required")
+        body["source"] = body.get("source") or "manual"
+        _coerce_port(body)
         store.upsert(Record(**{k: v for k, v in body.items()
                                if k in Record.__dataclass_fields__}))
-        return store.get(body["id"]).to_dict()
+        persist_names(store)
+        return store.get(sid).to_dict()
 
     @app.put("/services/{id_}")
     def update_service(id_: str, body: dict):
+        if not id_:
+            raise HTTPException(422, "id required")
         body["id"] = id_
+        _coerce_port(body)
         store.upsert(Record(**{k: v for k, v in body.items() if k in Record.__dataclass_fields__}))
+        persist_names(store)
         return store.get(id_).to_dict()
 
     @app.delete("/services/{id_}")
@@ -54,6 +80,7 @@ def create_app(store: RecordStore) -> FastAPI:
     def discover():
         recs = discover_all()
         result = store.reconcile(recs)
+        persist_names(store)
         return {"discovered": len(recs), **result}
 
     @app.post("/health/refresh")
@@ -67,16 +94,13 @@ def create_app(store: RecordStore) -> FastAPI:
     def conformance():
         return check(discover_all(), store.list())
 
-    def named() -> list[Record]:
-        return assign_names(store.list(), {})
-
     @app.get("/policy")
     def policy():
-        return Response(policy_block(named()), media_type="application/json")
+        return Response(policy_block(store.list()), media_type="application/json")
 
     @app.get("/serve-commands")
     def serve_commands_ep(node: str):
-        return serve_commands(named(), node)
+        return serve_commands(store.list(), node)
 
     @app.get("/export")
     def export(format: str = "json"):

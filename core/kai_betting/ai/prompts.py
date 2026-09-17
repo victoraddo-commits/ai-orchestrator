@@ -8,33 +8,39 @@ record retains the version it was produced under.
 
 from __future__ import annotations
 
+import os
+
 PROMPT_VERSION = "BETTING_AI_PROMPT_V1.0"
 
-# ── Model catalog (GPU.ai serverless) ─────────────────────────────────────────
-# prices are USD per 1M tokens. max_output caps the (expensive) output length.
+# ── Model catalog (KAI's OWN local model fabric) ──────────────────────────────
+# §0: KAI is the only intelligence authority. All three tiers run on the local
+# KAI model fabric (Ollama on VM104). The tiers are differentiated by PROMPT
+# (scout → adversarial → adjudicator), not by external providers. Prices are 0
+# (self-hosted); kept for usage accounting compatibility.
+_LOCAL_MODEL = os.environ.get("KAI_BET_MODEL_ID", "qwen3-coder:kai")
 MODELS: dict = {
     "qwen": {
-        "model_id": "gpuai/qwen3.7-plus",
-        "name": "Qwen 3.7 Plus",
+        "model_id": _LOCAL_MODEL,
+        "name": "KAI local (scout)",
         "tier": 1,
-        "input_price_per_mtok": 0.40,
-        "output_price_per_mtok": 1.60,
+        "input_price_per_mtok": 0.0,
+        "output_price_per_mtok": 0.0,
         "max_output": 700,
     },
     "deepseek": {
-        "model_id": "gpuai/deepseek-v4-pro",
-        "name": "DeepSeek V4 Pro",
+        "model_id": _LOCAL_MODEL,
+        "name": "KAI local (adversarial)",
         "tier": 2,
-        "input_price_per_mtok": 1.74,
-        "output_price_per_mtok": 3.48,
+        "input_price_per_mtok": 0.0,
+        "output_price_per_mtok": 0.0,
         "max_output": 900,
     },
     "k3": {
-        "model_id": "gpuai/kimi-k3",
-        "name": "Kimi K3",
+        "model_id": _LOCAL_MODEL,
+        "name": "KAI local (adjudicator)",
         "tier": 3,
-        "input_price_per_mtok": 3.00,
-        "output_price_per_mtok": 15.00,
+        "input_price_per_mtok": 0.0,
+        "output_price_per_mtok": 0.0,
         "max_output": 900,
     },
 }

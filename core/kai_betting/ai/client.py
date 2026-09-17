@@ -24,12 +24,20 @@ logger = logging.getLogger(__name__)
 
 # Env-driven configuration. NEVER hard-code the key; the key is never logged
 # or returned, and Authorization headers are never logged.
-BASE_URL = os.environ.get("GPUAI_BASE_URL", "https://api.gpu.ai/v1")
+# Default = KAI's OWN model fabric (local Ollama, OpenAI-compatible). §0 of the
+# KAI BET directive forbids external LLM providers, so the external GPU.ai URL
+# is no longer the default.
+BASE_URL = os.environ.get("KAI_BET_MODEL_URL", os.environ.get("GPUAI_BASE_URL",
+                                                              "http://127.0.0.1:11434/v1"))
 API_KEY = os.environ.get("GPUAI_API_KEY", "")
 
 _CONNECT_TIMEOUT = float(os.environ.get("GPUAI_CONNECT_TIMEOUT", "10"))
-_RESPONSE_TIMEOUT = float(os.environ.get("GPUAI_RESPONSE_TIMEOUT", "60"))
+_RESPONSE_TIMEOUT = float(os.environ.get("GPUAI_RESPONSE_TIMEOUT", "180"))
 _MAX_RETRIES = int(os.environ.get("GPUAI_MAX_RETRIES", "2"))
+
+
+def _is_local(url: str) -> bool:
+    return url.startswith(("http://127.0.0.1", "http://localhost", "http://192.168."))
 
 
 class GPUAIError(Exception):
@@ -76,7 +84,8 @@ class GPUAIClient:
 
     @property
     def configured(self) -> bool:
-        return bool(self.api_key)
+        # A local KAI-fabric endpoint needs no API key (§0: KAI-only intelligence).
+        return bool(self.api_key) or _is_local(self.base_url)
 
     def chat_json(
         self,
@@ -97,7 +106,7 @@ class GPUAIClient:
             request_id: caller-supplied correlation id (defaults to a fresh uuid).
         """
         if not self.configured:
-            raise GPUAIUnavailableError("GPUAI_API_KEY not configured")
+            raise GPUAIUnavailableError("KAI model fabric not configured (no local endpoint)")
 
         model = MODELS[model_key]
         model_id = model["model_id"]
@@ -115,9 +124,10 @@ class GPUAIClient:
             "temperature": temperature,
         }
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         last_error: Optional[Exception] = None
         for attempt in range(_MAX_RETRIES + 1):

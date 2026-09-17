@@ -1,13 +1,15 @@
 """Kai Betting — betting AI router (three-tier escalation).
 
-The ONLY component that talks to GPU.ai. It decides whether AI is required,
-runs the tiers, escalates per policy, and enforces budget/cache. Nothing else
-in the betting module calls the client directly.
+The ONLY component that talks to KAI's model fabric (local Ollama; OpenAI-
+compatible). §0 of the KAI BET directive forbids external LLM providers — the
+router uses KAI's OWN local intelligence only. It decides whether AI is
+required, runs the tiers, escalates per policy, and enforces budget/cache.
+Nothing else in the betting module calls the client directly.
 
-Escalation policy (default): Qwen screens → DeepSeek adversarially challenges
-when justified → K3 adjudicates only high-value/high-disagreement candidates.
-The router returns a RECOMMENDATION; Kai's deterministic risk engine remains
-the final authority and publisher.
+Escalation policy (default): scout screens → adversarial challenge when
+justified → adjudication only for high-value/high-disagreement candidates.
+The tiers differ by PROMPT, not by provider. The router returns a
+RECOMMENDATION; Kai's deterministic risk engine remains final authority.
 """
 
 from __future__ import annotations

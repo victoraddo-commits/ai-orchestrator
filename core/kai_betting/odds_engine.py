@@ -34,10 +34,10 @@ ODDS_TARGETS = [
 
 RISK_THRESHOLDS: Dict[str, Dict[str, Any]] = {
     "conservative": {
-        "min_confidence": 60,
-        "max_risk_per_selection": 35,
+        "min_confidence": 55,
+        "max_risk_per_selection": 50,
         "preferred_markets": ["match_result", "double_chance", "draw_no_bet"],
-        "max_selections": 4,
+        "max_selections": 6,
     },
     "moderate": {
         "min_confidence": 50,

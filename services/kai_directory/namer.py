@@ -10,6 +10,11 @@ SUFFIX = "tail82a9ca.ts.net"
 def assign_names(records: list[Record], proxy_for: dict[str, str]) -> list[Record]:
     used: set[str] = set()
     for r in records:
+        r.proxy_node = proxy_for.get(r.id, r.proxy_node)
+        if not (r.target_url or (r.ip and r.port)):
+            r.tailnet_name = ""
+            r.internal_url = ""
+            continue
         base = r.name or r.id
         name, i = base, 1
         while name in used:
@@ -19,7 +24,6 @@ def assign_names(records: list[Record], proxy_for: dict[str, str]) -> list[Recor
         r.name = name
         r.tailnet_name = f"{name}.{SUFFIX}"
         r.internal_url = f"https://{name}.{SUFFIX}/"
-        r.proxy_node = proxy_for.get(r.id, r.proxy_node)
     return records
 
 

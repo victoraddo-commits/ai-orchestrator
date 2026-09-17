@@ -19,19 +19,43 @@ def _to_int(value) -> int:
         return 0
 
 
-def parse_registry(doc: Optional[dict], host_label: str = "") -> list[Record]:
+_REG_NOISE = ("getty", "console-", "systemd-", "dbus", "cron", "ssh", "postfix",
+              "-.mount", "user@", "networking", "rpc", "polkit", "apparmor",
+              "svc-dep", "resolv", "timedate", "logrotate")
+
+
+def _is_record_dict(value) -> bool:
+    return isinstance(value, dict) and ("name" in value or "id" in value)
+
+
+def parse_registry(doc, host_label: str = "") -> list[Record]:
+    if (isinstance(doc, dict) and isinstance(doc.get("services"), (list, dict))
+            and not _is_record_dict(doc["services"])):
+        services = doc["services"]
+        items = services.values() if isinstance(services, dict) else services
+    elif isinstance(doc, dict):
+        items = doc.values()
+    elif isinstance(doc, list):
+        items = doc
+    else:
+        items = []
     out: list[Record] = []
-    for s in (doc or {}).get("services", []):
+    for s in items:
+        if not isinstance(s, dict):
+            continue
         name = s.get("name") or s.get("id")
         if not name:
             continue
-        h = s.get("host") or host_label
+        if any(n in str(name).lower() for n in _REG_NOISE):
+            continue
+        host = s.get("host") or host_label
         out.append(Record(
             id=slugify(name), name=slugify(name), display_name=name,
-            category=s.get("category", "general"),
-            host=h, ip=h,
-            port=_to_int(s.get("port")), bind=s.get("bind", "0.0.0.0"),
-            owner=s.get("owner", ""), tags=s.get("tags", ""), source="registry",
+            category=str(s.get("type") or s.get("category") or "general"),
+            host=host, ip=host if host else "",
+            port=_to_int(s.get("port")),
+            owner=s.get("owner", ""), tags=str(s.get("status") or ""),
+            source="registry", health_url=s.get("endpoint") or "",
         ))
     return out
 
@@ -99,16 +123,18 @@ def parse_cloudflared(yml: str) -> list[Record]:
     return out
 
 
-_PANEL_RE = re.compile(r'data-hash="#([a-z0-9-]+)"')
+_PANEL_HASH_RE = re.compile(r'data-hash="#([a-z0-9-]+)"')
+_PANEL_ID_RE = re.compile(r'id="panel-([a-z0-9-]+)"')
 
 
 def parse_panels(html_text: str) -> list[Record]:
-    out = []
-    for name in sorted(set(_PANEL_RE.findall(html_text or ""))):
-        out.append(Record(id=f"panel-{name}", name=slugify(name),
-                          display_name=f"CC panel: {name}", category="ui",
-                          source="panel"))
-    return out
+    html_text = html_text or ""
+    names = sorted(set(_PANEL_HASH_RE.findall(html_text)) | set(_PANEL_ID_RE.findall(html_text)))
+    return [
+        Record(id=f"panel-{name}", name=slugify(name),
+               display_name=f"CC panel: {name}", category="ui", source="panel")
+        for name in names
+    ]
 
 
 def _run(cmd: list[str]) -> str:

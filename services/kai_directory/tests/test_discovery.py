@@ -87,3 +87,35 @@ def test_parse_registry_tolerates_bad_port():
     from services.kai_directory.discovery import parse_registry
     recs = parse_registry({"services": [{"name": "x", "host": "10.0.0.9", "port": "abc"}]})
     assert recs[0].port == 0
+
+
+def test_parse_registry_keyed_dict_format():
+    doc = {
+        "ai-orchestrator-api": {"id": "ai-orchestrator-api", "name": "ai-orchestrator-api",
+                                "host": "192.168.1.111", "port": 8000, "type": "python-service"},
+        "container-getty@1": {"name": "container-getty@1"},   # noise -> skipped
+    }
+    recs = parse_registry(doc)
+    assert [r.id for r in recs] == ["ai-orchestrator-api"]
+    assert recs[0].port == 8000
+
+
+def test_parse_registry_keyed_dict_with_services_key():
+    doc = {
+        "services": {"name": "services", "type": "unknown"},
+        "api": {"name": "api", "host": "192.168.1.111", "port": 8000},
+    }
+    recs = parse_registry(doc)
+    assert {r.id for r in recs} == {"services", "api"}
+
+
+def test_parse_registry_module_without_port():
+    doc = {"roadmap-engine": {"name": "roadmap-engine", "type": "module", "status": "running"}}
+    recs = parse_registry(doc)
+    assert recs[0].port == 0 and recs[0].target_url == ""
+
+
+def test_parse_panels_real_html():
+    html = '<div id="panel-home"></div><div id="panel-money"></div>'
+    recs = parse_panels(html)
+    assert {r.name for r in recs} == {"home", "money"}

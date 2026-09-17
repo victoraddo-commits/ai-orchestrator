@@ -984,6 +984,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span class="label">Infra</span></a>
       <a class="nav-item" href="#wireguard" data-hash="wireguard"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">WireGuard</span></a>
       <a class="nav-item" href="#directives" data-hash="directives"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span><span class="label">Directives</span></a>
+      <a class="nav-item" href="#directory" data-hash="directory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Directory</span></a>
       <div class="sidebar-section-label">System</div>
       <a class="nav-item" href="#security" data-hash="security"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><span class="label">Security</span></a>
       <a class="nav-item" href="#settings" data-hash="settings"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Settings</span></a>
@@ -1221,6 +1222,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <section class="panel" id="panel-enterprise"><div id="enterprise-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-wireguard"><div id="wireguard-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-directives"><div id="directives-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-directory"><div id="directory-content"><span class="loading">loading…</span></div></section>
 
     </div>
 
@@ -1325,7 +1327,7 @@ const PANEL_TITLES = {
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
   'kai-chat':'Kai Chat', devices:'Devices', talent:'Talent', android:'Android', docs:'Documents', hubtel:'Hubtel',
-  wireguard:'WireGuard', directives:'Directives',
+  wireguard:'WireGuard', directives:'Directives', directory:'Service Directory',
   missions:'Missions', executive:'Executive', enhancements:'Enhancements', factory:'Factory',
   evolution:'Evolution', network:'Network', models:'Models', vault:'Vault', secondbrain:'2nd Brain',
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
@@ -1511,7 +1513,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -3228,6 +3230,43 @@ async function wgNight(){
   try{const d=await api('/api/wg/raw'); const el=$('wireguard-content');
     if(el) el.innerHTML='<div class="card"><h3>WireGuard raw (wg show all dump)</h3><pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto">'+esc(d.raw||d.error||'no output')+'</pre><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Back</button></div>';
   }catch(e){toast('wg raw failed: '+e.message);}
+}
+async function loadDirectory(){
+  const el=$('directory-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  let rows=[],conf=null;
+  try{ rows=(await api('/api/directory/services'))||[]; }catch(e){}
+  try{ conf=await api('/api/directory/conformance'); }catch(e){}
+  if(!Array.isArray(rows)) rows=[];
+  const named=rows.filter(r=>r.tailnet_name).length;
+  let html='';
+  if(conf){
+    html+='<div class="card" style="margin-bottom:10px"><b>Conformance:</b> '
+      + (conf.ok?'<span class="ok-text">OK</span>':'<span class="bad-text">'+((conf.missing||[]).length)+' missing</span>')
+      + ' &middot; discovered '+esc(String(conf.discovered))+' / stored '+esc(String(conf.stored))+'</div>';
+  }
+  html+='<div class="card"><h3>Service Directory <span class="card-header-actions">'
+    +'<input id="directory-search" class="input" placeholder="search…" oninput="filterDirectory()" style="width:200px">'
+    +'<button class="btn btn-xs btn-accent" onclick="loadDirectory()">Refresh</button></span></h3>'
+    +'<div style="margin:6px 0;color:var(--fg-muted)">'+rows.length+' services &middot; '+named+' named (tailnet)</div>'
+    +'<table id="directory-table" style="width:100%;border-collapse:collapse;font-size:0.8rem">'
+    +'<thead><tr><th align="left">Service</th><th align="left">Category</th><th align="left">Status</th><th align="left">Host</th><th align="left">URL</th></tr></thead><tbody>'
+    + rows.map(r=>{
+        const url=r.internal_url||r.target_url||'';
+        const link=url?('<a href="'+esc(url)+'" target="_blank">'+esc(url)+'</a>'):'<span style="color:var(--fg-muted)">—</span>';
+        return '<tr data-q="'+esc(((r.display_name||r.name||'')+' '+(r.category||'')+' '+(r.tags||'')).toLowerCase())+'">'
+          +'<td>'+esc(r.display_name||r.name)+'</td><td>'+esc(r.category||'')+'</td>'
+          +'<td class="'+esc(r.health_status||'unknown')+'">'+esc(r.health_status||'unknown')+'</td>'
+          +'<td>'+esc((r.host||'')+':'+(r.port||''))+'</td><td>'+link+'</td></tr>';
+      }).join('')
+    +'</tbody></table></div>';
+  el.innerHTML=html;
+}
+function filterDirectory(){
+  const q=(($('directory-search')||{}).value||'').toLowerCase();
+  document.querySelectorAll('#directory-table tbody tr').forEach(tr=>{
+    tr.style.display=(!q||(tr.getAttribute('data-q')||'').indexOf(q)>=0)?'':'none';
+  });
 }
 async function loadDirectives(){
   const el=$('directives-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';

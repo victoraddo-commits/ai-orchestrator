@@ -173,6 +173,34 @@ def directives_health():
         return JSONResponse({"ok": False, "error": str(e)})
 
 
+# ── Service Directory (proxy to kai-directory :8097, CT114) ─────────────────
+DIRECTORY_BASE = os.environ.get("KAI_DIRECTORY_BASE", "http://192.168.1.114:8097")
+
+
+@cc_extra_router.get("/api/directory/services")
+def directory_services(category: str = "", q: str = ""):
+    """List catalogued services (proxies kai-directory :8097)."""
+    import urllib.parse
+    import urllib.request
+    qs = urllib.parse.urlencode({"category": category, "q": q})
+    try:
+        with urllib.request.urlopen(f"{DIRECTORY_BASE}/services?{qs}", timeout=10) as r:
+            return JSONResponse(json.loads(r.read()))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"directory unreachable: {type(e).__name__}: {e}"}, status_code=502)
+
+
+@cc_extra_router.get("/api/directory/conformance")
+def directory_conformance():
+    """Directory coverage check (proxies kai-directory :8097)."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"{DIRECTORY_BASE}/conformance", timeout=20) as r:
+            return JSONResponse(json.loads(r.read()))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"directory unreachable: {type(e).__name__}: {e}"}, status_code=502)
+
+
 @cc_extra_router.get("/kai/missions")
 def kai_missions():
     try:

@@ -548,6 +548,7 @@ class BettingTelegramBot:
 
         edge = row.get("edge")
         prob = row.get("estimated_probability") or 0
+        reason = (row.get("reasoning") or "").strip()
 
         return (
             f"{match_line}\n"
@@ -555,6 +556,7 @@ class BettingTelegramBot:
             f"📈 Odds: {odds_str}\n"
             f"🎲 {prob*100:.0f}% | 🔥 {conf:.0f}%"
             + (f" | 💎 +{edge*100:.1f}%" if edge and edge > 0 else "")
+            + (f"\n💬 {reason}" if reason else "")
         )
 
     @staticmethod

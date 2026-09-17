@@ -966,6 +966,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
       <a class="nav-item" href="#money" data-hash="money"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span class="label">Money</span></a>
       <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-4 12.7V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.3A7 7 0 0 0 12 2z"/><line x1="10" y1="21" x2="14" y2="21"/></svg></span><span class="label">Arbitra</span></a>
+      <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
       <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
       <a class="nav-item" href="#android" data-hash="android"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18"/><path d="M8 6h8"/></svg></span><span class="label">Android</span></a>
       <a class="nav-item" href="#docs" data-hash="docs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span><span class="label">Docs</span></a>
@@ -1113,6 +1114,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <section class="panel" id="panel-evolution"><div id="evolution-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-money"><div id="money-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-arbitra"><div id="arbitra-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-bet"><div id="bet-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
       <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading…</span></div></section>
@@ -1319,7 +1321,7 @@ const S = {
 };
 const SK = 'kai_command_session_v3';
 const PANEL_TITLES = {
-  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', money:'money', arbitra:'Arbitra',
+  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', money:'money', arbitra:'Arbitra', bet:'KAI Bet',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
   'kai-chat':'Kai Chat', devices:'Devices', talent:'Talent', android:'Android', docs:'Documents', hubtel:'Hubtel',
@@ -1509,7 +1511,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,arbitra:loadArbitra,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -4078,6 +4080,120 @@ async function arbTActivity(){
   arbBody(h);
 }
 
+// ===== KAI Bet dashboard (KAI Bet 2026) =====
+const BET='/api/betting';
+async function betG(p){return api(BET+p);}
+async function betP(p,b){return api(BET+p,{method:'POST',body:JSON.stringify(b||{})});}
+const BET_TABS=[['overview','Overview'],['predictions','Predictions'],['events','Events'],['gate','Value Gate'],['paper','Paper Bets'],['oddsgroups','Odds Groups']];
+async function loadBet(){
+  const el=$('bet-content'); if(!el) return;
+  el.innerHTML='<div class="card"><h3>KAI Bet <span class="badge info">KAI-only · paper default</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadBet()">Refresh</button></span></h3>'
+    +'<div class="muted" style="font-size:0.62rem">KAI is the only intelligence authority (local model fabric, cost 0). Real-money execution is gated OFF.</div>'
+    +'<div class="action-row" style="flex-wrap:wrap;gap:6px;margin-top:8px">'+BET_TABS.map(t=>'<button class="btn btn-xs" data-bettab="'+t[0]+'" onclick="betTab(\''+t[0]+'\')">'+t[1]+'</button>').join('')+'</div></div>'
+    +'<div id="bet-body"><span class="loading">loading…</span></div>';
+  betTab('overview');
+}
+function betTab(n){
+  document.querySelectorAll('[data-bettab]').forEach(b=>b.classList.toggle('btn-accent',b.getAttribute('data-bettab')===n));
+  const m={overview:betTOverview,predictions:betTPredictions,events:betTEvents,gate:betTGate,paper:betTPaper,oddsgroups:betTOddsGroups};
+  (m[n]||betTOverview)();
+}
+function betBody(h){const b=$('bet-body');if(b)b.innerHTML=h;}
+function betJson(title,data){
+  return '<div class="card"><h3>'+esc(title)+'</h3><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto">'+esc(JSON.stringify(data,null,1))+'</pre></div>';
+}
+async function betTOverview(){
+  betBody('<span class="loading">loading…</span>');
+  const g=async p=>{try{return await betG(p);}catch(e){return {error:e.message};}};
+  const [dash,perf,pp]=await Promise.all([g('/dashboard'),g('/performance'),g('/paper/performance')]);
+  let h='';
+  h+='<div class="card"><h3>Paper performance</h3>';
+  if(pp.error) h+='<span class="error-text">'+esc(pp.error)+'</span>';
+  else h+='<div class="metric-row">'+arbMetric('Bets',pp.bets)+arbMetric('Open',pp.open)+arbMetric('Won',pp.won)+arbMetric('Lost',pp.lost)+arbMetric('Staked',pp.staked)+arbMetric('P/L',pp.profit_loss)+arbMetric('ROI',pp.roi==null?'—':pp.roi)+arbMetric('Win rate',pp.win_rate==null?'—':pp.win_rate)+'</div>';
+  h+='</div>';
+  h+=betJson('Ecosystem dashboard', dash.error?dash:dash);
+  h+=betJson('Performance metrics', perf.error?perf:perf);
+  betBody(h);
+}
+async function betTPredictions(){
+  betBody('<span class="loading">loading…</span>');
+  try{const d=await betG('/predictions?limit=100');
+    const arr=Array.isArray(d)?d:(d.predictions||d.items||d.results||[]);
+    if(!Array.isArray(arr)||!arr.length){betBody(betJson('Predictions',d));return;}
+    const cols=Object.keys(arr[0]).slice(0,10);
+    const rows=arr.map(p=>'<tr>'+cols.map(c=>'<td>'+esc(p[c])+'</td>').join('')+'</tr>').join('');
+    betBody('<div class="card"><h3>Predictions <span class="badge info">'+arr.length+'</span></h3>'+arbTbl(cols,rows)+'</div>');
+  }catch(e){betBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function betTEvents(){
+  betBody('<span class="loading">loading…</span>');
+  try{const d=await betG('/events?limit=100');
+    const arr=Array.isArray(d)?d:(d.events||d.items||d.results||[]);
+    if(!Array.isArray(arr)||!arr.length){betBody(betJson('Events',d));return;}
+    const cols=Object.keys(arr[0]).slice(0,10);
+    const rows=arr.map(p=>'<tr>'+cols.map(c=>'<td>'+esc(p[c])+'</td>').join('')+'</tr>').join('');
+    betBody('<div class="card"><h3>Events <span class="badge info">'+arr.length+'</span></h3>'+arbTbl(cols,rows)+'</div>');
+  }catch(e){betBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+function betTGate(){
+  let h='<div class="card"><h3>Value + risk gate</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="gt-odds" type="number" step="0.01" class="search-input" placeholder="odds" style="max-width:110px">'
+    +'<input id="gt-prob" type="number" step="0.01" class="search-input" placeholder="model probability" style="max-width:180px">'
+    +'<input id="gt-unc" type="number" step="0.05" class="search-input" placeholder="uncertainty 0-1" style="max-width:150px">'
+    +'<input id="gt-dq" type="number" step="0.05" class="search-input" placeholder="data quality 0-1" style="max-width:160px">'
+    +'<label class="muted" style="font-size:0.62rem"><input type="checkbox" id="gt-stale"> stale</label>'
+    +'<label class="muted" style="font-size:0.62rem"><input type="checkbox" id="gt-lineup"> lineup unconfirmed</label>'
+    +'<button class="btn btn-xs btn-accent" onclick="betRunGate()">Evaluate</button></div>'
+    +'<div id="gt-result" style="margin-top:8px"></div></div>';
+  betBody(h);
+}
+async function betRunGate(){
+  const el=$('gt-result'); if(!el)return; el.innerHTML='<span class="loading">…</span>';
+  const b={odds:arbNum('gt-odds'),model_probability:arbNum('gt-prob')};
+  const u=arbNum('gt-unc'); if(u!=null)b.uncertainty=u;
+  const dq=arbNum('gt-dq'); if(dq!=null)b.data_quality=dq;
+  b.stale_odds=$('gt-stale')&&$('gt-stale').checked;
+  b.lineup_confirmed=!($('gt-lineup')&&$('gt-lineup').checked);
+  if(b.odds==null||b.model_probability==null){el.innerHTML='<span class="error-text">odds and model probability required</span>';return;}
+  try{const d=await betP('/gate',b);
+    const badge=d.decision==='BET'?'ok':(d.decision==='WATCH'?'warn':'bad');
+    el.innerHTML='<div class="metric-row"><div class="metric"><span class="val"><span class="badge '+badge+'">'+esc(d.decision)+'</span></span><span style="font-size:0.6rem;color:var(--fg-muted)">decision</span></div>'
+      +arbMetric('Value',d.value.value)+arbMetric('Edge',d.value.edge_adjusted)+arbMetric('EV',d.value.ev)+arbMetric('Kelly',d.value.kelly_fraction)+arbMetric('Risk',d.risk.level+' ('+d.risk.total+')')+'</div>'
+      +'<div class="muted" style="font-size:0.62rem">'+esc((d.reasons||[]).join(' · '))+'</div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function betTPaper(){
+  betBody('<span class="loading">loading…</span>');
+  try{
+    const [d,pp]=await Promise.all([betG('/paper/bets'),betG('/paper/performance')]);
+    const rows=(d.bets||[]).map(x=>'<tr><td>'+esc(x.id).slice(0,8)+'</td><td>'+esc(x.selection||'')+'</td><td>'+esc(x.market||'')+'</td><td>'+esc(x.odds)+'</td><td>'+esc(x.stake)+'</td><td>'+esc(x.value||'')+'</td><td>'+esc(x.status)+'</td><td>'+esc(x.profit_loss==null?'—':x.profit_loss)+'</td><td>'+(x.status==='open'?'<button class="btn btn-xs" onclick="betSettle(\''+x.id+'\',\'won\')">Won</button> <button class="btn btn-xs" onclick="betSettle(\''+x.id+'\',\'lost\')">Lost</button>':'—')+'</td></tr>').join('');
+    let h='<div class="metric-row">'+arbMetric('Bets',pp.bets)+arbMetric('Open',pp.open)+arbMetric('P/L',pp.profit_loss)+arbMetric('ROI',pp.roi==null?'—':pp.roi)+'</div>';
+    h+='<div class="card"><h3>Paper bets <span class="badge info">'+(d.bets||[]).length+'</span></h3>'+arbTbl(['id','selection','market','odds','stake','value','status','P/L','settle'],rows)+'</div>';
+    h+='<div class="card"><h3>Place paper bet</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="pb-sel" class="search-input" placeholder="selection" style="max-width:150px">'
+      +'<input id="pb-mkt" class="search-input" placeholder="market" style="max-width:120px">'
+      +'<input id="pb-odds" type="number" step="0.01" class="search-input" placeholder="odds" style="max-width:110px">'
+      +'<input id="pb-prob" type="number" step="0.01" class="search-input" placeholder="model probability" style="max-width:180px">'
+      +'<input id="pb-bank" type="number" class="search-input" placeholder="bankroll" style="max-width:120px" value="100">'
+      +'<button class="btn btn-xs btn-accent" onclick="betPlace()">Place</button></div>'
+      +'<div class="muted" style="font-size:0.6rem;margin-top:6px">Stake is sized by fractional Kelly when a model probability is given.</div></div>';
+    betBody(h);
+  }catch(e){betBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function betPlace(){
+  const b={odds:arbNum('pb-odds'),bankroll:arbNum('pb-bank')||100};
+  const sel=arbVal('pb-sel'); if(sel)b.selection=sel;
+  const mkt=arbVal('pb-mkt'); if(mkt)b.market=mkt;
+  const pr=arbNum('pb-prob'); if(pr!=null)b.model_probability=pr;
+  if(b.odds==null){toast('odds required','err');return;}
+  try{await betP('/paper/bets',b);toast('paper bet placed');betTab('paper');}catch(e){toast('error: '+e.message,'err');}
+}
+async function betSettle(id,outcome){try{await betP('/paper/bets/'+id+'/settle',{outcome});toast('settled '+outcome);betTab('paper');}catch(e){toast('error: '+e.message,'err');}}
+async function betTOddsGroups(){
+  betBody('<span class="loading">loading…</span>');
+  try{const d=await betG('/odds-groups'); betBody(betJson('Odds groups',d));}
+  catch(e){betBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
 async function ccTgBots(){const el=$('cc-tg-result');try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/cc/telegram/bots'),null,1))+'</pre>';}catch(e){el.textContent=e.message;}}
 async function ccTgSetCmds(){const el=$('cc-tg-result');el.textContent='setting…';try{const d=await api('/api/cc/telegram/set-commands',{method:'POST',body:JSON.stringify({bot_id:'kai-enzo-bot'})});el.textContent='set-commands → '+JSON.stringify(d);}catch(e){el.textContent='error: '+e.message;}}
 async function ccTgSend(){const el=$('cc-tg-result');const c=($('cc-tg-chat')||{}).value,t=($('cc-tg-text')||{}).value;el.textContent='sending…';try{const d=await api('/api/cc/telegram/send',{method:'POST',body:JSON.stringify({bot_id:'kai-enzo-bot',chat_id:c,text:t})});el.textContent='send → '+JSON.stringify(d);}catch(e){el.textContent='error: '+e.message;}}

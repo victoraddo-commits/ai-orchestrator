@@ -7,6 +7,8 @@ engine — the budget is never silently raised.
 
 from __future__ import annotations
 
+import uuid
+
 import os
 import logging
 from datetime import datetime, timezone, timedelta
@@ -77,7 +79,7 @@ class BettingAIBudgetController:
         self._conn.execute(
             "INSERT INTO ai_usage (id, model_key, cost, input_tokens, "
             "output_tokens, latency_ms, request_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (request_id, model_key, cost, input_tokens, output_tokens, latency_ms, request_id),
+            (uuid.uuid4().hex, model_key, cost, input_tokens, output_tokens, latency_ms, request_id),
         )
         self._conn.commit()
 

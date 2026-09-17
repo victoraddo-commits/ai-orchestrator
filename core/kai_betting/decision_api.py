@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from core.kai_betting.value_engine import compute_value
 from core.kai_betting.risk_engine import assess_risk, no_bet_gate
+from core.kai_betting.real_money import evaluate as real_money_evaluate
 
 decision_router = APIRouter(tags=["Kai Betting — Decision"])
 
@@ -64,3 +65,10 @@ def api_gate(body: GateRequest):
         },
         "risk": {"total": risk.total, "level": risk.level, "components": risk.components},
     }
+
+
+@decision_router.get("/real-money")
+def api_real_money():
+    """§33: real-money execution status. DISABLED by default (never auto-enables)."""
+    s = real_money_evaluate({})
+    return {"enabled": s.enabled, "ready": s.ready, "checks": s.checks, "note": s.note}

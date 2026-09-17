@@ -102,6 +102,17 @@ def settle_bet(conn, bet_id: str, outcome: str) -> Dict[str, Any]:
         "UPDATE paper_bets SET status=?, profit_loss=?, settled_at=? WHERE id=?",
         (outcome, profit, now_iso(), bet_id),
     )
+    # §28: record the settled outcome as a Second Brain lesson (best-effort).
+    try:
+        from core.kai_betting.second_brain import remember_lesson
+        remember_lesson(
+            "settle",
+            {"market": row["market"], "selection": row["selection"], "odds": row["odds"],
+             "model_probability": row["model_probability"], "value": row["value"]},
+            {"decision": "BET", "result": outcome, "profit_loss": profit, "notes": "paper"},
+        )
+    except Exception:
+        pass
     return dict(conn.execute("SELECT * FROM paper_bets WHERE id=?", (bet_id,)).fetchone())
 
 

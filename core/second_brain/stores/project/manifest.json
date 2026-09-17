@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "merge_policy": "newest_wins",
-  "record_count": 0,
+  "record_count": 21,
   "store_name": "project"
 }

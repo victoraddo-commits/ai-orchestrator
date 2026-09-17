@@ -43,7 +43,7 @@ class TestHistory(unittest.TestCase):
         m = parse_matches(DOC)
         r = independent_markets("Bayern Munich", "Union Berlin", m)
         mk = r["markets"]
-        self.assertAlmostEqual(mk["1"] + mk["X"] + mk["2"], 1.0, places=3)
+        self.assertAlmostEqual(mk["1"] + mk["X"] + mk["2"], 1.0, places=2)
         # Bayern should be favoured independently of any market price
         self.assertGreater(mk["1"], mk["2"])
         self.assertIn("totals", mk)

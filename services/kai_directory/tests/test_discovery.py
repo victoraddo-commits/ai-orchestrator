@@ -48,6 +48,12 @@ def test_parse_docker_ps():
     assert "money-center" in recs[0].name
 
 
+def test_parse_docker_strips_only_trailing_dash1():
+    out = "kai-money-api-10-1\t0.0.0.0:9911->9911/tcp\timg\n"
+    recs = parse_docker(out, ip="10.0.0.1", host="h")
+    assert recs[0].name == "api-10"
+
+
 def test_parse_cloudflared_ingress():
     yml = """
 ingress:
@@ -73,4 +79,11 @@ def test_discover_all_never_raises(monkeypatch):
     monkeypatch.setattr("services.kai_directory.discovery._run", lambda *a, **k: "")
     monkeypatch.setattr("services.kai_directory.discovery._read_json", lambda *a, **k: None)
     monkeypatch.setattr("services.kai_directory.discovery._read_text", lambda *a, **k: "")
+    monkeypatch.setattr("services.kai_directory.discovery.CLOUDFLARED_DIRS", [])
     assert discover_all() == []
+
+
+def test_parse_registry_tolerates_bad_port():
+    from services.kai_directory.discovery import parse_registry
+    recs = parse_registry({"services": [{"name": "x", "host": "10.0.0.9", "port": "abc"}]})
+    assert recs[0].port == 0

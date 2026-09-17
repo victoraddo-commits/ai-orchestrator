@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
-from typing import Any, Optional
+from typing import Optional
 
 from .models import Record, slugify
 
 LOOPBACK_BIND = ("127.0.0.1", "::1", "localhost")
 NOISE_PORTS = {22, 25, 111, 631, 5432, 6379, 9090, 2019, 20241, 20242}
+
+
+def _to_int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def parse_registry(doc: Optional[dict], host_label: str = "") -> list[Record]:
@@ -22,7 +30,7 @@ def parse_registry(doc: Optional[dict], host_label: str = "") -> list[Record]:
             id=slugify(name), name=slugify(name), display_name=name,
             category=s.get("category", "general"),
             host=h, ip=h,
-            port=int(s.get("port") or 0), bind=s.get("bind", "0.0.0.0"),
+            port=_to_int(s.get("port")), bind=s.get("bind", "0.0.0.0"),
             owner=s.get("owner", ""), tags=s.get("tags", ""), source="registry",
         ))
     return out
@@ -60,9 +68,6 @@ def parse_ss(output: str, ip: str, host: str = "") -> list[Record]:
     return dedup
 
 
-import os
-
-
 def parse_docker(output: str, ip: str, host: str = "") -> list[Record]:
     out: list[Record] = []
     for line in output.splitlines():
@@ -73,7 +78,7 @@ def parse_docker(output: str, ip: str, host: str = "") -> list[Record]:
         pm = re.search(r"0\.0\.0\.0:(\d+)->", ports)
         if not pm:
             continue
-        short = cname.replace("kai-money-", "").replace("-1", "")
+        short = cname.replace("kai-money-", "").removesuffix("-1")
         name = slugify(short)
         out.append(Record(id=name, name=name, display_name=cname, category="infra",
                           host=host, container=f"docker:{cname}", ip=ip,
@@ -138,24 +143,31 @@ SELF_IP = os.environ.get("KAI_DIRECTORY_SELF_IP", "192.168.1.114")
 
 
 def discover_all() -> list[Record]:
-    """Collect from all sources. Remote host listeners come from the
-    orchestrator's service_registry export (KAI_SERVICES_JSON); this host's
-    listeners and docker come from local commands; cloudflared + CC panels
-    come from their files. Any source failing yields no records (never raises).
-    """
+    """Collect from all sources. Any source failing yields no records (never raises)."""
     recs: list[Record] = []
+
+    def _safe(fn, *args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            return []
+
     for p in REGISTRY_PATHS:
-        recs += parse_registry(_read_json(p))
-    recs += parse_ss(_run(["ss", "-ltn"]), ip=SELF_IP, host="ct114")
+        recs += _safe(parse_registry, _read_json(p))
+    recs += _safe(parse_ss, _run(["ss", "-ltn"]), ip=SELF_IP, host="ct114")
     docker_out = _run(["docker", "ps", "--format", "{{.Names}}\t{{.Ports}}\t{{.Image}}"])
     if docker_out:
-        recs += parse_docker(docker_out, ip=SELF_IP, host="ct114")
+        recs += _safe(parse_docker, docker_out, ip=SELF_IP, host="ct114")
     for d in CLOUDFLARED_DIRS:
-        if os.path.isdir(d):
+        try:
+            if not os.path.isdir(d):
+                continue
             for fn in sorted(os.listdir(d)):
                 if fn.endswith((".yml", ".yaml")):
-                    recs += parse_cloudflared(_read_text(os.path.join(d, fn)))
-    recs += parse_panels(_read_text(PANEL_PATH))
+                    recs += _safe(parse_cloudflared, _read_text(os.path.join(d, fn)))
+        except Exception:
+            continue
+    recs += _safe(parse_panels, _read_text(PANEL_PATH))
     # dedupe by id (first source wins)
     seen, dedup = set(), []
     for r in recs:

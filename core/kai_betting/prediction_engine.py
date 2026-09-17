@@ -26,6 +26,25 @@ from typing import Optional, Dict, List, Any, Tuple
 from core.kai_betting.models import PredictionInput, PredictionResult
 
 
+# ── Local-AI budget guard ────────────────────────────────────────────────────
+# Bulk daily generation must complete; the local model is fast but sequential, so
+# cap AI calls per rolling window. Beyond the cap, predictions use the
+# statistical + independent-history model alone (still real edges).
+_AI_WINDOW = []
+
+
+def _ai_budget_ok(limit: int, window: float = 600.0) -> bool:
+    import time as _t
+    now = _t.time()
+    while _AI_WINDOW and now - _AI_WINDOW[0] > window:
+        _AI_WINDOW.pop(0)
+    if limit > 0 and len(_AI_WINDOW) >= limit:
+        return False
+    _AI_WINDOW.append(now)
+    return True
+
+
+
 def is_live_data_mode() -> bool:
     """Check if LIVE_DATA_MODE is enabled (default: True)."""
     return os.environ.get("LIVE_DATA_MODE", "true").lower() in ("1", "true", "yes")
@@ -758,6 +777,12 @@ class PredictionEngine:
 
         if not bookmaker_odds:
             return None, None  # no real odds → data-quality gate, no AI spend
+
+        # Budget guard: keep the bulk cycle tractable (statistical+history still runs).
+        import os as _os
+        _limit = int(_os.environ.get("KAI_BET_AI_MAX_CALLS", "8"))
+        if _limit >= 0 and not _ai_budget_ok(_limit):
+            return None, None
 
         implied = 1.0 / bookmaker_odds if bookmaker_odds else None
         edge = (base_prob - implied) if implied is not None else None

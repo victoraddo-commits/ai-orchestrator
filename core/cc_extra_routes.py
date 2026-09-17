@@ -682,3 +682,69 @@ def sessions_action(sid: str, action: str):
     if action not in ("detach", "reconnect", "interrupt", "resume") or fn is None:
         return {"ok": False, "error": "unknown action"}
     return {"ok": bool(fn(sid))}
+
+
+# ── Money Center: balances + transfers (operator-gated) ──────────────────────
+_MONEY_URL = os.environ.get("MONEY_CENTER_URL", "http://192.168.1.118:8095")
+_MONEY_USER_TOKEN_FILE = os.environ.get(
+    "MONEY_USER_TOKEN_FILE", "/root/.credentials/money-user-token")
+
+
+def _money_token() -> str:
+    try:
+        with open(_MONEY_USER_TOKEN_FILE) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _money_call(path: str, method: str = "GET", body: dict | None = None):
+    import urllib.request
+    import urllib.error
+    tok = _money_token()
+    if not tok:
+        return JSONResponse({"error": "money user token not provisioned"}, status_code=503)
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(_MONEY_URL + path, data=data, method=method)
+    req.add_header("Authorization", f"Bearer {tok}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, timeout=12) as r:
+            return JSONResponse(json.load(r), status_code=r.status)
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.load(e)
+        except Exception:  # noqa: BLE001
+            detail = {"error": f"http {e.code}"}
+        return JSONResponse(detail, status_code=e.code)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"money-center unreachable: {type(e).__name__}"},
+                            status_code=502)
+
+
+@cc_extra_router.get("/api/money/treasury")
+def money_treasury():
+    """Master/reserve balances + available capital (read-only)."""
+    return _money_call("/treasury/summary")
+
+
+@cc_extra_router.get("/api/money/wallets")
+def money_wallets():
+    return _money_call("/wallets")
+
+
+@cc_extra_router.post("/api/money/wallets")
+def money_wallets_add(body: dict, _: None = Depends(_req_op)):
+    """Register a withdrawal destination (write-once, disable-only)."""
+    return _money_call("/wallets", "POST", body)
+
+
+@cc_extra_router.get("/api/money/payouts")
+def money_payouts():
+    return _money_call("/payouts")
+
+
+@cc_extra_router.post("/api/money/payouts")
+def money_payout_create(body: dict, _: None = Depends(_req_op)):
+    """Operator-gated transfer: KAI → registered wallet. Requires approval (§33)."""
+    return _money_call("/payouts", "POST", body)

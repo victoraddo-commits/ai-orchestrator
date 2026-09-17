@@ -236,7 +236,7 @@ class KaiBettingWorkers:
         if active_count < 10:
             odds_engine = OddsEngine(self._prediction_engine)
             risk_levels = ["conservative", "moderate", "aggressive"]
-            targets = [5, 10, 50]
+            targets = [5, 10, 15]
 
             for risk, target in zip(risk_levels, targets):
                 try:

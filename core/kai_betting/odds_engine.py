@@ -28,12 +28,8 @@ def _live_data_mode() -> bool:
 
 ODDS_TARGETS = [
     {"odds": 5, "label": "5 ODDS", "risk_level": "conservative"},
-    {"odds": 10, "label": "10 ODDS", "risk_level": "conservative"},
-    {"odds": 50, "label": "50 ODDS", "risk_level": "moderate"},
-    {"odds": 100, "label": "100 ODDS", "risk_level": "moderate"},
-    {"odds": 200, "label": "200 ODDS", "risk_level": "aggressive"},
-    {"odds": 500, "label": "500 ODDS", "risk_level": "aggressive"},
-    {"odds": 1000, "label": "1000 ODDS", "risk_level": "high_risk"},
+    {"odds": 10, "label": "10 ODDS", "risk_level": "moderate"},
+    {"odds": 15, "label": "15 ODDS", "risk_level": "aggressive"},
 ]
 
 RISK_THRESHOLDS: Dict[str, Dict[str, Any]] = {

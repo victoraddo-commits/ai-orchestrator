@@ -162,12 +162,28 @@ class BettingTelegramBot:
                 query += " AND p.confidence < 50"
 
             # Value-first: prefer real edge and non-trivial odds over raw confidence
-            query += " ORDER BY (p.edge IS NULL), p.edge DESC, p.confidence DESC LIMIT 10"
+            query += " ORDER BY p.confidence DESC LIMIT 60"
 
             rows = db.execute(query, params).fetchall()
 
         # Remove games that have already started
         rows = [r for r in rows if not event_is_started(r["event_time"])]
+
+        # Selection rule: never display trivial short-priced options (< min odds);
+        # show ONE highest-confidence option per fixture (not every option).
+        _min_odds = float(os.environ.get("KAI_BET_MIN_ODDS", "1.10"))
+        _seen = set()
+        _picked = []
+        for r in rows:
+            odds = r["bookmaker_odds"]
+            if odds is not None and odds < _min_odds:
+                continue
+            key = r["event_id"] if "event_id" in r.keys() else r["id"]
+            if key in _seen:
+                continue
+            _seen.add(key)
+            _picked.append(r)
+        rows = _picked[:10]
 
         if not rows:
             return (

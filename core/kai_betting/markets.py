@@ -103,6 +103,17 @@ for _k, _f in FAMILIES.items():
         if _i.strip():
             _BY_ID[_i.strip()] = _k
 
+# Aliases seen in stored predictions / other feeds.
+_ALIAS: Dict[str, str] = {
+    "match_result": "1x2", "home_win": "1x2", "away_win": "1x2", "draw": "1x2",
+    "winner": "1x2", "moneyline": "1x2", "1_x_2": "1x2", "1x2": "1x2",
+    "both_teams_to_score": "btts", "gg_ng": "btts", "gg/ng": "btts", "btts_yes": "btts",
+    "goals_over_under": "over_under", "over_under_goals": "over_under", "ou": "over_under",
+    "totals": "over_under", "total_goals": "over_under",
+    "doublechance": "double_chance", "dc": "double_chance",
+    "dnb": "draw_no_bet", "asian_handicap": "asian_handicap", "ah": "asian_handicap",
+}
+
 
 def family_for(market_type: str) -> Optional[MarketFamily]:
     """Resolve a KAI market_type (or a SportyBet market id) to a family."""
@@ -111,6 +122,8 @@ def family_for(market_type: str) -> Optional[MarketFamily]:
     m = market_type.strip().lower()
     if m in FAMILIES:
         return FAMILIES[m]
+    if m in _ALIAS:
+        return FAMILIES.get(_ALIAS[m])
     if m in _BY_ID:
         return FAMILIES[_BY_ID[m]]
     return None

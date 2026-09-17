@@ -103,3 +103,33 @@ def api_market_catalog(group: str = None, limit: int = 300):
         rows = [dict(r) for r in conn.execute(q, args).fetchall()]
         total = conn.execute("SELECT COUNT(*) FROM market_catalog").fetchone()[0]
     return {"total": total, "returned": len(rows), "markets": rows}
+
+
+from pydantic import BaseModel as _BM
+
+class VerifyRequest(_BM):
+    home: str
+    away: str
+    tournament_ids: list[str] | None = None
+
+
+@decision_router.post("/verify")
+def api_verify(body: VerifyRequest):
+    """Confirm a picked fixture on SportyBet + pull historical form (§21/§23)."""
+    from core.kai_betting.data_sources.verify_sources import (
+        find_fixture, sportybet_event, normalise_markets, team_history,
+    )
+    fx = find_fixture(body.home, body.away, body.tournament_ids)
+    out = {"home": body.home, "away": body.away, "sportybet": None, "history": {}, "sources": {}}
+    if fx:
+        mk = normalise_markets(sportybet_event(fx["eventId"])) or fx.get("sportybet_markets", [])
+        groups = {}
+        for m in mk:
+            groups[m["group"]] = groups.get(m["group"], 0) + 1
+        out["sportybet"] = {"eventId": fx["eventId"], "home": fx["home"], "away": fx["away"],
+                            "markets": len(mk), "by_group": groups}
+    out["history"]["home"] = team_history(body.home)
+    out["history"]["away"] = team_history(body.away)
+    out["sources"] = {"sportybet": bool(fx), "history": "thesportsdb",
+                      "sofascore": "blocked (403 Cloudflare from runner)"}
+    return out

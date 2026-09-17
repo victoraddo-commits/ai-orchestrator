@@ -161,7 +161,8 @@ class BettingTelegramBot:
             elif quality_filter == "low":
                 query += " AND p.confidence < 50"
 
-            query += " ORDER BY e.event_time ASC, p.confidence DESC LIMIT 10"
+            # Value-first: prefer real edge and non-trivial odds over raw confidence
+            query += " ORDER BY (p.edge IS NULL), p.edge DESC, p.confidence DESC LIMIT 10"
 
             rows = db.execute(query, params).fetchall()
 

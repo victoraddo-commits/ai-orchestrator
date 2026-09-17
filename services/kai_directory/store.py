@@ -62,6 +62,9 @@ class RecordStore:
     def reconcile(self, discovered: list[Record]) -> dict:
         seen = {r.id for r in discovered}
         for r in discovered:
+            existing = self.get(r.id)
+            if existing is not None and existing.source == "manual":
+                continue          # never clobber a user's manual entry
             self.upsert(r)
         stale = 0
         for existing in self.list():

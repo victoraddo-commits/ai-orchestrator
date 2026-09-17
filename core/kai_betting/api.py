@@ -34,10 +34,12 @@ from core.kai_betting.subscriptions import SubscriptionManager
 from core.kai_betting.performance import PerformanceTracker
 from core.kai_betting.security import rate_limit, _auth_limiter
 from core.kai_betting.sessions import create_session, resolve_session, delete_session
+from core.kai_betting.paper import paper_router as _paper_router
 
 # ── Router ───────────────────────────────────────────────────────────────────
 
 router = APIRouter(prefix="/api/betting", tags=["Kai Betting"])
+router.include_router(_paper_router)
 
 # Singleton engines (lazy init)
 _prediction_engine: Optional[PredictionEngine] = None

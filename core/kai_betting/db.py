@@ -410,6 +410,29 @@ CREATE TABLE IF NOT EXISTS ai_prediction_records (
     status                TEXT NOT NULL DEFAULT 'complete'
 );
 CREATE INDEX IF NOT EXISTS idx_ai_pred_records_ts ON ai_prediction_records(prediction_timestamp);
+
+CREATE TABLE IF NOT EXISTS paper_bets (
+    id                 TEXT PRIMARY KEY,
+    prediction_id      TEXT,
+    event_id           TEXT,
+    sport              TEXT,
+    competition        TEXT,
+    market             TEXT,
+    selection          TEXT,
+    odds               REAL NOT NULL,
+    stake              REAL NOT NULL,
+    model_probability  REAL,
+    implied_probability REAL,
+    edge               REAL,
+    value              TEXT,
+    kelly_fraction     REAL,
+    status             TEXT NOT NULL DEFAULT 'open',
+    profit_loss        REAL,
+    placed_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    settled_at         TEXT,
+    notes              TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_paper_bets_status ON paper_bets(status);
 """
 
 # ── Seed Data ────────────────────────────────────────────────────────────────

@@ -755,6 +755,11 @@ class PredictionEngine:
         }
         try:
             result = BettingAIRouter().analyze(prediction, evidence, conn=conn)
+            try:
+                from core.kai_betting.audit import record_ai_prediction
+                record_ai_prediction(conn, prediction=prediction, result=result)
+            except Exception:
+                pass  # never let audit break prediction
         except Exception:
             return None, None
         if result.final_probability is not None:

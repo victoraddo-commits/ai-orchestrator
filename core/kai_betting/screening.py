@@ -10,7 +10,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-DEFAULT_MAX_GOALS = 8
+DEFAULT_MAX_GOALS = 12
 HOME_BOOST = 1.10
 AWAY_FACTOR = 0.95
 

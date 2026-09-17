@@ -55,6 +55,22 @@ def team_rates(goals_for_pg: float, goals_against_pg: float, league_avg_pg: floa
     return max(0.05, min(lam, 6.0))
 
 
+def expected_goals_for_match(home_gf: float, home_ga: float, away_gf: float, away_ga: float,
+                             league_avg_team: float,
+                             home_boost: float = HOME_BOOST,
+                             away_factor: float = AWAY_FACTOR) -> Tuple[float, float]:
+    """Standard attack x defence Poisson expectation for a fixture.
+
+    home_λ = (home attack) x (away defence) x league baseline x home boost
+    away_λ = (away attack) x (home defence) x league baseline x away factor
+    This (unlike a simple average) properly rates strong attackers/defenders.
+    """
+    base = league_avg_team if league_avg_team and league_avg_team > 0 else 1.35
+    home_lam = (home_gf / base) * (away_ga / base) * base * home_boost
+    away_lam = (away_gf / base) * (home_ga / base) * base * away_factor
+    return max(0.05, min(home_lam, 6.0)), max(0.05, min(away_lam, 6.0))
+
+
 def form_points(results: List[str], weights: Optional[List[float]] = None) -> float:
     """Points-per-game from recent results (most recent first), 'W'/'D'/'L'.
 

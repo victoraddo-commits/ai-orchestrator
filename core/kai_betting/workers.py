@@ -247,11 +247,12 @@ class KaiBettingWorkers:
                 if _exists:
                     continue
                 try:
+                    _max_sel = {5: 6, 10: 11, 15: 15}.get(int(target), 10)
                     result = odds_engine.generate(
                         target_odds=float(target),
                         risk_level=risk,
                         min_selections=2,
-                        max_selections=8,
+                        max_selections=_max_sel,
                     )
                     if result.selections:
                         with get_db() as db:

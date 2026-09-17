@@ -72,3 +72,34 @@ def api_real_money():
     """§33: real-money execution status. DISABLED by default (never auto-enables)."""
     s = real_money_evaluate({})
     return {"enabled": s.enabled, "ready": s.ready, "checks": s.checks, "note": s.note}
+
+
+@decision_router.get("/markets")
+def api_markets():
+    """Market taxonomy learned from SportyBet (§6/§9). Honest about coverage."""
+    from core.kai_betting.markets import FAMILIES, modelled_keys
+    return {
+        "modelled": modelled_keys(),
+        "families": [
+            {"key": f.key, "name": f.name, "group": f.group, "level": f.level,
+             "modelled": f.modelled, "sportybet_ids": f.sportybet_ids, "requires": f.requires}
+            for f in FAMILIES.values()
+        ],
+    }
+
+
+@decision_router.get("/markets/catalog")
+def api_market_catalog(group: str = None, limit: int = 300):
+    """The actual SportyBet market catalogue imported for the reference fixture."""
+    from core.kai_betting.db import get_db
+    q = "SELECT sb_id,name,group_name,specifier,guide FROM market_catalog"
+    args = []
+    if group:
+        q += " WHERE lower(group_name)=lower(?)"
+        args.append(group)
+    q += " ORDER BY group_name, name LIMIT ?"
+    args.append(limit)
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(q, args).fetchall()]
+        total = conn.execute("SELECT COUNT(*) FROM market_catalog").fetchone()[0]
+    return {"total": total, "returned": len(rows), "markets": rows}

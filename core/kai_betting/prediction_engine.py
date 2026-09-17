@@ -610,6 +610,16 @@ class PredictionEngine:
             else:
                 parts.append("fairly priced against the market")
 
+        # Market taxonomy context (learned from SportyBet). References the real
+        # market family and whether KAI models it; never invents options (44).
+        try:
+            from core.kai_betting.markets import reasoning_context
+            _ctx = reasoning_context(market_type)
+            if _ctx:
+                parts.append(_ctx)
+        except Exception:
+            pass
+
         return " | ".join(parts)
 
     def _statistical_baseline(

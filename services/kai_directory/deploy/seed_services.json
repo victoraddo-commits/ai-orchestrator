@@ -1,0 +1,23 @@
+[
+ {"id":"command-center","name":"command","display_name":"Kai Command Center","ip":"192.168.99.11","port":80,"category":"web"},
+ {"id":"command-center-ui","name":"command-ui","display_name":"Command Center UI","ip":"192.168.99.11","port":3011,"category":"web"},
+ {"id":"proxdash","name":"proxdash","display_name":"ProxDash","ip":"192.168.99.11","port":8091,"category":"infra"},
+ {"id":"airdrop-hunter","name":"airdrop","display_name":"Airdrop Hunter","ip":"192.168.99.11","port":4202,"category":"finances"},
+ {"id":"kai-voice","name":"voice","display_name":"Kai Voice Gateway","ip":"192.168.99.11","port":8130,"category":"ai"},
+ {"id":"orchestrator-api","name":"orchestrator","display_name":"Kai Orchestrator API","ip":"192.168.1.111","port":8000,"category":"core"},
+ {"id":"directives","name":"directives","display_name":"Kai Directives","ip":"192.168.1.111","port":8099,"category":"core"},
+ {"id":"legal-brain","name":"legal","display_name":"Kai Legal Brain","ip":"192.168.1.100","port":8100,"category":"legal"},
+ {"id":"it-manager","name":"it","display_name":"IT Manager","ip":"192.168.1.112","port":8090,"category":"infra"},
+ {"id":"kai-docs","name":"docs","display_name":"Kai Docs","ip":"192.168.1.112","port":4010,"category":"docs"},
+ {"id":"talent","name":"talent","display_name":"Kai Talent","ip":"192.168.1.115","port":4000,"category":"web"},
+ {"id":"vault","name":"vault","display_name":"Kai Vault","ip":"192.168.1.107","port":8120,"category":"security"},
+ {"id":"money-center","name":"money","display_name":"Money Center","ip":"192.168.1.118","port":8095,"category":"finances"},
+ {"id":"arbitra","name":"arbitra","display_name":"Arbitra","ip":"192.168.1.118","port":8096,"category":"finances"},
+ {"id":"kai-notify","name":"notify","display_name":"Kai Notify","ip":"192.168.1.118","port":8094,"category":"core"},
+ {"id":"android-factory","name":"android","display_name":"Kai Android Factory","ip":"192.168.1.120","port":4000,"category":"mobile"},
+ {"id":"directory","name":"directory","display_name":"Kai Service Directory","ip":"192.168.1.114","port":8097,"category":"core"},
+ {"id":"freellmapi","name":"freellmapi","display_name":"FreeLLMAPI","ip":"192.168.1.34","port":3001,"category":"ai"},
+ {"id":"opencode-serve","name":"opencode","display_name":"OpenCode Serve","ip":"192.168.1.34","port":4096,"category":"ai"},
+ {"id":"opencode-inbox","name":"inbox","display_name":"OpenCode Inbox","ip":"192.168.1.34","port":8333,"category":"ai"},
+ {"id":"susu","name":"susu","display_name":"SUSU Dashboard","ip":"192.168.1.168","port":8050,"category":"finances"}
+]

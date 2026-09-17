@@ -924,6 +924,22 @@ def _route_voice_message(message):
 
 
 def route_inbound_reply(message, pending_builds=None):
+
+    # KAI Telegram Module identity gate (directive §§20-§22): only a registered,
+    # enabled bot may be routed. Capability enforcement is downstream
+    # (Command Bus + AgentGuard). Additive; fail-open if module absent.
+    try:
+        from core.telegram import registry as _tgr, guard as _tgg
+        _tg_verdict = _tgg.verify(
+            _tgr.resolve_bot(username="KaiEnzo_bot"),
+            chat_id=str((message.get("chat") or {}).get("id", "")),
+            user_id=str((message.get("from") or {}).get("id") or "operator"),
+        )
+        if not _tg_verdict.get("allowed"):
+            return {"routed": True, "action": "telegram_module_denied",
+                    "reply": "This bot is not authorized by the Telegram Module."}
+    except Exception:  # noqa: BLE001 - Telegram Module optional (compat)
+        pass
     # 17W: Send typing indicator so the operator sees Kai is working
     chat_id = str((message.get("chat") or {}).get("id", ALLOWED_CHAT_ID))
     send_typing(chat_id=chat_id)
@@ -955,6 +971,18 @@ def route_inbound_reply(message, pending_builds=None):
         except Exception as _enh_exc:
             return {"routed": True, "action": "enhancement_command",
                     "reply": f"Enhancement command error: {_enh_exc}"}
+        # KAI Bet commands (/picks, /odds, /performance, …) — re-homed onto the
+        # shared Kai bot (KAI BET 2026 §30).
+        try:
+            from core.kai_betting.telegram_commands import handle_betting_command
+            _bet_reply = handle_betting_command(
+                _money_text, chat_id=chat_id,
+                user_id=str((message.get("from") or {}).get("id") or ""))
+            if _bet_reply is not None:
+                return {"routed": True, "action": "betting_command", "reply": _bet_reply}
+        except Exception as _bet_exc:
+            return {"routed": True, "action": "betting_command",
+                    "reply": f"Betting command error: {_bet_exc}"}
 
     if pending_builds is None:
         replied_build = _build_from_reply_to(message)

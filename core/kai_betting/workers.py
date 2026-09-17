@@ -239,6 +239,13 @@ class KaiBettingWorkers:
             targets = [5, 10, 15]
 
             for risk, target in zip(risk_levels, targets):
+                # Dedupe: skip if an active group for this target already exists
+                with get_db() as _c:
+                    _exists = _c.execute(
+                        "SELECT COUNT(*) c FROM odds_groups WHERE status='active' AND target_odds=?",
+                        (float(target),)).fetchone()["c"]
+                if _exists:
+                    continue
                 try:
                     result = odds_engine.generate(
                         target_odds=float(target),

@@ -31,7 +31,7 @@ class Record:
     tags: str = ""
     source: str = "manual"
     target_url: str = ""
-    updated_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    updated_at: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
 
     def __post_init__(self):
         self.port = int(self.port or 0)

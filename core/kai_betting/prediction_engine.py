@@ -489,6 +489,21 @@ class PredictionEngine:
         # Higher reliability = model tracks market more closely
         noise = self._hash_to_float(home_team, away_team, market_type, selection) * 0.04 - 0.02
         model_prob = implied_prob + (selection_adjust + team_adj + noise) * (1 - market_reliability)
+
+        # Independent KAI probability from historical results (opt-in, fail-safe).
+        # Blends KAI's OWN estimate with the market so real edges can exist.
+        try:
+            from core.kai_betting.history_service import (
+                enabled as _hist_enabled, independent_selection_prob_anyleague)
+            if _hist_enabled() and home_team and away_team:
+                _ind = independent_selection_prob_anyleague(
+                    home_team, away_team, market_type, selection, line)
+                if _ind and _ind.get("probability"):
+                    from core.kai_betting.screening import blend as _blend
+                    model_prob = _blend(float(_ind["probability"]), model_prob, 0.5)
+        except Exception:
+            pass
+
         return min(0.95, max(0.05, model_prob))
 
     def _score_quality_real(

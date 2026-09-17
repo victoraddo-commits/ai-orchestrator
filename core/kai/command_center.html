@@ -2228,11 +2228,59 @@ async function loadMoney(){
     html+='<div class="action-row" style="flex-wrap:wrap;gap:6px"><button class="btn btn-xs btn-accent" onclick="arbView(\'status\')">Status</button><button class="btn btn-xs" onclick="arbView(\'opportunities\')">Opportunities</button><button class="btn btn-xs" onclick="arbView(\'ventures\')">Ventures</button><button class="btn btn-xs" onclick="arbView(\'portfolio\')">Portfolio</button><button class="btn btn-xs" onclick="arbView(\'performance\')">Performance</button><button class="btn btn-xs" onclick="arbView(\'capital\')">Capital</button><button class="btn btn-xs" onclick="arbView(\'recommendations\')">Recommendations</button></div>';
     html+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><input type="text" id="arb-title" placeholder="opportunity title" class="search-input" style="max-width:200px"><input type="number" id="arb-profit" placeholder="expected net profit" class="search-input" style="max-width:170px"><input type="number" id="arb-capital" placeholder="capital required" class="search-input" style="max-width:150px"><input type="number" id="arb-conf" step="0.05" placeholder="confidence 0-1" class="search-input" style="max-width:130px"><button class="btn btn-xs btn-accent" onclick="arbCreateOpp()">Add Opportunity</button></div>';
     html+='<div id="arb-results" style="margin-top:10px;max-height:360px;overflow:auto"></div></div>';
+    // Balances + transfers (money-center, operator-gated)
+    html+='<div class="card" style="margin-top:12px"><h3>Balances &amp; Transfers <span class="badge info">money-center</span></h3>'
+      +'<div id="mt-balances"><span class="loading">loading…</span></div>'
+      +'<h4 style="font-size:0.7rem;margin-top:8px">Register withdrawal destination</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="mt-label" class="search-input" placeholder="label" style="max-width:130px">'
+      +'<input id="mt-chain" class="search-input" placeholder="chain (eth/btc/trc20)" style="max-width:180px">'
+      +'<input id="mt-addr" class="search-input" placeholder="address" style="max-width:300px">'
+      +'<button class="btn btn-xs btn-accent" onclick="mtAddWallet()">Register</button></div>'
+      +'<div class="muted" style="font-size:0.6rem;margin-top:4px">write-once, disable-only. Register before transferring.</div>'
+      +'<h4 style="font-size:0.7rem;margin-top:8px">Transfer from balance</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="mt-from" class="search-input" placeholder="from treasury (master)" style="max-width:180px" value="master">'
+      +'<input id="mt-amount" type="number" class="search-input" placeholder="amount" style="max-width:110px">'
+      +'<input id="mt-wallet" type="number" class="search-input" placeholder="wallet id" style="max-width:110px">'
+      +'<input id="mt-dest" class="search-input" placeholder="or dest address" style="max-width:240px">'
+      +'<button class="btn btn-xs btn-warn" onclick="mtTransfer()">Request transfer</button></div>'
+      +'<div class="muted" style="font-size:0.6rem;margin-top:4px">Operator-gated. Kai never signs or auto-sends.</div>'
+      +'<div id="mt-msg" class="muted" style="font-size:0.62rem;margin-top:6px"></div>'
+      +'<div id="mt-payouts" style="margin-top:8px"></div></div>';
     $('money-content').innerHTML=html||'<p class="empty">No money data available yet</p>';
+    mtLoad();
   }
   catch(e){$('money-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
+async function mtLoad(){
+  const b=$('mt-balances'), p=$('mt-payouts');
+  const metric=(l,v)=>'<div class="metric"><span class="val">'+esc('$'+Number(v||0).toLocaleString())+'</span><span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(l)+'</span></div>';
+  try{const t=await api('/api/money/treasury');
+    if(b) b.innerHTML='<div class="metric-row">'+metric('master',(t.master||{}).balance)+metric('available',t.available_for_allocation)+metric('deployed',t.deployed_in_operations)+'</div>';
+  }catch(e){ if(b) b.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+  try{const w=await api('/api/money/wallets');
+    const rows=(w.wallets||[]).map(x=>'<tr><td>'+esc(x.id)+'</td><td>'+esc(x.label)+'</td><td>'+esc(x.chain)+'</td><td>'+esc(x.address)+'</td></tr>').join('');
+    if(p) p.innerHTML='<div class="muted" style="font-size:0.62rem">Destinations</div>'+arbTbl(['id','label','chain','address'],rows);
+  }catch(e){ if(p) p.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+async function mtAddWallet(){
+  const label=($('mt-label')||{}).value, chain=($('mt-chain')||{}).value, address=($('mt-addr')||{}).value;
+  if(!label||!chain||!address){toast('label, chain, address required','err');return;}
+  try{await api('/api/money/wallets',{method:'POST',body:JSON.stringify({label:label,chain:chain,address:address})});toast('wallet registered');mtLoad();}
+  catch(e){toast('error: '+e.message,'err');}
+}
+async function mtTransfer(){
+  const from=($('mt-from')||{}).value||'master';
+  const amount=Number(($('mt-amount')||{}).value);
+  const body={from_treasury:from,amount:amount};
+  const wid=($('mt-wallet')||{}).value; if(wid) body.wallet_id=Number(wid);
+  const dest=($('mt-dest')||{}).value; if(dest) body.dest_address=dest;
+  if(!(amount>0)){toast('amount required','err');return;}
+  if(!confirm('Request transfer of '+amount+' from '+from+'? (operator-gated payout request)'))return;
+  const msg=$('mt-msg');
+  try{const d=await api('/api/money/payouts',{method:'POST',body:JSON.stringify(body)});if(msg)msg.textContent='request: '+JSON.stringify(d).slice(0,200);toast('transfer requested');mtLoad();}
+  catch(e){ if(msg) msg.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
 async function toggleProvider(name, enable){
   try{
     const d=await api(`/providers/${name}/toggle`,{method:'PUT',body:JSON.stringify({enabled:enable})});

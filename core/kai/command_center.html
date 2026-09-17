@@ -28,7 +28,7 @@
   --border-subtle: rgba(51,65,85,0.5);
   --fg: #F8FAFC;
   --fg-secondary: #94A3B8;
-  --fg-muted: #64748B;
+  --fg-muted: #8A99AE;
   --accent: #16A34A;
   --accent-glow: rgba(22,163,74,0.15);
   --accent-bright: #22C55E;
@@ -60,6 +60,11 @@ body {
   line-height: 1.45;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -98,7 +103,7 @@ body {
 }
 .login-logo-sub {
   font-family: var(--font-mono); font-size: 0.68rem;
-  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 2px;
+  color: var(--fg-secondary); text-transform: uppercase; letter-spacing: 2px;
 }
 .login-tagline {
   position: relative; z-index: 1; max-width: 420px;
@@ -115,7 +120,7 @@ body {
 }
 .login-feature {
   display: flex; align-items: center; gap: 10px;
-  font-size: 0.72rem; color: var(--fg-muted); font-family: var(--font-mono);
+  font-size: 0.72rem; color: var(--fg-secondary); font-family: var(--font-mono);
 }
 .login-feature .lf-dot {
   width: 6px; height: 6px; background: var(--accent);
@@ -133,7 +138,7 @@ body {
   margin-bottom: 2px;
 }
 .login-form-card .subtitle {
-  color: var(--fg-muted); font-size: 0.75rem;
+  color: var(--fg-secondary); font-size: 0.75rem;
   margin-bottom: 28px; font-family: var(--font-mono);
 }
 
@@ -173,10 +178,10 @@ body {
 .btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 .btn:active { transform: scale(0.98); }
 .btn-primary {
-  background: var(--accent); color: #fff; border-color: var(--accent);
+  background: #15803D; color: #fff; border-color: #15803D;
   font-weight: 600; width: 100%; padding: 11px 18px;
 }
-.btn-primary:hover { background: var(--accent-bright); border-color: var(--accent-bright); filter: none; }
+.btn-primary:hover { background: #166534; border-color: #166534; filter: none; }
 .btn-sm { padding: 5px 12px; font-size: 0.7rem; }
 .btn-xs { padding: 3px 8px; font-size: 0.65rem; }
 .btn-danger { background: var(--destructive); color: #fff; border-color: var(--destructive); }
@@ -214,6 +219,7 @@ body {
 .sidebar-brand {
   padding: 15px 14px; display: flex; align-items: center; gap: 8px;
   border-bottom: 1px solid var(--border); min-height: 50px;
+  text-decoration: none;
 }
 .sidebar-brand .logo {
   font-family: var(--font-mono); font-size: 1rem; font-weight: 700; color: var(--accent);
@@ -228,7 +234,7 @@ body {
 .sidebar-section-label {
   font-size: 0.58rem; font-weight: 600; text-transform: uppercase;
   letter-spacing: 1.2px; color: var(--fg-muted); padding: 10px 10px 4px;
-  font-family: var(--font-mono); opacity: 0.6;
+  font-family: var(--font-mono);
 }
 .sidebar.collapsed .sidebar-section-label { display: none; }
 
@@ -240,7 +246,7 @@ body {
   font-family: var(--font-mono);
 }
 .nav-item:hover { background: var(--bg-elevated); color: var(--fg); }
-.nav-item.active { background: var(--accent-glow); color: var(--accent); font-weight: 500; }
+.nav-item.active { background: var(--accent-glow); color: var(--accent-bright); font-weight: 500; }
 .nav-item .icon { font-size: 0.9rem; width: 22px; text-align: center; flex-shrink: 0; }
 .nav-item .icon svg { width: 16px; height: 16px; stroke: currentColor; }
 .sidebar.collapsed .nav-item .label { display: none; }
@@ -318,7 +324,7 @@ body {
 .metric:hover { border-color: var(--accent); }
 .metric .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); display: block; font-family: var(--font-mono); }
 .metric .val.warn { color: var(--warn); }
-.metric .val.bad { color: var(--destructive); }
+.metric .val.bad { color: #F87171; }
 .metric .val.info { color: var(--info); }
 .metric .val.violet { color: var(--violet); }
 .metric .lbl {
@@ -333,9 +339,9 @@ body {
 }
 .badge.ok { background: var(--accent-glow); color: var(--accent); border-color: rgba(22,163,74,0.3); }
 .badge.warn { background: var(--warn-glow); color: var(--warn); border-color: rgba(210,153,34,0.3); }
-.badge.bad, .badge.critical { background: var(--destructive-glow); color: var(--destructive); border-color: rgba(220,38,38,0.3); }
-.badge.info { background: var(--info-glow); color: var(--info); border-color: rgba(59,130,246,0.3); }
-.badge.violet { background: var(--violet-glow); color: var(--violet); border-color: rgba(139,92,246,0.3); }
+.badge.bad, .badge.critical { background: var(--destructive-glow); color: #F87171; border-color: rgba(220,38,38,0.3); }
+.badge.info { background: var(--info-glow); color: #60A5FA; border-color: rgba(59,130,246,0.3); }
+.badge.violet { background: var(--violet-glow); color: #A78BFA; border-color: rgba(139,92,246,0.3); }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.72rem; font-family: var(--font-mono); }
 th { text-align: left; padding: 7px 8px; font-weight: 600; color: var(--fg-muted); font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
@@ -604,7 +610,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 }
 .module-tile .tile-name { font-size: 0.7rem; color: var(--fg-secondary); font-weight: 500; }
 .module-tile .tile-status {
-  font-size: 0.58rem; color: var(--accent); text-transform: uppercase;
+  font-size: 0.58rem; color: var(--accent-bright); text-transform: uppercase;
   font-family: var(--font-mono); letter-spacing: 0.3px;
 }
 
@@ -677,13 +683,23 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
     cursor: pointer; padding: 8px; min-width: 44px; min-height: 44px;
     display: flex; align-items: center; justify-content: center;
   }
+  .more-sheet-search { padding: 10px 14px 6px; }
+  .more-sheet-search .search-input { width: 100%; min-height: 42px; font-size: 15px; }
+  .more-sheet-items {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 2px; padding: 4px 8px 8px;
+  }
   .more-sheet-item {
-    display: flex; align-items: center; gap: 12px; padding: 14px 20px;
-    color: var(--fg); text-decoration: none; font-size: 0.82rem;
-    min-height: 44px; border-bottom: 1px solid var(--border-subtle);
+    display: flex; align-items: center; gap: 10px; padding: 12px 12px;
+    color: var(--fg); text-decoration: none; font-size: 0.78rem;
+    min-height: 48px; border-radius: var(--radius-sm);
     transition: background var(--transition-fast);
+    -webkit-tap-highlight-color: transparent;
   }
   .more-sheet-item:active { background: var(--bg-elevated); }
+  .more-sheet-item.active { background: var(--accent-glow); color: var(--accent); }
+  .more-sheet-item .mi-icon { display: flex; align-items: center; justify-content: center; width: 22px; flex-shrink: 0; }
+  .more-sheet-item .mi-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .more-sheet-item svg { width: 20px; height: 20px; stroke: var(--fg-secondary); flex-shrink: 0; }
 
   /* ── Top bar ──────────────────────────────────────── */
@@ -744,10 +760,13 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 /* ── Tablet (768–1024) ──────────────────────────────────── */
 
 @media (min-width: 769px) and (max-width: 1024px) {
+  :root { --sidebar-width: 184px; }
   .grid, .grid-2 { grid-template-columns: 1fr; }
   .grid-3, .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .worker-grid, .container-grid { grid-template-columns: repeat(2, 1fr); }
   .prov-grid { grid-template-columns: repeat(2, 1fr); }
+  .content { padding: 14px; }
+  .topbar { padding: 9px 14px; }
 }
 
 /* ── Desktop: hide mobile elements ──────────────────────── */
@@ -784,6 +803,97 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 /* ── Field hint ─────────────────────────────────────────────────── */
 
 .field-hint { font-size: 0.62rem; color: var(--fg-muted); margin-top: 3px; font-family: var(--font-mono); }
+/* ── Design System v2 — cohesive, modern, aesthetic ─────────────── */
+:root{ --radius: 8px; --radius-sm: 6px; --shadow-sm: 0 1px 2px rgba(0,0,0,.30); --shadow-md: 0 8px 24px rgba(0,0,0,.35); }
+body{ font-size: 13.5px; letter-spacing: .1px; }
+.card{ border-radius: var(--radius); box-shadow: var(--shadow-sm); transition: box-shadow var(--transition-normal), border-color var(--transition-normal); }
+.card:hover{ border-color: #334155; box-shadow: var(--shadow-md); }
+.card h3{ font-size: .85rem; letter-spacing: .3px; }
+.btn{ border-radius: var(--radius-sm); transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast); }
+.btn:active{ transform: translateY(1px); }
+.btn-accent{ box-shadow: 0 2px 10px rgba(22,163,74,.25); }
+.badge{ border-radius: 999px; padding: 2px 9px; font-weight: 500; }
+.badge.ok{ background: rgba(22,163,74,.15); }
+.badge.bad{ background: rgba(220,38,38,.15); }
+.badge.warn{ background: rgba(210,153,34,.15); }
+.badge.info{ background: rgba(59,130,246,.15); }
+input,select,textarea,.search-input{ border-radius: var(--radius-sm); transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+input:focus,select:focus,textarea:focus,.search-input:focus{ outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.metric{ border-radius: var(--radius); }
+.metric .val{ letter-spacing: .5px; }
+.nav-item{ border-radius: var(--radius-sm); margin: 1px 6px; transition: background var(--transition-fast), color var(--transition-fast); }
+pre{ background: var(--bg-deep); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; }
+table th{ position: sticky; top: 0; background: var(--bg-elevated); }
+*{ scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+*::-webkit-scrollbar{ width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb{ background: #334155; border-radius: 8px; border: 2px solid var(--bg-deep); }
+*::-webkit-scrollbar-thumb:hover{ background: #475569; }
+.panel{ animation: fadeIn 200ms ease-out; }
+.palette-item{ padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 0.76rem; }
+.palette-item:hover{ background: var(--bg-elevated); }
+
+/* ── Responsive hardening (all Command Center tabs) ─────────────── */
+html, body { max-width: 100%; overflow-x: hidden; }
+.content, .card, .panel, .log-line { overflow-wrap: anywhere; }
+@media (max-width: 768px){
+  .grid, .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr !important; }
+  .metric-row { grid-template-columns: repeat(2, 1fr) !important; }
+  .card { padding: 12px !important; }
+  .action-row { gap: 6px; }
+  .action-row > input, .action-row > select, .action-row > .search-input { flex: 1 1 140px; max-width: 100% !important; }
+  .search-input { max-width: 100% !important; }
+  pre { white-space: pre-wrap !important; word-break: break-word; overflow-x: auto; }
+  table { font-size: 0.66rem; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .main-area { padding: 12px; }
+  .module-tabs, .tab-bar { overflow-x: auto; }
+}
+@media (max-width: 480px){
+  .metric-row { grid-template-columns: 1fr !important; }
+  .btn { min-height: 38px; }
+  input, select, textarea { font-size: 0.72rem; }
+}
+/* Command Palette (§9) */
+.palette-item{padding:10px 16px;cursor:pointer;border-bottom:1px solid var(--border);font-size:0.75rem}
+.palette-item:hover{background:var(--accent-glow)}
+/* ── Responsive pass v2 (2026-09-14) ─────────────────────────────── */
+/* Prevent flex/grid blowout from long, unbreakable content (tokens, paths) */
+.card, .panel, .metric, .module-tile, .job { min-width: 0; }
+.main-area { min-width: 0; }
+.topbar-left { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metric .val, code, .badge, .log-line, pre { overflow-wrap: anywhere; }
+.content { padding: clamp(10px, 2vw, 16px); }
+.sidebar-nav { overscroll-behavior: contain; }
+.table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Tablet / narrow desktop: narrower sidebar, ≤2 columns */
+@media (min-width: 769px) and (max-width: 1100px) {
+  :root { --sidebar-width: 176px; }
+  .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid-3, .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Phones */
+@media (max-width: 768px){
+  .btn { min-height: 38px; }
+  .action-row { flex-wrap: wrap; }
+  .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px; }
+  label { font-size: 0.7rem; }
+  input, select, textarea { font-size: 16px; } /* prevents iOS zoom-on-focus */
+  .card > .action-row > .search-input { flex: 1 1 100%; }
+}
+
+/* Very small phones */
+@media (max-width: 420px){
+  .metric-row { grid-template-columns: 1fr !important; }
+  .topbar-left { font-size: 0.78rem; }
+  .btn.btn-xs { padding: 6px 10px; min-height: 34px; }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
@@ -791,7 +901,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 <!-- ═══════════════════════════════════════════════════════════════════
      LOGIN — Premium Split Screen
      ═══════════════════════════════════════════════════════════════════ -->
-<div id="login-screen">
+<main id="login-screen">
   <div class="login-brand">
     <div class="login-brand-content">
       <div class="login-logo">kai</div>
@@ -826,9 +936,17 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
         <label for="login-remember">Remember this session for 7 days</label>
       </div>
       <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
+      <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn" id="login-duo-btn" onclick="doDuoLogin()" style="width:100%">Sign in with Duo push</button>
+        <div style="margin-top:8px;display:flex;gap:6px">
+          <input id="login-duo-code" inputmode="numeric" autocomplete="one-time-code" placeholder="SMS code" style="flex:1">
+          <button class="btn" id="login-sms-btn" onclick="doDuoSms()">Send SMS code</button>
+        </div>
+        <p style="font-size:0.62rem;color:var(--fg-secondary);margin-top:6px">Duo-first sign-in — push (approve on your phone) or SMS code. No password required.</p>
+      </div>
     </div>
   </div>
-</div>
+</main>
 
 <!-- ═══════════════════════════════════════════════════════════════════
      APP SHELL
@@ -836,10 +954,10 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 <div id="app-wrap" class="app-wrap">
 
   <nav class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
+    <a class="sidebar-brand" href="/command-center" title="Kai Command Center">
       <span class="logo">&#9879;</span>
       <span class="name">kai</span>
-    </div>
+    </a>
     <div class="sidebar-nav" id="sidebar-nav">
       <div class="sidebar-section-label">Overview</div>
       <a class="nav-item active" href="#home" data-hash="home"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Home</span></a>
@@ -847,23 +965,43 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
       <a class="nav-item" href="#money" data-hash="money"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span class="label">Money</span></a>
+      <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-4 12.7V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.3A7 7 0 0 0 12 2z"/><line x1="10" y1="21" x2="14" y2="21"/></svg></span><span class="label">Arbitra</span></a>
+      <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
+      <a class="nav-item" href="#android" data-hash="android"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18"/><path d="M8 6h8"/></svg></span><span class="label">Android</span></a>
+      <a class="nav-item" href="#docs" data-hash="docs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span><span class="label">Docs</span></a>
+      <a class="nav-item" href="#hubtel" data-hash="hubtel"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span><span class="label">Hubtel</span></a>
       <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
       <a class="nav-item" href="#missions" data-hash="missions"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">Missions</span></a>
       <a class="nav-item" href="#executive" data-hash="executive"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="label">Executive</span></a>
-      <a class="nav-item" href="#enhancements" data-hash="enhancements">
-      <a class="nav-item" href="#factory" data-hash="factory">
-      <a class="nav-item" href="#evolution" data-hash="evolution"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></span><span class="label">Evolution</span></a><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20M4 20V8l6 4V8l6 4V4h6v16"/></svg></span><span class="label">Factory</span></a><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></span><span class="label">Enhancements</span></a>
+      <a class="nav-item" href="#enhancements" data-hash="enhancements"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></span><span class="label">Enhancements</span></a>
+      <a class="nav-item" href="#factory" data-hash="factory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20M4 20V8l6 4V8l6 4V4h6v16"/></svg></span><span class="label">Factory</span></a>
+      <a class="nav-item" href="#evolution" data-hash="evolution"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></span><span class="label">Evolution</span></a>
       <div class="sidebar-section-label">Infrastructure</div>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
       <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
       <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span><span class="label">Airdrop</span></a>
       <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span class="label">Infra</span></a>
+      <a class="nav-item" href="#wireguard" data-hash="wireguard"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">WireGuard</span></a>
+      <a class="nav-item" href="#directives" data-hash="directives"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span><span class="label">Directives</span></a>
       <div class="sidebar-section-label">System</div>
       <a class="nav-item" href="#security" data-hash="security"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><span class="label">Security</span></a>
       <a class="nav-item" href="#settings" data-hash="settings"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Settings</span></a>
       <a class="nav-item" href="#logs" data-hash="logs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span><span class="label">Logs</span></a>
       <a class="nav-item" href="#kai-chat" data-hash="kai-chat"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="label">Kai Chat</span></a>
       <a class="nav-item" href="#devices" data-hash="devices"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span><span class="label">Devices</span></a>
+      <a class="nav-item" href="#network" data-hash="network"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">Network</span></a>
+      <a class="nav-item" href="#models" data-hash="models"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg></span><span class="label">Models</span></a>
+      <a class="nav-item" href="#vault" data-hash="vault"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span><span class="label">Vault</span></a>
+      <a class="nav-item" href="#secondbrain" data-hash="secondbrain"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 015 5c0 2-1 3-2 4v6a3 3 0 01-6 0v-6c-1-1-2-2-2-4a5 5 0 015-5z"/></svg></span><span class="label">2nd Brain</span></a>
+      <a class="nav-item" href="#knowledge" data-hash="knowledge"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></span><span class="label">Knowledge</span></a>
+      <a class="nav-item" href="#approvals" data-hash="approvals"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Approvals</span></a>
+      <a class="nav-item" href="#notifications" data-hash="notifications"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg></span><span class="label">Notify</span></a>
+      <a class="nav-item" href="#backups" data-hash="backups"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.2-8.6"/><polyline points="21 3 21 9 15 9"/></svg></span><span class="label">Backups</span></a>
+      <a class="nav-item" href="#sessions" data-hash="sessions"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="22" x2="16" y2="22"/><line x1="12" y1="18" x2="12" y2="22"/></svg></span><span class="label">Sessions</span></a>
+      <a class="nav-item" href="#emergency" data-hash="emergency"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span><span class="label">Emergency</span></a>
+      <a class="nav-item" href="#roadmap" data-hash="roadmap"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5-2.5v-13L9 7l6-3 5.5 2.5v13L15 17z"/><path d="M9 7v13M15 4v13"/></svg></span><span class="label">Roadmap</span></a>
+      <a class="nav-item" href="#learning" data-hash="learning"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/></svg></span><span class="label">Learning</span></a>
+      <a class="nav-item" href="#enterprise" data-hash="enterprise"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span><span class="label">Enterprise</span></a>
     </div>
     <div class="sidebar-footer">
       <button class="collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg> <span>Collapse</span></button>
@@ -898,37 +1036,16 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
         <span>More</span>
         <button class="more-sheet-close" onclick="closeMoreMenu()" aria-label="Close">&times;</button>
       </div>
-      <a class="more-sheet-item" href="#modules" data-hash="modules" onclick="switchMobileTab(event,'modules')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Modules
-      </a>
-      <a class="more-sheet-item" href="#telegram" data-hash="telegram" onclick="switchMobileTab(event,'telegram')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>Telegram
-      </a>
-      <a class="more-sheet-item" href="#airdrop" data-hash="airdrop" onclick="switchMobileTab(event,'airdrop')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>Airdrop
-      </a>
-      <a class="more-sheet-item" href="#infrastructure" data-hash="infrastructure" onclick="switchMobileTab(event,'infrastructure')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>Infrastructure
-      </a>
-      <a class="more-sheet-item" href="#security" data-hash="security" onclick="switchMobileTab(event,'security')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Security
-      </a>
-      <a class="more-sheet-item" href="#settings" data-hash="settings" onclick="switchMobileTab(event,'settings')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Settings
-      </a>
-      <a class="more-sheet-item" href="#legal" data-hash="legal" onclick="switchMobileTab(event,'legal')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Legal
-      </a>
-      <a class="more-sheet-item" href="#devices" data-hash="devices" onclick="switchMobileTab(event,'devices')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>Devices
-      </a>
-      <a class="more-sheet-item" href="#logs" data-hash="logs" onclick="switchMobileTab(event,'logs')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>Logs
-      </a>
+      <div class="more-sheet-search">
+        <input class="search-input" id="more-filter" type="search" placeholder="Filter tabs…" autocomplete="off"
+               oninput="filterMoreMenu(this.value)" aria-label="Filter tabs">
+      </div>
+      <div class="more-sheet-items" id="more-sheet-items"></div>
     </div>
   </div>
 
-  <div class="main-area">
+  <main class="main-area">
+    <h1 class="sr-only">Kai Command Center</h1>
     <header class="topbar">
       <div class="topbar-left" id="topbar-title">home</div>
       <div class="topbar-right">
@@ -947,6 +1064,22 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
           <div class="metric"><span class="val" id="home-modules">-</span><span class="lbl">Modules</span></div>
           <div class="metric"><span class="val" id="home-agents">-</span><span class="lbl">Agents</span></div>
           <div class="metric"><span class="val" id="home-builds">-</span><span class="lbl">Active Builds</span></div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
+          <h2>Kai Control &mdash; Quick Actions <span class="badge info">Telegram parity</span></h2>
+          <div class="action-row" style="flex-wrap:wrap;gap:6px">
+            <button class="btn btn-xs btn-accent" onclick="kaiCtl('status')">Status</button>
+            <button class="btn btn-xs" onclick="kaiCtl('network')">Network</button>
+            <button class="btn btn-xs" onclick="kaiCtl('vpn')">VPN</button>
+            <button class="btn btn-xs" onclick="kaiCtl('missions')">Missions</button>
+            <button class="btn btn-xs" onclick="kaiCtl('approvals')">Approvals</button>
+            <button class="btn btn-xs" onclick="kaiCtl('health')">Health</button>
+            <button class="btn btn-xs" onclick="kaiCtl('doctor')">Doctor</button>
+            <button class="btn btn-xs" onclick="kaiCtl('guardian')">Guardian</button>
+            <button class="btn btn-xs" onclick="kaiCtl('help')">Help</button>
+          </div>
+          <div id="kai-ctl-result" style="margin-top:8px;font-size:0.66rem"></div>
         </div>
 
         <!-- Module Launcher (SP5) -->
@@ -979,10 +1112,22 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <section class="panel" id="panel-factory"><div id="factory-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-evolution"><div id="evolution-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-money"><div id="money-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-arbitra"><div id="arbitra-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
       <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading…</span></div></section>
-      <section class="panel" id="panel-telegram"><div id="telegram-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-telegram">
+        <div class="card" style="margin-bottom:12px"><h3>Telegram Control <span class="badge info">write</span></h3>
+          <div class="action-row" style="flex-wrap:wrap;gap:6px">
+            <button class="btn btn-xs btn-accent" onclick="ccTgBots()">List Bots</button>
+            <button class="btn btn-xs" onclick="ccTgSetCmds()">Reset KaiEnzo Commands</button>
+            <input id="cc-tg-chat" placeholder="chat id" class="search-input" style="max-width:130px">
+            <input id="cc-tg-text" placeholder="message" class="search-input" style="max-width:180px">
+            <button class="btn btn-xs" onclick="ccTgSend()">Send via KaiEnzo</button>
+          </div>
+          <div id="cc-tg-result" style="margin-top:8px;font-size:0.64rem"></div>
+        </div>
+        <div id="telegram-content"><span class="loading">loading…</span></div></section>
 
       <!-- AIRDROP -->
       <section class="panel" id="panel-airdrop"><div id="airdrop-content"><span class="loading">loading…</span></div></section>
@@ -1055,6 +1200,26 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
         </div>
       </section>
 
+      <section class="panel" id="panel-network"><div id="network-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-models"><div id="models-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-vault"><div id="vault-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-talent"><div id="talent-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-android"><div id="android-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-docs"><div id="docs-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-hubtel"><div id="hubtel-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-secondbrain"><div id="secondbrain-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-knowledge"><div id="knowledge-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-approvals"><div id="approvals-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-notifications"><div id="notifications-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-backups"><div id="backups-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-sessions"><div id="sessions-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-emergency"><div id="emergency-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-roadmap"><div id="roadmap-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-learning"><div id="learning-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-enterprise"><div id="enterprise-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-wireguard"><div id="wireguard-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-directives"><div id="directives-content"><span class="loading">loading…</span></div></section>
+
     </div>
 
     <footer class="status-bar" id="status-bar">
@@ -1063,7 +1228,7 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
       <span id="sb-containers">containers: -</span>
       <span id="sb-time">-</span>
     </footer>
-  </div>
+  </main>
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
@@ -1154,10 +1319,15 @@ const S = {
 };
 const SK = 'kai_command_session_v3';
 const PANEL_TITLES = {
-  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', money:'money',
+  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', money:'money', arbitra:'Arbitra',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
-  'kai-chat':'Kai Chat', devices:'Devices'
+  'kai-chat':'Kai Chat', devices:'Devices', talent:'Talent', android:'Android', docs:'Documents', hubtel:'Hubtel',
+  wireguard:'WireGuard', directives:'Directives',
+  missions:'Missions', executive:'Executive', enhancements:'Enhancements', factory:'Factory',
+  evolution:'Evolution', network:'Network', models:'Models', vault:'Vault', secondbrain:'2nd Brain',
+  knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
+  sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise'
 };
 
 const $=id=>document.getElementById(id);
@@ -1231,6 +1401,40 @@ async function doLogin() {
 }
 async function doLogout() { try{await api('/auth/logout',{method:'POST'});}catch{} clearToken();$('login-screen').classList.remove('hidden');$('app-wrap').classList.remove('active'); }
 
+// Duo-first sign-in (push or SMS code)
+function _duoEnter(d){
+  S.token=d.cc_token||d.token; S.role='operator'; S.username=d.user; saveToken(true);
+  $('login-screen').classList.add('hidden'); $('app-wrap').classList.add('active');
+  $('user-display').innerHTML='<span class="user-role">Duo · '+esc(d.user)+'</span>';
+  initApp();
+}
+async function doDuoLogin(){
+  const err=$('login-error'),btn=$('login-duo-btn');
+  const u=($('login-user')||{}).value.trim()||'addoaryee';
+  const code=($('login-duo-code')||{}).value||'';
+  err.classList.remove('visible');
+  btn.disabled=true; btn.innerHTML=code?'Verifying…':'Waiting for Duo approval…';
+  try{
+    const r=await fetch('/auth/duo/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,passcode:code})});
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||('HTTP '+r.status));
+    _duoEnter(d);
+  }catch(e){err.textContent='Duo sign-in failed: '+e.message;err.classList.add('visible');btn.disabled=false;btn.innerHTML='Sign in with Duo push';}
+}
+async function doDuoSms(){
+  const err=$('login-error'),btn=$('login-sms-btn');
+  const u=($('login-user')||{}).value.trim()||'addoaryee';
+  err.classList.remove('visible'); btn.disabled=true; btn.innerHTML='Sending…';
+  try{
+    const r=await fetch('/auth/duo/sms',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u})});
+    const d=await r.json();
+    if(!r.ok||!d.ok) throw new Error(d.error||('HTTP '+r.status));
+    err.style.color='var(--accent)'; err.textContent='SMS code sent — enter it above and click “Sign in with Duo push”.'; err.classList.add('visible');
+    if($('login-duo-code')) $('login-duo-code').focus();
+  }catch(e){err.style.color=''; err.textContent='SMS failed: '+e.message; err.classList.add('visible');}
+  finally{btn.disabled=false;btn.innerHTML='Send SMS code';}
+}
+
 // ── Password ──────────────────────────────────────────────────────
 function showChangePassword(){ $('pw-modal').classList.add('visible');$('pw-old').value='';$('pw-new').value='';$('pw-error').classList.remove('visible');$('pw-success').classList.remove('visible');$('pw-old').focus(); }
 function closeChangePassword(){ $('pw-modal').classList.remove('visible'); }
@@ -1254,18 +1458,42 @@ function switchMobileTab(e, hash) {
 }
 function toggleMoreMenu() {
   const overlay = $('more-overlay');
-  if (overlay) overlay.classList.toggle('open');
+  if (!overlay) return;
+  buildMoreMenu();
+  overlay.classList.toggle('open');
 }
 function closeMoreMenu(e) {
   if (e && e.target !== $('more-overlay')) return;
   const overlay = $('more-overlay');
   if (overlay) overlay.classList.remove('open');
 }
+// Build the mobile "More" sheet from the sidebar nav so every tab (incl. Vault)
+// is always reachable on small screens — one source of truth, no drift.
+function buildMoreMenu() {
+  const host = $('more-sheet-items'); if (!host || host.dataset.built) return;
+  host.innerHTML = [...document.querySelectorAll('#sidebar-nav .nav-item')].map(it => {
+    const h = it.dataset.hash || '';
+    const label = (it.querySelector('.label') || {}).textContent || h;
+    const icon = it.querySelector('.icon');
+    return '<a class="more-sheet-item" href="#' + h + '" data-hash="' + h +
+      '" onclick="switchMobileTab(event,\'' + h + '\')"><span class="mi-icon">' +
+      (icon ? icon.innerHTML : '') + '</span><span class="mi-label">' + esc(label) + '</span></a>';
+  }).join('');
+  host.dataset.built = '1';
+}
+function filterMoreMenu(v) {
+  v = (v || '').trim().toLowerCase();
+  document.querySelectorAll('#more-sheet-items .more-sheet-item').forEach(a => {
+    a.style.display = (!v || (a.textContent || '').toLowerCase().includes(v)) ? '' : 'none';
+  });
+}
 function _syncMobileNav(hash) {
   const name = (hash || '').replace('#', '') || 'home';
   document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
   const tab = document.querySelector(`.mobile-nav-item[data-hash="${name}"]`);
   if (tab) tab.classList.add('active');
+  document.querySelectorAll('#more-sheet-items .more-sheet-item').forEach(
+    el => el.classList.toggle('active', el.dataset.hash === name));
 }
 
 // ── Routing ───────────────────────────────────────────────────────
@@ -1281,11 +1509,15 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,arbitra:loadArbitra,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
 document.querySelectorAll('.nav-item').forEach(el=>{el.addEventListener('click',e=>{e.preventDefault();location.hash=el.dataset.hash;});});
+buildMoreMenu();
+// Give each sidebar nav link a resolvable in-page target (its own hash id) so
+// fragment links resolve for assistive tech / the axe skip-link rule.
+document.querySelectorAll('#sidebar-nav .nav-item[data-hash]').forEach(a=>{const h=a.dataset.hash;if(h&&!document.getElementById(h))a.id=h;});
 $('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 $('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')$('login-pass').focus();});
 
@@ -1758,14 +1990,54 @@ async function loadLegal(){
         <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Deposits: ${s.total_deposits_ghs||0} GHS &middot; Fees: ${s.total_fees_collected_ghs||0} GHS &middot; Pending: ${s.pending_transactions||0} tx</div>
       </div>`;}
     catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>susu</h3><span class="error-text">${esc(e.message)}</span></div>`;}
-    // Legal Brain
-    try{const lb=await api('/api/legal-brain/stats');
+    // Legal Brain (Knowledge Engine) — full management via /cc/legal proxy
+    try{const lb=await api('/cc/legal/stats');
       html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain — Knowledge Engine  <span class="badge info">${lb.documents||0} docs</span> <span class="badge ok">${lb.sources||0} sources</span></h3>
-        <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Sessions: ${lb.sessions||0} &middot; Jurisdictions: ${Object.keys(lb.by_jurisdiction||{}).join(', ')||'Ghana'}</div>
+        <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:10px">Sessions: ${lb.sessions||0} &middot; Jurisdictions: ${Object.keys(lb.by_jurisdiction||{}).join(', ')||'Ghana'}</div>
+        <div class="action-row" style="flex-wrap:wrap;gap:6px">
+          <button class="btn btn-xs btn-accent" onclick="lbView('documents')">Documents</button>
+          <button class="btn btn-xs" onclick="lbView('verify')">Verify</button>
+          <button class="btn btn-xs" onclick="lbView('quality')">Quality</button>
+          <button class="btn btn-xs" onclick="lbView('registry')">Registry</button>
+          <button class="btn btn-xs" onclick="lbView('firewall')">Firewall</button>
+          <button class="btn btn-xs" onclick="lbView('redteam')">Red-team</button>
+          <button class="btn btn-xs" onclick="lbView('privacy/audit')">Privacy audit</button>
+          <button class="btn btn-xs" onclick="lbView('injection/audit')">Injection audit</button>
+          <input type="text" id="lb-search" placeholder="Search corpus…" class="search-input" onkeyup="if(event.key==='Enter')lbSearch()">
+          <button class="btn btn-xs btn-accent" onclick="lbSearch()">Search</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="file" id="lb-file" style="font-size:0.65rem">
+          <input type="text" id="lb-citation" placeholder="citation (optional)" class="search-input" style="max-width:180px">
+          <button class="btn btn-xs btn-accent" onclick="lbUpload()">Upload to corpus</button>
+        </div>
+        <div id="lb-results" style="margin-top:10px;max-height:420px;overflow:auto"></div>
       </div>`;}
     catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain</h3><span class="error-text">${esc(e.message)}</span></div>`;}
     html+='</div>';el.innerHTML=html;}
   catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+async function lbView(path){
+  const el=$('lb-results');if(!el)return;el.innerHTML='<span class="loading">loading…</span>';
+  try{const d=await api('/cc/legal/'+path);el.innerHTML='<pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+  catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function lbSearch(){
+  const q=($('lb-search')||{}).value||'';const el=$('lb-results');if(!el)return;
+  el.innerHTML='<span class="loading">searching…</span>';
+  try{const d=await api('/cc/legal/search?q='+encodeURIComponent(q));el.innerHTML='<pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+  catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function lbUpload(){
+  const fi=$('lb-file');const f=fi&&fi.files&&fi.files[0];const el=$('lb-results');
+  if(!f){toast('choose a file first','err');return;}
+  const cit=($('lb-citation')||{}).value||'';
+  const xhr=new XMLHttpRequest();
+  xhr.open('POST','/cc/legal/ingest/file'+(cit?('?citation='+encodeURIComponent(cit)):''));
+  xhr.setRequestHeader('X-Filename',f.name);
+  xhr.onload=()=>{toast('corpus upload: HTTP '+xhr.status);lbView('documents');};
+  xhr.onerror=()=>toast('upload failed','err');
+  xhr.send(f);
 }
 async function doLegalSearch(){
   const q=($('legal-search')||{}).value||'',tier=($('legal-tier')||{}).value||'';
@@ -1949,6 +2221,11 @@ async function loadMoney(){
       }
       html+='</tbody></table>';
     }
+    // Arbitra — economic OS (read + write via /cc/arbitra)
+    html+='<div class="card" style="margin-top:12px"><h3>Arbitra &mdash; Economic OS <span class="badge info">/cc/arbitra</span></h3>';
+    html+='<div class="action-row" style="flex-wrap:wrap;gap:6px"><button class="btn btn-xs btn-accent" onclick="arbView(\'status\')">Status</button><button class="btn btn-xs" onclick="arbView(\'opportunities\')">Opportunities</button><button class="btn btn-xs" onclick="arbView(\'ventures\')">Ventures</button><button class="btn btn-xs" onclick="arbView(\'portfolio\')">Portfolio</button><button class="btn btn-xs" onclick="arbView(\'performance\')">Performance</button><button class="btn btn-xs" onclick="arbView(\'capital\')">Capital</button><button class="btn btn-xs" onclick="arbView(\'recommendations\')">Recommendations</button></div>';
+    html+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><input type="text" id="arb-title" placeholder="opportunity title" class="search-input" style="max-width:200px"><input type="number" id="arb-profit" placeholder="expected net profit" class="search-input" style="max-width:170px"><input type="number" id="arb-capital" placeholder="capital required" class="search-input" style="max-width:150px"><input type="number" id="arb-conf" step="0.05" placeholder="confidence 0-1" class="search-input" style="max-width:130px"><button class="btn btn-xs btn-accent" onclick="arbCreateOpp()">Add Opportunity</button></div>';
+    html+='<div id="arb-results" style="margin-top:10px;max-height:360px;overflow:auto"></div></div>';
     $('money-content').innerHTML=html||'<p class="empty">No money data available yet</p>';
   }
   catch(e){$('money-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
@@ -2823,6 +3100,1027 @@ registerSW();
     } else clearToken();
   }).catch(()=>clearToken());}
 })();
+// ── Ecosystem tabs (inbuilt JSON renderer) ────────────────────────
+async function loadJsonTab(cid, paths){
+  const el=$(cid); if(!el) return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  const out=[];
+  for(const p of paths){
+    try{ out.push({p, ok:true, d:await api(p)}); }
+    catch(e){ out.push({p, ok:false, e:e.message}); }
+  }
+  el.innerHTML=out.map(o=>`<div class="card" style="margin-bottom:10px"><h3 style="font-family:var(--font-mono);font-size:0.75rem">${esc(o.p)} <span class="badge ${o.ok?'ok':'bad'}">${o.ok?'ok':'error'}</span></h3><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto">${esc(o.ok?JSON.stringify(o.d,null,1):o.e)}</pre></div>`).join('');
+}
+async function loadNetwork(){
+  const el=$('network-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  const g=async(p)=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [topo,conn,peers,routes,changes,vpn]=await Promise.all([
+      g('/network/topology'),g('/network/connectivity'),g('/network/topology/peers'),
+      g('/network/topology/routes'),g('/network/changes'),g('/api/vpn/status')]);
+    const sites=Object.values((topo&&topo.sites)||{});
+    const healthy=sites.length>0 && sites.every(s=>s.proxmox&&s.proxmox.online);
+    let html='<div class="card"><h3>Network Dashboard &middot; KAI-NET <span class="badge '+(healthy?'ok':'warn')+'">'+(sites.length?(healthy?'HEALTHY':'DEGRADED'):'UNKNOWN')+'</span></h3>';
+    html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="nwAction(\'/network/discover\')">Run Discovery</button><button class="btn btn-xs" onclick="nwAction(\'/network/connectivity/test\')">Test Connectivity</button></div><div id="nw-action-result" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px"></div>';
+    html+='<h4 style="font-size:0.7rem">Sites</h4>';
+    if(!sites.length){html+='<p class="empty">no sites discovered</p>';}
+    for(const s of sites){const px=s.proxmox||{};const lx=s.lxcs||[];
+      html+=`<div style="padding:6px 8px;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.65rem;margin-bottom:3px"><b>${esc(s.name||'?')}</b> <span class="badge ${px.online?'ok':'bad'}">${px.online?'ONLINE':'OFFLINE'}</span> &middot; LAN ${esc(s.lan_subnet||'-')} &middot; GW ${esc(s.gateway||'-')} &middot; Tailscale ${esc(px.tailscale_ip||'-')} &middot; LXCs ${lx.filter(l=>l.status==='running').length}/${lx.length}</div>`;}
+    const sec=(t,d)=>`<h4 style="font-size:0.7rem;margin-top:10px">${t}</h4><pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto">${esc(JSON.stringify(d,null,1))}</pre>`;
+    html+=sec('Connectivity & Tunnel',conn)+sec('Peers',peers)+sec('Routes',routes)+sec('Recent Changes',changes)+sec('VPN / Failover',vpn);
+    html+='</div>'; el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function nwAction(path){
+  const el=$('nw-action-result'); if(el) el.textContent='running '+path+'…';
+  try{const d=await api(path,{method:'POST',body:'{}'}); if(el) el.textContent=path+' → '+JSON.stringify(d).slice(0,400);}
+  catch(e){ if(el) el.textContent=path+' → error: '+e.message; }
+}
+let wgTimer=null;
+async function loadWireguard(){
+  const el=$('wireguard-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  const g=async(p)=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  const d=await g('/api/wg/status');
+  const ifaces=d&&Array.isArray(d.ifaces)?d.ifaces:[];
+  const ts=d&&d.ts?new Date(d.ts*1000).toLocaleTimeString():'-';
+  const labels=(d&&d.labels)||{};
+  let html='<div class="card"><h3>WireGuard &middot; Kai Exit Node (CT103) <span class="badge '+(ifaces.length?'ok':'warn')+'">'+(ifaces.length?'LIVE':'OFFLINE')+'</span></h3>';
+  html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Refresh</button><button class="btn btn-xs" onclick="wgNight()">TTY</button></div>';
+  html+='<div id="wg-last" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px">updated '+ts+(d&&d.error?' &middot; <span class="error-text">'+esc(d.error)+'</span>':'')+'</div>';
+  if(!ifaces.length){html+='<p class="empty">no peer data — wg not running or dashboard unreachable</p>';}
+  for(const f of ifaces){
+    html+=`<h4 style="font-size:0.7rem;margin-top:8px">Interface <code>${esc(f.iface)}</code> · pub ${esc(String(f.pub||'').slice(0,8))}&hellip; · port ${esc(f.port)}</h4>`;
+    if(!f.peers||!f.peers.length){html+='<p class="empty">no peers</p>';}
+    for(const pe of f.peers){
+      const up=pe.since!=='never';
+      const name=(labels[pe.pub]||'').slice(0,32)||esc(pe.pub).slice(0,12);
+      html+=`<div style="padding:7px 9px;border:1px solid var(--border);border-left:3px solid ${up?'var(--ok,#27c93f)':'var(--bad,#e5484d)'};font-family:var(--font-mono);font-size:0.65rem;margin-bottom:5px;border-radius:4px">
+<b>${esc(name)}</b> <span class="badge ${up?'ok':'bad'}">${up?'UP':'DOWN'}</span>
+<div style="margin-top:3px;color:var(--fg-muted)">endpoint <b>${esc(pe.endpoint)}</b> · allowed <b>${esc(pe.allowed)}</b></div>
+<div>handshake <b style="color:${up?'var(--ok,#27c93f)':'var(--bad,#e5484d)'}">${esc(pe.since)}</b> · rx <b>${pe.rx_mb.toFixed(1)}</b> MB · tx <b>${pe.tx_mb.toFixed(1)}</b> MB</div></div>`;
+    }
+  }
+  const tsd=(d&&d.tailscale)||{};
+  const tsp=tsd.peers||[];
+  if(tsp.length){
+    html+=`<h4 style="font-size:0.7rem;margin-top:12px">Tailscale peers · deerude</h4>`;
+    for(const p of tsp){
+      html+=`<div style="padding:6px 9px;border:1px solid var(--border);border-left:3px solid ${p.online?'var(--ok,#27c93f)':'var(--bad,#e5484d)'};font-family:var(--font-mono);font-size:0.65rem;margin-bottom:4px;border-radius:4px"><b>${esc(p.name)}</b> <span style="color:var(--fg-muted)">${esc(p.ip)}</span> <span class="badge ${p.online?'ok':'bad'}">${p.online?'ONLINE':'OFFLINE'}</span> ${p.online?'':'<span style="color:var(--fg-muted)">last seen '+esc(p.last_seen)+'</span>'}</div>`;
+    }
+  }
+  html+='</div>'; el.innerHTML=html;
+}
+async function wgNight(){
+  const ok=confirm('Launch TTY view to the WireGuard exit node?');
+  if(!ok)return;
+  try{const d=await api('/api/wg/raw'); const el=$('wireguard-content');
+    if(el) el.innerHTML='<div class="card"><h3>WireGuard raw (wg show all dump)</h3><pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto">'+esc(d.raw||d.error||'no output')+'</pre><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Back</button></div>';
+  }catch(e){toast('wg raw failed: '+e.message);}
+}
+async function loadDirectives(){
+  const el=$('directives-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [d,h]=await Promise.all([g('/api/directives/list'),g('/kai/directives/health')]);
+    const rows=(d&&Array.isArray(d.directives))?d.directives:[];
+    const svc=(h&&h.ok)?'<span class="badge ok">UP</span>':'<span class="badge bad">DOWN</span>';
+    let html='<div class="card"><h3>Kai Directives '+svc
+      +' <span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="loadDirectives()">Refresh</button></span></h3>'
+      +'<p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">Target: /opt/ai-orchestrator/directives &middot; token-gated backend proxy</p>'
+      +(d&&d.error?'<div class="error-text" style="margin-top:6px">'+esc(d.error)+'</div>':'')
+      +'<div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="dir-name" class="search-input" placeholder="filename (optional) e.g. my-directive.md" style="max-width:300px">'
+      +'<button class="btn btn-xs btn-accent" onclick="directiveUpload()">Upload directive</button></div>'
+      +'<textarea id="dir-paste" class="search-input" placeholder="Paste a directive here, or click Upload to send a file…" style="width:100%;min-height:130px;font-family:var(--font-mono);font-size:0.62rem;margin-top:8px" spellcheck="false"></textarea>'
+      +'<div style="margin-top:8px;font-size:0.6rem;color:var(--fg-muted)">Allowed extensions: .md .txt .json .yaml .yml .html .rst .csv &middot; max 5 MB</div>'
+      +'<div id="dir-result" style="font-size:0.62rem;color:var(--fg-muted);margin-top:6px"></div></div>';
+    html+='<div class="card"><h3>Uploaded directives <span class="badge info">'+(d.error?'\u2014':rows.length)+'</span></h3>';
+    if(d.error) html+='<span class="error-text">'+esc(d.error)+'</span>';
+    else if(!rows.length) html+='<p class="empty">no directives yet — paste one above</p>';
+    else{
+      html+='<div class="table-wrap"><table><thead><tr><th>Directive</th><th>Size</th><th>Modified</th><th>State</th><th>Actions</th></tr></thead><tbody>';
+      for(const r of rows){
+        html+='<tr><td><code>'+esc(r.name)+'</code></td><td>'+esc(r.bytes)+' B</td><td>'+esc(r.modified)+'</td>'
+          +'<td><span class="badge '+(r.acked?'ok':'info')+'">'+(r.acked?'ACKED':'new')+'</span></td>'
+          +'<td class="action-row"><button class="btn btn-xs" onclick="directiveView(\''+esc(r.name)+'\')">View</button> '
+          +'<button class="btn btn-xs" onclick="directiveDownload(\''+esc(r.name)+'\')">Download</button> '
+          +'<button class="btn btn-xs btn-accent" onclick="directiveAck(\''+esc(r.name)+'\',this)">Ack</button></td></tr>';
+      }
+      html+='</tbody></table></div>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function directiveUpload(){
+  const res=$('dir-result'); if(res)res.textContent='uploading…';
+  const paste=($('dir-paste')||{}).value||'';
+  if(paste.trim()){
+    const fn=($('dir-name')||{}).value.trim()||'pasted-directive.md';
+    try{await api('/api/directives/upload',{method:'POST',headers:{'X-Filename':fn,'Content-Type':'application/octet-stream'},body:paste});if(res)res.innerHTML='<span class="ok-text">uploaded '+esc(fn)+'</span>';loadDirectives();}
+    catch(e){if(res)res.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  }else{
+    fileDialog('dir-file',async file=>{
+      if(!file)return;
+      try{const fr=await file.arrayBuffer();const fn=file.name||'directive.md';await api('/api/directives/upload',{method:'POST',headers:{'X-Filename':fn,'Content-Type':'application/octet-stream'},body:fr});if(res)res.innerHTML='<span class="ok-text">uploaded '+esc(fn)+'</span>';loadDirectives();}
+      catch(e){if(res)res.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+    });
+  }
+}
+function fileDialog(name,onPick){
+  let inp=document.getElementById(name);
+  if(!inp){inp=document.createElement('input');inp.type='file';inp.id=name;inp.style.display='none';document.body.appendChild(inp);inp.addEventListener('change',()=>{const f=inp.files&&inp.files[0];inp.value='';onPick(f||null);});}
+  inp.click();
+}
+async function directiveView(name){
+  const el=$('directives-content'); if(!el) return;
+  const g=await api('/api/directives/get/'+encodeURIComponent(name)).catch(e=>({error:e.message}));
+  if(el) el.innerHTML='<div class="card"><h3>Directive: <code>'+esc(name)+'</code> <span class="card-header-actions"><button class="btn btn-xs" onclick="loadDirectives()">Back</button></span></h3>'
+    +(g.error?'<span class="error-text">'+esc(g.error)+'</span>':'<pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto;border:1px solid var(--border);padding:8px;border-radius:4px">'+esc(g.content||'')+'</pre>')
+    +'</div>';
+}
+async function directiveDownload(name){
+  try{
+    const g=await api('/api/directives/get/'+encodeURIComponent(name));
+    const blob=new Blob([g.content||''],{type:'text/plain;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    toast('downloading '+name);
+  }catch(e){toast('download failed: '+e.message,'err');}
+}
+async function directiveAck(name,btn){
+  if(btn)btn.disabled=true;
+  try{await api('/api/directives/ack/'+encodeURIComponent(name),{method:'POST',body:'{}'});toast('acked '+name);loadDirectives();}
+  catch(e){toast('ack failed: '+e.message,'err');if(btn)btn.disabled=false;}
+}
+async function loadModels(){
+  const el=$('models-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [prov,dash,cfg,reg]=await Promise.all([g('/providers'),g('/providers/dashboard'),g('/providers/config'),g('/models/registry')]);
+    if(prov.error){el.innerHTML='<span class="error-text">providers: '+esc(prov.error)+'</span>';return;}
+    const names=Object.keys(prov).sort();
+    const enabled=names.filter(n=>prov[n].enabled).length;
+    const avail=names.filter(n=>prov[n].available).length;
+    const m=(l,v,c)=>'<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v)+'</span><span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(l)+'</span></div>';
+    let html='<div class="metric-row">'+m('Providers',names.length)+m('Enabled',enabled)+m('Available',avail,'var(--warn)')+m('Registry models',(reg.counts&&reg.counts.models)||'-')+'</div>';
+    html+='<div class="card"><h3>Providers <span class="badge info">'+names.length+'</span> <span class="card-header-actions"><button class="btn btn-xs" onclick="loadModels()">Refresh</button></span></h3>';
+    html+='<div class="table-wrap"><table><thead><tr><th>Provider</th><th>Kind</th><th>Caps</th><th>Cost</th><th>Health</th><th>OK%</th><th>State</th><th>Actions</th></tr></thead><tbody>';
+    for(const n of names){
+      const p=prov[n]||{}, d=dash[n]||{};
+      const ok=(d.success_rate!=null)?Math.round(d.success_rate*100)+'%':'\u2014';
+      const hb=d.health?'<span class="badge '+(d.health==='healthy'?'ok':(d.health==='degraded'?'warn':'bad'))+'">'+esc(d.health)+'</span>':'\u2014';
+      html+='<tr><td><code>'+esc(n)+'</code></td><td>'+esc(p.kind||'-')+'</td><td style="font-size:0.6rem">'+esc((p.capabilities||[]).join(', '))+'</td><td>'+esc(p.cost_tier||'-')+'</td><td>'+hb+'</td><td>'+esc(ok)+'</td>'
+        +'<td><span class="badge '+(p.enabled?'ok':'bad')+'">'+(p.enabled?'on':'off')+'</span></td>'
+        +'<td><button class="btn btn-xs" onclick="mdlToggle(\''+esc(n)+'\','+(p.enabled?'false':'true')+')">'+(p.enabled?'Disable':'Enable')+'</button> '
+        +'<button class="btn btn-xs" onclick="mdlReset(\''+esc(n)+'\')">Reset breaker</button> '
+        +'<button class="btn btn-xs" onclick="mdlDelete(\''+esc(n)+'\')">Delete</button></td></tr>';
+    }
+    html+='</tbody></table></div>';
+    html+='<h4 style="font-size:0.72rem;margin-top:12px">Register provider</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="mdl-name" class="search-input" placeholder="name" style="max-width:150px">'
+      +'<select id="mdl-kind" class="search-input" style="max-width:120px"><option>cloud</option><option>local</option><option>api</option></select>'
+      +'<select id="mdl-cost" class="search-input" style="max-width:170px"><option>free_or_low_cost</option><option>medium_cost</option><option>high_cost</option><option>custom</option></select>'
+      +'<input id="mdl-caps" class="search-input" placeholder="caps: coding_agent,text_task" style="max-width:230px">'
+      +'<button class="btn btn-xs btn-accent" onclick="mdlAdd()">Add</button></div></div>';
+    const overrides=(cfg&&cfg.overrides)||{};
+    html+='<div class="card"><h3>Operator routing overrides <span class="badge info">fallback order</span></h3>'
+      +'<p style="font-size:0.62rem;color:var(--fg-muted)">Shape: {"fallback_order": {"role": ["provider", ...]}, "max_concurrent_builds": N}. Unknown providers are rejected on save.</p>'
+      +'<textarea id="mdl-cfg" class="search-input" style="width:100%;min-height:120px;font-family:var(--font-mono);font-size:0.62rem" spellcheck="false">'+esc(JSON.stringify(overrides,null,1))+'</textarea>'
+      +'<div class="action-row" style="margin-top:6px"><button class="btn btn-xs btn-accent" onclick="mdlSaveConfig()">Save</button><button class="btn btn-xs" onclick="mdlResetConfig()">Reset to defaults</button></div>'
+      +'<div id="mdl-cfg-result" style="font-size:0.62rem;color:var(--fg-muted);margin-top:4px"></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function mdlToggle(n,on){try{await api('/providers/'+encodeURIComponent(n)+'/toggle',{method:'PUT',body:JSON.stringify({enabled:on})});toast(n+(on?' enabled':' disabled'));loadModels();}catch(e){toast('error: '+e.message,'err');}}
+async function mdlReset(n){try{await api('/kai/circuit-breakers/'+encodeURIComponent(n)+'/reset',{method:'POST',body:'{}'});toast('breaker reset: '+n);loadModels();}catch(e){toast('error: '+e.message,'err');}}
+function mdlDelete(n){confirmAction('Delete provider','Remove \''+n+'\' from the registry and all routing chains?',async()=>{try{await api('/providers/'+encodeURIComponent(n),{method:'DELETE'});toast('deleted '+n);loadModels();}catch(e){toast('error: '+e.message,'err');}});}
+async function mdlAdd(){
+  const name=($('mdl-name')||{}).value; if(!name){toast('name required','err');return;}
+  const caps=(($('mdl-caps')||{}).value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const body={name:name,kind:($('mdl-kind')||{}).value||'cloud',cost_tier:($('mdl-cost')||{}).value||'free_or_low_cost',capabilities:caps};
+  try{await api('/providers',{method:'POST',body:JSON.stringify(body)});toast('added '+name);loadModels();}catch(e){toast('error: '+e.message,'err');}
+}
+async function mdlSaveConfig(){
+  let body; try{body=JSON.parse(($('mdl-cfg')||{}).value||'{}');}catch(e){toast('invalid JSON','err');return;}
+  const r=$('mdl-cfg-result'); if(r)r.textContent='saving…';
+  try{await api('/providers/config',{method:'PUT',body:JSON.stringify(body)});if(r)r.textContent='saved';toast('config saved');loadModels();}
+  catch(e){if(r)r.textContent='error: '+e.message;toast('error: '+e.message,'err');}
+}
+function mdlResetConfig(){confirmAction('Reset overrides','Reset all provider routing overrides to the shipped defaults?',async()=>{try{await api('/providers/config',{method:'DELETE'});toast('overrides reset');loadModels();}catch(e){toast('error: '+e.message,'err');}});}
+async function loadVault(){
+  const el=$('vault-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const v=await api('/kai/vault/metadata').catch(e=>({error:e.message}));
+    const rows=(v.secrets||[]).map(s=>'<tr><td><code>'+esc(s.name)+'</code></td><td>'+esc(s.value)+'</td><td>'+esc(s.used_by)+'</td><td><span class="badge '+(s.status==='healthy'?'ok':'bad')+'">'+esc(s.status)+'</span></td><td>'+(s.rotation_days==null?'\u2014':esc(s.rotation_days)+'d')+'</td></tr>').join('');
+    el.innerHTML='<div class="card"><h3>KAI Vault <span class="badge '+(v.reachable?'ok':'bad')+'">'+esc(v.status||'unknown')+'</span></h3>'
+      +'<div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Backend: '+esc(v.backend||'-')+' \u00b7 Secrets: '+esc(v.count||0)+'</div>'
+      +(v.remediation?'<div style="margin-top:6px;color:var(--warn);font-size:0.66rem">'+esc(v.remediation)+'</div>':'')
+      +'<h4 style="font-size:0.72rem;margin-top:12px">Secrets Metadata (values never shown)</h4>'
+      +'<div class="table-wrap"><table><thead><tr><th>Key</th><th>Value</th><th>Used by</th><th>Status</th><th>Rotation</th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="empty">none</td></tr>')+'</tbody></table></div>'
+      +'<h4 style="font-size:0.72rem;margin-top:14px">Secret Broker <span class="badge info">short-lived leases</span></h4>'
+      +'<div class="action-row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px"><input id="vb-subject" placeholder="subject (opencode/claude-code/operator)" class="search-input" style="max-width:230px"><input id="vb-path" placeholder="secret path" class="search-input" style="max-width:210px"><input id="vb-ttl" type="number" value="300" class="search-input" style="max-width:90px"><button class="btn btn-xs btn-accent" onclick="vbIssue()">Issue Lease</button><button class="btn btn-xs" onclick="vbCaps()">Capabilities</button><button class="btn btn-xs" onclick="vbAudit()">Audit</button></div>'
+      +'<div id="vb-results"></div>'
+      +'<h4 style="font-size:0.72rem;margin-top:14px">WebAuthn / security key <span class="badge info">FIDO2</span></h4>'
+      +'<div class="action-row" style="flex-wrap:wrap;gap:6px"><button class="btn btn-xs btn-accent" onclick="waEnroll()">Enroll this device</button><button class="btn btn-xs" onclick="waAuth()">Authenticate</button><button class="btn btn-xs" onclick="waList()">List credentials</button></div>'
+      +'<div id="wa-results" style="font-size:0.62rem;color:var(--fg-muted);margin-top:6px;word-break:break-word"></div>'
+      +'<h4 style="font-size:0.72rem;margin-top:14px">Duo push approval <span class="badge info">§10/13</span></h4>'
+      +'<div class="action-row" style="flex-wrap:wrap;gap:6px"><input id="duo-user" class="search-input" placeholder="Duo username" style="max-width:200px"><button class="btn btn-xs btn-accent" onclick="duoApprove()">Send Duo push</button></div>'
+      +'<div id="duo-results" style="font-size:0.62rem;color:var(--fg-muted);margin-top:6px;word-break:break-word"></div>'
+      +'<h4 style="font-size:0.72rem;margin-top:14px">High-risk reveal <span class="badge info">Duo-gated</span></h4>'
+      +'<div class="action-row" style="flex-wrap:wrap;gap:6px"><input id="hr-path" class="search-input" placeholder="secrets/infrastructure/redis" style="max-width:280px"><button class="btn btn-xs btn-accent" onclick="hrAuthorize()">Authorize (Duo)</button></div>'
+      +'<div id="hr-results" style="font-size:0.6rem;color:var(--fg-muted);margin-top:6px;word-break:break-all"></div></div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function loadSecondBrain(){return loadJsonTab('secondbrain-content',['/api/second-brain/summary','/api/command-center/summary']);}
+async function loadKnowledge(){
+  const el=$('knowledge-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const docs=await api('/knowledge/documents').catch(e=>({error:e.message}));
+    let html='<div class="card"><h3>Knowledge Fabric <span class="badge info">Primary + Secondary</span></h3>';
+    html+='<div class="action-row" style="flex-wrap:wrap;gap:6px"><button class="btn btn-xs btn-accent" onclick="kfDocs()">My Documents</button><button class="btn btn-xs" onclick="kfSpaces()">Spaces</button><button class="btn btn-xs" onclick="kfAudit()">Audit</button></div>';
+    html+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><input id="kf-title" placeholder="title" class="search-input" style="max-width:170px"><input id="kf-content" placeholder="content" class="search-input" style="max-width:240px"><select id="kf-vis" class="search-input" style="max-width:150px"><option value="PRIVATE">PRIVATE</option><option value="GROUP">GROUP</option><option value="KNOWLEDGE_SPACE">SPACE</option><option value="SELECTED_USERS">SELECTED</option></select><button class="btn btn-xs btn-accent" onclick="kfCreate()">Add Document</button></div>';
+    html+='<div style="margin-top:6px;display:flex;gap:6px"><input id="kf-q" placeholder="permission-aware search…" class="search-input" onkeyup="if(event.key===\'Enter\')kfSearch()"><button class="btn btn-xs" onclick="kfSearch()">Search</button><button class="btn btn-xs btn-accent" onclick="kfQuery()">Query (Primary+Secondary)</button></div>';
+    html+='<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="file" id="kf-file" style="font-size:0.62rem"><button class="btn btn-xs btn-accent" onclick="kfUpload()">Upload document</button></div>';
+    html+='<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input id="kf-space" placeholder="new space name" class="search-input" style="max-width:150px"><button class="btn btn-xs" onclick="kfCreateSpace()">Create Space</button><input id="kf-gdoc" placeholder="doc id" class="search-input" style="max-width:120px"><input id="kf-guser" placeholder="user" class="search-input" style="max-width:110px"><select id="kf-grole" class="search-input" style="max-width:110px"><option>READER</option><option>EDITOR</option><option>MANAGER</option></select><button class="btn btn-xs" onclick="kfGrant()">Grant</button><button class="btn btn-xs" onclick="kfRevoke()">Revoke</button></div>';
+    html+='<div id="kf-results" style="margin-top:10px;max-height:360px;overflow:auto"><pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(docs,null,1))+'</pre></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function kfShow(d){const el=$('kf-results');if(el)el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+async function kfDocs(){try{kfShow(await api('/knowledge/documents'));}catch(e){kfShow({error:e.message});}}
+async function kfSpaces(){try{kfShow(await api('/knowledge/spaces'));}catch(e){kfShow({error:e.message});}}
+async function kfAudit(){try{kfShow(await api('/knowledge/audit'));}catch(e){kfShow({error:e.message});}}
+async function kfCreate(){
+  const t=($('kf-title')||{}).value; if(!t){toast('title required','err');return;}
+  const body={title:t,content:($('kf-content')||{}).value||'',visibility:($('kf-vis')||{}).value||'PRIVATE'};
+  try{await api('/knowledge/documents',{method:'POST',body:JSON.stringify(body)});toast('document added');kfDocs();}
+  catch(e){toast('error: '+e.message,'err');}
+}
+function kfUpload(){
+  const fi=$('kf-file'); const f=fi&&fi.files&&fi.files[0]; if(!f){toast('choose a file','err');return;}
+  const fd=new FormData(); fd.append('file',f); fd.append('visibility',($('kf-vis')||{}).value||'PRIVATE');
+  const xhr=new XMLHttpRequest(); xhr.open('POST','/knowledge/documents/upload');
+  xhr.onload=()=>{toast('upload: HTTP '+xhr.status);kfDocs();};
+  xhr.onerror=()=>toast('upload failed','err');
+  xhr.send(fd);
+}
+function vbShow(d){const el=$('vb-results');if(el)el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+async function vbIssue(){const s=($('vb-subject')||{}).value,p=($('vb-path')||{}).value,ttl=Number(($('vb-ttl')||{}).value||300);if(!s||!p){toast('subject + path required','err');return;}try{vbShow(await api('/vault/broker/issue',{method:'POST',body:JSON.stringify({subject:s,path:p,ttl:ttl})}));}catch(e){vbShow({error:e.message});}}
+async function vbCaps(){try{vbShow(await api('/vault/broker/capabilities'));}catch(e){vbShow({error:e.message});}}
+async function vbAudit(){try{vbShow(await api('/vault/broker/audit'));}catch(e){vbShow({error:e.message});}}
+// WebAuthn (FIDO2) — security-key enrollment / authentication (27A)
+function _b64u(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function _b64uDec(s){s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return Uint8Array.from(atob(s),c=>c.charCodeAt(0));}
+async function waList(){const el=$('wa-results');try{const d=await api('/kai/webauthn/credentials');el.textContent='credentials: '+((d.credentials||[]).join(', ')||'none');}catch(e){el.textContent='error: '+e.message;}}
+async function waEnroll(){
+  const el=$('wa-results');
+  if(!window.PublicKeyCredential){el.textContent='WebAuthn unavailable — needs HTTPS + a DOMAIN origin (the CC is served on a Tailscale IP).';return;}
+  try{
+    const ch=await api('/kai/webauthn/challenge');
+    const uid=crypto.getRandomValues(new Uint8Array(16));
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge:_b64uDec(ch.challenge), rp:{name:'Kai', id:location.hostname},
+      user:{id:uid, name:'operator', displayName:'Kai operator'},
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{userVerification:'preferred', residentKey:'preferred'},
+      timeout:60000, attestation:'none'}});
+    const r=await api('/kai/webauthn/register',{method:'POST',body:JSON.stringify({
+      challenge:ch.challenge, clientDataJSON:_b64u(cred.response.clientDataJSON),
+      attestationObject:_b64u(cred.response.attestationObject)})});
+    el.textContent='enrolled: '+(r.credential_id||JSON.stringify(r));
+  }catch(e){el.textContent='enroll error: '+e.message;}
+}
+async function waAuth(){
+  const el=$('wa-results');
+  try{
+    const ch=await api('/kai/webauthn/challenge');
+    const cred=await navigator.credentials.get({publicKey:{challenge:_b64uDec(ch.challenge),timeout:60000,userVerification:'preferred'}});
+    const r=await api('/kai/webauthn/authenticate',{method:'POST',body:JSON.stringify({
+      challenge:ch.challenge, credential_id:_b64u(cred.rawId),
+      clientDataJSON:_b64u(cred.response.clientDataJSON),
+      authenticatorData:_b64u(cred.response.authenticatorData),
+      signature:_b64u(cred.response.signature)})});
+    el.textContent='authenticated: sign_count='+r.sign_count;
+  }catch(e){el.textContent='auth error: '+e.message;}
+}
+async function duoApprove(){
+  const el=$('duo-results'); if(el)el.textContent='sending push… approve on your device';
+  const u=($('duo-user')||{}).value||'';
+  try{const d=await api('/kai/duo/approve'+(u?('?username='+encodeURIComponent(u)):''),{method:'POST',body:'{}'});
+    if(el)el.textContent=d.ok?('approved: '+d.result+' (txid '+(d.txid||'')+')'):('not approved: '+(d.error||d.result));
+    toast(d.ok?'Duo approved':'Duo '+(d.error||d.result),d.ok?'ok':'err');
+  }catch(e){if(el)el.textContent='error: '+e.message;}
+}
+async function hrAuthorize(){
+  const el=$('hr-results'); const path=($('hr-path')||{}).value||'';
+  if(!path){toast('path required','err');return;}
+  if(el)el.textContent='sending Duo push… approve on your device';
+  try{
+    const d=await api('/vault/highrisk/authorize',{method:'POST',body:JSON.stringify({subject:'orchestrator',path:path})});
+    if(el)el.textContent=d.approved?('approved — lease: '+(d.lease||'').slice(0,48)+'… (ttl '+d.ttl+'s)'):('not approved: '+JSON.stringify(d.detail||d));
+    toast(d.approved?'High-risk authorized':'Not approved',d.approved?'ok':'err');
+  }catch(e){if(el)el.textContent='error: '+e.message;}
+}
+async function loadTalent(){
+  const el=$('talent-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [stats,jobs,apps]=await Promise.all([g('/cc/talent/api/stats'),g('/cc/talent/api/jobs'),g('/cc/talent/api/applications')]);
+    const m=(l,v)=>'<div class="metric"><span class="val">'+esc(v)+'</span><span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(l)+'</span></div>';
+    let html='<div class="metric-row">'+m('Open jobs',(stats&&stats.open_jobs)!=null?stats.open_jobs:'\u2014')+m('Applications',(stats&&stats.applications)!=null?stats.applications:'\u2014')+'</div>';
+    html+='<div class="card"><h3>Open roles <span class="badge info">'+((jobs.jobs||[]).length)+'</span> <span class="card-header-actions"><a class="btn btn-xs" href="https://careers.deerude.com/" target="_blank" rel="noopener">Open site</a><button class="btn btn-xs" onclick="loadTalent()">Refresh</button></span></h3>';
+    html+='<div class="table-wrap"><table><thead><tr><th>#</th><th>Title</th><th>Dept</th><th>Location</th><th>Type</th></tr></thead><tbody>';
+    for(const j of (jobs.jobs||[])){html+='<tr><td>'+esc(j.id)+'</td><td>'+esc(j.title)+'</td><td>'+esc(j.dept||'')+'</td><td>'+esc(j.location||'')+'</td><td>'+esc(j.type||'')+'</td></tr>';}
+    if(!(jobs.jobs||[]).length)html+='<tr><td colspan="5" class="empty">no open roles</td></tr>';
+    html+='</tbody></table></div></div>';
+    html+='<div class="card"><h3>Recent applications <span class="badge info">'+((apps.applications||[]).length)+'</span></h3><div class="table-wrap"><table><thead><tr><th>When (UTC)</th><th>Name</th><th>Email</th><th>Job</th></tr></thead><tbody>';
+    for(const a of (apps.applications||[])){html+='<tr><td>'+esc(new Date(((a.created_at||0))*1000).toISOString().slice(0,16).replace('T',' '))+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.email)+'</td><td>'+esc(a.job_id)+'</td></tr>';}
+    if(!(apps.applications||[]).length)html+='<tr><td colspan="4" class="empty">no applications yet</td></tr>';
+    html+='</tbody></table></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function kfCreateSpace(){
+  const n=($('kf-space')||{}).value; if(!n){toast('space name required','err');return;}
+  try{const d=await api('/knowledge/spaces',{method:'POST',body:JSON.stringify({name:n})});toast('space: '+JSON.stringify(d));kfSpaces();}catch(e){toast('error: '+e.message,'err');}
+}
+async function kfAcl(path){
+  const doc=($('kf-gdoc')||{}).value,user=($('kf-guser')||{}).value,role=($('kf-grole')||{}).value||'READER';
+  if(!doc||!user){toast('doc id and user required','err');return;}
+  try{await api('/knowledge/documents/'+encodeURIComponent(doc)+'/'+path,{method:'POST',body:JSON.stringify({principal_type:'user',principal_id:user,role})});toast(path+': '+doc+' -> '+user);kfDocs();}catch(e){toast('error: '+e.message,'err');}
+}
+async function kfGrant(){return kfAcl('grant');}
+async function kfRevoke(){return kfAcl('revoke');}
+async function kfSearch(){
+  const q=($('kf-q')||{}).value||'';
+  try{kfShow(await api('/knowledge/search',{method:'POST',body:JSON.stringify({q})}));}catch(e){kfShow({error:e.message});}
+}
+async function kfQuery(){
+  const q=($('kf-q')||{}).value||'';
+  try{kfShow(await api('/knowledge/query',{method:'POST',body:JSON.stringify({q})}));}catch(e){kfShow({error:e.message});}
+}
+async function loadApprovals(){return loadJsonTab('approvals-content',['/approvals']);}
+async function loadNotifications(){return loadJsonTab('notifications-content',['/kai/notifications']);}
+async function loadDocs(){
+  const el=$('docs-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [types,docs]=await Promise.all([g('/cc/docs/api/types'),g('/cc/docs/api/docs')]);
+    const list=docs.documents||[];
+    let html='<div class="card"><h3>KAI-Docs <span class="badge info">'+list.length+'</span> <span class="card-header-actions"><button class="btn btn-xs" onclick="loadDocs()">Refresh</button></span></h3>';
+    html+='<h4 style="font-size:0.72rem">New document</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<select id="doc-type" class="search-input" style="max-width:150px">'+((types.types||[]).map(t=>'<option>'+esc(t)+'</option>').join(''))+'</select>'
+      +'<input id="doc-title" class="search-input" placeholder="title" style="max-width:220px">'
+      +'<button class="btn btn-xs btn-accent" onclick="docCreate()">Create</button></div>';
+    html+='<div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Type</th><th>Number</th><th>Title</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>';
+    if(!list.length)html+='<tr><td colspan="6" class="empty">no documents yet</td></tr>';
+    for(const d of list){
+      const upd=d.updated_at?new Date(d.updated_at*1000).toISOString().slice(0,16).replace('T',' '):'—';
+      html+='<tr><td>'+esc(d.type)+'</td><td><code>'+esc(d.number||'')+'</code></td><td>'+esc(d.title)+'</td><td><span class="badge '+(d.status==='draft'?'warn':'ok')+'">'+esc(d.status)+'</span></td><td style="font-size:0.62rem">'+esc(upd)+'</td>'
+        +'<td><a class="btn btn-xs" href="/cc/docs/docs/'+encodeURIComponent(d.id)+'/render" target="_blank" rel="noopener">Open</a></td></tr>';
+    }
+    html+='</tbody></table></div><div id="doc-result" style="font-size:0.62rem;color:var(--fg-muted);margin-top:6px"></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function docCreate(){
+  const t=($('doc-type')||{}).value,title=($('doc-title')||{}).value; const el=$('doc-result');
+  if(!title){toast('title required','err');return;}
+  try{const d=await api('/cc/docs/api/docs',{method:'POST',body:JSON.stringify({type:t,title:title,content:{items:[{desc:'Item',qty:1,price:0}],currency:'GHS'}})});toast('created '+d.id);loadDocs();}
+  catch(e){toast('error: '+e.message,'err');if(el)el.textContent='error: '+e.message;}
+}
+async function loadAndroid(){
+  const el=$('android-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [tc,tpls,projs]=await Promise.all([g('/cc/android/api/toolchain'),g('/cc/android/api/templates'),g('/cc/android/api/projects')]);
+    let html='<div class="card"><h3>Android Factory <span class="badge '+((tc&&tc.ready)?'ok':'warn')+'">'+((tc&&tc.ready)?'toolchain ready':'toolchain missing')+'</span></h3>';
+    html+='<div style="font-size:0.66rem;color:var(--fg-muted);font-family:var(--font-mono)">java: '+esc((tc&&tc.java)||'\u2014')+' &middot; gradle: '+esc((tc&&tc.gradle)||'\u2014')+' &middot; sdk: '+esc((tc&&tc.android_sdk)||'\u2014')+'</div>';
+    html+='<h4 style="font-size:0.72rem;margin-top:12px">Scaffold project</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="af-name" class="search-input" placeholder="App name" style="max-width:150px">'
+      +'<input id="af-pkg" class="search-input" placeholder="com.example.app" style="max-width:200px">'
+      +'<select id="af-tpl" class="search-input" style="max-width:150px">'+((tpls.templates||[]).map(t=>'<option>'+esc(t)+'</option>').join(''))+'</select>'
+      +'<button class="btn btn-xs btn-accent" onclick="afCreate()">Scaffold</button></div>';
+    html+='<h4 style="font-size:0.72rem;margin-top:14px">Projects <span class="badge info">'+((projs.projects||[]).length)+'</span></h4>';
+    html+='<div class="table-wrap"><table><thead><tr><th>ID</th><th>Name</th><th>Package</th><th>Template</th><th>Actions</th></tr></thead><tbody>';
+    for(const p of (projs.projects||[])){html+='<tr><td><code>'+esc(p.id)+'</code></td><td>'+esc(p.name)+'</td><td>'+esc(p.package)+'</td><td>'+esc(p.template)+'</td><td><button class="btn btn-xs" onclick="afBuild(\''+esc(p.id)+'\')">Build</button></td></tr>';}
+    if(!(projs.projects||[]).length)html+='<tr><td colspan="5" class="empty">no projects</td></tr>';
+    html+='</tbody></table></div><div id="af-result" style="font-size:0.62rem;color:var(--fg-muted);margin-top:6px"></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function afCreate(){
+  const name=($('af-name')||{}).value,pkg=($('af-pkg')||{}).value,tpl=($('af-tpl')||{}).value||'empty';
+  const el=$('af-result');
+  try{const d=await api('/cc/android/api/projects',{method:'POST',body:JSON.stringify({name:name,package:pkg,template:tpl})});toast('scaffolded '+d.id);loadAndroid();}
+  catch(e){toast('error: '+e.message,'err');if(el)el.textContent='error: '+e.message;}
+}
+async function afBuild(id){const el=$('af-result');if(el)el.textContent='building '+id+'…';try{const d=await api('/cc/android/api/projects/'+encodeURIComponent(id)+'/build',{method:'POST',body:'{}'});if(el)el.textContent=JSON.stringify(d,null,1);toast('build: '+(d.status||'?'));loadAndroid();}catch(e){if(el)el.textContent='error: '+e.message;}}
+async function loadHubtel(){
+  const el=$('hubtel-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const s=await api('/hubtel/status').catch(e=>({error:e.message}));
+    const m=s.masked||{}, c=s.configured||{};
+    const badge=k=>'<span class="badge '+(c[k]?'ok':'warn')+'">'+(c[k]?'set':'not set')+'</span>';
+    let html='<div class="card"><h3>Hubtel billing <span class="badge '+(s.ready?'ok':'warn')+'">'+(s.ready?'ready':'incomplete')+'</span></h3>';
+    html+='<p style="font-size:0.62rem;color:var(--fg-muted)">Mobile Money billing for Juris Kai (17P). Credentials are stored <b>encrypted in the Kai Vault</b> — never in files or git. Leave a field blank to keep the existing value.</p>';
+    html+='<div style="display:grid;gap:8px;max-width:560px;margin-top:8px">';
+    html+='<label style="font-size:0.66rem">Client ID '+badge('client_id')+'<input id="hb-client-id" class="search-input" style="width:100%" placeholder="'+(m.client_id||'HUBTEL_CLIENT_ID')+'"></label>';
+    html+='<label style="font-size:0.66rem">Client Secret '+badge('client_secret')+'<input id="hb-client-secret" type="password" class="search-input" style="width:100%" placeholder="'+(m.client_secret||'HUBTEL_CLIENT_SECRET')+'"></label>';
+    html+='<label style="font-size:0.66rem">Merchant Number '+badge('merchant_number')+'<input id="hb-merchant" class="search-input" style="width:100%" placeholder="'+(m.merchant_number||'HUBTEL_MERCHANT_NUMBER')+'"></label>';
+    html+='<label style="font-size:0.66rem">Callback URL '+badge('callback_url')+'<input id="hb-callback" class="search-input" style="width:100%" placeholder="'+(m.callback_url||'https://…/hubtel/callback')+'"></label>';
+    html+='<div class="action-row" style="margin-top:6px"><button class="btn btn-xs btn-accent" onclick="hbSave()">Save to Vault</button><button class="btn btn-xs" onclick="loadHubtel()">Refresh</button></div>';
+    html+='<div id="hb-result" style="font-size:0.62rem;color:var(--fg-muted);margin-top:6px"></div></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function hbSave(){
+  const body={client_id:($('hb-client-id')||{}).value||'',client_secret:($('hb-client-secret')||{}).value||'',merchant_number:($('hb-merchant')||{}).value||'',callback_url:($('hb-callback')||{}).value||''};
+  const el=$('hb-result'); if(el)el.textContent='saving to vault…';
+  try{const d=await api('/hubtel/config',{method:'PUT',body:JSON.stringify(body)});
+    if(el)el.textContent=d.ok?('saved: '+(d.saved||[]).join(', ')||'nothing'):('errors: '+JSON.stringify(d.errors||d));
+    toast(d.ok?'Hubtel config saved to vault':'save failed',d.ok?'ok':'err'); loadHubtel();
+  }catch(e){if(el)el.textContent='error: '+e.message;}
+}
+async function loadBackups(){
+  const el=$('backups-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/api/backups').catch(e=>({error:e.message}));
+    if(d.error){el.innerHTML='<span class="error-text">'+esc(d.error)+'</span>';return;}
+    const px=await api('/api/backups/proxmox').catch(()=>({jobs:[],artifacts:[],storage:{}}));
+    const list=d.backups||[]; const latest=d.latest||{};
+    const sz=n=>!n?'—':(n>=1e9?(n/1e9).toFixed(2)+' GB':(n>=1e6?(n/1e6).toFixed(1)+' MB':Math.round(n/1e3)+' KB'));
+    const m=(l,v,c)=>'<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v)+'</span><span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(l)+'</span></div>';
+    let html='<div class="metric-row">'+m('Backups',list.length)+m('Latest',latest.name?latest.name.slice(4,21):'—','var(--fg)')+m('Size',sz(latest.size_bytes))+m('Verified',list.filter(b=>b.verified).length+' / '+list.length,'var(--accent)')+'</div>';
+    html+='<div class="card"><h3>Kai Backup &amp; DR <span class="badge info">'+esc(d.target||'')+'</span> <span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="bkRun()">Run backup</button><button class="btn btn-xs" onclick="loadBackups()">Refresh</button></span></h3>';
+    html+='<p style="font-size:0.62rem;color:var(--fg-muted)">Application-state snapshots (memory, config, second-brain). Checksum-verified; restore drills run to a non-production path.</p>';
+    html+='<div class="table-wrap"><table><thead><tr><th>Backup</th><th>Created (UTC)</th><th>Size</th><th>Sources</th><th>SHA-256</th><th>Verified</th><th>Actions</th></tr></thead><tbody>';
+    if(!list.length){html+='<tr><td colspan="7" class="empty">no backups yet — run one</td></tr>';}
+    for(const b of list){
+      const short=(b.sha256||'').slice(0,12);
+      html+='<tr><td><code>'+esc(b.name)+'</code></td><td>'+esc(b.created_at||'—')+'</td><td>'+esc(sz(b.size_bytes))+'</td>'
+        +'<td style="font-size:0.6rem">'+esc((b.sources||[]).join(', '))+'</td><td><code title="'+esc(b.sha256||'')+'">'+esc(short)+'…</code></td>'
+        +'<td><span class="badge '+(b.verified?'ok':'bad')+'">'+(b.verified?'ok':'FAIL')+'</span></td>'
+        +'<td><button class="btn btn-xs" onclick="bkVerify(\''+esc(b.name)+'\')">Verify</button> '
+        +'<button class="btn btn-xs" onclick="bkRestore(\''+esc(b.name)+'\')">Restore drill</button></td></tr>';
+    }
+    html+='</tbody></table></div><div id="bk-result" style="font-size:0.62rem;color:var(--fg-muted);margin-top:6px"></div></div>';
+    // Proxmox image backups (published by the node-side status timer)
+    const st=px.storage||{};
+    html+='<div class="card"><h3>Proxmox image backups <span class="badge info">'+esc(st.name||'kai-c')+'</span> <span class="card-header-actions"><button class="btn btn-xs" onclick="loadBackups()">Refresh</button></span></h3>';
+    html+='<div style="font-size:0.66rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:8px">used '+esc(sz(st.used))+' / '+esc(sz(st.total))+' &middot; free '+esc(sz(st.avail))+'</div>';
+    if((px.jobs||[]).length){
+      html+='<h4 style="font-size:0.72rem">Jobs</h4><div class="table-wrap"><table><thead><tr><th>Schedule</th><th>Guests</th><th>Mode</th><th>Compress</th><th>Retention</th></tr></thead><tbody>';
+      for(const j of px.jobs){html+='<tr><td>'+esc(j.schedule)+'</td><td style="font-size:0.6rem">'+esc(j.vmid)+'</td><td>'+esc(j.mode)+'</td><td>'+esc(j.compress)+'</td><td style="font-size:0.6rem">'+esc(j['prune-backups']||'')+'</td></tr>';}
+      html+='</tbody></table></div>';
+    }
+    const arts=px.artifacts||[];
+    html+='<h4 style="font-size:0.72rem;margin-top:10px">Artifacts <span class="badge info">'+arts.length+'</span></h4><div class="table-wrap"><table><thead><tr><th>File</th><th>Guest</th><th>Size</th><th>Age</th><th>Restore command</th></tr></thead><tbody>';
+    if(!arts.length){html+='<tr><td colspan="5" class="empty">no image backups yet</td></tr>';}
+    for(const a of arts){
+      const cmd=(a.type==='lxc')?('pct restore <NEWID> /mnt/kai-c/dump/'+a.file+' --storage local-lvm')
+                               :('qmrestore /mnt/kai-c/dump/'+a.file+' <NEWID> --storage local-lvm');
+      const age=Math.max(0,Math.round(Date.now()/1000-(a.mtime||0)))+ 's';
+      const ageh=Math.round((Date.now()/1000-(a.mtime||0))/3600);
+      html+='<tr><td style="font-size:0.6rem"><code>'+esc(a.file)+'</code></td><td>'+esc(a.type)+' '+esc(a.vmid)+'</td><td>'+esc(sz(a.size))+'</td><td>'+esc(ageh>0?ageh+'h':age)+'</td><td><code style="font-size:0.56rem">'+esc(cmd)+'</code></td></tr>';
+    }
+    html+='</tbody></table></div><p style="font-size:0.6rem;color:var(--fg-muted);margin-top:6px">Image restores run on the Proxmox node into a <b>NEW</b> vmid (replace &lt;NEWID&gt;) — never overwrite a live guest.</p></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function bkWrap(d){return '<pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+async function bkRun(){const el=$('bk-result');if(el)el.textContent='running backup…';try{const d=await api('/api/backups/run',{method:'POST'});toast('backup created: '+(d.manifest&&d.manifest.name));loadBackups();}catch(e){toast('error: '+e.message,'err');if(el)el.textContent='error: '+e.message;}}
+async function bkVerify(n){const el=$('bk-result');try{const d=await api('/api/backups/verify?name='+encodeURIComponent(n),{method:'POST'});if(el)el.innerHTML=bkWrap(d);toast('verify: '+(d.ok?'ok':'FAIL'),d.ok?'ok':'err');}catch(e){if(el)el.textContent='error: '+e.message;}}
+async function bkRestore(n){confirmAction('Restore drill','Extract '+n+' into /tmp/kai-restore-drill and verify?',async()=>{const el=$('bk-result');try{const d=await api('/api/backups/restore?name='+encodeURIComponent(n)+'&dest=/tmp/kai-restore-drill',{method:'POST'});if(el)el.innerHTML=bkWrap(d);toast('restored: '+(d.entries||[]).join(', '));}catch(e){toast('error: '+e.message,'err');}});}
+async function loadSessions(){
+  const el=$('sessions-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{const d=await api('/api/sessions').catch(e=>({error:e.message}));const list=d.sessions||[];
+    let html='<div class="card"><h3>Sessions <span class="badge info">'+list.length+'</span></h3>';
+    html+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"><input id="sess-id" placeholder="session id" class="search-input" style="max-width:150px"><input id="sess-mis" placeholder="mission id" class="search-input" style="max-width:150px"><button class="btn btn-xs btn-accent" onclick="sessAttach()">Attach</button><button class="btn btn-xs" onclick="loadSessions()">Refresh</button></div>';
+    html+='<table><thead><tr><th>Session</th><th>Mission</th><th>State</th><th>Actions</th></tr></thead><tbody>';
+    for(const s of list){html+='<tr><td>'+esc(s.session_id)+'</td><td>'+esc(s.mission_id)+'</td><td>'+esc(s.state)+(s.interrupted?' (interrupted)':'')+'</td><td><button class="btn btn-xs" onclick="sessAct(\''+esc(s.session_id)+'\',\'detach\')">Detach</button> <button class="btn btn-xs" onclick="sessAct(\''+esc(s.session_id)+'\',\'reconnect\')">Reconnect</button> <button class="btn btn-xs" onclick="sessAct(\''+esc(s.session_id)+'\',\'interrupt\')">Interrupt</button> <button class="btn btn-xs" onclick="sessAct(\''+esc(s.session_id)+'\',\'resume\')">Resume</button></td></tr>';}
+    html+='</tbody></table></div>'; el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function sessAttach(){const id=($('sess-id')||{}).value,m=($('sess-mis')||{}).value;if(!id||!m){toast('session + mission id required','err');return;}try{await api('/api/sessions',{method:'POST',body:JSON.stringify({session_id:id,mission_id:m})});toast('attached');loadSessions();}catch(e){toast(e.message,'err');}}
+async function sessAct(id,a){try{await api('/api/sessions/'+encodeURIComponent(id)+'/'+a,{method:'POST',body:'{}'});toast(a+' '+id);loadSessions();}catch(e){toast(e.message,'err');}}
+async function loadEmergency(){
+  const el=$('emergency-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{const st=await api('/api/emergency/status').catch(e=>({error:e.message}));
+    el.innerHTML='<div class="card"><h3>Emergency Mode <span class="badge '+(st.stopped?'bad':'ok')+'">'+(st.stopped?'STOPPED':'ARMED')+'</span></h3>'
+      +'<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs" onclick="emgStatus()">Status</button><button class="btn btn-xs btn-warn" onclick="emgStop()">Emergency Stop</button><button class="btn btn-xs btn-accent" onclick="emgResume()">Resume</button></div>'
+      +'<div id="emg-result"><pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(st,null,1))+'</pre></div></div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function emgStatus(){const el=$('emg-result');try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/emergency/status'),null,1))+'</pre>';}catch(e){el.textContent=e.message;}}
+async function emgStop(){if(!confirm('EMERGENCY STOP \u2014 halt autonomous execution?'))return;const el=$('emg-result');el.textContent='stopping…';try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/emergency/stop',{method:'POST',body:JSON.stringify({reason:'operator'})}),null,1))+'</pre>';}catch(e){el.textContent='error: '+e.message;}}
+async function emgResume(){const el=$('emg-result');el.textContent='resuming…';try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/emergency/resume',{method:'POST',body:'{}'}),null,1))+'</pre>';}catch(e){el.textContent='error: '+e.message;}}
+async function loadRoadmap(){return loadJsonTab('roadmap-content',['/roadmap/progress','/roadmap/next','/roadmap']);}
+async function loadLearning(){return loadJsonTab('learning-content',['/learning','/learning/builds','/learning/lessons']);}
+async function loadEnterprise(){return loadJsonTab('enterprise-content',['/enterprise/dashboard']);}
+async function arbView(p){
+  const el=$('arb-results'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{const d=await api('/cc/arbitra/arbitra/'+p); el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+  catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+async function arbCreateOpp(){
+  const t=($('arb-title')||{}).value; if(!t){toast('title required','err');return;}
+  const body={title:t,domain:'general'};
+  const pf=($('arb-profit')||{}).value; if(pf) body.expected_net_profit=Number(pf);
+  const cp=($('arb-capital')||{}).value; if(cp) body.capital_required=Number(cp);
+  const cf=($('arb-conf')||{}).value; if(cf) body.confidence=Number(cf);
+  try{const d=await api('/cc/arbitra/arbitra/opportunities',{method:'POST',body:JSON.stringify(body)}); toast('created: '+(d.opportunity?d.opportunity.id:'?')); arbView('opportunities');}
+  catch(e){ toast('error: '+e.message,'err'); }
+}
+
+// ===================== Arbitra — Economic OS (full dashboard) =====================
+const ARB='/cc/arbitra';
+async function arbG(p){return api(ARB+p);}
+async function arbP(p,b){return api(ARB+p,{method:'POST',body:JSON.stringify(b||{})});}
+function arbVal(id){const e=$(id);return e?String(e.value).trim():'';}
+function arbNum(id){const s=arbVal(id);return s===''?undefined:Number(s);}
+const ARB_TABS=[['overview','Overview'],['opportunities','Opportunities'],['ventures','Ventures'],['thesis','Thesis'],['decisions','Decisions'],['equity','Equity'],['dividends','Dividends'],['portfolio','Portfolio'],['compounding','Compounding'],['forecasts','Forecasts'],['redteam','Red Team'],['autonomy','Autonomy'],['activity','Activity']];
+
+async function loadArbitra(){
+  const el=$('arbitra-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  let health={}; try{health=await arbG('/health');}catch(e){}
+  const ok=health&&health.ok;
+  el.innerHTML='<div class="card"><h3>Arbitra — Economic OS <span class="badge '+(ok?'ok':'bad')+'">'+(ok?'online':'unreachable')+'</span> <span class="badge info">'+esc((health&&health.model)||'v1')+'</span><span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="arbRunCycle()">Run cycle</button><button class="btn btn-xs" onclick="loadArbitra()">Refresh</button></span></h3>'
+    +'<div class="muted" style="font-size:0.62rem">Advisory economic brain — records &amp; recommends; execution stays in money-center · API 192.168.1.118:8096</div>'
+    +'<div class="action-row" style="flex-wrap:wrap;gap:6px;margin-top:8px">'+ARB_TABS.map(t=>'<button class="btn btn-xs" data-arbtab="'+t[0]+'" onclick="arbTab(\''+t[0]+'\')">'+t[1]+'</button>').join('')+'</div></div>'
+    +'<div id="arb-body"><span class="loading">loading…</span></div>';
+  arbTab('overview');
+}
+function arbTab(n){
+  document.querySelectorAll('[data-arbtab]').forEach(b=>b.classList.toggle('btn-accent',b.getAttribute('data-arbtab')===n));
+  const m={overview:arbTOverview,opportunities:arbTOpps,ventures:arbTVentures,thesis:arbTThesis,decisions:arbTDecisions,equity:arbTEquity,dividends:arbTDividends,portfolio:arbTPortfolio,compounding:arbTCompounding,forecasts:arbTForecasts,redteam:arbTRedTeam,autonomy:arbTAutonomy,activity:arbTActivity};
+  (m[n]||arbTOverview)();
+}
+function arbBody(h){const b=$('arb-body');if(b)b.innerHTML=h;}
+function arbMetric(l,v,c){return '<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v==null||v===''?'—':v)+'</span><span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(l)+'</span></div>';}
+function arbTbl(cols,rows){
+  if(!rows||!rows.length) return '<p class="empty">none yet</p>';
+  return '<div class="table-wrap"><table><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+async function arbRunCycle(){try{const d=await arbP('/arbitra/cycle',{});window.__arbDigest=(d.cycle&&d.cycle.ai_digest)||null;toast('cycle run'+(window.__arbDigest?' ('+window.__arbDigest.source+')':''));arbTab('overview');}catch(e){toast('cycle error: '+e.message,'err');}}
+
+async function arbTOverview(){
+  arbBody('<span class="loading">loading…</span>');
+  const g=async p=>{try{return await arbG(p);}catch(e){return {error:e.message};}};
+  const st=await g('/arbitra/status'), rep=await g('/arbitra/report');
+  let h='<div class="card"><h3>Status</h3>';
+  h+=st.error?('<span class="error-text">'+esc(st.error)+'</span>'):('<div class="metric-row">'+arbMetric('Opportunities',st.opportunities)+arbMetric('Ventures',st.ventures)+arbMetric('Active',st.active_ventures,'var(--warn)')+'</div>');
+  h+='</div>';
+  if(!rep.error){const p=rep.portfolio||{};
+    h+='<div class="card"><h3>Economic report</h3><div class="metric-row">'+arbMetric('Revenue',p.revenue)+arbMetric('Expenses',p.expenses)+arbMetric('Net profit',(p.net_profit!=null?p.net_profit:p.profit))+arbMetric('Dividends paid',p.dividends_paid)+arbMetric('Autonomy','L'+rep.autonomy)+'</div>';
+    if(rep.ventures&&rep.ventures.length) h+='<div class="table-wrap"><table><thead><tr><th>Lifecycle</th><th>Ventures</th></tr></thead><tbody>'+rep.ventures.map(v=>'<tr><td>'+esc(v.lifecycle_state)+'</td><td>'+esc(v.n)+'</td></tr>').join('')+'</tbody></table></div>';
+    h+='</div>';
+  } else h+='<div class="card"><span class="error-text">'+esc(rep.error)+'</span></div>';
+  if(window.__arbDigest&&window.__arbDigest.text){
+    const dg=window.__arbDigest;
+    h+='<div class="card"><h3>AI digest '+(dg.source==='local'?'<span class="badge ok">local model</span>':'<span class="badge warn">'+esc(dg.source||'fallback')+'</span>')+' <span class="badge info">'+esc(dg.model||'')+'</span></h3><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(dg.text)+'</pre></div>';
+  }
+  arbBody(h);
+}
+
+async function arbTOpps(){
+  arbBody('<span class="loading">loading…</span>');
+  try{
+    const d=await arbG('/arbitra/opportunities');
+    const rows=(d.opportunities||[]).map(o=>'<tr><td>'+esc(o.id)+'</td><td>'+esc(o.domain||'')+'</td><td>'+esc(o.title||'')+'</td><td>'+esc(o.expected_net_profit==null?'—':o.expected_net_profit)+'</td><td>'+esc(o.capital_required==null?'—':o.capital_required)+'</td><td>'+esc(o.confidence==null?'—':o.confidence)+'</td><td>'+esc(o.arbitra_score==null?o.score:o.arbitra_score)+'</td><td>'+esc(o.status||'')+'</td><td><button class="btn btn-xs btn-accent" onclick="arbScoreOpp('+o.id+')">Score</button></td></tr>').join('');
+    let h='<div class="card"><h3>Opportunity registry <span class="badge info">'+(d.opportunities||[]).length+'</span></h3>'+arbTbl(['id','domain','title','exp net profit','capital','conf','score','status',''],rows)+'</div>';
+    h+='<div class="card"><h3>Add opportunity</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="ao-domain" class="search-input" placeholder="domain" style="max-width:130px">'
+      +'<input id="ao-title" class="search-input" placeholder="title" style="max-width:220px">'
+      +'<input id="ao-profit" type="number" class="search-input" placeholder="expected net profit" style="max-width:180px">'
+      +'<input id="ao-capital" type="number" class="search-input" placeholder="capital required" style="max-width:160px">'
+      +'<input id="ao-conf" type="number" step="0.05" class="search-input" placeholder="confidence 0-1" style="max-width:150px">'
+      +'<input id="ao-horizon" class="search-input" placeholder="time horizon" style="max-width:140px">'
+      +'<select id="ao-risk" class="search-input" style="max-width:120px"><option value="">risk…</option><option>low</option><option>medium</option><option>high</option></select>'
+      +'<button class="btn btn-xs btn-accent" onclick="arbAddOpp()">Add</button></div></div>';
+    arbBody(h);
+  }catch(e){arbBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function arbAddOpp(){
+  const t=arbVal('ao-title'); if(!t){toast('title required','err');return;}
+  const b={title:t,domain:arbVal('ao-domain')||'general'};
+  const pf=arbNum('ao-profit'); if(pf!=null)b.expected_net_profit=pf;
+  const cp=arbNum('ao-capital'); if(cp!=null)b.capital_required=cp;
+  const cf=arbNum('ao-conf'); if(cf!=null)b.confidence=cf;
+  const hz=arbVal('ao-horizon'); if(hz)b.time_horizon=hz;
+  const rk=arbVal('ao-risk'); if(rk)b.risk=rk;
+  try{await arbP('/arbitra/opportunities',b);toast('opportunity added');arbTab('opportunities');}catch(e){toast('error: '+e.message,'err');}
+}
+async function arbScoreOpp(id){try{const d=await arbP('/arbitra/opportunities/evaluate',{opportunity_id:id});toast('score '+(d.final_score!=null?d.final_score:'?'));arbTab('opportunities');}catch(e){toast('score error: '+e.message,'err');}}
+
+async function arbTVentures(){
+  arbBody('<span class="loading">loading…</span>');
+  try{
+    const d=await arbG('/arbitra/ventures');
+    const rows=(d.ventures||[]).map(v=>'<tr><td>'+esc(v.id)+'</td><td>'+esc(v.name||'')+'</td><td>'+esc(v.category||'')+'</td><td>'+esc(v.lifecycle_state||'')+'</td><td>'+esc((v.created_at||'').slice(0,16).replace('T',' '))+'</td><td><button class="btn btn-xs btn-accent" onclick="arbOpenVenture('+v.id+')">Open</button></td></tr>').join('');
+    let h='<div class="card"><h3>Ventures <span class="badge info">'+(d.ventures||[]).length+'</span></h3>'+arbTbl(['id','name','category','lifecycle','created',''],rows)+'</div>';
+    h+='<div class="card"><h3>New venture</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="nv-opp" type="number" class="search-input" placeholder="opportunity id (optional)" style="max-width:200px">'
+      +'<input id="nv-name" class="search-input" placeholder="name" style="max-width:200px">'
+      +'<input id="nv-cat" class="search-input" placeholder="category" style="max-width:150px">'
+      +'<button class="btn btn-xs btn-accent" onclick="arbAddVenture()">Create</button></div></div>';
+    h+='<div id="arb-venture-detail"></div>';
+    arbBody(h);
+  }catch(e){arbBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function arbAddVenture(){
+  const n=arbVal('nv-name'); if(!n){toast('name required','err');return;}
+  const b={name:n}; const o=arbNum('nv-opp'); if(o!=null)b.opportunity_id=o; const c=arbVal('nv-cat'); if(c)b.category=c;
+  try{await arbP('/arbitra/ventures',b);toast('venture created');arbTab('ventures');}catch(e){toast('error: '+e.message,'err');}
+}
+async function arbOpenVenture(id){
+  const el=$('arb-venture-detail'); if(!el)return;
+  el.innerHTML='<div class="card"><span class="loading">loading…</span></div>';
+  try{
+    const d=await arbG('/arbitra/ventures/'+id);
+    const pnl=await arbG('/arbitra/ventures/'+id+'/pnl').catch(()=>({}));
+    const v=d.venture||{};
+    let h='<div class="card"><h3>Venture #'+esc(id)+' — '+esc(v.name||'')+' <span class="badge info">'+esc(v.lifecycle_state||'')+'</span><span class="card-header-actions"><button class="btn btn-xs" onclick="arbTab(\'ventures\')">Close</button></span></h3>';
+    h+='<div class="metric-row">'+arbMetric('Revenue',pnl.revenue)+arbMetric('Expenses',pnl.expenses)+arbMetric('Net margin',pnl.margin)+arbMetric('Margin %',pnl.margin_pct)+'</div>';
+    h+='<h4 style="font-size:0.7rem">Stages</h4>'+arbTbl(['stage','entered','evidence'],(d.stages||[]).map(s=>'<tr><td>'+esc(s.stage)+'</td><td>'+esc((s.entered_at||'').slice(0,16))+'</td><td>'+esc(s.evidence||'')+'</td></tr>').join(''));
+    h+='<h4 style="font-size:0.7rem">Milestones</h4>'+arbTbl(['name','status','due'],(d.milestones||[]).map(s=>'<tr><td>'+esc(s.name)+'</td><td>'+esc(s.status||'')+'</td><td>'+esc((s.due_at||'').slice(0,10))+'</td></tr>').join(''));
+    h+='<h4 style="font-size:0.7rem">Capital gates</h4>'+arbTbl(['gate','amount','decision'],(d.gates||[]).map(s=>'<tr><td>'+esc(s.gate_no)+'</td><td>'+esc(s.amount)+'</td><td>'+esc(s.decision||'')+'</td></tr>').join(''));
+    h+='<h4 style="font-size:0.7rem">Validation</h4>'+arbTbl(['verdict','overall','market','technical','unit econ','at'],(d.validations||[]).map(x=>'<tr><td>'+esc(x.verdict)+'</td><td>'+esc(x.overall)+'</td><td>'+esc(x.market_score==null?'—':x.market_score)+'</td><td>'+esc(x.technical_score==null?'—':x.technical_score)+'</td><td>'+esc(x.unit_econ_score==null?'—':x.unit_econ_score)+'</td><td>'+esc((x.created_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join(''));
+    h+='<h4 style="font-size:0.7rem">Actions</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="av-stage" class="search-input" placeholder="advance to stage e.g. VALIDATE" style="max-width:230px"><button class="btn btn-xs btn-accent" onclick="arbAdvance('+id+')">Advance</button>'
+      +'<input id="av-rev" type="number" class="search-input" placeholder="revenue amount" style="max-width:140px"><button class="btn btn-xs" onclick="arbBiz('+id+',\'revenue\')">+Revenue</button>'
+      +'<input id="av-exp" type="number" class="search-input" placeholder="expense amount" style="max-width:140px"><button class="btn btn-xs" onclick="arbBiz('+id+',\'expense\')">+Expense</button>'
+      +'<input id="av-ms" class="search-input" placeholder="milestone name" style="max-width:180px"><button class="btn btn-xs" onclick="arbMilestone('+id+')">+Milestone</button>'
+      +'<input id="av-exit" type="number" class="search-input" placeholder="exit proceeds" style="max-width:140px"><button class="btn btn-xs btn-warn" onclick="arbExit('+id+')">Exit</button>'
+      +'<input id="av-gate" class="search-input" placeholder="gate name (records PASSED)" style="max-width:200px"><button class="btn btn-xs" onclick="arbGate('+id+')">+Gate</button>'
+      +'<button class="btn btn-xs btn-warn" onclick="arbKill('+id+')">Kill</button></div>'
+      +'<h4 style="font-size:0.7rem;margin-top:10px">Business Factory</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="av-mkt" type="number" class="search-input" placeholder="market score" style="max-width:120px">'
+      +'<input id="av-tech" type="number" class="search-input" placeholder="technical score" style="max-width:130px">'
+      +'<input id="av-ue" type="number" class="search-input" placeholder="unit-econ score" style="max-width:140px">'
+      +'<button class="btn btn-xs btn-accent" onclick="arbValidate('+id+')">Validate</button>'
+      +'<button class="btn btn-xs" onclick="arbMvp('+id+')">Deliver MVP</button>'
+      +'<input id="av-pivot" class="search-input" placeholder="restructure reason" style="max-width:200px"><button class="btn btn-xs btn-warn" onclick="arbRestructure('+id+')">Restructure</button>'
+      +'<button class="btn btn-xs" onclick="arbAnalyze('+id+')">Analyze (local model)</button></div>'
+      +'<div id="arb-analysis" style="margin-top:8px"></div>'
+      +'<div id="arb-vmsg" class="muted" style="font-size:0.62rem;margin-top:6px"></div></div>';
+    h+='<div class="card"><h3>Issue equity — venture #'+esc(id)+'</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="eq-sh" class="search-input" placeholder="shareholder (e.g. KAI)" style="max-width:170px">'
+      +'<input id="eq-cls" class="search-input" placeholder="share class" style="max-width:130px">'
+      +'<input id="eq-pct" type="number" step="0.01" class="search-input" placeholder="ownership %" style="max-width:130px">'
+      +'<input id="eq-shares" type="number" class="search-input" placeholder="shares" style="max-width:120px">'
+      +'<input id="eq-cap" type="number" class="search-input" placeholder="capital contributed" style="max-width:170px">'
+      +'<button class="btn btn-xs btn-accent" onclick="arbIssueEquity('+id+')">Issue</button></div></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<div class="card"><span class="error-text">'+esc(e.message)+'</span></div>';}
+}
+function arbVMsg(s,err){const m=$('arb-vmsg');if(m){m.className=err?'error-text':'ok-text';m.textContent=s;}}
+async function arbAdvance(id){const s=arbVal('av-stage');if(!s){toast('stage required','err');return;}try{await arbP('/arbitra/ventures/'+id+'/advance',{stage:s});toast('advanced to '+s);arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+async function arbBiz(id,kind){const a=arbNum(kind==='revenue'?'av-rev':'av-exp');if(a==null){toast('amount required','err');return;}try{await arbP('/arbitra/ventures/'+id+'/'+(kind==='revenue'?'revenue':'expense'),kind==='revenue'?{amount:a}:{amount:a});toast(kind+' recorded');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+async function arbMilestone(id){const n=arbVal('av-ms');if(!n){toast('milestone name required','err');return;}try{await arbP('/arbitra/ventures/'+id+'/milestone',{name:n});toast('milestone added');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+async function arbGate(id){const n=arbVal('av-gate');if(!n){toast('gate name required','err');return;}try{await arbP('/arbitra/ventures/'+id+'/gate',{name:n,status:'passed'});toast('gate recorded (passed)');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+async function arbValidate(id){
+  const b={}; const m=arbNum('av-mkt'); if(m!=null)b.market=m; const t=arbNum('av-tech'); if(t!=null)b.technical=t; const u=arbNum('av-ue'); if(u!=null)b.unit_economics=u;
+  if(!Object.keys(b).length){toast('at least one score required','err');return;}
+  try{const d=await arbP('/arbitra/ventures/'+id+'/validate',b);toast('validation: '+d.verdict+' ('+d.overall+')');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}
+}
+async function arbMvp(id){try{const d=await arbP('/arbitra/ventures/'+id+'/mvp',{name:'MVP'});toast('MVP delivered');arbOpenVenture(id);}catch(e){toast('MVP blocked: '+e.message,'err');}}
+async function arbRestructure(id){const r=arbVal('av-pivot');if(!r){toast('reason required','err');return;}if(!confirm('Restructure venture #'+id+' (pivot back to VALIDATE)?'))return;try{await arbP('/arbitra/ventures/'+id+'/restructure',{reason:r});toast('venture restructured');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+async function arbAnalyze(id){
+  const el=$('arb-analysis'); if(!el)return; el.innerHTML='<span class="loading">analyzing with local model…</span>';
+  try{const d=await arbP('/arbitra/analyze',{venture_id:id});
+    const badge=d.source==='local'?'<span class="badge ok">local model</span>':'<span class="badge warn">fallback</span>';
+    el.innerHTML='<div class="card"><h3>AI analysis '+badge+' <span class="badge info">'+esc(d.model||'')+'</span></h3><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(d.analysis||'')+'</pre>'+(d.error?'<div class="muted" style="font-size:0.6rem">model error: '+esc(d.error)+'</div>':'')+'</div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function arbExit(id){const p=arbNum('av-exit');if(p==null){toast('proceeds required','err');return;}if(!confirm('Record exit for venture #'+id+' with proceeds '+p+'?'))return;try{await arbP('/arbitra/ventures/'+id+'/exit',{kind:'sale',proceeds:p});toast('exit recorded');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+function arbKill(id){confirmAction('Kill venture','Mark venture #'+id+' as KILL? This records a kill decision.',async()=>{try{await arbP('/arbitra/ventures/'+id+'/kill',{decision:'KILL',reason:'operator'});toast('venture killed');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}});}
+async function arbIssueEquity(id){
+  const sh=arbVal('eq-sh'); if(!sh){toast('shareholder required','err');return;}
+  const b={shareholder:sh};
+  const cls=arbVal('eq-cls'); if(cls)b.share_class=cls;
+  const pct=arbNum('eq-pct'); if(pct!=null)b.ownership_percent=pct;
+  const sha=arbNum('eq-shares'); if(sha!=null)b.shares=sha;
+  const cap=arbNum('eq-cap'); if(cap!=null)b.capital_contributed=cap;
+  try{await arbP('/arbitra/ventures/'+id+'/equity',b);toast('equity issued');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}
+}
+
+async function arbTEquity(){
+  arbBody('<span class="loading">loading…</span>');
+  let h='<div class="card"><h3>Cap table</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="eqx-vid" type="number" class="search-input" placeholder="venture id" style="max-width:140px">'
+    +'<button class="btn btn-xs btn-accent" onclick="arbCapTable()">Load</button></div><div id="arb-captable" style="margin-top:8px"></div></div>';
+  h+='<div class="card"><h3>Issue equity</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="eqx-vid2" type="number" class="search-input" placeholder="venture id" style="max-width:120px">'
+    +'<input id="eqx-sh" class="search-input" placeholder="shareholder" style="max-width:150px">'
+    +'<input id="eqx-cls" class="search-input" placeholder="share class" style="max-width:120px">'
+    +'<input id="eqx-pct" type="number" step="0.01" class="search-input" placeholder="ownership %" style="max-width:130px">'
+    +'<input id="eqx-shares" type="number" class="search-input" placeholder="shares" style="max-width:110px">'
+    +'<input id="eqx-cap" type="number" class="search-input" placeholder="capital contributed" style="max-width:170px">'
+    +'<button class="btn btn-xs btn-accent" onclick="arbIssueEquity2()">Issue</button></div></div>';
+  h+='<div class="card"><h3>Capital-for-equity round</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="rd-vid" type="number" class="search-input" placeholder="venture id" style="max-width:120px">'
+    +'<input id="rd-inv" class="search-input" placeholder="investor" style="max-width:150px">'
+    +'<input id="rd-raise" type="number" class="search-input" placeholder="raise amount" style="max-width:140px">'
+    +'<input id="rd-pre" type="number" class="search-input" placeholder="pre-money" style="max-width:130px">'
+    +'<input id="rd-name" class="search-input" placeholder="round name" style="max-width:130px">'
+    +'<button class="btn btn-xs btn-accent" onclick="arbRound()">Raise</button></div>'
+    +'<div class="muted" style="font-size:0.6rem;margin-top:6px">Dilutes existing holders pro-rata and records a valuation.</div></div>';
+  arbBody(h);
+}
+async function arbRound(){
+  const vid=arbNum('rd-vid'), inv=arbVal('rd-inv'), raise=arbNum('rd-raise'), pre=arbNum('rd-pre');
+  if(vid==null||!inv||raise==null||pre==null){toast('venture, investor, raise, pre-money required','err');return;}
+  const b={investor:inv,raise_amount:raise,pre_money:pre}; const rn=arbVal('rd-name'); if(rn)b.round_name=rn;
+  try{const d=await arbP('/arbitra/ventures/'+vid+'/round',b);toast('round done — investor '+d.round.investor_pct+'%');arbTab('equity');}catch(e){toast('error: '+e.message,'err');}
+}
+async function arbCapTable(){
+  const el=$('arb-captable'); const id=arbNum('eqx-vid'); if(!id){toast('venture id required','err');return;}
+  el.innerHTML='<span class="loading">loading…</span>';
+  try{const d=await arbG('/arbitra/cap-table/'+id);
+    const vd=await arbG('/arbitra/ventures/'+id).catch(()=>({valuations:[]}));
+    el.innerHTML='<div class="muted" style="font-size:0.62rem">Total ownership: '+esc(d.total_ownership_percent)+'%</div>'
+      +arbTbl(['shareholder','class','shares','ownership %','capital'],(d.holdings||[]).map(x=>'<tr><td>'+esc(x.shareholder_name||x.shareholder_id)+'</td><td>'+esc(x.share_class||'')+'</td><td>'+esc(x.shares)+'</td><td>'+esc(x.ownership_percent)+'</td><td>'+esc(x.capital_contributed)+'</td></tr>').join(''))
+      +'<h4 style="font-size:0.7rem;margin-top:8px">Valuation history</h4>'
+      +arbTbl(['round','pre-money','post-money','raise','investor %','at'],(vd.valuations||[]).map(v=>'<tr><td>'+esc(v.round_name||'')+'</td><td>'+esc(v.pre_money)+'</td><td>'+esc(v.post_money)+'</td><td>'+esc(v.raise_amount)+'</td><td>'+esc(v.investor_pct)+'</td><td>'+esc((v.created_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join(''));
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function arbIssueEquity2(){
+  const id=arbNum('eqx-vid2'); if(id==null){toast('venture id required','err');return;}
+  const sh=arbVal('eqx-sh'); if(!sh){toast('shareholder required','err');return;}
+  const b={shareholder:sh};
+  const cls=arbVal('eqx-cls'); if(cls)b.share_class=cls;
+  const pct=arbNum('eqx-pct'); if(pct!=null)b.ownership_percent=pct;
+  const sha=arbNum('eqx-shares'); if(sha!=null)b.shares=sha;
+  const cap=arbNum('eqx-cap'); if(cap!=null)b.capital_contributed=cap;
+  try{await arbP('/arbitra/ventures/'+id+'/equity',b);toast('equity issued');arbTab('equity');}catch(e){toast('error: '+e.message,'err');}
+}
+
+async function arbTDividends(){
+  arbBody('<span class="loading">loading…</span>');
+  try{
+    const d=await arbG('/arbitra/dividends');
+    const rows=(d.dividends||[]).map(x=>'<tr><td>'+esc(x.id)+'</td><td>'+esc(x.venture_id)+'</td><td>'+esc(x.shareholder_id)+'</td><td>'+esc(x.ownership_percent)+'</td><td>'+esc(x.amount)+'</td><td>'+esc(x.currency||'')+'</td><td>'+esc(x.status||'')+'</td><td>'+(x.status==='proposed'?'<button class="btn btn-xs" onclick="arbApproveDividend('+x.id+')">Approve</button>':(x.status==='approved'?'<button class="btn btn-xs btn-accent" onclick="arbPayDividend('+x.id+')">Pay</button>':'—'))+'</td></tr>').join('');
+    let h='<div class="card"><h3>Dividends <span class="badge info">'+(d.dividends||[]).length+'</span></h3>'+arbTbl(['id','venture','shareholder','ownership %','amount','cur','status',''],rows)+'</div>';
+    h+='<div class="card"><h3>Propose dividend</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="dv-vid" type="number" class="search-input" placeholder="venture id" style="max-width:130px">'
+      +'<input id="dv-profit" type="number" class="search-input" placeholder="distributable profit" style="max-width:180px">'
+      +'<input id="dv-ps" class="search-input" placeholder="period start (YYYY-MM-DD)" style="max-width:190px">'
+      +'<input id="dv-pe" class="search-input" placeholder="period end" style="max-width:150px">'
+      +'<button class="btn btn-xs btn-accent" onclick="arbProposeDividend()">Propose</button></div>'
+      +'<div class="muted" style="font-size:0.6rem;margin-top:6px">Allocates pro-rata across the cap table; payment is recorded, not executed.</div></div>';
+    h+='<div class="card"><h3>Distributable profit</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="dvx-vid" type="number" class="search-input" placeholder="venture id" style="max-width:130px">'
+      +'<button class="btn btn-xs btn-accent" onclick="arbDistributable()">Check</button></div>'
+      +'<div id="dvx-result" style="margin-top:8px"></div>'
+      +'<div class="muted" style="font-size:0.6rem;margin-top:6px">net profit minus reserve (default 30%). Proposals above net profit are rejected.</div></div>';
+    arbBody(h);
+  }catch(e){arbBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function arbProposeDividend(){
+  const vid=arbNum('dv-vid'), dp=arbNum('dv-profit');
+  if(vid==null||dp==null){toast('venture id and profit required','err');return;}
+  const b={venture_id:vid,distributable_profit:dp};
+  const ps=arbVal('dv-ps'); if(ps)b.period_start=ps;
+  const pe=arbVal('dv-pe'); if(pe)b.period_end=pe;
+  try{await arbP('/arbitra/dividends/propose',b);toast('dividend proposed');arbTab('dividends');}catch(e){toast('error: '+e.message,'err');}
+}
+async function arbPayDividend(id){const dest=prompt('Destination for the treasury receipt:','cold-treasury');if(!dest)return;try{const d=await arbP('/arbitra/dividends/'+id+'/pay',{destination:dest});toast('dividend paid'+(d.treasury_receipt?' — receipt '+d.treasury_receipt.amount:''));arbTab('dividends');}catch(e){toast('error: '+e.message,'err');}}
+async function arbApproveDividend(id){try{await arbP('/arbitra/dividends/'+id+'/approve',{});toast('dividend approved');arbTab('dividends');}catch(e){toast('error: '+e.message,'err');}}
+async function arbDistributable(){
+  const el=$('dvx-result'); if(!el)return; const vid=arbNum('dvx-vid'); if(vid==null){toast('venture id required','err');return;}
+  el.innerHTML='<span class="loading">…</span>';
+  try{const d=await arbG('/arbitra/ventures/'+vid+'/distributable');
+    el.innerHTML='<div class="metric-row">'+arbMetric('Revenue',d.revenue)+arbMetric('Expenses',d.expenses)+arbMetric('Net profit',d.net_profit)+arbMetric('Reserve',d.reserve,(''+d.reserve_pct)) +arbMetric('Distributable',d.distributable,'var(--warn)')+'</div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+async function arbTPortfolio(){
+  arbBody('<span class="loading">loading…</span>');
+  const g=async p=>{try{return await arbG(p);}catch(e){return {error:e.message};}};
+  const [pf,perf]=await Promise.all([g('/arbitra/portfolio'),g('/arbitra/performance')]);
+  let h='';
+  if(pf.error){h+='<div class="card"><span class="error-text">'+esc(pf.error)+'</span></div>';}
+  else{
+    h+='<div class="card"><h3>Portfolio</h3><div class="metric-row">'+arbMetric('Revenue',pf.revenue)+arbMetric('Expenses',pf.expenses)+arbMetric('Profit',pf.profit)+arbMetric('Dividends paid',pf.dividends_paid)+arbMetric('Strategy capital',pf.strategy_capital_total)+'</div>'
+      +'<h4 style="font-size:0.7rem">Ventures by state</h4>'+arbTbl(['state','count'],(pf.ventures_by_state||[]).map(x=>'<tr><td>'+esc(x.lifecycle_state)+'</td><td>'+esc(x.n)+'</td></tr>').join(''))
+      +'<div class="action-row" style="margin-top:8px"><button class="btn btn-xs btn-accent" onclick="arbSnapshot()">Take snapshot</button></div></div>';
+  }
+  if(!perf.error){h+='<div class="card"><h3>Performance</h3><div class="metric-row">'+arbMetric('Revenue',perf.revenue)+arbMetric('Expenses',perf.expenses)+arbMetric('Net profit',perf.net_profit)+arbMetric('ROI %',perf.roi_percent)+arbMetric('Capital contributed',perf.capital_contributed)+'</div></div>';}
+  arbBody(h);
+}
+async function arbSnapshot(){try{await arbP('/arbitra/portfolio/snapshot',{});toast('snapshot saved');arbTab('portfolio');}catch(e){toast('error: '+e.message,'err');}}
+
+async function arbTCompounding(){
+  arbBody('<span class="loading">loading…</span>');
+  let h='<div class="card"><h3>Compounding engine</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="cp-pool" type="number" class="search-input" placeholder="pool (blank = distributable net)" style="max-width:270px">'
+    +'<button class="btn btn-xs btn-accent" onclick="arbCompound(false)">Plan</button>'
+    +'<button class="btn btn-xs" onclick="arbCompound(true)">Plan + file requests</button></div>'
+    +'<div class="muted" style="font-size:0.6rem;margin-top:6px">Reinvests the profit pool into winners pro-rata (capped at max_single_op_pct). Advisory — filing creates money-center capital requests that still need approval.</div>'
+    +'<div id="cp-result" style="margin-top:8px"></div></div>';
+  h+='<div class="card"><h3>Winner / loser ranking</h3><div id="cp-winners"><span class="loading">loading…</span></div></div>';
+  arbBody(h);
+  try{const d=await arbG('/arbitra/winners');
+    $('cp-winners').innerHTML='<h4 style="font-size:0.7rem">Winners</h4>'+arbTbl(['id','name','revenue','net profit','margin %','score'],(d.winners||[]).map(w=>'<tr><td>'+esc(w.id)+'</td><td>'+esc(w.name)+'</td><td>'+esc(w.revenue)+'</td><td>'+esc(w.net_profit)+'</td><td>'+esc(w.margin_pct)+'</td><td>'+esc(w.score)+'</td></tr>').join(''))
+      +'<h4 style="font-size:0.7rem">Losers</h4>'+arbTbl(['id','name','revenue','net profit','margin %','score'],(d.losers||[]).map(w=>'<tr><td>'+esc(w.id)+'</td><td>'+esc(w.name)+'</td><td>'+esc(w.revenue)+'</td><td>'+esc(w.net_profit)+'</td><td>'+esc(w.margin_pct)+'</td><td>'+esc(w.score)+'</td></tr>').join(''));
+  }catch(e){$('cp-winners').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function arbCompound(file){
+  const el=$('cp-result'); if(!el)return; el.innerHTML='<span class="loading">…</span>';
+  const b={file:!!file}; const p=arbNum('cp-pool'); if(p!=null)b.pool=p;
+  try{const d=await arbP('/arbitra/compound',b);
+    let h='<div class="metric-row">'+arbMetric('Total net profit',d.total_net_profit)+arbMetric('Distributable',d.distributable)+arbMetric('Pool',d.plan.pool)+arbMetric('Assigned',d.plan.assigned)+arbMetric('Leftover',d.plan.leftover)+'</div>';
+    h+=arbTbl(['venture','name','weight %','amount','capped'],(d.plan.allocations||[]).map(a=>'<tr><td>'+esc(a.venture_id)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.weight_pct)+'</td><td>'+esc(a.amount)+'</td><td>'+(a.capped?'yes':'no')+'</td></tr>').join(''));
+    if(d.filed&&d.filed.length){h+='<h4 style="font-size:0.7rem">Filed</h4><pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(d.filed,null,1))+'</pre>';}
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function arbTForecasts(){
+  arbBody('<span class="loading">loading…</span>');
+  try{
+    const d=await arbG('/arbitra/forecasts');
+    const rows=(d.forecasts||[]).map(f=>'<tr><td>'+esc(f.id)+'</td><td>'+esc(f.venture_id)+'</td><td>'+esc(f.metric||'')+'</td><td>'+esc(f.forecast)+'</td><td>'+esc(f.actual==null?'—':f.actual)+'</td><td>'+esc(f.error_pct==null?'—':f.error_pct)+'</td><td>'+(f.actual==null?'<input id="fc-act-'+f.id+'" type="number" class="search-input" placeholder="actual" style="max-width:110px"> <button class="btn btn-xs btn-accent" onclick="arbResolve('+f.id+')">Resolve</button>':'—')+'</td></tr>').join('');
+    let h='<div class="card"><h3>Forecasts <span class="badge info">'+(d.forecasts||[]).length+'</span></h3>'+arbTbl(['id','venture','metric','forecast','actual','error %',''],rows)+'</div>';
+    h+='<div class="card"><h3>New forecast</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="nf-vid" type="number" class="search-input" placeholder="venture id" style="max-width:130px">'
+      +'<input id="nf-metric" class="search-input" placeholder="metric e.g. revenue" style="max-width:180px">'
+      +'<input id="nf-val" type="number" class="search-input" placeholder="forecast value" style="max-width:160px">'
+      +'<button class="btn btn-xs btn-accent" onclick="arbAddForecast()">Add</button></div></div>';
+    arbBody(h);
+  }catch(e){arbBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function arbAddForecast(){const vid=arbNum('nf-vid'),m=arbVal('nf-metric'),v=arbNum('nf-val');if(vid==null||!m||v==null){toast('venture, metric, value required','err');return;}try{await arbP('/arbitra/forecast',{venture_id:vid,metric:m,forecast:v});toast('forecast added');arbTab('forecasts');}catch(e){toast('error: '+e.message,'err');}}
+async function arbResolve(id){const a=arbNum('fc-act-'+id);if(a==null){toast('actual required','err');return;}try{const d=await arbP('/arbitra/forecasts/'+id+'/actual',{actual:a});toast('resolved, error '+d.forecast.error_pct+'%');arbTab('forecasts');}catch(e){toast('error: '+e.message,'err');}}
+
+async function arbTRedTeam(){
+  arbBody('<div class="card"><h3>Red team</h3>'
+    +'<div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="rt-vid" type="number" class="search-input" placeholder="venture id (optional)" style="max-width:180px">'
+    +'<input id="rt-rev" type="number" class="search-input" placeholder="revenue (if no id)" style="max-width:170px">'
+    +'<input id="rt-exp" type="number" class="search-input" placeholder="expenses (if no id)" style="max-width:170px">'
+    +'<button class="btn btn-xs btn-accent" onclick="arbDoRedTeam()">Run red team</button></div>'
+    +'<div id="arb-rt" style="margin-top:10px"></div></div>');
+}
+async function arbDoRedTeam(){
+  const el=$('arb-rt'); if(!el)return; el.innerHTML='<span class="loading">loading…</span>';
+  const b={}; const vid=arbNum('rt-vid'); if(vid!=null)b.venture_id=vid;
+  const rev=arbNum('rt-rev'); if(rev!=null)b.revenue=rev;
+  const exp=arbNum('rt-exp'); if(exp!=null)b.expenses=exp;
+  try{const d=await arbP('/arbitra/redteam',b);
+    let h='<h4 style="font-size:0.7rem">Scenarios</h4>'+arbTbl(['scenario','result'],(d.scenarios||[]).map(s=>'<tr><td>'+esc(s.name||s.scenario||JSON.stringify(s).slice(0,40))+'</td><td>'+esc(s.result!=null?s.result:(s.value!=null?s.value:''))+'</td></tr>').join(''));
+    h+='<h4 style="font-size:0.7rem">Questions</h4><ul>'+(d.questions||[]).map(q=>'<li>'+esc(q)+'</li>').join('')+'</ul>';
+    if(d.ai_commentary) h+='<h4 style="font-size:0.7rem">AI red team '+(d.ai_source==='local'?'<span class="badge ok">local model</span>':'<span class="badge warn">'+esc(d.ai_source||'fallback')+'</span>')+'</h4><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(d.ai_commentary)+'</pre>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+async function arbTAutonomy(){
+  arbBody('<span class="loading">loading…</span>');
+  try{
+    const d=await arbG('/arbitra/autonomy');
+    let h='<div class="card"><h3>Autonomy <span class="badge info">Level '+esc(d.level)+'</span></h3><div class="metric-row">'+arbMetric('Real money',d.may_trade_real_money?'allowed':'blocked',d.may_trade_real_money?'var(--warn)':'var(--accent)')+arbMetric('Real capital',d.may_allocate_real_capital?'allowed':'blocked',d.may_allocate_real_capital?'var(--warn)':'var(--accent)')+arbMetric('Approval above',d.requires_human_approval_above)+'</div>';
+    if(Array.isArray(d.hard_limits)&&d.hard_limits.length) h+='<div class="muted" style="font-size:0.62rem">Hard limits: '+esc(d.hard_limits.join(', '))+'</div>';
+    h+='<h4 style="font-size:0.7rem;margin-top:10px">Set level (0–5)</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<select id="au-level" class="search-input" style="max-width:120px">'+[0,1,2,3,4,5].map(l=>'<option value="'+l+'"'+(l===d.level?' selected':'')+'>Level '+l+'</option>').join('')+'</select>'
+      +'<button class="btn btn-xs btn-accent" onclick="arbSetAutonomy()">Set</button></div>'
+      +'<div class="muted" style="font-size:0.6rem;margin-top:6px">Level 4+ requires human approval. Real-money levels stay gated by directive §23/§34.</div></div>';
+    h+='<div class="card"><h3>PHASE 8 readiness gate <span class="badge bad">real capital disabled</span></h3><div id="au-readiness"><span class="loading">loading…</span></div></div>';
+    arbBody(h);
+    arbG('/arbitra/readiness').then(rd=>{
+      const el=$('au-readiness'); if(!el)return;
+      el.innerHTML='<div class="metric-row">'+arbMetric('Ready',rd.ready?'yes':'no',rd.ready?'var(--accent)':'var(--warn)')+arbMetric('Real capital',rd.real_capital_enabled?'enabled':'disabled','var(--accent)')+'</div>'
+        +arbTbl(['check','ok','detail'],(rd.checks||[]).map(c=>'<tr><td>'+esc(c.name)+'</td><td><span class="badge '+(c.ok?'ok':'bad')+'">'+(c.ok?'ok':'no')+'</span></td><td class="muted">'+esc(c.detail||'')+'</td></tr>').join(''))
+        +'<div class="muted" style="font-size:0.6rem;margin-top:6px">'+esc(rd.note||'')+'</div>';
+    }).catch(e=>{const el=$('au-readiness'); if(el) el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
+  }catch(e){arbBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function arbSetAutonomy(){const l=$('au-level')?Number($('au-level').value):1;try{const d=await arbP('/arbitra/autonomy',{level:l});toast('autonomy set to L'+l);arbTab('autonomy');}catch(e){toast('error: '+e.message,'err');}}
+
+async function arbTThesis(){
+  arbBody('<span class="loading">loading…</span>');
+  try{
+    const d=await arbG('/arbitra/theses');
+    const rows=(d.theses||[]).map(t=>'<tr><td>'+esc(t.id)+'</td><td>'+esc(t.venture_id==null?'—':t.venture_id)+'</td><td>'+esc(t.opportunity_id==null?'—':t.opportunity_id)+'</td><td>'+esc((t.thesis||'').slice(0,90))+'</td><td>'+esc(t.confidence==null?'—':t.confidence)+'</td><td>'+esc((t.created_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join('');
+    let h='<div class="card"><h3>Investment theses <span class="badge info">'+(d.theses||[]).length+'</span></h3>'+arbTbl(['id','venture','opportunity','thesis','conf','created'],rows)+'</div>';
+    h+='<div class="card"><h3>Add thesis</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="th-vid" type="number" class="search-input" placeholder="venture id" style="max-width:130px">'
+      +'<input id="th-oid" type="number" class="search-input" placeholder="opportunity id (alt)" style="max-width:190px">'
+      +'<input id="th-text" class="search-input" placeholder="thesis" style="max-width:340px">'
+      +'<input id="th-conf" type="number" step="0.05" class="search-input" placeholder="confidence 0-1" style="max-width:150px">'
+      +'<button class="btn btn-xs btn-accent" onclick="arbAddThesis()">Add</button></div></div>';
+    arbBody(h);
+  }catch(e){arbBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function arbAddThesis(){
+  const t=arbVal('th-text'); if(!t){toast('thesis required','err');return;}
+  const vid=arbNum('th-vid'), oid=arbNum('th-oid');
+  if(vid==null && oid==null){toast('venture or opportunity id required','err');return;}
+  const b={thesis:t}; const c=arbNum('th-conf'); if(c!=null)b.confidence=c;
+  const p = vid!=null ? '/arbitra/ventures/'+vid+'/thesis' : '/arbitra/opportunities/'+oid+'/thesis';
+  try{await arbP(p,b);toast('thesis added');arbTab('thesis');}catch(e){toast('error: '+e.message,'err');}
+}
+async function arbTDecisions(){
+  arbBody('<span class="loading">loading…</span>');
+  let h='<div class="card"><h3>Decision engine</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="dc-vid" type="number" class="search-input" placeholder="venture id" style="max-width:130px">'
+    +'<input id="dc-oid" type="number" class="search-input" placeholder="opportunity id" style="max-width:160px">'
+    +'<button class="btn btn-xs btn-accent" onclick="arbRunDecide()">Decide</button></div>'
+    +'<div id="dc-result" style="margin-top:8px"></div></div>';
+  h+='<div class="card"><h3>Capital allocation (advisory)</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+    +'<input id="al-vid" type="number" class="search-input" placeholder="venture id" style="max-width:130px">'
+    +'<input id="al-amt" type="number" class="search-input" placeholder="amount" style="max-width:130px">'
+    +'<button class="btn btn-xs btn-accent" onclick="arbRunAllocate()">Allocate (advisory)</button></div>'
+    +'<div id="al-result" style="margin-top:8px"></div>'
+    +'<div class="muted" style="font-size:0.6rem;margin-top:6px">Advisory only — a money-center capital request is filed when an operation is linked; execution requires user approval.</div></div>';
+  h+='<div class="card"><h3>Economic events</h3><div id="dc-events"><span class="loading">loading…</span></div></div>';
+  arbBody(h);
+  try{const d=await arbG('/arbitra/decisions');
+    $('dc-events').innerHTML=arbTbl(['id','type','venture','at'],(d.events||[]).map(e=>'<tr><td>'+esc(e.id)+'</td><td>'+esc(e.event_type||'')+'</td><td>'+esc(e.venture_id==null?'—':e.venture_id)+'</td><td>'+esc((e.created_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join(''));
+  }catch(e){$('dc-events').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function arbRunDecide(){
+  const el=$('dc-result'); if(!el)return; el.innerHTML='<span class="loading">…</span>';
+  const b={}; const vid=arbNum('dc-vid'); if(vid!=null)b.venture_id=vid; const oid=arbNum('dc-oid'); if(oid!=null)b.opportunity_id=oid;
+  if(!Object.keys(b).length){toast('venture or opportunity id required','err');el.innerHTML='';return;}
+  try{const d=await arbP('/arbitra/decide',b);
+    el.innerHTML='<div class="metric-row">'+arbMetric('Action',d.action,'var(--warn)')+arbMetric('Approval',d.required_approval?'required':'not required')+'</div><div class="muted" style="font-size:0.62rem">'+esc((d.reasons||[]).join(' · '))+'</div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function arbRunAllocate(){
+  const el=$('al-result'); if(!el)return; el.innerHTML='<span class="loading">…</span>';
+  const vid=arbNum('al-vid'), amt=arbNum('al-amt');
+  if(vid==null||amt==null){toast('venture id and amount required','err');el.innerHTML='';return;}
+  try{const d=await arbP('/arbitra/allocate',{venture_id:vid,amount:amt});
+    const c=d.checks||{};
+    el.innerHTML='<div class="metric-row">'+arbMetric('Recommendation',d.recommendation,'var(--warn)')+arbMetric('Max allowed',c.max_allowed==null?'—':c.max_allowed)+arbMetric('Available',c.available==null?'—':c.available)+arbMetric('Policy',d.policy?d.policy.name:'—')+'</div>'
+      +((c.violations&&c.violations.length)?'<div class="error-text" style="font-size:0.62rem">'+esc(c.violations.join(' · '))+'</div>':'')
+      +((d.capital_request)?'<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(d.capital_request,null,1))+'</pre>':'');
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function arbTActivity(){
+  arbBody('<span class="loading">loading…</span>');
+  const g=async p=>{try{return await arbG(p);}catch(e){return {error:e.message};}};
+  const [ev,ls]=await Promise.all([g('/arbitra/decisions'),g('/arbitra/lessons')]);
+  let h='<div class="card"><h3>Economic events</h3>';
+  if(ev.error)h+='<span class="error-text">'+esc(ev.error)+'</span>';
+  else h+='<div class="table-wrap"><table><thead><tr><th>id</th><th>type</th><th>venture</th><th>at</th></tr></thead><tbody>'+(ev.events||[]).map(e=>'<tr><td>'+esc(e.id)+'</td><td>'+esc(e.event_type||'')+'</td><td>'+esc(e.venture_id==null?'—':e.venture_id)+'</td><td>'+esc((e.created_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join('')+'</tbody></table></div>';
+  h+='</div>';
+  h+='<div class="card"><h3>Business lessons</h3>';
+  if(ls.error)h+='<span class="error-text">'+esc(ls.error)+'</span>';
+  else h+=arbTbl(['venture','outcome','reason','at'],(ls.lessons||[]).map(x=>'<tr><td>'+esc(x.venture_id)+'</td><td>'+esc(x.outcome||'')+'</td><td>'+esc((x.reason||'').slice(0,70))+'</td><td>'+esc((x.created_at||'').slice(0,16).replace('T',' '))+'</td></tr>').join(''));
+  h+='</div>';
+  arbBody(h);
+}
+
+async function ccTgBots(){const el=$('cc-tg-result');try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/cc/telegram/bots'),null,1))+'</pre>';}catch(e){el.textContent=e.message;}}
+async function ccTgSetCmds(){const el=$('cc-tg-result');el.textContent='setting…';try{const d=await api('/api/cc/telegram/set-commands',{method:'POST',body:JSON.stringify({bot_id:'kai-enzo-bot'})});el.textContent='set-commands → '+JSON.stringify(d);}catch(e){el.textContent='error: '+e.message;}}
+async function ccTgSend(){const el=$('cc-tg-result');const c=($('cc-tg-chat')||{}).value,t=($('cc-tg-text')||{}).value;el.textContent='sending…';try{const d=await api('/api/cc/telegram/send',{method:'POST',body:JSON.stringify({bot_id:'kai-enzo-bot',chat_id:c,text:t})});el.textContent='send → '+JSON.stringify(d);}catch(e){el.textContent='error: '+e.message;}}
+async function kaiCtl(a){
+  const el=$('kai-ctl-result'); if(!el) return;
+  const map={status:'/api/command-center/summary',network:'/api/network/overview',vpn:'/api/vpn/status',missions:'/kai/missions',approvals:'/approvals',health:'/health',doctor:'/kai/doctor',guardian:'/kai/guardian'};
+  if(a==='help'){ el.innerHTML='Same commands as the Telegram menu: <b>status &middot; network &middot; vpn &middot; missions &middot; approvals &middot; health</b>'; return; }
+  el.textContent='running '+a+'…';
+  try{const d=await api(map[a]); el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap;max-height:260px;overflow:auto">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+  catch(e){ el.textContent=a+' → error: '+e.message; }
+}
+// ── Command Palette (§9) ──────────────────────────────────────────
+function paletteCommands(){
+  const cmds=[];
+  document.querySelectorAll('.nav-item').forEach(a=>{
+    const lbl=(a.querySelector('.label')||{}).textContent||a.dataset.hash;
+    cmds.push({label:'Go to '+lbl, run:()=>{location.hash=a.dataset.hash;}});
+  });
+  cmds.push({label:'Doctor — system diagnostics', run:()=>{location.hash='#home'; setTimeout(()=>kaiCtl('doctor'),120);}});
+  cmds.push({label:'Guardian — architecture scan', run:()=>{location.hash='#home'; setTimeout(()=>kaiCtl('guardian'),120);}});
+  cmds.push({label:'Run discovery — network', run:()=>{location.hash='#network'; setTimeout(()=>nwAction('/network/discover'),200);}});
+  cmds.push({label:'Refresh current tab', run:()=>{loadPanel((location.hash||'#home').slice(1));}});
+  return cmds;
+}
+function paletteRender(q){
+  const el=$('palette-results'); if(!el) return; q=(q||'').toLowerCase();
+  const list=paletteCommands().filter(c=>c.label.toLowerCase().includes(q)).slice(0,12);
+  el.innerHTML=list.map((c,i)=>'<div class="palette-item" data-i="'+i+'">'+esc(c.label)+'</div>').join('')||'<div class="palette-item" style="color:var(--fg-muted)">no matches</div>';
+  el.querySelectorAll('.palette-item').forEach(d=>{d.onclick=()=>{const c=list[+d.dataset.i]; if(c){closePalette();c.run();}};});
+}
+function openPalette(){const p=$('palette');if(!p)return;p.style.display='flex';const i=$('palette-input');i.value='';paletteRender('');i.focus();}
+function closePalette(){const p=$('palette');if(p)p.style.display='none';}
+(function(){const pi=$('palette-input');if(pi)pi.addEventListener('input',e=>paletteRender(e.target.value));})();
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPalette();}
+  else if(e.key==='Escape'){closePalette();}
+});
 </script>
+<div class="modal-overlay" id="palette" style="display:none;align-items:flex-start;justify-content:center">
+  <div class="modal-box" style="max-width:560px;width:92%;margin-top:10vh;padding:0">
+    <input id="palette-input" autocomplete="off" placeholder="Type a command…  (network · doctor · missions · guardian)" style="width:100%;box-sizing:border-box;padding:14px;font-size:0.9rem;background:var(--bg-deep);color:var(--fg);border:0;border-bottom:1px solid var(--border);outline:none">
+    <div id="palette-results" style="max-height:50vh;overflow:auto"></div>
+  </div>
+</div>
 </body>
 </html>

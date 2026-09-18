@@ -890,6 +890,30 @@ html, body { max-width: 100%; overflow-x: hidden; }
   .btn.btn-xs { padding: 6px 10px; min-height: 34px; }
 }
 
+/* ── Model Fabric — index cards + per-model detail (KAI 2.0 Phase 2) ── */
+.model-grid{ display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
+.model-card{ display:flex; flex-direction:column; gap:6px; padding:12px; background:var(--bg-elevated);
+  border:1px solid var(--border); border-radius:var(--radius); color:var(--fg); text-decoration:none;
+  min-width:0; transition:border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.model-card:hover{ border-color:#334155; box-shadow:var(--shadow-md); }
+.model-card-head{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.model-card-title{ font-weight:600; font-size:0.78rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.model-card-sub{ font-family:var(--font-mono); font-size:0.62rem; color:var(--fg-muted); overflow-wrap:anywhere; }
+.model-card-meta{ display:flex; gap:8px; flex-wrap:wrap; font-family:var(--font-mono); font-size:0.6rem; color:var(--fg-secondary); }
+.model-card-foot{ font-size:0.6rem; color:var(--fg-muted); overflow-wrap:anywhere; }
+.mf-grid{ display:grid; gap:6px 14px; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); }
+.mf-kv{ display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px solid var(--border-subtle); min-width:0; }
+.mf-k{ font-size:0.64rem; color:var(--fg-muted); flex-shrink:0; }
+.mf-v{ font-family:var(--font-mono); font-size:0.66rem; color:var(--fg-secondary); text-align:right; overflow-wrap:anywhere; min-width:0; }
+.nav-subgroup{ margin:0; }
+.nav-item.nav-sub{ margin:1px 6px 1px 18px; padding-top:5px; padding-bottom:5px; opacity:0.92; }
+.nav-item.nav-sub .label{ font-size:0.72rem; }
+@media (max-width:768px){
+  .model-grid{ grid-template-columns:1fr; }
+  .mf-grid{ grid-template-columns:1fr; }
+  .nav-subgroup{ display:none; } /* model pages remain reachable via Model Fabric + More sheet */
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
@@ -1138,6 +1162,10 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <div class="grid">
           <div class="card"><h3>Network Topology</h3><div id="infra-network"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Proxmox Nodes</h3><div id="infra-proxmox"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Proxmox Inventory (VMs / CTs / storage)</h3><div id="infra-registry"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Containers (Docker)</h3><div id="infra-containers"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Services</h3><div id="infra-services"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Model Fabric utilization</h3><div id="infra-util"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>GPU Providers</h3><div id="infra-gpu"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>VPN Status</h3><div id="infra-vpn"><span class="loading">loading…</span></div></div>
         </div>
@@ -1146,8 +1174,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <!-- SECURITY -->
       <section class="panel" id="panel-security">
         <div class="grid">
+          <div class="card"><h3>AgentGuard</h3><div id="sec-agentguard"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Users &amp; Accounts</h3><div id="sec-users"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Permissions (RBAC)</h3><div id="sec-permissions"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Policy</h3><div id="sec-policy"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Vault access</h3><div id="sec-vault"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>API Keys</h3><div id="sec-apikeys"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Security events</h3><div id="sec-events"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Login History</h3><div id="sec-logins"><span class="loading">loading…</span></div></div>
         </div>
       </section>
@@ -1320,6 +1353,8 @@ const S = {
   loadedPanels: new Set(), modules: [], providers: [], _confirmCb: null
 };
 const SK = 'kai_command_session_v3';
+// Per-model dedicated pages, registered at runtime from /api/models/catalog.
+window.MODEL_PAGES = {};   // slug -> {id, title}
 const PANEL_TITLES = {
   home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', arbitra:'Arbitra', bet:'KAI Bet',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
@@ -1327,7 +1362,7 @@ const PANEL_TITLES = {
   'kai-chat':'Kai Chat', devices:'Devices', talent:'Talent', android:'Android', docs:'Documents', hubtel:'Hubtel',
   wireguard:'WireGuard', directives:'Directives', directory:'Service Directory',
   missions:'Missions', executive:'Executive', enhancements:'Enhancements', factory:'Factory',
-  evolution:'Evolution', network:'Network', models:'Models', vault:'Vault', secondbrain:'2nd Brain',
+  evolution:'Evolution', network:'Network', models:'Model Fabric', vault:'Vault', secondbrain:'2nd Brain',
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
   sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise'
 };
@@ -1382,6 +1417,15 @@ async function api(path, opts={}) {
     throw new Error(m);
   }
   return r.json();
+}
+
+// api() with a hard timeout so one slow upstream never blocks a panel.
+async function apiT(path, ms, opts){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(), ms||7000);
+  try{ return await api(path,{...(opts||{}),signal:ctrl.signal}); }
+  catch(e){ if(e.name==='AbortError') throw new Error('timeout after '+(ms||7000)+'ms'); throw e; }
+  finally{ clearTimeout(t); }
 }
 
 function showLogin() {
@@ -1513,6 +1557,7 @@ function navigateTo(hash) {
 function loadPanel(name) {
   const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory};
   if(fns[name])fns[name]();
+  else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
 document.querySelectorAll('.nav-item').forEach(el=>{el.addEventListener('click',e=>{e.preventDefault();location.hash=el.dataset.hash;});});
@@ -1527,32 +1572,70 @@ $('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')$('login-pass'
 // PANEL: MISSIONS (JARVIS P11) + EXECUTIVE (P10)
 // ═══════════════════════════════════════════════════════════════════
 async function loadMissions() {
-  const el=$('missions-content');
+  const el=$('missions-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
   try{
-    const [ms,gs]=await Promise.all([api('/kai/tools/missions'),api('/kai/tools/executive')]);
-    const goals=await api('/kai/tools').then(t=>Promise.all([])).catch(()=>null);
-    let html='<h3>Missions</h3>';
-    const rows=(ms.missions||[]);
-    if(!rows.length){html+='<p class="empty">No missions yet. Ask Kai in chat: "create a mission to…"</p>';}
-    else{
-      html+='<table><thead><tr><th>ID</th><th>Objective</th><th>Status</th><th>Progress</th><th></th></tr></thead><tbody>';
-      for(const m of rows.slice(0,15)){
-        const st=(m.status||'').toLowerCase();
-        const bdg=st==='done'?'ok':st.includes('fail')||st==='cancelled'?'bad':st==='running'?'warn':'info';
-        const canCancel=['running','planned'].includes(st);
-        html+=`<tr><td style="font-size:0.68rem">${esc(m.id)}</td><td>${esc(m.objective)}</td><td><span class="badge ${bdg}">${esc(m.status)}</span></td><td>${m.progress_pct||0}%</td>`;
-        html+=`<td>${canCancel?`<button class="btn btn-sm" onclick="cancelMission('${esc(m.id)}')">Stop</button>`:''}</td></tr>`;}
-      html+='</tbody></table>';}
-    // approvals needing review
-    if(gs.counts && gs.counts.approvals_pending>0){
-      html+=`<h3>Approvals <span class="badge warn">${gs.counts.approvals_pending} pending</span></h3>`;
-      html+='<table><thead><tr><th>Action</th><th>Reason</th><th></th></tr></thead><tbody>';
-      for(const a of (gs.needs_attention||[]).filter(x=>x.severity==='approval').slice(0,10)){
-        html+=`<tr><td>${esc(a.action)}</td><td style="font-size:0.68rem">${esc(a.detail)}</td><td>-</td></tr>`;}
-      html+='</tbody></table>';
-      html+='<p style="font-size:0.7rem;color:var(--fg-muted)">Review via Telegram ("cr approve &lt;id&gt;") or /approvals endpoint.</p>';}
+    const r=await g('/api/missions');
+    const ms=r.missions||[];
+    const active=ms.filter(x=>/RUN|EXEC|PLAN|ASSIGN|PROG/i.test(x.status||''));
+    const hist=ms.filter(x=>!/RUN|EXEC|PLAN|ASSIGN|PROG/i.test(x.status||''));
+    const m=(l,v,c)=>'<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v==null?'\u2014':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    const passed=ms.filter(x=>x.verification&&x.verification.passed).length;
+    let html='<div class="spread" style="margin-bottom:10px"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">Missions · Teammate Factory</span><button class="btn btn-xs" onclick="loadMissions()">Refresh</button></div>';
+    html+='<div class="metric-row">'+m('Total',ms.length)+m('Active',active.length,'var(--warn)')+m('History',hist.length,'var(--info)')+m('Verified',passed)+'</div>';
+    html+='<div class="card"><h3>Active missions <span class="badge warn">'+active.length+'</span></h3>'+(_missionTable(active)||'<p class="empty">No active missions.</p>')+'</div>';
+    html+='<div class="card"><h3>History <span class="badge info">'+hist.length+'</span></h3>'+(_missionTable(hist.slice(0,25))||'<p class="empty">No completed missions.</p>')+'</div>';
+    html+='<div id="mission-detail"></div>';
     el.innerHTML=html;
-  }catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function _missionTable(rows){
+  if(!rows||!rows.length) return '';
+  let html='<div class="table-wrap"><table><thead><tr><th>Mission</th><th>Goal</th><th>Status</th><th>Team</th><th>Tasks</th><th>Verified</th><th></th></tr></thead><tbody>';
+  for(const x of rows){
+    const st=String(x.status||'').toLowerCase();
+    const bdg=st==='completed'?'ok':(st.includes('fail')||st.includes('cancel'))?'bad':(st.includes('run')||st.includes('exec')||st.includes('plan'))?'warn':'info';
+    const tasks=x.tasks||[];
+    const done=tasks.filter(t=>t.status==='COMPLETED').length;
+    const v=x.verification?(x.verification.passed?'<span class="badge ok">pass</span>':'<span class="badge bad">fail</span>'):'<span class="badge info">n/a</span>';
+    html+='<tr><td><code>'+esc(x.id)+'</code></td><td style="font-size:0.66rem">'+esc(x.goal||'')+'</td><td><span class="badge '+bdg+'">'+esc(x.status||'-')+'</span></td>'
+      +'<td style="font-size:0.6rem">'+esc(x.team_id||'\u2014')+'</td><td>'+done+'/'+tasks.length+'</td><td>'+v+'</td>'
+      +'<td><button class="btn btn-xs" onclick="missionShow(\''+esc(x.id)+'\')">Graph</button></td></tr>';
+  }
+  return html+'</tbody></table></div>';
+}
+async function missionShow(id){
+  const el=$('mission-detail'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const r=await api('/api/missions/'+encodeURIComponent(id));
+    const x=r.mission||r; const tasks=x.tasks||[];
+    let html='<div class="card"><h3>'+esc(x.id)+' <span class="badge info">task graph</span></h3>';
+    html+='<div style="font-size:0.68rem;color:var(--fg-secondary);margin-bottom:6px">'+esc(x.goal||'')+'</div>';
+    html+='<div class="table-wrap"><table><thead><tr><th>#</th><th>Skill</th><th>Teammate</th><th>Status</th><th>Verification</th><th>Output</th></tr></thead><tbody>';
+    tasks.forEach(function(t,i){
+      const st=String(t.status||'').toLowerCase(), bdg=st==='completed'?'ok':((st.includes('fail')||t.error)?'bad':(st.includes('run')?'warn':'info'));
+      const tv=t.verification?(t.verification.passed?'<span class="badge ok">pass</span>':'<span class="badge warn">fail</span>'):'<span class="badge info">\u2014</span>';
+      const out=String(t.output||t.error||'');
+      html+='<tr><td>'+(i+1)+'</td><td><code>'+esc(t.skill_id||t.task_id||'-')+'</code></td><td style="font-size:0.62rem">'+esc((t.teammate_id||'').slice(0,10))+'</td>'
+        +'<td><span class="badge '+bdg+'">'+esc(t.status||'-')+'</span></td><td>'+tv+'</td>'
+        +'<td><details><summary style="cursor:pointer;font-size:0.62rem">'+esc(out.slice(0,60))+'</summary><pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto">'+esc(out)+'</pre></details></td></tr>';
+    });
+    html+='</tbody></table></div>';
+    html+='<h4 style="font-size:0.72rem;margin-top:10px">Verification</h4>';
+    if(x.verification){
+      html+='<p><span class="badge '+(x.verification.passed?'ok':'bad')+'">'+(x.verification.passed?'passed':'failed')+'</span> verifier <code>'+esc(x.verification.verifier_id||'\u2014')+'</code></p>';
+      html+='<div class="table-wrap"><table><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody>';
+      for(const c of (x.verification.checks||[])) html+='<tr><td><code>'+esc(c.check)+'</code></td><td><span class="badge '+(c.passed?'ok':'bad')+'">'+(c.passed?'pass':'fail')+'</span></td><td style="font-size:0.64rem">'+esc(c.detail||'')+'</td></tr>';
+      html+='</tbody></table></div>';
+      if(x.verification.feedback) html+='<p style="font-size:0.64rem">'+esc(x.verification.feedback)+'</p>';
+    } else html+='<p class="empty">No verification recorded.</p>';
+    const artifacts=tasks.filter(function(t){return t.output;});
+    html+='<h4 style="font-size:0.72rem;margin-top:10px">Artifacts <span class="badge info">'+artifacts.length+'</span></h4>';
+    html+='<div style="font-size:0.64rem;color:var(--fg-muted)">'+(artifacts.map(function(t){return esc(t.skill_id)+' \u2192 '+esc(String(t.output).length)+' chars';}).join(' \u00b7 ')||'none')+'</div>';
+    html+='<h4 style="font-size:0.72rem;margin-top:10px">Checkpoints</h4><p class="empty">Task graph above reflects the current persisted checkpoint state.</p>';
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
 }
 window.cancelMission=async function(id){
   if(!confirm('Cancel mission '+id+'?'))return;
@@ -1671,7 +1754,7 @@ async function updateStatusBar() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────
-function initApp() { updateStatusBar();setInterval(updateStatusBar,30000);navigateTo(location.hash||'#home'); }
+function initApp() { updateStatusBar();setInterval(updateStatusBar,30000); registerModelPages().catch(()=>{}).finally(()=>navigateTo(location.hash||'#home')); }
 
 // ═══════════════════════════════════════════════════════════════════
 // PANEL: HOME
@@ -2109,38 +2192,134 @@ async function doLegalUnban(accountId){
 // PANEL: AI WORKFORCE (fixed toggle, delete, add provider)
 // ═══════════════════════════════════════════════════════════════════
 async function loadWorkforce(){
-  try{const data=await api('/api/command-center/summary');const wf=data.workforce||{};
-    const providerList = Object.entries(wf);
-    if(!providerList.length){$('ai-workforce-content').innerHTML='<p class="empty">No workforce data</p>';return;}
-    // Cache providers for toggle lookups
-    S._workforceData = wf;
-    let html=`<div style="margin-bottom:12px" class="spread"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">${providerList.length} providers</span>
-      <span style="display:flex;gap:6px">
-        <button class="btn btn-sm" onclick="showRouting()">Edit Routing</button>
-        <button class="btn btn-sm btn-accent" onclick="showAddProvider()">+ Add Provider</button>
-      </span></div>
-      <div class="worker-grid">`;
-    for(const[name,info]of Object.entries(wf)){const h=info.health||'unknown',bdg=h==='healthy'?'ok':h==='degraded'?'warn':h==='error'?'bad':'info';
-      const sr=info.success_rate!=null?Math.round(info.success_rate*100)+'%':'n/a';
-      const isEnabled=info.enabled!==false;
-      html+=`<div class="worker-card">
-        <div class="worker-card-header"><span class="worker-card-name">${esc(name)}</span><span class="badge ${bdg}">${esc(h)}</span></div>
-        <div class="worker-card-body">
-        <span class="wl">Model</span><span>${esc(info.model||'-')}</span>
-        <span class="wl">Kind</span><span>${esc(info.kind||'-')}</span>
-        <span class="wl">Coding</span><span>${info.coding_agent?'<span class="badge ok">yes</span>':'<span class="badge info">no</span>'}</span>
-        <span class="wl">Priority</span><span>${esc(String(info.routing_priority??'-'))}</span>
-        <span class="wl">Success</span><span>${sr}</span>
-        <span class="wl">Queue</span><span>${info.queue_depth??'-'}</span>
-        <span class="wl">Current</span><span style="font-size:0.64rem">${esc(info.current_build_name||info.current_build||'-')}</span>
-        </div>
-        <div class="worker-card-actions" id="wca-${esc(name)}">
-          ${isEnabled?`<button class="btn btn-xs btn-warn" onclick="toggleProvider('${esc(name)}',false)">Disable</button>`:`<button class="btn btn-xs btn-accent" onclick="toggleProvider('${esc(name)}',true)">Enable</button>`}
-          ${info.total_attempts?`<span style="font-size:0.6rem;color:var(--fg-muted)">${info.total_successes||0}/${info.total_attempts}</span>`:''}
-          <button class="btn btn-xs btn-danger" style="margin-left:auto" onclick="deleteProvider('${esc(name)}')">Remove</button>
-        </div></div>`;}
-    html+='</div>';$('ai-workforce-content').innerHTML=html;}
-  catch(e){$('ai-workforce-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  const el=$('ai-workforce-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [mates,teams,workers]=await Promise.all([g('/api/workforce/teammates'),g('/api/workforce/teams'),g('/workers')]);
+    const ms=mates.teammates||[], ts=teams.teams||[];
+    const ws=workers&&!workers.error?Object.values(workers):[];
+    const ready=ms.filter(m=>String(m.status).toUpperCase()==='READY').length;
+    const m=(l,v,c)=>'<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v==null?'\u2014':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    let html='<div class="spread" style="margin-bottom:10px"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">Workforce · Teammate Factory</span><button class="btn btn-xs" onclick="loadWorkforce()">Refresh</button></div>';
+    html+='<div class="metric-row">'+m('Teammates',ms.length)+m('Ready',ready)+m('Teams',ts.length,'var(--info)')+m('Workers',ws.length)+'</div>';
+    // create teammate
+    html+='<div class="card"><h3>Create teammate <span class="badge info">operator</span></h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="wf-role" class="search-input" placeholder="role (coder, researcher, planner…)" style="max-width:230px">'
+      +'<input id="wf-name" class="search-input" placeholder="name (optional)" style="max-width:160px">'
+      +'<input id="wf-skills" class="search-input" placeholder="skills: write_code,run_tests" style="max-width:250px">'
+      +'<input id="wf-model" class="search-input" placeholder="model provider (optional)" style="max-width:180px">'
+      +'<button class="btn btn-xs btn-accent" onclick="wfCreateTeammate()">Create</button></div>'
+      +'<div id="wf-create-result" style="font-size:0.64rem;color:var(--fg-muted);margin-top:5px"></div></div>';
+    // form team
+    html+='<div class="card"><h3>Form team <span class="badge info">planner → coder → qa → reviewer</span></h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="wf-req" class="search-input" placeholder="requirement, e.g. Build a small software feature" style="max-width:420px">'
+      +'<button class="btn btn-xs btn-accent" onclick="wfFormTeam()">Form team</button></div>'
+      +'<div id="wf-team-result" style="font-size:0.64rem;color:var(--fg-muted);margin-top:5px"></div></div>';
+    // teammates
+    html+='<div class="card"><h3>Teammates <span class="badge info">'+ms.length+'</span></h3>';
+    if(!ms.length) html+='<p class="empty">No teammates yet. Create one above.</p>';
+    else{
+      html+='<div class="table-wrap"><table><thead><tr><th>Name</th><th>Specialization</th><th>Status</th><th>Health</th><th>Skills</th><th>Actions</th></tr></thead><tbody>';
+      for(const t of ms){
+        const st=String(t.status||'').toLowerCase(), sb=st==='ready'?'ok':st==='retired'||st==='failed'?'bad':st==='working'||st==='busy'?'warn':'info';
+        const hb=String(t.health||'').toLowerCase()==='healthy'?'ok':String(t.health||'').toLowerCase()==='degraded'?'warn':'info';
+        html+='<tr><td><code>'+esc(t.name||t.id)+'</code></td><td>'+esc(t.specialization||'-')+'</td>'
+          +'<td><span class="badge '+sb+'">'+esc(t.status||'-')+'</span></td>'
+          +'<td><span class="badge '+hb+'">'+esc(t.health||'unknown')+'</span></td>'
+          +'<td style="font-size:0.6rem">'+esc((t.skills||[]).join(', ')||'\u2014')+'</td>'
+          +'<td><button class="btn btn-xs" onclick="wfInspect(\''+esc(t.id)+'\')">View</button> '
+          +(st==='retired'?'':'<button class="btn btn-xs btn-danger" onclick="wfRetire(\''+esc(t.id)+'\')">Retire</button>')+'</td></tr>';
+      }
+      html+='</tbody></table></div>';
+    }
+    html+='<div id="wf-teammate-detail" style="margin-top:8px"></div></div>';
+    // teams
+    html+='<div class="card"><h3>Teams <span class="badge info">'+ts.length+'</span></h3>';
+    if(!ts.length) html+='<p class="empty">No teams formed yet.</p>';
+    else{
+      html+='<div class="table-wrap"><table><thead><tr><th>Team</th><th>Requirement</th><th>Members</th><th>Status</th><th>Mission</th><th></th></tr></thead><tbody>';
+      for(const t of ts){
+        const ms2=t.members||[];
+        const st=String(t.status||'').toLowerCase(), sb=st==='ready'?'ok':st==='failed'?'bad':'info';
+        html+='<tr><td><code>'+esc(t.id)+'</code></td><td style="font-size:0.66rem">'+esc(t.requirement||'-')+'</td>'
+          +'<td>'+esc(ms2.length||(t.member_ids||[]).length)+'</td>'
+          +'<td><span class="badge '+sb+'">'+esc(t.status||'-')+'</span></td>'
+          +'<td style="font-size:0.62rem">'+esc(t.mission_id||'\u2014')+'</td>'
+          +'<td><button class="btn btn-xs" onclick="wfShowTeam(\''+esc(t.id)+'\')">View</button></td></tr>';
+      }
+      html+='</tbody></table></div>';
+      html+='<div id="wf-team-detail" style="margin-top:8px"></div>';
+    }
+    html+='</div>';
+    // worker health
+    html+='<div class="card"><h3>Worker health <span class="badge info">'+ws.length+'</span></h3>';
+    if(!ws.length) html+='<p class="empty">Worker data unavailable.</p>';
+    else{
+      html+='<div class="table-wrap"><table><thead><tr><th>Worker</th><th>Status</th><th>Success</th><th>Attempts</th><th>Avg ms</th><th>Queue</th></tr></thead><tbody>';
+      for(const w of ws){
+        const hb=String(w.registry_status||'').toLowerCase()==='idle'?'info':(w.available?'ok':'bad');
+        html+='<tr><td><code>'+esc(w.name)+'</code></td><td><span class="badge '+hb+'">'+esc(w.available?'available':'offline')+'</span></td>'
+          +'<td>'+esc(w.success_rate!=null?w.success_rate+'%':'\u2014')+'</td><td>'+esc(w.total_attempts??'\u2014')+'</td>'
+          +'<td>'+esc(w.avg_duration_ms??'\u2014')+'</td><td>'+esc(w.queue_depth??'\u2014')+'</td></tr>';
+      }
+      html+='</tbody></table></div>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function wfCreateTeammate(){
+  const role=($('wf-role')||{}).value.trim();
+  const out=$('wf-create-result');
+  if(!role){toast('role is required','err');return;}
+  const skills=(($('wf-skills')||{}).value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const model=($('wf-model')||{}).value.trim()||null;
+  const name=($('wf-name')||{}).value.trim()||null;
+  if(out) out.textContent='creating…';
+  try{
+    const r=await api('/api/workforce/teammates',{method:'POST',body:JSON.stringify({role:role,skills:skills,model:model,name:name})});
+    const t=r.teammate||{};
+    if(out) out.innerHTML='<span class="badge ok">'+(t.created?'created':'reused')+'</span> '+esc(t.name||t.id)+' \u00b7 '+esc(t.status);
+    toast('teammate '+(t.name||t.id));
+    loadWorkforce();
+  }catch(e){ if(out) out.textContent='error: '+e.message; toast('error: '+e.message,'err'); }
+}
+async function wfFormTeam(){
+  const req=($('wf-req')||{}).value.trim();
+  const out=$('wf-team-result');
+  if(!req){toast('requirement is required','err');return;}
+  if(out) out.textContent='forming team…';
+  try{
+    const r=await api('/api/workforce/teams',{method:'POST',body:JSON.stringify({requirement:req})});
+    const t=r.team||{};
+    if(out) out.innerHTML='<span class="badge ok">'+esc(t.id||'team')+'</span> '+(t.members?t.members.length:0)+' members';
+    toast('team formed'); loadWorkforce();
+  }catch(e){ if(out) out.textContent='error: '+e.message; toast('error: '+e.message,'err'); }
+}
+function wfRetire(id){
+  confirmAction('Retire teammate','Retire '+id+'? It will no longer accept missions.',async()=>{
+    try{ await api('/api/workforce/teammates/'+encodeURIComponent(id)+'/retire',{method:'POST',body:JSON.stringify({})}); toast('teammate retired'); loadWorkforce(); }
+    catch(e){ toast('error: '+e.message,'err'); }
+  });
+}
+async function wfInspect(id){
+  const el=$('wf-teammate-detail'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const r=await api('/api/workforce/teammates/'+encodeURIComponent(id));
+    const t=r.teammate||{};
+    el.innerHTML='<div style="font-family:var(--font-mono);font-size:0.64rem;white-space:pre-wrap;word-break:break-word;background:var(--bg-deep);border:1px solid var(--border);border-radius:6px;padding:10px;max-height:320px;overflow:auto">'+esc(JSON.stringify(t,null,1))+'</div>';
+  }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+async function wfShowTeam(id){
+  const el=$('wf-team-detail'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const r=await api('/api/workforce/teams/'+encodeURIComponent(id));
+    const t=r.team||{}; const ms=t.members||[];
+    let html='<h4 style="font-size:0.72rem">'+esc(t.requirement||t.id)+'</h4><div class="table-wrap"><table><thead><tr><th>Member</th><th>Specialization</th><th>Status</th><th>Skills</th></tr></thead><tbody>';
+    for(const m of ms) html+='<tr><td><code>'+esc(m.name||m.id)+'</code></td><td>'+esc(m.specialization||'-')+'</td><td>'+esc(m.status||'-')+'</td><td style="font-size:0.6rem">'+esc((m.skills||[]).join(', ')||'\u2014')+'</td></tr>';
+    html+='</tbody></table></div>';
+    el.innerHTML=html;
+  }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
 }
 
 async function toggleProvider(name, enable){
@@ -2675,18 +2854,73 @@ async function airdropBroadcast(){
 // PANEL: INFRA
 // ═══════════════════════════════════════════════════════════════════
 async function loadInfra(){
-  // ── Network Topology ─────────────────────────────────────────────
+  // ── Network Topology (independent, fire-and-forget) ───────────────
   loadNetworkTopology();
-  try{const n=await api('/proxmox/nodes');
-    if(n&&n.length){let html='<table><thead><tr><th>Node</th><th>Status</th><th>CPU</th><th>Mem</th></tr></thead><tbody>';
-      for(const x of n){const s=x.status==='online'?'ok':'warn';html+=`<tr><td>${esc(x.node||x.name||x.id)}</td><td><span class="badge ${s}">${esc(x.status||'?')}</span></td><td>${esc(String(x.cpu??'-'))}</td><td>${esc(String(x.mem??x.memory??'-'))}</td></tr>`;}
-      html+='</tbody></table>';$('infra-proxmox').innerHTML=html;}
-    else $('infra-proxmox').innerHTML='<p class="empty">No nodes</p>';}
-  catch(e){$('infra-proxmox').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
-  try{const g=await api('/api/gpu/status');$('infra-gpu').innerHTML=`<p><strong>Status:</strong> <span class="badge ${g.available?'ok':'warn'}">${g.available?'Available':'Unavailable'}</span></p><p style="margin-top:4px;font-size:0.72rem;color:var(--fg-secondary)">${esc(g.summary||'-')}</p>`;}
-  catch(e){$('infra-gpu').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
-  try{const v=await api('/api/vpn/status');$('infra-vpn').innerHTML=`<p><strong>Status:</strong> ${esc(v.status||'unknown')}</p>`;}
-  catch(e){$('infra-vpn').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  // Each source updates its own card independently and always leaves
+  // the card in a terminal state (data, empty, or error) — never stuck.
+  apiT('/proxmox/registry', 9000).then(function(reg){
+    const inv=reg.inventory||[];
+    if(inv.length){
+      let html='<div class="table-wrap"><table><thead><tr><th>Node</th><th>Host</th><th>Reach</th><th>VMs</th><th>CTs</th><th>Storage</th></tr></thead><tbody>';
+      for(const x of inv){
+        const reach=x.reachable!==false&&!x.api_unavailable;
+        const st=(x.storage||[]).map(s=>esc(s.name)+' '+esc(s.used_gb)+'/'+esc(s.total_gb)+'G').join(', ');
+        html+='<tr><td>'+esc(x.node||'-')+'</td><td>'+esc(x.host||'-')+'</td>'
+          +'<td><span class="badge '+(reach?'ok':'bad')+'">'+(reach?'up':'down')+'</span></td>'
+          +'<td>'+esc((x.vms||[]).length)+'</td><td>'+esc((x.containers||[]).length)+'</td>'
+          +'<td style="font-size:0.6rem">'+(st||'\u2014')+'</td></tr>';
+      }
+      html+='</tbody></table></div>';
+      $('infra-proxmox').innerHTML=html;
+      $('infra-registry').innerHTML='<div class="mf-grid">'
+        +'<div class="mf-kv"><span class="mf-k">Nodes</span><span class="mf-v">'+esc(reg.reachable||0)+'/'+esc(reg.nodes||0)+'</span></div>'
+        +'<div class="mf-kv"><span class="mf-k">VMs</span><span class="mf-v">'+esc(reg.running_vms||0)+'/'+esc(reg.vms||0)+'</span></div>'
+        +'<div class="mf-kv"><span class="mf-k">Containers</span><span class="mf-v">'+esc(reg.running_containers||0)+'/'+esc(reg.containers||0)+'</span></div>'
+        +'<div class="mf-kv"><span class="mf-k">Storage used</span><span class="mf-v">'+esc(reg.storage_used_gb||0)+' / '+esc(reg.storage_total_gb||0)+' GB</span></div></div>';
+    } else if(reg.discovering){ $('infra-proxmox').innerHTML='<p class="empty">Proxmox inventory discovery in progress…</p>'; $('infra-registry').innerHTML='<p class="empty">discovering…</p>'; }
+    else { $('infra-proxmox').innerHTML='<p class="empty">No nodes discovered</p>'; $('infra-registry').innerHTML='<p class="empty">No inventory</p>'; }
+  }).catch(function(e){$('infra-proxmox').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';$('infra-registry').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
+  apiT('/api/docker/containers', 7000).then(function(d){
+    const cs=d.containers||[];
+    if(!cs.length){ $('infra-containers').innerHTML='<p class="empty">No containers</p>'; return; }
+    let html='<div class="table-wrap"><table><thead><tr><th>Name</th><th>State</th><th>Image</th></tr></thead><tbody>';
+    for(const c of cs){const s=c.state||'unknown',bdg=s==='running'?'ok':s==='exited'?'bad':'warn';
+      html+='<tr><td>'+esc(c.name)+'</td><td><span class="badge '+bdg+'">'+esc(s)+'</span></td><td style="font-size:0.6rem">'+esc(c.image||'-')+'</td></tr>';}
+    html+='</tbody></table></div>';$('infra-containers').innerHTML=html;
+  }).catch(function(e){$('infra-containers').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
+  apiT('/api/directory/services', 7000).then(function(s){
+    const items=s.services||s.items||s||[];
+    const list=Array.isArray(items)?items:Object.values(items);
+    if(!list.length){ $('infra-services').innerHTML='<p class="empty">No services</p>'; return; }
+    let html='<div class="table-wrap"><table><thead><tr><th>Service</th><th>Status</th><th>Host</th></tr></thead><tbody>';
+    for(const x of list.slice(0,40)){const st=String(x.status||'unknown').toLowerCase();const bdg=st==='up'||st==='running'||st==='healthy'?'ok':st==='down'||st==='failed'?'bad':'info';
+      html+='<tr><td>'+esc(x.name||x.service||'-')+'</td><td><span class="badge '+bdg+'">'+esc(x.status||'-')+'</span></td><td style="font-size:0.6rem">'+esc(x.host||x.hostname||'-')+'</td></tr>';}
+    html+='</tbody></table></div>';$('infra-services').innerHTML=html;
+  }).catch(function(e){$('infra-services').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
+  apiT('/api/fabric/summary', 7000).then(function(f){
+    const u=f.utilization||{}; const ga=u.gpu_arbiter||{}; const lm=u.loaded_models||[];
+    let html='<div class="mf-grid">'
+      +'<div class="mf-kv"><span class="mf-k">GPU in-flight</span><span class="mf-v">'+esc(ga.in_flight==null?'\u2014':ga.in_flight)+' / '+esc(ga.permits==null?'\u2014':ga.permits)+'</span></div>'
+      +'<div class="mf-kv"><span class="mf-k">Waiting</span><span class="mf-v">'+esc(ga.waiting==null?'\u2014':ga.waiting)+'</span></div>'
+      +'<div class="mf-kv"><span class="mf-k">Loaded models</span><span class="mf-v">'+esc(lm.length)+'</span></div>'
+      +'<div class="mf-kv"><span class="mf-k">VRAM used</span><span class="mf-v">'+esc(lm.reduce(function(a,x){return a+(x.vram_gb||0);},0).toFixed(2))+' GB</span></div></div>';
+    if(lm.length) html+='<div class="table-wrap"><table><thead><tr><th>Model</th><th>VRAM</th><th>Context</th></tr></thead><tbody>'
+      +lm.map(function(x){return '<tr><td>'+esc(x.id)+'</td><td>'+esc(x.vram_gb!=null?x.vram_gb+' GB':'\u2014')+'</td><td>'+esc(x.context!=null?Number(x.context).toLocaleString():'\u2014')+'</td></tr>';}).join('')
+      +'</tbody></table></div>';
+    $('infra-util').innerHTML=html;
+    // GPU Providers card from live loaded models (the P40 / VM112), not the stub.
+    const vram=lm.reduce(function(a,x){return a+(x.vram_gb||0);},0);
+    $('infra-gpu').innerHTML='<p><strong>Inference GPU:</strong> <span class="badge '+(lm.length?'ok':'warn')+'">'+(lm.length?'active':'idle')+'</span></p>'
+      +'<p style="margin-top:4px;font-size:0.7rem;color:var(--fg-secondary)">P40 (VM104) \u00b7 loaded: '+esc(lm.length)+' \u00b7 VRAM '+esc(vram.toFixed(2))+' GB</p>'
+      +'<p style="margin-top:2px;font-size:0.66rem;color:var(--fg-muted)">GPU permits '+esc(ga.in_flight==null?0:ga.in_flight)+'/'+esc(ga.permits==null?'\u2014':ga.permits)+' in-flight</p>';
+  }).catch(function(e){$('infra-util').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';$('infra-gpu').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
+  apiT('/api/gpu/status', 6000).then(function(gp){
+    // Decommissioned RunPod stub — only used to annotate; fabric data wins above.
+    $('infra-gpu').title=esc(gp.summary||gp.message||'');
+  }).catch(function(){});
+  apiT('/api/vpn/status', 6000).then(function(v){
+    $('infra-vpn').innerHTML='<p><strong>Status:</strong> <span class="badge '+(String(v.status||'').toLowerCase()==='healthy'?'ok':'warn')+'">'+esc(v.status||'unknown')+'</span></p>';
+  }).catch(function(e){$('infra-vpn').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
 }
 
 async function loadNetworkTopology(){
@@ -2763,19 +2997,77 @@ async function loadNetworkTopology(){
 // PANEL: SECURITY
 // ═══════════════════════════════════════════════════════════════════
 async function loadSecurity(){
-  try{const s=await api('/auth/status');$('sec-users').innerHTML=`
-    <p><strong>Role:</strong> <span class="badge ${s.role==='operator'?'ok':'info'}">${esc(s.role)}</span></p>
-    <p style="margin-top:6px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Capabilities: ${(s.capabilities||[]).slice(0,8).map(c=>`<code style="font-size:0.62rem">${esc(c)}</code>`).join(', ')||'none'}</p>
-    <p style="margin-top:8px;font-size:0.65rem;color:var(--fg-muted)">Managed via <code>core/accounts.json</code></p>`;}
-  catch(e){$('sec-users').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
-  try{const v=await api('/kai/vault');$('sec-apikeys').innerHTML=v&&v.providers?`<p><strong>Stored Keys:</strong> ${Object.keys(v.providers||{}).length}</p><p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-top:4px">AES-256-GCM encrypted</p>`:'<p class="empty">No API key data</p>';}
-  catch{$('sec-apikeys').innerHTML='<p class="empty">Vault unavailable</p>';}
-  try{const a=await api('/self-healing/log');const logins=(a||[]).filter(e=>e.event==='login'||e.action==='login').slice(0,5);
-    if(logins.length){let html='<table><thead><tr><th>User</th><th>Time</th></tr></thead><tbody>';
-      for(const l of logins)html+=`<tr><td>${esc(l.user||l.username||'-')}</td><td>${esc(l.time||l.timestamp||'-')}</td></tr>`;
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  const [ov,st]=await Promise.all([g('/api/security/overview'),g('/auth/status')]);
+  // AgentGuard
+  try{
+    const f=(ov.agentguard&&ov.agentguard.findings)||[];
+    let html='<p><strong>Enabled:</strong> <span class="badge '+(ov.agentguard&&ov.agentguard.enabled?'ok':'bad')+'">'+esc(ov.agentguard&&ov.agentguard.enabled?'enforced':'off')+'</span> <span class="badge info">'+esc(ov.agentguard&&ov.agentguard.mode||'enforce')+'</span></p>';
+    html+='<p style="margin-top:6px;font-size:0.66rem;color:var(--fg-muted)">Findings: <strong>'+f.length+'</strong></p>';
+    if(f.length){html+='<div class="table-wrap"><table><thead><tr><th>Sev</th><th>Message</th></tr></thead><tbody>';
+      for(const x of f.slice(0,10)){const sv=String(x.severity||'').toLowerCase(),bdg=sv==='critical'?'bad':sv==='warning'?'warn':'info';
+        html+='<tr><td><span class="badge '+bdg+'">'+esc(x.severity||'-')+'</span></td><td style="font-size:0.64rem">'+esc(x.message||x.detail||'-')+'</td></tr>';}
+      html+='</tbody></table></div>';}
+    else html+='<p class="empty">No AgentGuard findings</p>';
+    $('sec-agentguard').innerHTML=html;
+  }catch(e){$('sec-agentguard').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  // Users / current session
+  try{
+    $('sec-users').innerHTML='<p><strong>Role:</strong> <span class="badge '+(st.role==='operator'?'ok':'info')+'">'+esc(st.role||'anonymous')+'</span></p>'
+      +'<p style="margin-top:6px;font-size:0.66rem;color:var(--fg-muted);font-family:var(--font-mono)">Capabilities: '+((st.capabilities||[]).slice(0,10).map(c=>'<code style="font-size:0.6rem">'+esc(c)+'</code>').join(', ')||'none')+'</p>';
+  }catch(e){$('sec-users').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  // Permissions (RBAC)
+  try{
+    const roles=(ov.permissions&&ov.permissions.roles)||{};
+    const accounts=(ov.permissions&&ov.permissions.accounts)||[];
+    let html='';
+    for(const role of Object.keys(roles).sort()){
+      html+='<p style="margin-bottom:2px"><span class="badge info">'+esc(role)+'</span> <span style="font-size:0.62rem;color:var(--fg-muted)">'+esc((roles[role]||[]).length)+' caps</span></p>';
+      html+='<div style="margin-bottom:6px">'+(roles[role]||[]).map(c=>'<code style="font-size:0.58rem;margin:1px">'+esc(c)+'</code>').join(' ')+'</div>';
+    }
+    if(accounts.length){html+='<p style="font-size:0.64rem;color:var(--fg-muted)">Accounts: '+accounts.map(a=>esc(a.username)+' ('+esc(a.role||'-')+')').join(', ')+'</p>';}
+    $('sec-permissions').innerHTML=html||'<p class="empty">No RBAC data</p>';
+  }catch(e){$('sec-permissions').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  // Policy
+  try{
+    const p=ov.policy||{};
+    let html='<p><strong>Approval policy:</strong> <span class="badge info">'+esc(p.approval_policy||'scoped')+'</span></p>';
+    html+='<p style="margin-top:6px"><strong>Pending approvals:</strong> <span class="badge '+(p.pending_approvals?'warn':'ok')+'">'+esc(p.pending_approvals||0)+'</span></p>';
+    const items=p.pending||[];
+    if(items.length){html+='<div class="table-wrap"><table><thead><tr><th>Action</th><th>Detail</th></tr></thead><tbody>';
+      for(const x of items.slice(0,8)) html+='<tr><td>'+esc(x.action||x.type||'-')+'</td><td style="font-size:0.62rem">'+esc(x.detail||x.reason||'-')+'</td></tr>';
+      html+='</tbody></table></div>';}
+    $('sec-policy').innerHTML=html;
+  }catch(e){$('sec-policy').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  // Vault access
+  try{
+    const v=ov.vault||{};
+    $('sec-vault').innerHTML='<div class="mf-grid">'
+      +'<div class="mf-kv"><span class="mf-k">Active leases</span><span class="mf-v">'+esc(v.capabilities||0)+'</span></div>'
+      +'<div class="mf-kv"><span class="mf-k">Audit events</span><span class="mf-v">'+esc(v.audit_events||0)+'</span></div>'
+      +'<div class="mf-kv"><span class="mf-k">Subjects</span><span class="mf-v">'+esc((v.subjects||[]).join(', ')||'\u2014')+'</span></div></div>';
+  }catch(e){$('sec-vault').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  // API keys
+  try{const v=await api('/kai/vault/metadata');$('sec-apikeys').innerHTML='<p><strong>Stored Keys:</strong> '+esc(v.count||0)+'</p><p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-top:4px">'+esc(v.backend||'vault')+' \u00b7 values never shown</p>';}
+  catch(e){$('sec-apikeys').innerHTML='<p class="empty">Vault metadata unavailable</p>';}
+  // Events
+  try{
+    const ev=ov.events||[];
+    if(!ev.length) $('sec-events').innerHTML='<p class="empty">No recent security events</p>';
+    else{let html='<div style="max-height:260px;overflow:auto"><table><thead><tr><th>Time</th><th>Event</th><th>Detail</th></tr></thead><tbody>';
+      for(const x of ev.slice(-20).reverse()){const sv=String(x.severity||'').toLowerCase(),bdg=sv==='critical'?'bad':sv==='warning'?'warn':'info';
+        html+='<tr><td style="font-size:0.6rem">'+esc(x.time||x.timestamp||'-')+'</td><td><span class="badge '+bdg+'">'+esc(x.event||x.action||'-')+'</span></td><td style="font-size:0.62rem">'+esc(x.detail||x.message||'-')+'</td></tr>';}
+      html+='</tbody></table></div>';$('sec-events').innerHTML=html;}
+  }catch(e){$('sec-events').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  // Login history
+  try{
+    const ev=ov.events||[];
+    const logins=ev.filter(e=>String(e.event||e.action||'').toLowerCase().includes('login')).slice(-8).reverse();
+    if(!logins.length) $('sec-logins').innerHTML='<p class="empty">No recent logins</p>';
+    else{let html='<table><thead><tr><th>User</th><th>Time</th></tr></thead><tbody>';
+      for(const l of logins)html+='<tr><td>'+esc(l.user||l.username||'-')+'</td><td>'+esc(l.time||l.timestamp||'-')+'</td></tr>';
       html+='</tbody></table>';$('sec-logins').innerHTML=html;}
-    else $('sec-logins').innerHTML='<p class="empty">No recent logins</p>';}
-  catch(e){$('sec-logins').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  }catch(e){$('sec-logins').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2803,8 +3095,10 @@ async function loadSettings(){
 // PANEL: LOGS
 // ═══════════════════════════════════════════════════════════════════
 async function loadLogs(){
-  try{const log=await api('/self-healing/log');
-    if(!log||!log.length){$('logs-content').innerHTML='<p class="empty">No audit events</p>';return;}
+  try{let log=await api('/self-healing/log');
+    if(log&&!Array.isArray(log)) log=log.actions||log.records||log.items||[];
+    if(!Array.isArray(log)) log=[];
+    if(!log.length){$('logs-content').innerHTML='<p class="empty">No audit events</p>';return;}
     let html='<div style="margin-bottom:8px;display:flex;gap:8px">';
     html+='<select id="log-filter-module" onchange="filterLogs()" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 8px;font-size:0.68rem;font-family:var(--font-mono);cursor:pointer"><option value="">All Modules</option>';
     const mods=new Set();for(const e of log)if(e.module||e.source)mods.add(e.module||e.source);
@@ -3205,28 +3499,98 @@ async function directiveAck(name,btn){
   try{await api('/api/directives/ack/'+encodeURIComponent(name),{method:'POST',body:'{}'});toast('acked '+name);loadDirectives();}
   catch(e){toast('ack failed: '+e.message,'err');if(btn)btn.disabled=false;}
 }
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: MODEL FABRIC — index + per-model pages (KAI 2.0 Phase 2)
+// ═══════════════════════════════════════════════════════════════════
+let _catalogCache = null;
+async function _getCatalog(force){
+  if(!force && _catalogCache) return _catalogCache;
+  _catalogCache = await api('/api/models/catalog'+(force?'?refresh=1':''));
+  return _catalogCache;
+}
+function modelSlug(id){ return 'model-'+String(id).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+function _healthBadge(h){
+  const map={healthy:'ok',ok:'ok',available:'ok',idle:'info',degraded:'warn',error:'bad',stopped:'bad',unknown:'info'};
+  return '<span class="badge '+(map[h]||'info')+'">'+esc(h||'unknown')+'</span>';
+}
+function _mfMetric(l,v,c){ return '<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v==null?'\u2014':v)+'</span><span class="lbl">'+esc(l)+'</span></div>'; }
+function _mfKv(l,v){ return '<div class="mf-kv"><span class="mf-k">'+esc(l)+'</span><span class="mf-v">'+esc(v==null||v===''?'\u2014':v)+'</span></div>'; }
+
+async function registerModelPages(force){
+  if(window._modelPagesRegistered && !force) return;
+  let cat; try{ cat=await _getCatalog(force); }catch(e){ return; }
+  const sidebar=document.getElementById('sidebar-nav');
+  const anchor=document.querySelector('.nav-item[data-hash="models"]');
+  let host=document.getElementById('model-nav-items');
+  if(!host){
+    host=document.createElement('div'); host.id='model-nav-items'; host.className='nav-subgroup';
+    if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(host, anchor.nextSibling);
+    else if(sidebar) sidebar.appendChild(host);
+  }
+  const area=document.getElementById('content-area');
+  host.innerHTML='';
+  for(const m of (cat.models||[])){
+    const slug=modelSlug(m.id);
+    window.MODEL_PAGES[slug]={id:m.id, title:m.title||m.id};
+    PANEL_TITLES[slug]=(m.title||m.id)+' \u00b7 Model';
+    const a=document.createElement('a');
+    a.className='nav-item nav-sub'; a.href='#'+slug; a.dataset.hash=slug;
+    a.innerHTML='<span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg></span><span class="label">'+esc(m.title||m.id)+'</span>';
+    a.addEventListener('click',function(ev){ev.preventDefault();location.hash=slug;});
+    host.appendChild(a);
+    if(!document.getElementById('panel-'+slug)){
+      const sec=document.createElement('section');
+      sec.className='panel'; sec.id='panel-'+slug;
+      sec.innerHTML='<div id="'+slug+'-content"><span class="loading">loading…</span></div>';
+      if(area) area.appendChild(sec);
+    }
+  }
+  const ms=document.getElementById('more-sheet-items'); if(ms) delete ms.dataset.built;
+  try{ if(typeof buildMoreMenu==='function') buildMoreMenu(); }catch(e){}
+  window._modelPagesRegistered=true;
+}
+
 async function loadModels(){
   const el=$('models-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  registerModelPages().catch(()=>{});
   const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
   try{
-    const [prov,dash,cfg,reg]=await Promise.all([g('/providers'),g('/providers/dashboard'),g('/providers/config'),g('/models/registry')]);
-    if(prov.error){el.innerHTML='<span class="error-text">providers: '+esc(prov.error)+'</span>';return;}
+    const [cat,fab,prov,chains,cfg]=await Promise.all([_getCatalog(true),g('/api/fabric/summary'),g('/providers'),g('/providers/chains'),g('/providers/config')]);
+    const models=cat.models||[];
+    const counts=cat.counts||{};
+    const loadf=(fab.utilization&&fab.utilization.loaded_models)||[];
+    const ga=(fab.utilization&&fab.utilization.gpu_arbiter)||{};
+    let html='<div class="spread" style="margin-bottom:10px"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">Model Fabric</span><button class="btn btn-xs" onclick="loadModels()">Refresh</button></div>';
+    html+='<div class="metric-row">'+_mfMetric('Models',counts.models)+_mfMetric('Available',counts.available)+_mfMetric('Loaded',counts.loaded,'var(--info)')+_mfMetric('Providers',Object.keys(prov).length)+'</div>';
+    html+='<div class="card"><h3>Models <span class="badge info">'+models.length+'</span></h3>';
+    html+='<div class="model-grid">';
+    for(const m of models){
+      const h=m.health||(m.available?'available':'unknown');
+      html+='<a class="model-card" href="#'+modelSlug(m.id)+'" data-hash="'+modelSlug(m.id)+'" onclick="event.preventDefault();location.hash=\''+modelSlug(m.id)+'\'">'
+        +'<div class="model-card-head"><span class="model-card-title">'+esc(m.title||m.id)+'</span>'+_healthBadge(h)+'</div>'
+        +'<div class="model-card-sub">'+esc(m.model||m.provider)+'</div>'
+        +'<div class="model-card-meta"><span>'+esc(m.params||'\u2014')+'</span><span>ctx '+esc(m.context_length!=null?Number(m.context_length).toLocaleString():'\u2014')+'</span><span>'+esc(m.cost_tier||'\u2014')+'</span></div>'
+        +'<div class="model-card-foot">'+esc((m.capabilities||[]).slice(0,4).join(' \u00b7 ')||'\u2014')+'</div></a>';
+    }
+    html+='</div></div>';
+    html+='<div class="card"><h3>Resource utilization</h3><div class="mf-grid">'
+      +_mfKv('GPU permits in-flight',ga.in_flight)+_mfKv('GPU permits',ga.permits)+_mfKv('Waiting',ga.waiting)+_mfKv('Loaded models',loadf.length)+'</div>';
+    if(loadf.length){ html+='<div class="table-wrap"><table><thead><tr><th>Model</th><th>Artefact</th><th>VRAM</th><th>Context loaded</th></tr></thead><tbody>';
+      for(const x of loadf) html+='<tr><td>'+esc(x.id)+'</td><td><code>'+esc(x.model||'-')+'</code></td><td>'+esc(x.vram_gb!=null?x.vram_gb+' GB':'\u2014')+'</td><td>'+esc(x.context!=null?Number(x.context).toLocaleString():'\u2014')+'</td></tr>';
+      html+='</tbody></table></div>'; }
+    html+='</div>';
+    const chainsD=(chains&&chains.chains)||{};
+    html+='<div class="card"><h3>Routing chains <span class="badge info">'+Object.keys(chainsD).length+' roles</span></h3><div class="table-wrap"><table><thead><tr><th>Role</th><th>Effective chain</th></tr></thead><tbody>';
+    for(const role of Object.keys(chainsD).sort()) html+='<tr><td><code>'+esc(role)+'</code></td><td style="font-size:0.64rem">'+esc((chainsD[role]||[]).join(' \u2192 ')||'\u2014')+'</td></tr>';
+    html+='</tbody></table></div></div>';
     const names=Object.keys(prov).sort();
-    const enabled=names.filter(n=>prov[n].enabled).length;
-    const avail=names.filter(n=>prov[n].available).length;
-    const m=(l,v,c)=>'<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v)+'</span><span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(l)+'</span></div>';
-    let html='<div class="metric-row">'+m('Providers',names.length)+m('Enabled',enabled)+m('Available',avail,'var(--warn)')+m('Registry models',(reg.counts&&reg.counts.models)||'-')+'</div>';
-    html+='<div class="card"><h3>Providers <span class="badge info">'+names.length+'</span> <span class="card-header-actions"><button class="btn btn-xs" onclick="loadModels()">Refresh</button></span></h3>';
-    html+='<div class="table-wrap"><table><thead><tr><th>Provider</th><th>Kind</th><th>Caps</th><th>Cost</th><th>Health</th><th>OK%</th><th>State</th><th>Actions</th></tr></thead><tbody>';
-    for(const n of names){
-      const p=prov[n]||{}, d=dash[n]||{};
-      const ok=(d.success_rate!=null)?Math.round(d.success_rate*100)+'%':'\u2014';
-      const hb=d.health?'<span class="badge '+(d.health==='healthy'?'ok':(d.health==='degraded'?'warn':'bad'))+'">'+esc(d.health)+'</span>':'\u2014';
-      html+='<tr><td><code>'+esc(n)+'</code></td><td>'+esc(p.kind||'-')+'</td><td style="font-size:0.6rem">'+esc((p.capabilities||[]).join(', '))+'</td><td>'+esc(p.cost_tier||'-')+'</td><td>'+hb+'</td><td>'+esc(ok)+'</td>'
+    html+='<div class="card"><h3>Providers <span class="badge info">'+names.length+'</span></h3><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Kind</th><th>Cost</th><th>State</th><th>Actions</th></tr></thead><tbody>';
+    for(const n of names){ const p=prov[n]||{};
+      html+='<tr><td><a href="#'+modelSlug(n)+'" onclick="event.preventDefault();location.hash=\''+modelSlug(n)+'\'"><code>'+esc(n)+'</code></a></td><td>'+esc(p.kind||'-')+'</td><td>'+esc(p.cost_tier||'-')+'</td>'
         +'<td><span class="badge '+(p.enabled?'ok':'bad')+'">'+(p.enabled?'on':'off')+'</span></td>'
         +'<td><button class="btn btn-xs" onclick="mdlToggle(\''+esc(n)+'\','+(p.enabled?'false':'true')+')">'+(p.enabled?'Disable':'Enable')+'</button> '
         +'<button class="btn btn-xs" onclick="mdlReset(\''+esc(n)+'\')">Reset breaker</button> '
-        +'<button class="btn btn-xs" onclick="mdlDelete(\''+esc(n)+'\')">Delete</button></td></tr>';
+        +'<button class="btn btn-xs btn-danger" onclick="mdlDelete(\''+esc(n)+'\')">Delete</button></td></tr>';
     }
     html+='</tbody></table></div>';
     html+='<h4 style="font-size:0.72rem;margin-top:12px">Register provider</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
@@ -3238,11 +3602,62 @@ async function loadModels(){
     const overrides=(cfg&&cfg.overrides)||{};
     html+='<div class="card"><h3>Operator routing overrides <span class="badge info">fallback order</span></h3>'
       +'<p style="font-size:0.62rem;color:var(--fg-muted)">Shape: {"fallback_order": {"role": ["provider", ...]}, "max_concurrent_builds": N}. Unknown providers are rejected on save.</p>'
-      +'<textarea id="mdl-cfg" class="search-input" style="width:100%;min-height:120px;font-family:var(--font-mono);font-size:0.62rem" spellcheck="false">'+esc(JSON.stringify(overrides,null,1))+'</textarea>'
+      +'<textarea id="mdl-cfg" class="search-input" style="width:100%;min-height:110px;font-family:var(--font-mono);font-size:0.62rem" spellcheck="false">'+esc(JSON.stringify(overrides,null,1))+'</textarea>'
       +'<div class="action-row" style="margin-top:6px"><button class="btn btn-xs btn-accent" onclick="mdlSaveConfig()">Save</button><button class="btn btn-xs" onclick="mdlResetConfig()">Reset to defaults</button></div>'
       +'<div id="mdl-cfg-result" style="font-size:0.62rem;color:var(--fg-muted);margin-top:4px"></div></div>';
     el.innerHTML=html;
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+async function loadModelPage(modelId){
+  const slug=modelSlug(modelId);
+  const el=document.getElementById(slug+'-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  let m;
+  try{ const cat=await _getCatalog(); m=(cat.models||[]).find(function(x){return x.id===modelId;}); }
+  catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; return; }
+  if(!m){ el.innerHTML='<span class="error-text">model not found: '+esc(modelId)+'</span>'; return; }
+  const u=m.usage||{}, g=m.gpu||{};
+  let html='<div class="spread" style="margin-bottom:10px"><button class="btn btn-sm" onclick="location.hash=\'models\'">&larr; Model Fabric</button><span class="badge '+(m.enabled?'ok':'bad')+'">'+(m.enabled?'enabled':'disabled')+'</span></div>';
+  html+='<div class="card"><h3>'+esc(m.title||m.id)+' '+_healthBadge(m.health||m.status||(m.available?'available':'unknown'))+'</h3>';
+  if(m.description) html+='<div style="font-size:0.7rem;color:var(--fg-secondary);margin-bottom:8px">'+esc(m.description)+'</div>';
+  html+='<div class="mf-grid">'
+    +_mfKv('Provider',m.provider)+_mfKv('Kind',m.kind)+_mfKv('Model artefact',m.model)
+    +_mfKv('Parameters',m.params)+_mfKv('Quantization',m.quantization)
+    +_mfKv('Model size',m.size_gb!=null?m.size_gb+' GB':null)
+    +_mfKv('Context window',m.context_length!=null?Number(m.context_length).toLocaleString()+' tokens':null)
+    +_mfKv('Context loaded',m.context_loaded!=null?Number(m.context_loaded).toLocaleString()+' tokens':null)
+    +_mfKv('Endpoint',m.endpoint)+_mfKv('Cost tier',m.cost_tier)
+    +_mfKv('Routing weight',m.weight!=null?Number(m.weight).toFixed(3):null)
+    +_mfKv('Device',g.device)+_mfKv('VRAM',g.vram_gb!=null?g.vram_gb+' GB':null)
+    +'</div></div>';
+  html+='<div class="metric-row" style="margin-top:10px">'
+    +_mfMetric('Attempts',u.attempts)+_mfMetric('Success rate',u.success_rate!=null?Math.round(u.success_rate*100)+'%':null)
+    +_mfMetric('Avg latency',u.avg_duration_ms!=null?Math.round(u.avg_duration_ms)+' ms':null,'var(--info)')
+    +_mfMetric('Telemetry calls',u.telemetry_calls)+'</div>';
+  html+='<div class="card"><h3>Capabilities &amp; roles</h3>';
+  html+='<div style="margin-bottom:6px">'+(m.capabilities||[]).map(function(c){return '<span class="badge info" style="margin:2px">'+esc(c)+'</span>';}).join('')+'</div>';
+  html+='<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:3px">Routing roles</div><div>'+(m.roles||[]).map(function(c){return '<span class="badge" style="margin:2px">'+esc(c)+'</span>';}).join('')+'</div>';
+  html+='<div style="font-size:0.64rem;color:var(--fg-muted);margin:8px 0 3px">Task types</div><div>'+(m.task_types||[]).map(function(c){return '<span class="badge" style="margin:2px">'+esc(c)+'</span>';}).join('')+'</div></div>';
+  html+='<div class="card"><h3>Cost &amp; usage</h3><div class="mf-grid">'
+    +_mfKv('Total cost',u.total_cost!=null?u.total_cost:null)+_mfKv('Cost-reported calls',u.cost_reported_calls)
+    +_mfKv('Last response',u.last_response_time_ms!=null?u.last_response_time_ms+' ms':null)+_mfKv('Last request',u.last_request_at)
+    +_mfKv('EMA latency',u.ema_ms!=null?Math.round(u.ema_ms)+' ms':null)+_mfKv('Telemetry calls',u.telemetry_calls)+'</div></div>';
+  html+='<div class="card"><h3>Actions</h3><div class="action-row"><button class="btn btn-sm btn-accent" onclick="modelTestCall(\''+esc(m.id)+'\')">Test call</button>'
+    +'<button class="btn btn-sm" onclick="loadModelPage(\''+esc(m.id)+'\')">Refresh</button></div><div id="model-test-result" style="margin-top:8px;font-size:0.66rem"></div></div>';
+  el.innerHTML=html;
+}
+
+async function modelTestCall(modelId){
+  const out=document.getElementById('model-test-result');
+  if(out) out.innerHTML='<span class="loading">calling '+esc(modelId)+'…</span>';
+  try{
+    const r=await api('/api/models/'+encodeURIComponent(modelId)+'/test',{method:'POST',body:JSON.stringify({})});
+    if(r.ok){
+      if(out) out.innerHTML='<span class="badge ok">ok</span> <span style="color:var(--fg-muted)">'+esc(r.latency_ms)+' ms</span><pre style="margin-top:6px;font-size:0.64rem;white-space:pre-wrap">'+esc(r.response||'')+'</pre>';
+      toast('test ok: '+modelId);
+    } else if(out){ out.innerHTML='<span class="badge bad">failed</span><pre style="margin-top:6px;font-size:0.64rem;white-space:pre-wrap">'+esc(r.error||'unknown')+'</pre>'; }
+  }catch(e){ if(out) out.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
 }
 async function mdlToggle(n,on){try{await api('/providers/'+encodeURIComponent(n)+'/toggle',{method:'PUT',body:JSON.stringify({enabled:on})});toast(n+(on?' enabled':' disabled'));loadModels();}catch(e){toast('error: '+e.message,'err');}}
 async function mdlReset(n){try{await api('/kai/circuit-breakers/'+encodeURIComponent(n)+'/reset',{method:'POST',body:'{}'});toast('breaker reset: '+n);loadModels();}catch(e){toast('error: '+e.message,'err');}}

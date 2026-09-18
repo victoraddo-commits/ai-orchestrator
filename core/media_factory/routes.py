@@ -120,6 +120,13 @@ class CostCreateRequest(BaseModel):
     evidence: Optional[dict] = None
 
 
+class AssetGenerateRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+    model: Optional[str] = Field(default=None, max_length=120)
+    size: str = Field(default="1024x1024", max_length=20)
+    content_id: Optional[int] = None
+
+
 class ExperimentCreateRequest(BaseModel):
     key: str = Field(min_length=1, max_length=120)
     name: Optional[str] = None
@@ -233,6 +240,38 @@ def get_production(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, 
         "generation": assets_mod.generation_capability(),
         "counts": {"content": len(contents), "assets": len(assets), "jobs": len(jobs)},
     }
+
+
+# ── Assets (real image generation) ─────────────────────────────────────────
+@router.get("/assets")
+def list_assets(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    return _page(_serialize(assets_mod.latest(limit, offset)), limit, offset)
+
+
+@router.post("/assets/generate")
+def generate_asset(payload: AssetGenerateRequest,
+                   operator: str = Depends(media_operator)):
+    result = assets_mod.generate_image(
+        payload.prompt,
+        model=payload.model,
+        size=payload.size,
+        content_id=payload.content_id,
+    )
+    db.audit(
+        "api.assets.generate",
+        entity_type="asset",
+        entity_id=result.get("asset_id"),
+        actor=operator,
+        payload={
+            "prompt": payload.prompt,
+            "model": result.get("model"),
+            "size": payload.size,
+            "content_id": payload.content_id,
+            "status": result.get("status"),
+            "sha256": [a.get("sha256") for a in result.get("assets", [])],
+        },
+    )
+    return result
 
 
 # ── Publishing ─────────────────────────────────────────────────────────────

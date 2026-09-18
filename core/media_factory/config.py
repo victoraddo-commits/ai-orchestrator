@@ -84,6 +84,21 @@ LLM_BASE_URL = os.environ.get("MEDIA_LLM_BASE_URL", "http://127.0.0.1:11434")
 LLM_MODEL = os.environ.get("MEDIA_LLM_MODEL", "qwen3-coder:kai")
 LLM_TIMEOUT = float(os.environ.get("MEDIA_LLM_TIMEOUT", "120"))
 
+# ── Image generation (OpenAI, key resolved from kai-vault at call time) ────
+DEFAULT_IMAGE_MODEL = "gpt-image-1-mini"
+OPENAI_API_BASE = os.environ.get("MEDIA_OPENAI_BASE_URL", "https://api.openai.com/v1")
+OPENAI_VAULT_PROVIDER = os.environ.get("MEDIA_IMAGE_VAULT_PROVIDER", "openai")
+
+
+def image_model() -> str:
+    """Default OpenAI image model, env-overridable per call/site."""
+    return (os.environ.get("MEDIA_IMAGE_MODEL") or DEFAULT_IMAGE_MODEL).strip()
+
+
+def image_timeout() -> float:
+    """Seconds to wait for the OpenAI image endpoint (generation is slow)."""
+    return float(os.environ.get("MEDIA_IMAGE_TIMEOUT", "180"))
+
 # ── Trend discovery ────────────────────────────────────────────────────────
 TREND_GEO = os.environ.get("MEDIA_TREND_GEO", "GH")
 GOOGLE_TRENDS_RSS = os.environ.get(
@@ -111,7 +126,10 @@ STATUS_VALUES = (
 )
 
 # ── Honest capability reasons (single source of truth for /status) ─────────
-BLOCKED_ASSET_GEN = "no image/video generation models installed (ffmpeg present)"
+# Image generation is now available via OpenAI (key in kai-vault); only video
+# remains blocked, so the asset-gen reason must say exactly that.
+BLOCKED_ASSET_GEN = "video generation blocked; image generation available"
+BLOCKED_ASSET_VIDEO = "video generation not available"
 BLOCKED_VOICE = "no TTS/voice model installed"
 BLOCKED_EDITING = "no render pipeline / generated media to edit yet"
 BLOCKED_CAPTIONS = "no ASR (voice gateway dormant); ffmpeg subtitle tooling present"

@@ -81,13 +81,20 @@ def capabilities(probe_network: bool = True) -> dict:
         blocked_reason=None if model_ok else model_detail,
         verified=False)
 
-    # Assets / production
+    # Assets / production — images are real; video stays blocked.
     gen = assets.generation_capability()
+    img = gen["image"]
     caps["asset_gen"] = Capability(
-        "asset_gen", config.STATUS_BLOCKED, "no media generation capability",
-        blocked_reason=config.BLOCKED_ASSET_GEN,
-        evidence={"ffmpeg": gen["ffmpeg"], "ffprobe": gen["ffprobe"]},
-        verified=False)
+        "asset_gen", img["status"], img["detail"],
+        blocked_reason=img["blocked_reason"],
+        evidence={
+            "provider": img.get("provider"),
+            "model": img.get("model"),
+            "images_produced": img.get("images_produced"),
+            "ffmpeg": gen["ffmpeg"],
+            "ffprobe": gen["ffprobe"],
+        },
+        verified=img["status"] == config.STATUS_VERIFIED)
     caps["voice_audio"] = Capability(
         "voice_audio", config.STATUS_BLOCKED, "no TTS/voice model",
         blocked_reason=config.BLOCKED_VOICE, verified=False)

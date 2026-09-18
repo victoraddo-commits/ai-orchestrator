@@ -70,7 +70,7 @@ class BettingTelegramBot:
             return self._cmd_help()
         elif text.startswith("/picks") or text.startswith("/predictions"):
             return self._cmd_picks(text)
-        elif text.startswith("/odds"):
+        elif text.startswith("/odds") or text.startswith("/group"):
             return self._cmd_odds(text)
         elif text.startswith("/subscribe"):
             return self._cmd_subscribe(chat_id, user_id)
@@ -109,9 +109,11 @@ class BettingTelegramBot:
             "`/picks football` — Filter by sport\n"
             "`/picks high` — High confidence only\n\n"
             "*Odds Groups*\n"
-            "`/odds` — Active accumulators\n"
-            "`/odds 10` — Show 10 ODDS groups\n"
-            "`/odds 50 moderate` — 50 ODDS, moderate risk\n\n"
+            "`/odds` — Active accumulators (with selections)\n"
+            "`/odds 10` — Show a group + its selections\n"
+            "`/odds 50 moderate` — 50 ODDS, moderate risk\n"
+            "`/group 10` — Alias for /odds 10\n"
+            "`/odds summary` — Short list (no selections)\n\n"
             "*Results & Stats*\n"
             "`/results` — Last 10 results\n"
             "`/performance` — Win rate, ROI, calibration\n"
@@ -218,19 +220,51 @@ class BettingTelegramBot:
 
         return "\n".join(lines)
 
+    def _group_legs(self, db, group_id: int, limit: int = 12) -> list:
+        """Return formatted selection lines for an odds group."""
+        rows = db.execute(
+            """
+            SELECT p.market_name, p.selection, p.bookmaker_odds, p.confidence,
+                   ht.name AS home, at.name AS away
+            FROM odds_group_selections s
+            JOIN predictions p ON p.id = s.prediction_id
+            JOIN events e ON e.id = p.event_id
+            LEFT JOIN teams ht ON ht.id = e.home_team_id
+            LEFT JOIN teams at ON at.id = e.away_team_id
+            WHERE s.odds_group_id = ?
+            ORDER BY s.sort_order
+            """,
+            (group_id,),
+        ).fetchall()
+        out = []
+        for r in rows[:limit]:
+            odds = f"{r['bookmaker_odds']:.2f}" if r["bookmaker_odds"] else "N/A"
+            fixture = f"{r['home'] or '?'} vs {r['away'] or '?'}"
+            out.append(
+                f"   • {fixture}\n"
+                f"     {r['market_name']} → *{r['selection']}* @ {odds} ({r['confidence']:.0f}%)"
+            )
+        if len(rows) > limit:
+            out.append(f"   … +{len(rows) - limit} more")
+        return out
+
     def _cmd_odds(self, text: str) -> str:
-        """Show active odds groups with optional filtering."""
+        """Show active odds groups with their actual selections."""
         parts = text.split()
         target_filter = None
         risk_filter = None
+        show_legs = True
 
         for part in parts[1:]:
+            low = part.lower()
+            if low in ("summary", "brief", "short"):
+                show_legs = False
+                continue
             try:
-                odds = float(part)
-                target_filter = odds
+                target_filter = float(part)
             except ValueError:
-                if part.lower() in ("conservative", "moderate", "aggressive", "high_risk"):
-                    risk_filter = part.lower()
+                if low in ("conservative", "moderate", "aggressive", "high_risk"):
+                    risk_filter = low
 
         with get_db() as db:
             query = "SELECT * FROM odds_groups WHERE status = 'active'"
@@ -245,6 +279,10 @@ class BettingTelegramBot:
 
             query += " ORDER BY target_odds ASC LIMIT 5"
             rows = db.execute(query, params).fetchall()
+            legs_by_group = {
+                row["id"]: (self._group_legs(db, row["id"]) if show_legs else [])
+                for row in rows
+            }
 
         if not rows:
             return (
@@ -263,8 +301,15 @@ class BettingTelegramBot:
                 f"Selections: {row['num_selections']} | "
                 f"Conf: {row['average_confidence']:.0f}%"
             )
+            legs = legs_by_group.get(row["id"], [])
+            if legs:
+                lines.append("   *Selections:*")
+                lines.extend(legs)
+            lines.append("")
 
-        return "\n".join(lines)
+        if show_legs:
+            lines.append("_`/odds 10` = one group · `/odds summary` = short list_")
+        return "\n".join(lines).rstrip()
 
     def _cmd_subscribe(self, chat_id: str, user_id: Optional[str]) -> str:
         """Show subscription options."""

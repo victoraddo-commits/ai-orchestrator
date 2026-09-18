@@ -875,7 +875,7 @@ def auth_status(
         return {"role": "operator", "auth_method": "bridge_token"}
     role = authz.resolve_role(session_token)
     if role:
-        caps = sorted(authz.ROLE_CAPABILITIES.get(role, set()))
+        caps = sorted(authz._get_role_caps(role) or set())
         return {"role": role, "auth_method": "session", "capabilities": caps}
     return {"role": "anonymous", "auth_method": "none", "capabilities": []}
 
@@ -3468,21 +3468,41 @@ from core.topology_engine import detect_changes, get_natural_summary
 from core.network_discovery_cycle import run_network_discovery_cycle
 
 
+def _require_session_or_bridge(
+    authorization: str | None = Header(default=None),
+    x_kai_session: str | None = Header(default=None),
+) -> str:
+    """Read-only gate: bridge token OR an operator session with kai.command.
+
+    The Command Center authenticates with a session (X-Kai-Session), not the
+    bridge token, so topology/connectivity reads must accept either.  Writes
+    (discover / connectivity test) remain bridge-token + capability gated.
+    """
+    if authorization and hmac.compare_digest(
+            authorization.encode(), f"Bearer {_load_api_token()}".encode()):
+        from core.bridge_auth import BRIDGE_OPERATOR
+        return BRIDGE_OPERATOR
+    if x_kai_session and (authz.check_capability(x_kai_session, "kai.command")
+                          or authz.check_capability(x_kai_session, "delegate.use")):
+        return x_kai_session
+    raise HTTPException(status_code=401, detail="Missing or invalid credentials")
+
+
 @app.get("/network/topology")
-def network_topology(_: str = Depends(require_bridge_token)):
+def network_topology(_: str = Depends(_require_session_or_bridge)):
     """Full topology graph JSON — sites, tailscale peers, subnet routes, tunnel status."""
     return load_graph()
 
 
 @app.get("/network/topology/summary")
-def network_topology_summary(_: str = Depends(require_bridge_token)):
+def network_topology_summary(_: str = Depends(_require_session_or_bridge)):
     """Human-readable natural language summary of the current topology."""
     graph = load_graph()
     return {"summary": get_natural_summary(graph)}
 
 
 @app.get("/network/topology/sites")
-def network_topology_sites(_: str = Depends(require_bridge_token)):
+def network_topology_sites(_: str = Depends(_require_session_or_bridge)):
     """Sites summary — name, LAN subnet, gateway, Proxmox node, LXC/VM counts."""
     graph = load_graph()
     sites = graph.get("sites", {})
@@ -3490,7 +3510,7 @@ def network_topology_sites(_: str = Depends(require_bridge_token)):
 
 
 @app.get("/network/topology/peers")
-def network_topology_peers(_: str = Depends(require_bridge_token)):
+def network_topology_peers(_: str = Depends(_require_session_or_bridge)):
     """Tailscale peer list — all peers across all nodes."""
     graph = load_graph()
     peers = graph.get("tailscale", {}).get("peers", {})
@@ -3498,7 +3518,7 @@ def network_topology_peers(_: str = Depends(require_bridge_token)):
 
 
 @app.get("/network/topology/routes")
-def network_topology_routes(_: str = Depends(require_bridge_token)):
+def network_topology_routes(_: str = Depends(_require_session_or_bridge)):
     """Subnet route table — subnet → {advertiser, accepted}."""
     graph = load_graph()
     routes = graph.get("tailscale", {}).get("subnet_routes", {})
@@ -3506,7 +3526,7 @@ def network_topology_routes(_: str = Depends(require_bridge_token)):
 
 
 @app.get("/network/connectivity")
-def network_connectivity(_: str = Depends(require_bridge_token)):
+def network_connectivity(_: str = Depends(_require_session_or_bridge)):
     """Last connectivity test results — A→B/B→A latency, packet loss, tunnel status."""
     graph = load_graph()
     return {
@@ -3523,7 +3543,7 @@ def network_connectivity_test(_: str = Depends(_require_write_capability("networ
 
 
 @app.get("/network/changes")
-def network_changes(limit: int = Query(50, ge=1, le=500), _: str = Depends(require_bridge_token)):
+def network_changes(limit: int = Query(50, ge=1, le=500), _: str = Depends(_require_session_or_bridge)):
     """Last N network change events detected vs the prior graph snapshot."""
     prior = load_prior()
     current = load_graph()

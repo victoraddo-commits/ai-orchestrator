@@ -121,6 +121,15 @@ def start():
     # 2026-08-09: DeepSeek worker pool — primary AI engine per operator directive.
     _pool = start_pool(workers=8)
 
+    # KAI 2.0 Phase 1: instantiate the teammate factory runtime alongside the
+    # scheduler, fail-safe — a workforce problem must never stop the cycle.
+    try:
+        from core.teammate.runtime import get_runtime
+        get_runtime()
+        info("teammate factory runtime constructed")
+    except Exception as _tm_exc:
+        info(f"teammate factory runtime unavailable: {type(_tm_exc).__name__}: {_tm_exc}")
+
     # Telegram monitor — periodic status digests per operator directive.
     _monitor = TelegramMonitor()
     _monitor.start()

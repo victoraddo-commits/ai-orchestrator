@@ -4317,6 +4317,17 @@ except Exception as _cce_exc:
     _lg2.getLogger(__name__).warning('cc_extra_routes unavailable: %s', _cce_exc)
 
 
+# Teammate Factory runtime API (KAI 2.0 Phase 1) — workforce/teams/missions.
+# Mounts the live runtime so Kai (Command Center/Telegram) and OpenCode can
+# create teammates, form teams and run missions.
+try:
+    from core.teammate.routes import teammate_router as _tm_router
+    app.include_router(_tm_router)
+except Exception as _tm_exc:
+    import logging as _ltm
+    _ltm.getLogger(__name__).warning('teammate routes unavailable: %s', _tm_exc)
+
+
 # Knowledge Fabric API
 try:
     from core.knowledge.api import knowledge_router as _kf_router

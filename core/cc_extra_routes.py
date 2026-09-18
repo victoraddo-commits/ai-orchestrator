@@ -106,6 +106,7 @@ def _directives_token() -> str:
 
 def _directives_proxy(path: str, method: str = "GET", body: bytes = b"",
                       ctype: str = "application/json") -> Response:
+    import urllib.error
     import urllib.request
     token = _directives_token()
     url = _DIRECTIVES_BASE + path
@@ -118,6 +119,12 @@ def _directives_proxy(path: str, method: str = "GET", body: bytes = b"",
             raw = r.read()
         ctype_out = r.headers.get("Content-Type", "application/json")
         return Response(content=raw, media_type=ctype_out)
+    except urllib.error.HTTPError as e:
+        # Propagate the upstream status (e.g. 409 verification refusal) so the
+        # CC can show the honest verdict instead of a generic 502.
+        raw = e.read()
+        ctype_out = e.headers.get("Content-Type", "application/json")
+        return Response(content=raw, media_type=ctype_out, status_code=e.code)
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"error": f"directives service unreachable: {type(e).__name__}: {e}"},
                             status_code=502)
@@ -171,6 +178,37 @@ def directives_health():
         return _directives_proxy("/health")
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+@cc_extra_router.get("/api/directives/completed")
+def directives_completed():
+    """List directives moved to directives/completed/ (with verdict metadata)."""
+    return _directives_proxy("/api/directives/completed")
+
+
+@cc_extra_router.post("/api/directives/complete/{directive_id}")
+async def directives_complete(directive_id: str, request: Request,
+                              _: None = Depends(_req_op)):
+    """Verify + complete a directive; refusal (409) carries the verdict."""
+    import urllib.parse
+    body = await request.body() or b"{}"
+    return _directives_proxy(
+        "/api/directives/" + urllib.parse.quote(directive_id, safe="") + "/complete",
+        "POST", body, "application/json")
+
+
+@cc_extra_router.get("/api/directives/docs/list")
+def directives_docs_list():
+    """List files under the repo docs/ folder."""
+    return _directives_proxy("/api/directives/docs")
+
+
+@cc_extra_router.get("/api/directives/docs/download/{rel_path:path}")
+def directives_docs_download(rel_path: str):
+    """Download a file from the repo docs/ folder."""
+    import urllib.parse
+    return _directives_proxy(
+        "/api/directives/docs/" + urllib.parse.quote(rel_path, safe="/"))
 
 
 # ── Reports (KAI 2.0 Phase 3) — proxies the directives service reports API ──

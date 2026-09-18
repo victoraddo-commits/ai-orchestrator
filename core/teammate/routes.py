@@ -112,6 +112,19 @@ def list_teammates(status: str = "", specialization: str = "",
         status=status or None, specialization=specialization or None)}
 
 
+@teammate_router.get("/api/workforce/health")
+def workforce_health(operator: str = Depends(_require_operator)):
+    """§27/§18: per-worker health + success/error rates + resource snapshot."""
+    return {"operator": operator, **get_engine().workforce_health()}
+
+
+@teammate_router.get("/api/workforce/resources")
+def workforce_resources(operator: str = Depends(_require_operator)):
+    """§18: resource-governor snapshot (workers, queue, GPU permits, host)."""
+    return {"operator": operator,
+            "resources": get_engine().workforce_health()["resources"]}
+
+
 @teammate_router.get("/api/workforce/teammates/{teammate_id}")
 def get_teammate(teammate_id: str, operator: str = Depends(_require_operator)):
     mate = get_engine().get_teammate(teammate_id)

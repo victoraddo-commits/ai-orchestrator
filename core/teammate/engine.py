@@ -124,6 +124,18 @@ class WorkforceEngine:
         t = self.runtime.registry.get(teammate_id)
         return self._teammate_dict(t) if t is not None else None
 
+    def workforce_health(self) -> dict:
+        """§27/§18: per-worker health + resource-governor snapshot."""
+        report = self.runtime.registry.health_report()
+        resources: dict = {}
+        try:
+            from core.workforce.resource_governor import governor
+            resources = governor.snapshot(
+                registry=self.runtime.registry, missions=self.list_missions())
+        except Exception:  # governor is observability, never fatal
+            resources = {}
+        return {"health": report, "resources": resources}
+
     def retire_teammate(self, teammate_id: str, reason: str = "operator retirement") -> Optional[dict]:
         """Retire a teammate (operator action from the Command Center)."""
         t = self.runtime.registry.get(teammate_id)

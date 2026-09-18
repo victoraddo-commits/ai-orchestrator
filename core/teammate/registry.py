@@ -419,6 +419,73 @@ class TeammateRegistry:
         self.save()
         return pm
 
+    def health_report(self) -> dict:
+        """§27: per-teammate health + success/error rates and an aggregate.
+
+        Read-only projection over the persisted teammate records (which carry
+        the §41 performance metrics). ``alive`` is about process-level
+        liveness as far as the registry can tell; ``ready``/``busy`` mirror
+        the lifecycle state; ``last_heartbeat`` is the last activity stamp.
+        """
+        teammates: dict[str, Any] = {}
+        by_status: dict[str, int] = {}
+        by_health: dict[str, int] = {}
+        for t in self._teammates.values():
+            pm = t.performance_metrics or {}
+            completed = int(pm.get("tasks_completed", 0))
+            failed = int(pm.get("tasks_failed", 0))
+            attempts = completed + failed
+            success_rate = round(completed / attempts, 3) if attempts else 0.0
+            status = t.status
+            # The lifecycle state is authoritative: failure states are stored
+            # on ``status`` while ``health`` is a coarse override that defaults
+            # HEALTHY, so derive health from status when no override is set.
+            health = t.health if (t.health and t.health != "HEALTHY") else (
+                status if status in ("DEGRADED", "FAILED", "BLOCKED",
+                                     "QUARANTINED", "RECOVERING") else "HEALTHY")
+            by_status[status] = by_status.get(status, 0) + 1
+            by_health[health] = by_health.get(health, 0) + 1
+            teammates[t.id] = {
+                "id": t.id,
+                "name": t.name,
+                "specialization": t.specialization,
+                "status": status,
+                "health": health,
+                "alive": status != "RETIRED",
+                "ready": status == "READY",
+                "busy": status in ("ASSIGNED", "EXECUTING"),
+                "current_missions": list(t.assigned_missions or []),
+                "active_tasks": list(t.active_tasks or []),
+                "last_heartbeat": t.last_active or t.updated_at or t.created_at,
+                "tasks_completed": completed,
+                "tasks_failed": failed,
+                "success_rate": success_rate,
+                "error_rate": round(1.0 - success_rate, 3) if attempts else None,
+                "avg_latency_ms": pm.get("avg_latency_ms", 0.0),
+                "retries": int(pm.get("retries", 0)),
+                "last_model": pm.get("last_model"),
+                "models": dict(pm.get("models") or {}),
+                "last_task_at": pm.get("last_task_at"),
+                "failure_history": len(t.failure_history or []),
+                "quarantined": health == "QUARANTINED",
+            }
+        return {
+            "schema": 1,
+            "counts": {
+                "total": len(self._teammates),
+                "alive": sum(1 for r in teammates.values() if r["alive"]),
+                "ready": sum(1 for r in teammates.values() if r["ready"]),
+                "busy": sum(1 for r in teammates.values() if r["busy"]),
+                "unhealthy": sum(1 for r in teammates.values()
+                                 if r["health"] not in ("HEALTHY",)),
+                "quarantined": sum(1 for r in teammates.values()
+                                   if r["quarantined"]),
+            },
+            "by_status": by_status,
+            "by_health": by_health,
+            "teammates": teammates,
+        }
+
     def retire(self, teammate_id: str, reason: str) -> None:
         """Force RETIRED state. Terminal — subsequent transitions raise."""
         t = self._teammates.get(teammate_id)

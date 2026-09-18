@@ -3,9 +3,10 @@
 **Directive:** `directives/20260918T095558Z-pasted-directive.md` — *KAI 2.0 — Unified Brain + Model Fabric + Autonomous Teammate Factory*
 **Program plan:** `docs/superpowers/plans/2026-09-18-kai-2.0-unified-brain-teammate-factory.md`
 **Audit basis:** `docs/KAI_AUDIT_REPORT_2026-09-18.md` (pre-fix) · Phase reports: `docs/KAI_PHASE1_TEAMMATE_FACTORY_REPORT.md`, `docs/KAI_PHASE2_COMMAND_CENTER_REPORT.md`, `docs/COMMAND_CENTER_CANONICAL.md`
-**Date:** 2026-09-18 · **Host:** LXC 111 `kai-orchestrator` (`/opt/ai-orchestrator`, branch `main`, HEAD `134b734`; §37 addendum `5cefa74`; Phase-4B remediation commits `81d222f`, `c4d9365`, `a789a59`, `49e85bf`, `c0304e2`, `134b734` — see §3.2)
+**Date:** 2026-09-18 · **Host:** LXC 111 `kai-orchestrator` (`/opt/ai-orchestrator`, branch `main`, HEAD `27df8fe`; §37 addendum `5cefa74`; Phase-4B remediation commits `81d222f`, `c4d9365`, `a789a59`, `49e85bf`, `c0304e2`, `134b734` — see §3.2; breadth-pass commits `5bed38f` §7, `c86b743` §23, `f4667fd` §18, `79e36e4` §27, `27df8fe` §12 — see §3.3)
 **Method:** evidence-first. Every status below was produced by a command run in this session against the live system; observed output is cited. Statuses: **VERIFIED** | **PARTIALLY_VERIFIED** | **UNVERIFIED** | **MISSING** | **BLOCKED** | **FAILED**.
 **Remediation pass (2026-09-18 19:xx UTC):** the five PARTIAL items named in §6.3 were closed with TDD + live evidence — mission-store persistence race (P0 §52), Telegram §53, auto-retire §39 + learning/metrics §40/§41, and the capability-gap loop §31/§43. Evidence in §3.2; per-item commits in the header above.
+**Breadth pass (2026-09-18 20:xx–21:xx UTC, LOCAL MODELS ONLY):** closed §7 (multi-local model diversity + node failover), §23 (skill dependency DAG + recovery unblock), §18 (resource governor), §27 (worker health report) and §12 (explicit tool schema + catalog). Evidence in §3.3; §14/§17/§24/§35/§3/§6/§42/§44 re-audited with honest residues noted in §3.3 and §4.
 
 ---
 
@@ -16,7 +17,7 @@
 The central deliverable — an autonomous teammate factory that creates workers, forms teams, decomposes and executes missions through the Model Fabric, verifies output, and recovers from worker/model failure with persistent state — is **VERIFIED live** (§19–§21, §25–§26, §38, §46–§52, §54). It runs on KAI's own local brain with Claude Code offline. **Module integration (§37) is now VERIFIED**: 18 KAI modules (Juris, Money, Susu, IT Manager, Betting, Network, …) expose their capability through `core/integration`, and a module capability request runs through the one teammate factory + mission engine with the outcome written back into the module's Second Brain record (live cross-module path `mis-844f7d5813` COMPLETED, SB record `26d37117-cdd1-4d0d-8f07-0194e37346c9`; see §3.1).
 
 It is **not** a finished "one unified KAI" (the directive's §56 end state). Honest gaps:
-- **§39 auto-retire, §40–§41 learning/metrics, §31/§43 capability-gap loop and §53 Telegram are now VERIFIED** (live + tests; §3.2). What remains partial is the *breadth* of the platform, not these loops: cloud model paths are still a local-only SPOF (§7), several architecture layers are not in every path (§3/§6), tool risk/rollback schema (§12), time-aware grants (§14), sandbox policy (§17), CPU/RAM/GPU accounting (§18), general DAG scheduling (§23), model-based verification by default (§24), continuous self-initiation (§42), and other factories routed through the one Factory (§44).
+- **§39 auto-retire, §40–§41 learning/metrics, §31/§43 capability-gap loop, §53 Telegram (live handler), §7 local model diversity + failover, §23 dependency DAG, §18 resource governor, §27 worker health and §12 tool schema are now VERIFIED** (live + tests; §3.2, §3.3). Remaining breadth gaps (documented in §3.3 and §4): a single extra local node (VM104→VM112) is the only failover diversity (§7 residual); several architecture layers are not in every path (§3/§6); time-aware permission grants (§14); declarative sandbox policy (§17); model-based verification is optional, not default (§24); uniform timeout/rollback across *all* operations is not yet universal (§35); continuous self-initiation remains scheduler-cadence driven (§42); and other factories (software/android/infrastructure/media) are not yet routed through the one Teammate Factory (§44).
 - **Telegram (§53)** was exercised through the real inbound handler (Command Bus → AgentGuard → mission engine, live local model); a true operator-to-bot round trip is owned by the live poller and was **not** sent by an operator in this pass (a bot cannot receive its own message) — stated, not hidden.
 - **45 roadmap phases** carry a reconciliation flag needing human review; several owner-only credential rotations remain open.
 
@@ -147,6 +148,66 @@ Runner: `/opt/ai-orchestrator/.venv/bin/python -m pytest`.
 
 ---
 
+### 3.3 BREADTH PASS — §7 / §23 / §18 / §27 / §12 (2026-09-18 20:xx–21:xx UTC, LOCAL MODELS ONLY)
+
+Five breadth sections were closed with TDD + live evidence on the local fabric (VM104 GPU + VM112 CPU). No cloud provider was added or used.
+
+#### §7 Model Fabric — local node diversity + failover — commit `5bed38f`
+| Action | Evidence |
+|---|---|
+| Failure found | Every role chain terminated on VM104 (ollama `localhost:11434`): `kai_brain`/`kai_coder`/`kai_deep`/`local`/`llama3` share one GPU node → single point of failure. |
+| Fix | `llama_coder_cpu` (VM112 llama.cpp, `192.168.1.242:5001`) appended as the tail local failover to every role; teammate ModelPlans widen a single declared role into the full effective local chain (preference first, local failover appended). Still 100% local. |
+| Chains (live `/providers/chains`) | `planning/architecture/review = [kai_brain, local, llama_coder_cpu]`, `coding = [kai_coder, llama_coder_cpu, local]`, 19 roles total; `diversity.planning = {nodes: 2, available_nodes: 2, has_failover: true}`. |
+| Surfaces | `GET /providers?fabric=1` (plus enriched `/providers/chains` and `/api/fabric/summary`) expose per-provider `{available, enabled, endpoint, node}` and per-role diversity; the Model Fabric CC page renders health-coloured chains with a node/SPOF badge. |
+| Tests | `pytest tests/test_model_fabric_diversity.py` → **17 passed**. |
+| Live failover drill | `scripts/kai_model_fabric_failover_drill.py`: (A) VM104 unavailable → planning completes on `llama_coder_cpu`/VM112 (real inference; attempt log `kai_brain`/`local` unavailable); (B) `kai_coder` timeout → coding completes on `llama_coder_cpu` (attempt log timeout). **RESULT: PASS**. |
+
+#### §23 Dependency management — skill dependency DAG — commit `c86b743`
+| Action | Evidence |
+|---|---|
+| Gap found | The Skill model had a `dependencies` field but no canonical skill declared edges, and the executor ran the flat parallel/sequential split with no DAG. |
+| Fix | Declared edges (`run_tests`/`run_security_scan` → `write_code`; `deploy_service` → both; `rollback_service` → `deploy_service`), migrated onto existing registries; `Team.execute` rewritten as a Kahn-style wave scheduler (independent tasks concurrent; failed dependency blocks dependents; cycles detected); `WorkforceEngine` re-evaluates the DAG after recovery so a healed dependency unblocks its dependents. |
+| Live evidence | `scripts/kai_dependency_graph_demo.py`: `write_code` ordered before `run_tests`; injected `write_code` failure → `run_tests` + `deploy_service` `blocked`, dependents never executed. Live mission `mis-3b64208bde`: `run_tests` COMPLETED under its `write_code` dependency. |
+| Tests | `pytest tests/test_workforce_dependencies.py` → **5 passed** (concurrency, ordering, block-on-failure, cycle detection, declared edges). |
+
+#### §18 Resource governor — commit `f4667fd`
+| Action | Evidence |
+|---|---|
+| Gap found | No CPU/RAM/queue accounting and no ceiling on workforce growth (only a bounded team size). |
+| Fix | `core/workforce/resource_governor.py` reuses the Teammate Registry + GPU arbiter: `KAI_MAX_WORKERS` cap (default 64), `ResourceExhausted` when a NEW worker would exceed it (reuse unaffected), and a snapshot (workers active/idle/busy/failed, mission queue depth, GPU permits, host CPU/RAM/load, `can_spawn`). |
+| Live evidence | `GET /api/workforce/health` → `resources.max_workers=64, can_spawn=true, workers={total:14,active:12,idle:12,busy:0}, queue_depth=2, gpu={permits:2,in_flight:0,waiting:0}`. |
+| Tests | `pytest tests/test_resource_governor.py` → **4 passed**. |
+
+#### §27 Worker health — commit `79e36e4`
+| Action | Evidence |
+|---|---|
+| Gap found | Heartbeats + registry health existed but error/success rates and per-worker health were not surfaced as one report. |
+| Fix | `TeammateRegistry.health_report()` projects each record: alive/ready/busy, lifecycle+health (failure states derived from status), current missions/tasks, last heartbeat, tasks completed/failed, success/error rate, avg latency, retries, last/per-model breakdown; `WorkforceEngine.workforce_health()` combines it with the §18 snapshot; `GET /api/workforce/health` + `/api/workforce/resources`. |
+| Live evidence | counts `{total:14, alive:12, ready:12, busy:0, unhealthy:0, quarantined:0}`, `by_status={RETIRED:2, READY:12}`. |
+| Tests | `pytest tests/test_workforce_health.py` → **3 passed**. |
+
+#### §12 Tools — explicit schema + catalog — commit `27df8fe`
+| Action | Evidence |
+|---|---|
+| Gap found | The KAI tool bus declared id/risk/inputs/outputs/timeout/audit but not permissions/environments/auth/rollback, and the teammate tool layer had no unified inspectable catalog. |
+| Fix | `ToolSpec` gains `permissions`, `environments`, `auth_required`, `rollback`, `audit`; `tool_fabric.tool_catalog()` merges the registered `kai.*` tool-bus specs with skill grants/forbids (risk derived conservatively from the granting skill's security level) and is exposed at `GET /api/workforce/tools`. |
+| Live evidence | `GET /api/workforce/tools` → `count=112`, `registered kai.* tools=46`; `git` safe/filesystem `repo`; `edit` controlled; `deploy`/`rollback` high_risk. |
+| Tests | `pytest tests/test_tool_catalog.py` → **1 passed**. |
+
+#### Re-audited but still PARTIAL (honest residues, with blocker)
+- **§14 permissions** — least-privilege capability + vault scoping is enforced and auditable (`ExecutionGuard`, §50/§51 tests), but grants are static per skill; **time-aware/expiring grants are not implemented** (blocker: no grant-TTL model on the teammate/skill records).
+- **§17 sandboxing** — per-teammate isolated workspace (`ToolFabric.sandbox_for`) and sandbox filesystem scope exist; **declarative per-teammate sandbox policy (network/process/env confinement) is not implemented** (blocker: no namespaces/cgroups inside the LXC for real process isolation).
+- **§24 verification** — independent verifier + deterministic checks run by default and are proven (live `mis-3b64208bde` `verification.passed=true`, independent `verifier_id`); **model-based verification is opt-in** (`KAI_TEAM_MODEL_VERIFY=1`), not default.
+- **§35 failure handling** — per-task timeout/retry/failure-class/checkpoint/recovery/audit is present and tested (`test_mission_recovery.py`); **uniform rollback across every operation class is not yet universal**.
+- **§3 architecture / §6 KAI Brain** — Every layer exists and the mission path wires brain→bus→guard→fabric→factory→registries→tools→sandbox→verify→recover→complete; not every layer participates in every non-mission path.
+- **§42 autonomous decision loop** — The loop runs on the scheduler cadence (observe→…→recover→complete) plus capability-gap maintenance each cycle; it is **not continuously self-initiated outside that cadence**.
+- **§44 factory hierarchy** — The Teammate Factory shares KAI's identity/vault/AgentGuard/fabric/registry/mission/bus and is the only factory wired this way; **software/android/infrastructure/media factories are not yet routed through it**.
+
+#### Breadth-pass regression sweep
+`tests/test_model_fabric_diversity.py test_workforce_dependencies.py test_resource_governor.py test_workforce_health.py test_tool_catalog.py test_mission_recovery.py test_teammate_runtime.py test_teammate_execution_guard.py test_teammate_skills.py test_teammate_worker_integration.py test_workforce_endpoints.py test_workforce_registry.py tests/test_workforce_lifecycle.py` → **124 passed**. Live E2E mission `mis-3b64208bde` → **COMPLETED**, 7/7 tasks, `verification.passed=true` (independent verifier). The pre-existing `tests/test_ai_router.py::test_candidates_for_coding_front_order_rotates_while_the_tail_never_changes` failure (stale 3-member rotating-front assertion; current front is 1 member) and the 14 `tests/test_provider_config_editor.py` failures (they reference removed cloud providers `claude`/`groq`/`deepseek_native_flash`) are **pre-existing and unrelated to this pass** — stated, not hidden.
+
+---
+
 ## 4. REQUIREMENTS MATRIX — DIRECTIVE §1–§56
 
 | § | Requirement | Status | Evidence pointer |
@@ -157,27 +218,27 @@ Runner: `/opt/ai-orchestrator/.venv/bin/python -m pytest`.
 | §4 | Audit first, classify every capability | **VERIFIED** | `docs/KAI_AUDIT_REPORT_2026-09-18.md` (5 domain audits, statuses) |
 | §5 | Preserve existing functionality (additive) | **VERIFIED** | Commit history is feat/fix/perf/docs; no service/API removed; React SPA source preserved |
 | §6 | KAI Brain: understand/decompose/select/create/route/verify/recover/decide | **PARTIALLY_VERIFIED** | Mission engine plans, routes, verifies, recovers; brain-driven *autonomous* initiation not observed |
-| §7 | Model Fabric: discovery/registration/health/routing/fallback/telemetry | **PARTIALLY_VERIFIED** | `/api/models/catalog` 9 models, `/api/fabric/summary`, routing chains, fallback test passes; cloud providers degraded → local-only SPOF |
+| §7 | Model Fabric: discovery/registration/health/routing/fallback/telemetry | **VERIFIED** | Multi-local-node chains (VM104→VM112) across all 19 roles; per-provider health/node + per-role diversity on `/providers?fabric=1`, `/providers/chains`, `/api/fabric/summary`; live failover drill PASS (VM104 unavailable/timeout → VM112 real inference); 17 tests; commit `5bed38f` (§3.3) |
 | §8 | Persistent Worker Registry with states + restart survival | **VERIFIED** | `core/teammate/registry.py`, `worker_integration.py`; teammates/teams survive restart (§52) |
 | §9 | Teammate definition (identity…audit history) | **VERIFIED** | All fields present; `performance_metrics` now populated live (tasks/latency/model, §3.2) |
 | §10 | Declarative role system | **VERIFIED** | planner/coder/qa/reviewer/researcher specializations resolved from role definitions |
 | §11 | Reusable shared skills | **VERIFIED** | `core/teammate/skills.py` shared across teammates; `inspect_repository`, `write_code`, … |
-| §12 | Tools registered with schema/risk/permissions/rollback | **PARTIALLY_VERIFIED** | `ToolFabric` grants scoped tools; explicit risk/rollback schema not evident |
+| §12 | Tools registered with schema/risk/permissions/rollback | **VERIFIED** | `ToolSpec` declares risk/inputs/outputs/timeout/permissions/environments/auth/rollback/audit; `tool_catalog` merges tool-bus specs + skill grants/forbids; live `/api/workforce/tools` 112 tools (46 registered `kai.*`); test; commit `27df8fe` (§3.3) |
 | §13 | Scoped, auditable memory | **PARTIALLY_VERIFIED** | §51 scope test; engine writes team/mission records to Second Brain; not all teammates get SB read |
-| §14 | Explicit least-privilege permissions | **PARTIALLY_VERIFIED** | Capability checks in `ExecutionGuard`; inspectable/revocable; no time-aware grants observed |
+| §14 | Explicit least-privilege permissions | **PARTIALLY_VERIFIED** | Capability + vault scope enforced/auditable in `ExecutionGuard`; **time-aware/expiring grants not implemented** (blocker: no grant-TTL model) — §3.3 |
 | §15 | Vault integration; no hardcoded secrets | **PARTIALLY_VERIFIED** | Guard vault scope + `kai_vault_client`; out-of-scope secret never fetched (§51); secrets 0600 |
 | §16 | AgentGuard mandatory boundary | **VERIFIED** | `core/agentguard/guard.py`; §50 denial + audit stamp; cannot be bypassed in runtime path |
-| §17 | Sandboxing per teammate | **PARTIALLY_VERIFIED** | Sandbox dirs under `/root/.ai-orchestrator/sandboxes/`; `ToolFabric` sandbox scope; declarative per-teammate sandbox policy limited |
-| §18 | Resource governor (CPU/RAM/GPU/concurrency/queue) | **PARTIALLY_VERIFIED** | `gpu_arbiter` T0 permits + bounded team size; no CPU/RAM/queue accounting for teammates |
+| §17 | Sandboxing per teammate | **PARTIALLY_VERIFIED** | Per-teammate workspace (`ToolFabric.sandbox_for`) + sandbox filesystem scope; **declarative network/process/env confinement not implemented** (blocker: no namespaces/cgroups in the LXC) — §3.3 |
+| §18 | Resource governor (CPU/RAM/GPU/concurrency/queue) | **VERIFIED** | `resource_governor` caps workers (`KAI_MAX_WORKERS`, `ResourceExhausted`) + snapshots workers/queue-depth/GPU permits/host CPU-RAM-load; live `/api/workforce/health` resources; 4 tests; commit `f4667fd` (§3.3) |
 | §19 | Autonomous teammate creation pipeline | **VERIFIED** | Live §46 create → READY with skills/capabilities; reuse of healthy match |
 | §20 | Team creation | **VERIFIED** | Live §47 team with 4 separated specializations |
 | §21 | Mission engine with persistent state + full field set | **VERIFIED** | `memory/factory_missions.json`; live mission COMPLETED; survives restart |
 | §22 | Task decomposition | **VERIFIED** | Goal → 7-skill task graph with per-task teammate assignment |
-| §23 | Dependency management (safe concurrency) | **PARTIALLY_VERIFIED** | `execution.py` partitions parallelizable vs sequential and runs parallel skills via `ThreadPoolExecutor`; not a general DAG scheduler |
-| §24 | Verification pipeline independent of worker | **PARTIALLY_VERIFIED** | Independent verifier teammate + deterministic checks (default); model-based verify optional (`KAI_TEAM_MODEL_VERIFY=1`) |
+| §23 | Dependency management (safe concurrency) | **VERIFIED** | Declared skill edges + Kahn DAG scheduler (concurrent ready-waves, block-on-failure, cycle detection) with recovery unblock; live graph demo + mission `mis-3b64208bde`; 5 tests; commit `c86b743` (§3.3) |
+| §24 | Verification pipeline independent of worker | **PARTIALLY_VERIFIED** | Independent verifier + deterministic checks run by default and proven live (`mis-3b64208bde`, `verification.passed=true`); **model-based verify is opt-in, not default** — §3.3 |
 | §25 | Self-repair (detect→diagnose→retry→repair→switch model→replace→escalate) | **VERIFIED** | `core/teammate/recovery.py` + engine loop; 3 recovery tests pass |
 | §26 | Model failure recovery via Model Fabric | **VERIFIED** | Failover test `kai_coder→local`; SB evidence `recovered_by: replace_model` |
-| §27 | Worker health (alive/ready/busy/latency/error rate/heartbeat…) | **PARTIALLY_VERIFIED** | `worker_integration` heartbeats + registry `health`; error/success-rate fields not fully surfaced live |
+| §27 | Worker health (alive/ready/busy/latency/error rate/heartbeat…) | **VERIFIED** | `health_report()` surfaces alive/ready/busy, heartbeat, completed/failed, success/error rate, avg latency, per-model breakdown; live `/api/workforce/health`; 3 tests; commit `79e36e4` (§3.3) |
 | §28 | Observability (workers/teams/missions/models/queues/health/… ) | **PARTIALLY_VERIFIED** | CC panels + live APIs for workers/teams/missions/models/security/infra; queues/telemetry partial |
 | §29 | Telegram integration, no security bypass | **PARTIALLY_VERIFIED** | Inbound poller `active`; team commands routed through policy; no live Telegram mission run |
 | §30 | Command Center control over all six areas | **VERIFIED** | Canonical CC 200; Workforce/Missions/Model Fabric/Security/Infrastructure/Communication panels with real data |
@@ -185,7 +246,7 @@ Runner: `/opt/ai-orchestrator/.venv/bin/python -m pytest`.
 | §32 | Priority system P0–P3 | **VERIFIED** | Plan and roadmap use P0–P3; reconciliation report |
 | §33 | No artificial gates | **VERIFIED** | Only sensitive ops gated; ordinary implementation proceeded |
 | §34 | Claude Code independence | **VERIFIED** | Runs on local `qwen3-coder:kai`; tailnet shows `claude-code` offline 5 days |
-| §35 | Failure handling (timeout/retry/classify/checkpoint/recovery/audit) | **PARTIALLY_VERIFIED** | Recovery + events present; uniform timeout/rollback across all ops not verified |
+| §35 | Failure handling (timeout/retry/classify/checkpoint/recovery/audit) | **PARTIALLY_VERIFIED** | Per-task timeout/retry/failure-class/checkpoint/recovery/audit present + tested (`test_mission_recovery.py`); **uniform rollback across every operation class not yet universal** — §3.3 |
 | §36 | Security invariants (12) | **PARTIALLY_VERIFIED** | ttyd gone, secrets 0600, firewall persistent, auth enforced, AgentGuard + vault scope; owner-only rotations still open |
 | §37 | Module integration (Juris/Money/Susu/IT/…) requests capability from KAI | **VERIFIED** | `core/integration` (catalog + bridge + API); 18 modules exposed (`GET /api/integration/modules`); live `juris-kai` request → mission `mis-844f7d5813` COMPLETED, SB record `26d37117…`; Juris `/research` + Telegram `/module-request` call the bridge; 16 tests. See §3.1 |
 | §38 | Teammate reuse before creation | **VERIFIED** | `create_teammate` returns `created:false` + same id on healthy match |
@@ -228,8 +289,8 @@ The prior audit disclosed extension-less tokens in a transcript. Verified rotati
 ### 6.3 UNVERIFIED / MISSING capability
 - **§37 Module integration — RESOLVED (VERIFIED)**: 18 modules exposed and a live cross-module mission completed with the outcome recorded in the module's Second Brain record (see §3.1). Residual: module-internal pipelines not yet refactored to call the bridge themselves (they can via the same API).
 - **§39 / §40 / §41 / §31 / §43 / §53 / §52(P0) — RESOLVED (VERIFIED in this pass)**: see §3.2. Auto-retire, learning/metrics, capability-gap loop, Telegram mission path, and the cross-process persistence race are live + tested. Honest residual: the module bridge pre-creates its teammate, so an *engine-level* gap is journaled by explicit-skill/API missions and the maintenance scan rather than by every module request.
-- Cloud model paths degraded (local-only SPOF); FreeLLMAPI/OpenRouter/OmniRoute not re-certified in this pass.
-- Still partial breadth gaps (unchanged): §3, §6, §7, §12, §14, §17, §18, §23, §24, §27, §35, §42, §44; owner-only rotations (§6.1).
+- Cloud model paths intentionally removed — the fabric is 100% local by directive. §7 failover now spans two local nodes (VM104 GPU + VM112 CPU); there is no third local node, so a simultaneous VM104+VM112 outage would exhaust local capacity (acceptable single-fabric risk, surfaced by the diversity/`can_spawn` view).
+- **Closed in the breadth pass (`§3.3`): §7, §12, §18, §23, §27.** Still partial breadth residues: §3, §6, §14, §17, §24, §35, §42, §44 (specific blockers in `§3.3`); owner-only rotations (§6.1). Pre-existing unrelated test failures: `test_ai_router.py` stale coding-front rotation assertion; 14 `test_provider_config_editor.py` tests that name removed cloud providers.
 
 ### 6.4 Infrastructure caveats
 - **Single-node SPOF** — all CTs/VMs on Proxmox B; `claude-code` offline 5 days. Backup target `kai-c` is off-node NFS (Proxmox C) with a full vzdump set, but there is no tested node-loss recovery.
@@ -249,10 +310,15 @@ The prior audit disclosed extension-less tokens in a transcript. Verified rotati
 | Acceptance §46–§54 | VERIFIED (§53 now live-handler-verified) |
 | Auto-retire §39 / learning+metrics §40–§41 | VERIFIED (live + 8 tests) |
 | Capability-gap loop §31/§43 | VERIFIED (live create + autonomous repair + 5 tests) |
+| Model Fabric §7 — local diversity + node failover | VERIFIED (chains + diversity live; failover drill PASS; 17 tests) |
+| Dependency DAG §23 | VERIFIED (5 tests + live graph demo + live mission) |
+| Resource governor §18 | VERIFIED (4 tests + live snapshot) |
+| Worker health §27 | VERIFIED (3 tests + live report) |
+| Tool schema + catalog §12 | VERIFIED (1 test + live 112-tool catalog) |
 | Canonical Command Center + per-model pages | VERIFIED |
 | Reports surface | VERIFIED |
 | Backups (vzdump set + verified restore) | VERIFIED (single-node caveat) |
 | Security invariants | PARTIALLY_VERIFIED (rotations open) |
-| Directive §1–§56 overall | **PARTIALLY_VERIFIED** (breadth gaps only, §6.3) |
+| Directive §1–§56 overall | **PARTIALLY_VERIFIED** (breadth residues only, §3.3/§6.3) |
 
-**True overall verdict: PARTIALLY_VERIFIED.** The KAI 2.0 teammate-factory capability is real, live and evidence-backed. This remediation pass closed every PARTIAL acceptance/autonomy item named in the prior report (P0 persistence race, §39, §40, §41, §31/§43, §53) with TDD + live evidence. The directive's full "one unified KAI" end state is still **not** complete — what remains is platform breadth (cloud model SPOF, several architecture layers, sandbox/resource accounting, DAG scheduling, continuous self-initiation, other factories) and owner-only credential rotations.
+**True overall verdict: PARTIALLY_VERIFIED.** The KAI 2.0 teammate-factory capability is real, live and evidence-backed. The Phase-4B remediation closed every PARTIAL acceptance/autonomy item named in the prior report (P0 persistence race, §39, §40, §41, §31/§43, §53). The 2026-09-18 breadth pass additionally closed §7 (local model diversity + failover), §23 (dependency DAG), §18 (resource governor), §27 (worker health) and §12 (tool schema) with TDD + live evidence. The directive's full "one unified KAI" end state is still **not** complete — what remains is platform breadth (§14 time-aware grants, §17 declarative sandbox policy, §24 default model verification, §35 uniform rollback, §3/§6 layer coverage, §42 continuous self-initiation, §44 other factories) plus owner-only credential rotations.

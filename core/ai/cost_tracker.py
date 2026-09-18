@@ -37,6 +37,18 @@ def _load_history():
             return []
 
 
+def _usage(entry: dict) -> dict:
+    """Return the entry's usage block as a dict, or {} if absent/null.
+
+    ai_usage_history records are nullable: older writers wrote `"usage": null`
+    (and some `"cost": null`). Calling `.get()` directly on the None value
+    raised AttributeError and made /api/budget and /api/costs/* return HTTP 500
+    (2026-09-18 audit, P0).
+    """
+    usage = entry.get("usage")
+    return usage if isinstance(usage, dict) else {}
+
+
 def get_cost_summary(days: int = 30) -> dict:
     """Return cost summary for the last N days.
 
@@ -78,12 +90,11 @@ def get_cost_summary(days: int = 30) -> dict:
             calls_with_cost += 1
         else:
             # Estimate from pricing
-            prompt_tokens = entry.get("usage", {}).get(
+            usage = _usage(entry)
+            prompt_tokens = usage.get(
                 "prompt_tokens", (len(entry.get("description", "")) // 4)
             )
-            completion_tokens = entry.get("usage", {}).get(
-                "completion_tokens", 0
-            )
+            completion_tokens = usage.get("completion_tokens", 0)
             if isinstance(prompt_tokens, dict):
                 prompt_tokens = 0
             if isinstance(completion_tokens, dict):
@@ -173,8 +184,8 @@ def get_provider_cost_detail(provider: str, days: int = 30) -> dict:
             estimated = _compute_call_cost(
                 provider,
                 None,
-                int(entry.get("usage", {}).get("prompt_tokens", 0) or 0),
-                int(entry.get("usage", {}).get("completion_tokens", 0) or 0),
+                int(_usage(entry).get("prompt_tokens", 0) or 0),
+                int(_usage(entry).get("completion_tokens", 0) or 0),
             )
             cost = estimated if estimated is not None else 0.0
 
@@ -271,8 +282,8 @@ def get_monthly_summary(year: Optional[int] = None, month: Optional[int] = None)
             estimated = _compute_call_cost(
                 provider,
                 None,
-                int(entry.get("usage", {}).get("prompt_tokens", 0) or 0),
-                int(entry.get("usage", {}).get("completion_tokens", 0) or 0),
+                int(_usage(entry).get("prompt_tokens", 0) or 0),
+                int(_usage(entry).get("completion_tokens", 0) or 0),
             )
             cost = estimated if estimated is not None else 0.0
 
@@ -333,8 +344,8 @@ def get_cost_export(days: int = 30) -> list[dict]:
             cost = float(recorded_cost)
             cost_source = "recorded"
         else:
-            prompt_tokens = entry.get("usage", {}).get("prompt_tokens", 0)
-            completion_tokens = entry.get("usage", {}).get("completion_tokens", 0)
+            prompt_tokens = _usage(entry).get("prompt_tokens", 0)
+            completion_tokens = _usage(entry).get("completion_tokens", 0)
             if isinstance(prompt_tokens, dict):
                 prompt_tokens = 0
             if isinstance(completion_tokens, dict):

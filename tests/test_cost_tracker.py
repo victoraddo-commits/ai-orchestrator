@@ -8,10 +8,24 @@ estimated via provider_pricing, and providers that were previously missing
 from PRICING are now known.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 import core.ai.cost_tracker as cost_tracker
 import core.ai.provider_pricing as provider_pricing
+
+
+def _null_usage_entry(provider="openrouter", task_type="coding"):
+    # Mirrors the real records: usage and cost are both nullable.
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "provider": provider,
+        "task_type": task_type,
+        "cost": None,
+        "usage": None,
+        "description": "legacy record without token accounting",
+    }
 
 
 def _record(provider, description="test call", **kwargs):
@@ -41,6 +55,49 @@ def test_local_providers_estimate_to_zero_but_are_known(isolated_memory):
     assert summary["calls_estimated"] == 1
     assert summary["calls_unknown"] == 0
     assert summary["total_cost"] == 0.0
+
+
+def test_summary_survives_null_usage_records(monkeypatch, isolated_memory):
+    """P0: usage=null used to make .get() raise AttributeError -> HTTP 500."""
+    monkeypatch.setattr(
+        cost_tracker, "_load_history",
+        lambda: [_null_usage_entry("openrouter"), _null_usage_entry("local")],
+    )
+
+    summary = cost_tracker.get_cost_summary(days=30)
+
+    assert summary["calls_with_cost"] == 0
+    assert summary["calls_estimated"] + summary["calls_unknown"] == 2
+    assert summary["total_cost"] >= 0.0
+
+
+def test_monthly_trend_and_export_survive_null_usage(monkeypatch, isolated_memory):
+    monkeypatch.setattr(
+        cost_tracker, "_load_history",
+        lambda: [_null_usage_entry("openrouter")],
+    )
+
+    monthly = cost_tracker.get_monthly_summary()
+    trend = cost_tracker.get_daily_trend(days=30)
+    export = cost_tracker.get_cost_export(days=30)
+
+    assert monthly["total_cost"] >= 0.0
+    assert len(trend) == 1
+    assert len(export) == 1
+    assert export[0]["cost_source"] in {"estimated", "unknown"}
+
+
+def test_provider_detail_survives_null_usage(monkeypatch, isolated_memory):
+    monkeypatch.setattr(
+        cost_tracker, "_load_history",
+        lambda: [_null_usage_entry("openrouter")],
+    )
+
+    detail = cost_tracker.get_provider_cost_detail("openrouter", days=30)
+
+    assert detail["provider"] == "openrouter"
+    assert detail["total_cost"] >= 0.0
+    assert len(detail["recent_calls"]) == 1
 
 
 def test_every_registered_router_provider_has_pricing():

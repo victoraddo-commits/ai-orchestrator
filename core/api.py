@@ -4328,6 +4328,15 @@ except Exception as _tm_exc:
     _ltm.getLogger(__name__).warning('teammate routes unavailable: %s', _tm_exc)
 
 
+# KAI 2.0 Phase 2 — Model Fabric catalog + per-model pages + security overview.
+try:
+    from core.cc_phase2_routes import cc_phase2_router as _cc2_router
+    app.include_router(_cc2_router)
+except Exception as _cc2_exc:
+    import logging as _lcc2
+    _lcc2.getLogger(__name__).warning('cc_phase2 routes unavailable: %s', _cc2_exc)
+
+
 # Knowledge Fabric API
 try:
     from core.knowledge.api import knowledge_router as _kf_router

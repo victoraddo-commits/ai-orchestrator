@@ -23,7 +23,7 @@ from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
-from core.memory import load as _load, save as _save
+from core.memory import load as _load, save as _save, update as _update
 
 logger = logging.getLogger(__name__)
 
@@ -206,10 +206,7 @@ class WorkforceEngine:
             "created_at": _now(),
             "updated_at": _now(),
         }
-        with self._lock:
-            data = self._load_teams()
-            data["teams"][team_id] = record
-            self._save_teams(data)
+        self._atomic_put(TEAMS_STORE, "teams", team_id, record)
         if self.runtime.bus is not None:
             try:
                 self.runtime.bus.publish("team.formed", {
@@ -686,11 +683,30 @@ class WorkforceEngine:
         data["schema_version"] = SCHEMA_VERSION
         _save(MISSIONS_STORE, data)
 
-    def _put_mission(self, mission: dict) -> None:
+    def _atomic_put(self, store: str, collection: str, key: str,
+                    record: dict) -> dict:
+        """Cross-process safe read-modify-write of one record in ``store``.
+
+        Two processes (the API and ``kai-scheduler``) both own a
+        ``WorkforceEngine``. A process-local ``RLock`` cannot stop them from
+        clobbering each other's whole-file load-modify-save, which is how the
+        engine lost missions from ``factory_missions.json``. Reuse the existing
+        fcntl.flock-backed :func:`core.memory.update` so the reload + merge +
+        atomic replace runs inside ONE file lock (directive §21/§52).
+        """
+
+        def _apply(data: dict) -> dict:
+            if not isinstance(data, dict) or not isinstance(data.get(collection), dict):
+                data = {"schema_version": SCHEMA_VERSION, collection: {}}
+            data["schema_version"] = SCHEMA_VERSION
+            data[collection][key] = record
+            return data
+
         with self._lock:
-            data = self._load_missions()
-            data["missions"][mission["id"]] = mission
-            self._save_missions(data)
+            return _update(store, _apply)
+
+    def _put_mission(self, mission: dict) -> None:
+        self._atomic_put(MISSIONS_STORE, "missions", mission["id"], mission)
 
     def get_mission(self, mission_id: str) -> Optional[dict]:
         return self._load_missions()["missions"].get(mission_id)

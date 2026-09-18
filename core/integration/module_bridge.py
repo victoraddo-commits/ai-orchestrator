@@ -25,7 +25,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from core.memory import load as _memory_load, save as _memory_save
+from core.memory import load as _memory_load, save as _memory_save, update as _memory_update
 from core.integration import module_catalog as catalog
 from core.integration.outcomes import OutcomeRecorder
 
@@ -315,10 +315,18 @@ class ModuleBridge:
         _memory_save(self.requests_store, data)
 
     def _put_request(self, entry: dict) -> None:
-        with self._lock:
-            data = self._load()
+        # Atomic cross-process read-modify-write: the outcome recorder thread
+        # and the API/scheduler processes must not clobber each other's
+        # module-request journal (directive §21/§52).
+        def _apply(data: dict) -> dict:
+            if not isinstance(data, dict) or not isinstance(data.get("requests"), dict):
+                data = {"schema_version": SCHEMA_VERSION, "requests": {}}
+            data["schema_version"] = SCHEMA_VERSION
             data["requests"][entry["mission_id"]] = entry
-            self._save(data)
+            return data
+
+        with self._lock:
+            _memory_update(self.requests_store, _apply)
 
     def get_request(self, mission_id: str) -> Optional[dict]:
         return self._load()["requests"].get(mission_id)

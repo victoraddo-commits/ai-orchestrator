@@ -51,7 +51,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from typing import Any
 
-from core.memory import load, save
+from core.memory import load, save, update
 
 logger = logging.getLogger(__name__)
 
@@ -210,10 +210,27 @@ class TeammateRegistry:
         self._teammates = loaded
 
     def save(self) -> None:
-        save(_STORE, {
-            "schema_version": _SCHEMA_VERSION,
-            "teammates": {tid: asdict(t) for tid, t in self._teammates.items()},
-        })
+        """Merge this process's teammates into the on-disk store atomically.
+
+        The registry keeps an in-memory cache, but the API and
+        ``kai-scheduler`` are separate processes with separate caches. A
+        plain whole-file overwrite would let the slower writer erase the
+        other's newly created teammates. Reuse the fcntl.flock-backed
+        :func:`core.memory.update` and merge per-record instead (directive
+        §21/§52); records are keyed by unique id, so a merge never drops a
+        concurrent create.
+        """
+        records = {tid: asdict(t) for tid, t in self._teammates.items()}
+
+        def _merge(current: dict) -> dict:
+            if not isinstance(current, dict) or not isinstance(current.get("teammates"), dict):
+                current = {"schema_version": _SCHEMA_VERSION, "teammates": {}}
+            current.setdefault("teammates", {})
+            current["teammates"].update(records)
+            current["schema_version"] = _SCHEMA_VERSION
+            return current
+
+        update(_STORE, _merge)
 
     # ── mutations ──────────────────────────────────────────────────────────
     def create(self, spec: dict[str, Any]) -> Teammate:

@@ -13,7 +13,8 @@ configured".
 from __future__ import annotations
 
 COMMANDS = ("/teams", "/team", "/create-team", "/assign", "/mission",
-            "/pause-team", "/resume-team", "/replace", "/why-failed")
+            "/pause-team", "/resume-team", "/replace", "/why-failed",
+            "/module", "/module-request")
 
 
 def parse_team_command(text: str):
@@ -98,6 +99,37 @@ def default_dispatcher(cmd: str, args: list) -> str:
         return (f"mission `{mission['id']}` started "
                 f"(team `{mission['team_id']}`, {len(mission['tasks'])} tasks) — "
                 f"check /team or GET /api/missions/{mission['id']}")
+
+    if cmd == "/module":
+        from core.integration.module_bridge import get_bridge
+        bridge = get_bridge()
+        if not args:
+            rows = bridge.list_module_capabilities()
+            lines = [f"*MODULES* ({len(rows)})"]
+            for r in rows[:20]:
+                caps = ", ".join((r.get("capabilities") or [])[:3]) or "-"
+                lines.append(f"- `{r['module']}` -> {r['specialization']} [{caps}]")
+            return "\n".join(lines)
+        row = bridge.list_module_capabilities(args[0])
+        return (f"module `{row['module']}` specialization={row['specialization']} "
+                f"skills={', '.join(row['skills'])} "
+                f"capabilities={', '.join(row['capabilities'])}")
+
+    if cmd == "/module-request":
+        if len(args) < 2:
+            return "usage: /module-request <module> <capability> [objective...]"
+        from core.integration.module_bridge import get_bridge
+        module, capability = args[0], args[1]
+        objective = " ".join(args[2:]).strip() or None
+        try:
+            result = get_bridge().request_capability(
+                module, capability, objective=objective, execute=True,
+                background=True)
+        except Exception as exc:  # noqa: BLE001
+            return f"module request failed: {type(exc).__name__}: {exc}"
+        return (f"module `{result['module']}` capability `{result['capability']}` — "
+                f"teammate `{result['teammate_id']}` "
+                f"mission `{result['mission_id']}` started")
 
     if cmd == "/pause-team":
         return "pause-team: acknowledged (mission steering owns pause/resume)"

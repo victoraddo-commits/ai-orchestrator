@@ -134,6 +134,15 @@ async def lifespan(app: FastAPI):
     cap_reg.start()
     from core.kai_event_bus import event_bus
     event_bus.start()
+    # §37 module integration: expose every KAI module's capability to the
+    # unified workforce (skills + module workers) and start outcome recording.
+    try:
+        from core.integration import bootstrap as _module_integration
+        _module_integration.start()
+    except Exception as _mi_exc:
+        import logging as _mil
+        _mil.getLogger(__name__).warning(
+            'module integration bootstrap failed: %s', _mi_exc)
     from core.notifications import NotificationManager
     nm = NotificationManager.get_instance()
     nm.register_event_subscriptions()
@@ -4346,6 +4355,15 @@ try:
 except Exception as _tm_exc:
     import logging as _ltm
     _ltm.getLogger(__name__).warning('teammate routes unavailable: %s', _tm_exc)
+
+
+# §37 Module Integration — modules request capability from the unified workforce.
+try:
+    from core.integration.routes import integration_router as _mi_router
+    app.include_router(_mi_router)
+except Exception as _mi_exc:
+    import logging as _lmi
+    _lmi.getLogger(__name__).warning('module integration routes unavailable: %s', _mi_exc)
 
 
 # KAI 2.0 Phase 2 — Model Fabric catalog + per-model pages + security overview.

@@ -1,0 +1,137 @@
+{
+  "module": "juris-kai",
+  "capability": "legal_research",
+  "specialization": "legal_researcher",
+  "skills": [
+    "legal_research",
+    "legal_document_analysis"
+  ],
+  "mission_id": "mis-844f7d5813",
+  "mission_status": "COMPLETED",
+  "teammate_id": "3fc276993525",
+  "teammate_created": true,
+  "tasks": [
+    {
+      "skill_id": "legal_research",
+      "status": "COMPLETED",
+      "teammate_id": "3fc276993525",
+      "output": "{'provider': 'kai_brain', 'task_type': 'planning', 'response': \"The doctrine of consideration in Ghana contract law requires that each party to a contract must provide something of value in exchange for the other's promise, with consideration being defined as either an act, forbearance, or promise that is sufficient to support a binding agreement. Contracts in Ghana are governed by the Contract Ac"
+    },
+    {
+      "skill_id": "legal_document_analysis",
+      "status": "COMPLETED",
+      "teammate_id": "3fc276993525",
+      "output": "{'provider': 'kai_brain', 'task_type': 'planning', 'response': \"**Doctrine of Consideration in Ghana Contract Law:**\\nIn Ghana contract law, consideration refers to the price paid for a promise, which must be sufficient but need not be adequate, and can take the form of an act, forbearance, or promise that is legally sufficient to support a binding agreement. The doctrine requires that each party "
+    }
+  ],
+  "verification": {
+    "passed": true,
+    "verifier_id": "",
+    "checks": [
+      {
+        "check": "all_completed",
+        "passed": true,
+        "detail": "all tasks completed"
+      },
+      {
+        "check": "outputs_present",
+        "passed": true,
+        "detail": "outputs present"
+      }
+    ],
+    "feedback": ""
+  },
+  "second_brain_record_id": "26d37117-cdd1-4d0d-8f07-0194e37346c9",
+  "module_journal_status": "COMPLETED",
+  "events": [
+    {
+      "topic": "module.capability.requested",
+      "source": "module_bridge",
+      "payload": {
+        "module": "juris-kai",
+        "capability": "legal_research",
+        "mission_id": "mis-844f7d5813",
+        "teammate_id": "3fc276993525",
+        "specialization": "legal_researcher",
+        "reused": false
+      }
+    },
+    {
+      "topic": "module.mission.recorded",
+      "source": "module_bridge",
+      "payload": {
+        "module": "juris-kai",
+        "capability": "legal_research",
+        "mission_id": "mis-844f7d5813",
+        "status": "COMPLETED",
+        "verified": true,
+        "second_brain_record_id": "26d37117-cdd1-4d0d-8f07-0194e37346c9"
+      }
+    },
+    {
+      "topic": "teammate.created",
+      "source": "teammate_factory",
+      "payload": {
+        "teammate_id": "3fc276993525",
+        "specialization": "legal_researcher",
+        "skills": [
+          "legal_research",
+          "legal_document_analysis"
+        ],
+        "mission_id": null,
+        "created": true
+      }
+    },
+    {
+      "topic": "teammate.reused",
+      "source": "teammate_factory",
+      "payload": {
+        "teammate_id": "3fc276993525",
+        "specialization": "legal_researcher",
+        "skills": [
+          "legal_research",
+          "legal_document_analysis"
+        ],
+        "mission_id": null,
+        "created": false
+      }
+    },
+    {
+      "topic": "teammate.progress",
+      "source": "teammate_execution",
+      "payload": {
+        "mission_id": "mis-844f7d5813",
+        "skill_id": "legal_research",
+        "teammate_id": "3fc276993525",
+        "status": "completed"
+      }
+    },
+    {
+      "topic": "teammate.progress",
+      "source": "teammate_execution",
+      "payload": {
+        "mission_id": "mis-844f7d5813",
+        "skill_id": "legal_document_analysis",
+        "teammate_id": "3fc276993525",
+        "status": "completed"
+      }
+    },
+    {
+      "topic": "mission.created",
+      "source": "workforce_engine",
+      "payload": {
+        "mission_id": "mis-844f7d5813",
+        "goal": "In two sentences, explain the doctrine of consideration in Ghana contract law and name the statute that governs contracts in Ghana."
+      }
+    },
+    {
+      "topic": "mission.completed",
+      "source": "workforce_engine",
+      "payload": {
+        "mission_id": "mis-844f7d5813",
+        "status": "COMPLETED",
+        "verified": true
+      }
+    }
+  ]
+}

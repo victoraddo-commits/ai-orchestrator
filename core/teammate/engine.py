@@ -191,17 +191,12 @@ class WorkforceEngine:
             risk_level=_max_level(levels),
         )
 
-    def form_team(self, requirement: Any, mission_id: Optional[str] = None,
-                  plan: Any = None) -> dict:
-        text = _mission_text(requirement)
-        if not text:
-            raise ValueError("a requirement (or mission) is required")
-        plan = plan or self._plan_for(requirement)
-        team_id = f"team-{uuid.uuid4().hex[:10]}"
-        members = self.runtime.linker.assign_team(mission_id or team_id, requirement, plan=plan)
+    def _persist_team(self, team_id: str, requirement: str,
+                      mission_id: Optional[str], plan: Any,
+                      members: list) -> dict:
         record = {
             "id": team_id,
-            "requirement": text,
+            "requirement": requirement,
             "mission_id": mission_id,
             "status": "READY",
             "member_ids": [getattr(m, "id", None) for m in members],
@@ -224,6 +219,49 @@ class WorkforceEngine:
                 pass
         return record
 
+    def form_team(self, requirement: Any, mission_id: Optional[str] = None,
+                  plan: Any = None) -> dict:
+        text = _mission_text(requirement)
+        if not text:
+            raise ValueError("a requirement (or mission) is required")
+        plan = plan or self._plan_for(requirement)
+        team_id = f"team-{uuid.uuid4().hex[:10]}"
+        members = self.runtime.linker.assign_team(mission_id or team_id, requirement, plan=plan)
+        return self._persist_team(team_id, text, mission_id, plan, members)
+
+    def _explicit_plan(self, skills: list, mission_id: str,
+                       specialization: Optional[str]) -> Any:
+        """Build a minimal TeamPlan for an explicit skill set (§37).
+
+        Used by module capability requests: the module names the skills it
+        needs, so the planner does not have to re-derive them from prose.
+        """
+        from core.teammate.planner import TeamPlan
+
+        ids = [s for s in skills if self.runtime.skills.get(s) is not None]
+        if not ids:
+            raise ValueError("no registered skills for capability mission")
+        spec = specialization or "module_specialist"
+        return TeamPlan(
+            mission_id=mission_id,
+            specializations=[spec],
+            required_expertise=[spec],
+            required_skills=ids,
+            parallelizable=list(ids),
+            sequential=[],
+            security_requirements={"level": "low"},
+            risk_level="low",
+            expected_workload={"specialists": 1, "skills": len(ids)},
+        )
+
+    def _explicit_team(self, goal: str, plan: Any,
+                       mission_id: str) -> dict:
+        spec = plan.specializations[0] if plan.specializations else "module_specialist"
+        result = self.runtime.create_teammate(spec, skills=plan.required_skills)
+        members = [result.teammate]
+        return self._persist_team(
+            f"team-{uuid.uuid4().hex[:10]}", goal, mission_id, plan, members)
+
     def list_teams(self) -> list[dict]:
         data = self._load_teams()
         return sorted(data["teams"].values(), key=lambda t: t.get("created_at", ""),
@@ -237,11 +275,18 @@ class WorkforceEngine:
                        background: bool = False,
                        project_path: Optional[str] = None,
                        team_id: Optional[str] = None,
-                       mission_id: Optional[str] = None) -> dict:
+                       mission_id: Optional[str] = None,
+                       skills: Optional[list] = None,
+                       specialization: Optional[str] = None) -> dict:
         if not goal:
             raise ValueError("goal is required")
         mid = mission_id or f"mis-{uuid.uuid4().hex[:10]}"
-        if team_id:
+        if skills:
+            plan = self._explicit_plan(skills, mid, specialization)
+            team = self._explicit_team(goal, plan, mid)
+            members = [self.runtime.registry.get(x) for x in team["member_ids"]]
+            members = [m for m in members if m is not None]
+        elif team_id:
             team = self.get_team(team_id)
             if team is None:
                 raise KeyError(f"unknown team {team_id}")

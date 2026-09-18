@@ -174,9 +174,31 @@ def handle_case(case_name: str, update: Dict[str, Any], account: Dict[str, Any])
 
 
 def handle_research(query: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
-    """Research legal concepts."""
+    """Research legal concepts.
+
+    §37: Juris Kai requests the legal-research capability from KAI's unified
+    workforce (teammate factory + mission engine + Model Fabric) instead of
+    driving the model directly. The historical direct call is kept as a
+    fallback so the command never regresses.
+    """
     if not query.strip():
         return "Usage: /research <legal query>"
+
+    try:
+        from core.integration.module_bridge import get_bridge
+        result = get_bridge().request_capability(
+            "juris-kai", "legal_research", objective=query, execute=True,
+            skills=["legal_research"])
+        mission = result.get("mission") or {}
+        for task in mission.get("tasks") or []:
+            if task.get("skill_id") == "legal_research" and task.get("output"):
+                output = task["output"]
+                if isinstance(output, dict):
+                    output = (output.get("response") or output.get("text")
+                              or str(output))
+                return str(output)
+    except Exception:
+        pass
 
     prompt = build_prompt("legal_research", query)
     try:

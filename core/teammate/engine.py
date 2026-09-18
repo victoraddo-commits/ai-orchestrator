@@ -579,6 +579,52 @@ class WorkforceEngine:
             return True
         return False
 
+    def _skill_dependencies(self, skill_id: str) -> list:
+        rec = self.runtime.skills.get(skill_id)
+        return list(getattr(rec, "dependencies", None) or []) if rec else []
+
+    def _resume_blocked_tasks(self, mission: dict, members: list,
+                              project_path: Optional[str],
+                              on_failover: Callable) -> bool:
+        """§23/§25: re-run tasks that a failed dependency had blocked.
+
+        The executor blocks dependents of a failed/blocked task. Recovery may
+        then heal that dependency (retry/replacement) — at which point the
+        blocked task is runnable again. This re-evaluates the DAG after each
+        recovery and executes newly-unblocked tasks in dependency order.
+        Returns True when at least one blocked task was executed.
+        """
+        changed = False
+        while True:
+            completed = {t["skill_id"] for t in mission["tasks"]
+                         if t["status"] == "COMPLETED"}
+            progressed = False
+            for task in mission["tasks"]:
+                if task["status"] != "BLOCKED":
+                    continue
+                deps = self._skill_dependencies(task["skill_id"])
+                if not deps or not all(d in completed for d in deps):
+                    continue
+                runner = self._instrumented_runner(self.runtime.team_task_runner(
+                    mission["goal"], project_path=project_path,
+                    mission_id=mission["id"], on_failover=on_failover))
+                task.setdefault("recovery", []).append(
+                    {"action": "unblock", "after": list(deps)})
+                if self._retry_task(mission, task, members, runner,
+                                    self.max_attempts):
+                    task["recovered_by"] = task.get("recovered_by") or "unblock"
+                else:
+                    task["status"] = "FAILED"
+                    task["error"] = (task.get("error")
+                                     or "recovery exhausted after unblock")
+                self._put_mission(mission)
+                progressed = True
+                changed = True
+                break  # recompute completed set before the next task
+            if not progressed:
+                break
+        return changed
+
     def _record_metric(self, mate: Any, skill_id: str, success: bool,
                        latency_ms: float, model: str) -> None:
         tid = getattr(mate, "id", None)
@@ -689,6 +735,10 @@ class WorkforceEngine:
                 task["status"] = "FAILED"
                 task["error"] = task.get("error") or "recovery exhausted"
             self._put_mission(mission)
+
+        # §23: a healed dependency unblocks its dependents — run them now.
+        if self._resume_blocked_tasks(mission, members, project_path, _on_failover):
+            recovered_any = True
 
         mission["verification"] = self.verify_mission(mission, members)
         all_ok = all(t["status"] == "COMPLETED" for t in mission["tasks"])

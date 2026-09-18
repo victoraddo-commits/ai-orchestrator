@@ -84,10 +84,29 @@ class Team:
                               status="failed", error=str(exc))
 
     # -- public API ---------------------------------------------------------
+    def _block(self, sid: str, failed: list) -> TaskResult:
+        """Record a blocked task and emit ``teammate.blocked``."""
+        blocked = TaskResult(skill_id=sid, status="blocked",
+                             error=f"blocked by {failed}" if failed
+                             else "dependency cycle")
+        self._emit("teammate.blocked", {
+            "mission_id": self.mission_id,
+            "skill_id": sid,
+            "blocked_by": list(failed),
+            **({"reason": "dependency cycle"} if not failed else {}),
+        })
+        return blocked
+
     def execute(self, task_runner: Callable,
                 tasks: Optional[list] = None,
                 task_runner_for: Optional[Callable] = None) -> list[TaskResult]:
-        """Run ``tasks`` across the team.
+        """Run ``tasks`` across the team honouring the skill dependency DAG.
+
+        Independent tasks (all in-set dependencies satisfied) run concurrently
+        in waves; a task whose dependency failed or was blocked is itself
+        blocked and never executed; a dependency cycle is detected and the
+        cycle members are blocked rather than hanging. Result order always
+        matches ``tasks``.
 
         ``task_runner_for`` is an optional ``(teammate, skill_id) -> runner``
         factory that lets a caller swap the worker (e.g. a replacement
@@ -98,11 +117,7 @@ class Team:
             tasks = list(getattr(self.plan, "required_skills", []) or [])
         tasks = list(tasks)
         task_set = set(tasks)
-
-        parallel = [s for s in (getattr(self.plan, "parallelizable", []) or [])
-                    if s in task_set]
-        sequential = [s for s in (getattr(self.plan, "sequential", []) or [])
-                      if s in task_set]
+        deps = {sid: self._deps(sid, task_set) for sid in tasks}
 
         def _runner_for(skill_id: str) -> Callable:
             if task_runner_for is None:
@@ -111,39 +126,49 @@ class Team:
             return task_runner_for(mate, skill_id)
 
         results: dict[str, TaskResult] = {}
+        remaining = list(tasks)
 
-        if parallel:
-            with ThreadPoolExecutor(max_workers=len(parallel)) as pool:
-                futures = {pool.submit(self._run_one, _runner_for(s), s): s
-                           for s in parallel}
-                for fut in as_completed(futures):
-                    result = fut.result()
-                    results[result.skill_id] = result
-                    self._emit_progress(result)
+        while remaining:
+            ready, blocked = [], []
+            for sid in remaining:
+                states = [results.get(d) for d in deps[sid]]
+                if any(st is not None and st.status != "completed" for st in states):
+                    blocked.append(sid)
+                elif all(st is not None and st.status == "completed" for st in states):
+                    ready.append(sid)
 
-        for sid in sequential:
-            if sid in results:
+            for sid in blocked:
+                failed = [d for d in deps[sid]
+                          if results.get(d) and results[d].status != "completed"]
+                results[sid] = self._block(sid, failed)
+                remaining.remove(sid)
+
+            # Only a wave with neither ready nor blocked work is a cycle:
+            # blocking a task IS progress (it unblocks classification of its
+            # own dependents on the next pass).
+            if not ready and not blocked:
+                for sid in list(remaining):
+                    results[sid] = self._block(sid, [])
+                    remaining.remove(sid)
+                break
+            if not ready:
                 continue
-            failed = [d for d in self._deps(sid, task_set)
-                      if results.get(d) and results[d].status != "completed"]
-            if failed:
-                blocked = TaskResult(skill_id=sid, status="blocked",
-                                     error=f"blocked by {failed}")
-                results[sid] = blocked
-                self._emit("teammate.blocked", {
-                    "mission_id": self.mission_id,
-                    "skill_id": sid,
-                    "blocked_by": failed,
-                })
-                continue
-            result = self._run_one(_runner_for(sid), sid)
-            results[sid] = result
-            self._emit_progress(result)
 
-        for sid in tasks:
-            if sid not in results:
-                result = self._run_one(_runner_for(sid), sid)
-                results[sid] = result
+            wave = [s for s in ready if s in remaining]
+            if len(wave) == 1:
+                result = self._run_one(_runner_for(wave[0]), wave[0])
+                results[result.skill_id] = result
                 self._emit_progress(result)
+            else:
+                with ThreadPoolExecutor(max_workers=len(wave)) as pool:
+                    futures = {pool.submit(self._run_one, _runner_for(s), s): s
+                               for s in wave}
+                    for fut in as_completed(futures):
+                        result = fut.result()
+                        results[result.skill_id] = result
+                        self._emit_progress(result)
+            for sid in wave:
+                if sid in remaining:
+                    remaining.remove(sid)
 
         return [results[sid] for sid in tasks]

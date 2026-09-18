@@ -28,6 +28,22 @@ SEED_SKILL_IDS = [
     "verify_endpoint", "inspect_logs", "diagnose_failure",
 ]
 
+# §23 dependency graph for the canonical skills. Inspection is safe to
+# parallelize, but a test/scan must not start before the code it operates on
+# exists, deployment waits for tests + security, and verification waits for
+# deployment. Declared once here so ``seed_default_15`` can both create new
+# registries and migrate existing ones that predate dependency support.
+SEED_DEPENDENCIES = {
+    "run_tests": ["write_code"],
+    "run_security_scan": ["write_code"],
+    "deploy_service": ["run_tests", "run_security_scan"],
+    "rollback_service": ["deploy_service"],
+    # NOTE: verify_endpoint deliberately has NO dependency on deploy_service.
+    # It is a generic HTTP check used by QA/verifier teammates; depending on
+    # deploy would drag the whole deploy chain (and a devops capability) into
+    # every ordinary feature mission.
+}
+
 
 @dataclass
 class SkillRecord:
@@ -357,12 +373,23 @@ class SkillRegistry:
         ]
         assert [s.skill_id for s in seeds] == SEED_SKILL_IDS, \
             "seed set drifted from SEED_SKILL_IDS"
+        for seed in seeds:
+            seed.dependencies = list(SEED_DEPENDENCIES.get(seed.skill_id, []))
         created = 0
         for seed in seeds:
             if seed.skill_id not in self._skills:
                 self._skills[seed.skill_id] = seed
                 created += 1
-        if created:
+        # §23 migration: registries created before dependency support have the
+        # skills but no edges. Backfill only empty dependency lists so an
+        # operator/custom dependency set is never clobbered.
+        migrated = 0
+        for sid, deps in SEED_DEPENDENCIES.items():
+            rec = self._skills.get(sid)
+            if rec is not None and not rec.dependencies:
+                rec.dependencies = list(deps)
+                migrated += 1
+        if created or migrated:
             self.save()
         return created
 

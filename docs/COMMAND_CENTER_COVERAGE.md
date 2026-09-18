@@ -91,3 +91,65 @@ sidebar (`buildMoreMenu()`), so no separate mobile wiring is needed.
 - Coverage doc history: previously audit at
   `docs/kai-command-center-audit-2026-08-03.md` (implementation strategy).
 - Runner copy lives at `/opt/ai-orchestrator`; master at `/project/ai-orchestrator`.
+
+## KAI 2.0 Phase 2 (2026-09-18) — one CC + per-model pages + §30 panels
+
+The canonical CC is the FastAPI app (see `docs/COMMAND_CENTER_CANONICAL.md`);
+the React SPA at `command.tail82a9ca.ts.net` now 301-redirects to it and its
+service is stopped+disabled.
+
+### Runtime per-model pages (directive: Model Fabric)
+
+Each registered model gets its **own page** generated at runtime from
+`GET /api/models/catalog`:
+
+- sidebar sub-item under `Models` (`data-hash="model-<slug>"`)
+- `<section class="panel" id="panel-model-<slug>">`
+- `PANEL_TITLES[model-<slug>] = "<Title> · Model"`
+- `loadPanel()` dispatcher → `loadModelPage(id)`
+- content: title, provider, kind, artefact, **parameters**, **quantization**,
+  size, **context window** (capability) + context loaded, endpoint, cost tier,
+  routing weight/roles/task types, **health**, **usage** (attempts, success
+  rate, avg/EMA latency, telemetry calls, cost), GPU/VRAM, and a live
+  **Test call** action (`POST /api/models/{id}/test`).
+
+Local models (`qwen3-coder:kai` on VM104, VM112 CPU) and configured providers
+are all included. The `Models` panel is the **index** (Model Fabric): model
+cards, resource utilization, routing chains, provider management, overrides.
+
+### §30 panels (all real, not raw JSON)
+
+| Panel | Source(s) |
+|---|---|
+| Workforce (`ai-workforce`) | `/api/workforce/teammates`, `/api/workforce/teams`, `/workers`; create teammate, form team, retire, worker health |
+| Missions (`missions`) | `/api/missions`, `/api/missions/{id}`; active/history, task graph, verification checks, artifacts, checkpoints |
+| Model Fabric (`models`) | `/api/models/catalog`, `/api/fabric/summary`, `/providers`, `/providers/chains`, `/providers/config` |
+| Security (`security`) | `/api/security/overview`, `/auth/status`, `/kai/vault/metadata`; AgentGuard, RBAC, policy, vault, events, logins |
+| Infrastructure (`infrastructure`) | `/proxmox/registry`, `/api/docker/containers`, `/api/directory/services`, `/api/fabric/summary`, `/network/*`, `/api/vpn/status` |
+| Communication (`telegram`, `approvals`) | `/kai/telegram*`, `/approvals`, `/api/telegram/webapp-auth` |
+
+### New/extended endpoints
+
+- `GET  /api/models/catalog[?refresh=1]` — per-model detail (stale-while-revalidate cache)
+- `POST /api/models/{model_id}/test` — live fabric test call (operator session / bridge token)
+- `GET  /api/fabric/summary` — models/providers/health/routing/utilization
+- `GET  /api/security/overview` — AgentGuard/permissions/policy/vault/events
+- `POST /api/workforce/teammates/{id}/retire` — operator retirement
+
+### Responsive
+
+Shell rules verified by Playwright screenshots at **360 / 768 / 1280** for
+`home, ai-workforce, missions, models, security, infrastructure,
+model-kai-brain`: panel visible and settled, **no horizontal scroll**
+(`documentElement.scrollWidth == innerWidth`), tables scroll, mobile bottom
+nav + auto-generated "More" sheet. New model pages follow the same shell.
+
+### Related fixes
+
+- `/auth/status` no longer 500s for operator sessions (lazy `ROLE_CAPABILITIES`).
+- `/network/topology|connectivity|changes` accept an operator session (the CC
+  uses sessions, not the bridge token) — previously logged users out.
+- `/proxmox/registry` is served from a background-refreshed snapshot so it no
+  longer blocks for ~100s when a Proxmox node API is unreachable.
+- Infrastructure `loadInfra()` fetches each source in parallel with hard
+  timeouts, so one slow upstream can no longer wedge the panel.

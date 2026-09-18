@@ -234,6 +234,14 @@ app.include_router(event_bus_router)
 from core.auth_kai_routes import router as auth_kai_router
 app.include_router(auth_kai_router)
 
+# Paystack payments subsystem — provider + ledger + /api/payments routes
+try:
+    from core.payments.routes import router as payments_router
+    app.include_router(payments_router)
+except Exception as _pay_exc:
+    import logging as _lpay
+    _lpay.getLogger(__name__).warning('payments routes unavailable: %s', _pay_exc)
+
 # Repository Registry
 from core.repo_registry import (
     list_repositories, list_by_platform, list_local_repositories, get_registry_stats,

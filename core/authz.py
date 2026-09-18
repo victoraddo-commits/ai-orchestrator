@@ -62,6 +62,7 @@ CAPABILITIES = {
     "law.manage": "Manage law documents (add/delete)",
     "dashboard.password": "Change dashboard login password",
     "juris.admin": "Manage Juris Kai accounts (subscription, deactivate, grant days, referrals)",
+    "payments.manage": "Initialize/verify/refund Paystack payments",
     "services.manage": "Register/update/remove services",
     "capabilities.manage": "Register/update/remove capabilities and implementations",
 }

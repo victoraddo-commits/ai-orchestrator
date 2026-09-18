@@ -88,6 +88,28 @@ def test_scan_resolves_orphaned_mission_task(engine, runtime):
                for g in engine.list_capability_gaps())
 
 
+def test_api_explicit_skill_mission_journals_gap(engine, runtime, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from core.teammate import routes as routes_mod
+
+    monkeypatch.setattr(routes_mod, "_load_api_token", lambda: "test-token")
+    monkeypatch.setattr(routes_mod, "_ENGINE", engine)
+    app = FastAPI()
+    app.include_router(routes_mod.teammate_router)
+    client = TestClient(app)
+
+    r = client.post("/api/missions",
+                    headers={"Authorization": "Bearer test-token"},
+                    json={"goal": "explicit capability task", "execute": False,
+                          "skills": ["write_code"], "specialization": "coder"})
+    assert r.status_code == 200, r.text
+    mission = r.json()["mission"]
+    gaps = engine.list_capability_gaps(mission_id=mission["id"])
+    assert gaps, "explicit-skill mission must journal its resolved gap"
+    assert "write_code" in gaps[-1]["missing_skills"]
+
+
 def test_maintenance_endpoint_reports_gap_resolution(engine, runtime, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

@@ -83,6 +83,11 @@ class MissionCreate(BaseModel):
     background: bool = False
     project_path: Optional[str] = None
     team_id: Optional[str] = None
+    # Explicit-skill missions (§31/§43): a caller/module can name the exact
+    # skills + specialization; the engine creates/reuses the capable teammate
+    # and journals the capability gap it resolved.
+    skills: Optional[list[str]] = None
+    specialization: Optional[str] = None
 
 
 # ── teammates ───────────────────────────────────────────────────────────────
@@ -191,7 +196,8 @@ def create_mission(body: MissionCreate, operator: str = Depends(_require_operato
     try:
         mission = get_engine().create_mission(
             body.goal, execute=body.execute, background=body.background,
-            project_path=body.project_path, team_id=body.team_id)
+            project_path=body.project_path, team_id=body.team_id,
+            skills=body.skills, specialization=body.specialization)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"unknown team: {exc}")
     except ValueError as exc:

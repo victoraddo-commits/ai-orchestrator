@@ -177,8 +177,12 @@ from core.kai_betting.api import router as betting_router
 app.include_router(betting_router)
 
 # JARVIS Phase 1: Kai Voice Gateway — WSS endpoint for voice pipeline
-from core.voice_gateway.gateway import voice_router as kai_voice_router
-app.include_router(kai_voice_router, prefix="/kai-voice")
+try:
+    from core.voice_gateway.gateway import voice_router as kai_voice_router
+    app.include_router(kai_voice_router, prefix="/kai-voice")
+except Exception as _voice_exc:  # optional voice stack (piper/faster-whisper)
+    import logging as _logging
+    _logging.getLogger(__name__).warning("[api] voice gateways disabled: %s", _voice_exc)
 
 # Ecosystem alert endpoint (merged from kai-notify)
 from core.notify_endpoint import router as notify_router
@@ -285,7 +289,7 @@ _SW_JS = _SW_PATH.read_text() if _SW_PATH.exists() else "// service worker not f
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
-    return _DASHBOARD_HTML
+    return RedirectResponse(url="/command-center")  # consolidated
 
 
 @app.get("/command-center", response_class=HTMLResponse)
@@ -1721,6 +1725,27 @@ def enterprise_dashboard_endpoint():
 @app.get("/providers")
 def providers_endpoint():
     return list_providers()
+
+
+@app.get("/models/registry")
+def models_registry_endpoint():
+    from core.model_registry import build_registry
+    reg = build_registry()
+    return {"schema": reg["schema"], "generated_at": reg["generated_at"],
+            "counts": reg["counts"], "models": reg["models"],
+            "capabilities": reg["capabilities"]}
+
+
+@app.get("/models/registry/capability/{cap}")
+def models_registry_by_capability(cap: str):
+    from core.model_registry import by_capability
+    return {"capability": cap, "models": by_capability(cap)}
+
+
+@app.get("/telemetry")
+def telemetry_endpoint():
+    from core.telemetry import snapshot
+    return snapshot()
 
 
 @app.get("/providers/dashboard")
@@ -3414,6 +3439,16 @@ def handle_kai_chat(text: str, operator: str) -> dict:
         else:
             try:
                 signals = gather_signals()
+                try:
+                    from core.knowledge.store import KnowledgeStore
+                    from core.knowledge.model import Principal
+                    from core.knowledge.context import build_context
+                    _ks = KnowledgeStore(os.environ.get("KAI_KNOWLEDGE_DB", "/opt/ai-orchestrator/memory/knowledge_fabric.db"))
+                    _ctx = build_context(_ks, Principal(operator, space_ids=_ks.space_ids_for(operator)), text)
+                    if _ctx.get("context"):
+                        signals = {**(signals or {}), "knowledge_context": _ctx["context"]}
+                except Exception:
+                    pass
                 response_text = ai_chat(history, signals)
             except AllProvidersFailed as error:
                 raise KaiChatAllProvidersFailed(str(error)) from error
@@ -4262,3 +4297,116 @@ async def sse_endpoint(request: Request):
         with _sse_connections_lock:
             if connection_id in _sse_connections:
                 _sse_connections.remove(connection_id)
+
+
+# Command Center per-module proxy (Legal Brain, Arbitra, Telegram)
+try:
+    from core.cc_modules import cc_router as _cc_router
+    app.include_router(_cc_router)
+except Exception as _cc_exc:
+    import logging as _lg
+    _lg.getLogger(__name__).warning('cc_modules unavailable: %s', _cc_exc)
+
+
+# Command Center extra routes (network overview, missions)
+try:
+    from core.cc_extra_routes import cc_extra_router as _cc_extra
+    app.include_router(_cc_extra)
+except Exception as _cce_exc:
+    import logging as _lg2
+    _lg2.getLogger(__name__).warning('cc_extra_routes unavailable: %s', _cce_exc)
+
+
+# Knowledge Fabric API
+try:
+    from core.knowledge.api import knowledge_router as _kf_router
+    app.include_router(_kf_router)
+except Exception as _kf_exc:
+    import logging as _lkk
+    _lkk.getLogger(__name__).warning('knowledge fabric unavailable: %s', _kf_exc)
+
+
+# Command Center Telegram control actions
+try:
+    from core.cc_telegram import cc_telegram_router as _cct
+    app.include_router(_cct)
+except Exception as _cct_exc:
+    import logging as _lct
+    _lct.getLogger(__name__).warning('cc_telegram unavailable: %s', _cct_exc)
+
+
+# Unified Vault 2.0 secret broker API
+try:
+    from core.vault.api import vault_router as _vault_router
+    app.include_router(_vault_router)
+except Exception as _v_exc:
+    import logging as _lv
+    _lv.getLogger(__name__).warning('vault broker unavailable: %s', _v_exc)
+
+
+# KAI Media Revenue Factory — native subsystem API (§57)
+try:
+    from core.media_factory.routes import router as _media_router, install as _media_install
+    app.include_router(_media_router)
+    _media_install(app)
+except Exception as _media_exc:
+    import logging as _lm
+    _lm.getLogger(__name__).warning('media factory unavailable: %s', _media_exc)
+
+
+# ── Backup & Disaster Recovery (roadmap 27E) ───────────────────────
+
+@app.get("/api/backups")
+def api_backups_list():
+    """List Kai-state backups, each with a live checksum verification."""
+    from core import backup_manager as bm
+    items = bm.list_backups()
+    return {"target": bm.DEFAULT_TARGET, "count": len(items),
+            "latest": items[0] if items else None, "backups": items}
+
+
+@app.post("/api/backups/run")
+def api_backups_run(
+    tag: str = "kai",
+    keep: int = 7,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Create a backup now, then apply the retention policy."""
+    from core import backup_manager as bm
+    manifest = bm.create_backup(tag=tag)
+    pruned = bm.prune_backups(keep=keep)
+    return {"operator": operator, "manifest": manifest, "pruned": pruned}
+
+
+@app.post("/api/backups/verify")
+def api_backups_verify(
+    name: str,
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    from core import backup_manager as bm
+    return {"operator": operator, **bm.verify_backup(name)}
+
+
+@app.post("/api/backups/restore")
+def api_backups_restore(
+    name: str,
+    dest: str = "/tmp/kai-restore-drill",
+    operator: str = Depends(_require_write_capability("delegate.use")),
+):
+    """Restore into a NON-production path (restore drill). Refuses '/'."""
+    from core import backup_manager as bm
+    if dest.strip() in ("", "/"):
+        raise HTTPException(status_code=400, detail="refusing to restore into '/'")
+    result = bm.restore_backup(name, dest)
+    return {"operator": operator, "dest": dest, **result}
+
+
+@app.get("/api/backups/proxmox")
+def api_backups_proxmox():
+    """Proxmox image-backup status (jobs + artifacts + kai-c storage)."""
+    try:
+        with open("/opt/ai-orchestrator/memory/proxmox_backups.json") as fh:
+            return json.load(fh)
+    except OSError:
+        return {"jobs": [], "artifacts": [], "storage": {},
+                "error": "no proxmox backup status published yet"}

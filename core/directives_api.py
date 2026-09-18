@@ -53,6 +53,17 @@ REPORTS_DIRS = tuple(
 )
 REPORT_EXT = {".md", ".markdown"}
 
+# ── Docs surface + completed workflow ───────────────────────────────────────
+# docs/ is browsable/downloadable (audit reports etc.); completed directives
+# are moved to DIR/completed with a sidecar metadata file and a kept backup.
+REPO_ROOT = Path(os.environ.get(
+    "KAI_REPO_ROOT", str(Path(__file__).resolve().parent.parent)))
+DOCS_DIR = Path(os.environ.get(
+    "KAI_DIRECTIVES_DOCS_DIR", str(REPO_ROOT / "docs")))
+COMPLETED_DIR = DIR / "completed"
+BACKUP_DIR = DIR / ".completed-backup"
+META_FILE = COMPLETED_DIR / ".meta.json"
+
 
 def _token() -> str:
     if TOKEN_FILE.exists():
@@ -597,13 +608,71 @@ def list_directives(request: Request):
             "acked": p.name in acked,
         })
     # Sliding session: an authenticated page load also refreshes the idle timer.
-    payload = {"directives": items}
+    payload = {"directives": items, "completed": _completed_items()}
     claims = _session_claims(request)
     if claims:
         duo_sso, _ = _duo()
         new = duo_sso.sign_session(claims.get("sub") or "", scopes=[SESSION_SCOPE], ttl=SESSION_TTL)
         return _set_session(JSONResponse(payload), new)
     return payload
+
+
+# ── Completed directives + Docs API (registered before the {id} catch-all) ──
+
+
+@app.get("/api/directives/completed")
+def list_completed_directives(request: Request):
+    """List directives that were moved to directives/completed/."""
+    if not _authorized(request):
+        raise HTTPException(401, "unauthorized")
+    return _maybe_refresh_session(request, {"completed": _completed_items()})
+
+
+@app.get("/api/directives/docs")
+def list_docs(request: Request):
+    """List files under the repo docs/ folder (path-safe, auth-gated)."""
+    if not _authorized(request):
+        raise HTTPException(401, "unauthorized")
+    return _maybe_refresh_session(request, {"docs": _discover_docs()})
+
+
+@app.get("/api/directives/docs/{rel_path:path}")
+def download_doc(rel_path: str, request: Request):
+    """Download a file from docs/ as an attachment (no traversal)."""
+    if not _authorized(request):
+        raise HTTPException(401, "unauthorized")
+    target = _resolve_doc(rel_path)
+    data = target.read_bytes()
+    _audit({"at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            "action": "doc_download", "name": _safe_filename(target.name),
+            "bytes": len(data)})
+    return Response(
+        content=data,
+        media_type=_guess_media_type(target),
+        headers={"Content-Disposition":
+                 f'attachment; filename="{_safe_filename(target.name)}"'},
+    )
+
+
+@app.post("/api/directives/{directive_id}/complete")
+async def complete(request: Request, directive_id: str):
+    """Verify a directive's requirements, then move it to completed/ (or refuse)."""
+    if not _authorized(request):
+        raise HTTPException(401, "unauthorized")
+    by = ""
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            by = str(body.get("by") or "")[:80]
+    except Exception:  # noqa: BLE001 - body is optional
+        pass
+    if not by:
+        claims = _session_claims(request)
+        by = (claims or {}).get("sub") or "machine"
+    # Verification may issue blocking loopback HTTP probes; keep the event loop
+    # free so the service can answer its own health probe (no self-deadlock).
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(complete_directive, directive_id, by)
 
 
 @app.get("/api/directives/{directive_id}")
@@ -696,3 +765,293 @@ def _resolve(directive_id: str) -> Path:
     if target.parent != DIR.resolve() or not target.exists():
         raise HTTPException(404, "not found")
     return target
+
+
+# ── Docs helpers ────────────────────────────────────────────────────────────
+
+
+def _docs_root() -> Path:
+    try:
+        return DOCS_DIR.resolve()
+    except OSError:  # noqa: BLE001
+        return DOCS_DIR
+
+
+def _iso_mtime(p: Path) -> str:
+    return datetime.fromtimestamp(p.stat().st_mtime, timezone.utc).strftime(
+        "%Y-%m-%dT%H:%MZ")
+
+
+def _discover_docs() -> list[dict]:
+    root = _docs_root()
+    items: list[dict] = []
+    if not root.is_dir():
+        return items
+    for p in sorted(root.rglob("*")):
+        if not p.is_file():
+            continue
+        resolved = p.resolve()
+        if not _within(resolved, root):
+            continue  # symlink escaping docs/
+        try:
+            st = resolved.stat()
+        except OSError:
+            continue
+        items.append({
+            "path": resolved.relative_to(root).as_posix(),
+            "name": resolved.name,
+            "size": st.st_size,
+            "mtime": datetime.fromtimestamp(st.st_mtime, timezone.utc)
+            .strftime("%Y-%m-%dT%H:%MZ"),
+        })
+    items.sort(key=lambda r: (r["mtime"], r["path"]), reverse=True)
+    return items
+
+
+def _resolve_doc(rel_path: str) -> Path:
+    rel = (rel_path or "").strip()
+    if not rel or rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
+        raise HTTPException(404, "not found")
+    root = _docs_root()
+    try:
+        target = (root / rel).resolve()
+    except OSError:
+        raise HTTPException(404, "not found")
+    if not _within(target, root) or not target.is_file():
+        raise HTTPException(404, "not found")
+    return target
+
+
+def _safe_filename(name: str) -> str:
+    name = os.path.basename(name or "")
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name)[:180] or "download"
+
+
+def _guess_media_type(path: Path) -> str:
+    import mimetypes
+    ctype, _ = mimetypes.guess_type(path.name)
+    return ctype or "application/octet-stream"
+
+
+# ── Completed metadata helpers ──────────────────────────────────────────────
+
+
+def _load_meta() -> dict:
+    if META_FILE.exists():
+        try:
+            return json.loads(META_FILE.read_text())
+        except Exception:  # noqa: BLE001
+            return {}
+    return {}
+
+
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name("." + path.name + ".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def _completed_items() -> list[dict]:
+    meta = _load_meta()
+    items: list[dict] = []
+    if not COMPLETED_DIR.is_dir():
+        return items
+    for p in sorted(COMPLETED_DIR.glob("*")):
+        if p.name.startswith(".") or not p.is_file():
+            continue
+        entry = meta.get(p.name, {})
+        verdict = entry.get("verdict") or {}
+        items.append({
+            "id": p.name, "name": p.name, "bytes": p.stat().st_size,
+            "modified": _iso_mtime(p),
+            "completed_at": entry.get("completed_at") or _iso_mtime(p),
+            "by": entry.get("by") or "unknown",
+            "sha256": entry.get("sha256", ""),
+            "verdict": {
+                "passed": bool(verdict.get("passed")),
+                "met": verdict.get("met", 0),
+                "unmet": verdict.get("unmet", 0),
+            },
+        })
+    items.sort(key=lambda r: (r["completed_at"], r["name"]), reverse=True)
+    return items
+
+
+def _maybe_refresh_session(request: Request, payload: dict) -> Response:
+    """Sliding-session wrapper for read endpoints returning a JSON payload."""
+    claims = _session_claims(request)
+    if claims:
+        duo_sso, _ = _duo()
+        if duo_sso is not None:
+            new = duo_sso.sign_session(claims.get("sub") or "",
+                                       scopes=[SESSION_SCOPE], ttl=SESSION_TTL)
+            return _set_session(JSONResponse(payload), new)
+    return payload
+
+
+# ── verify_completion: honest, side-effect-free requirement checking ────────
+# Requirements come from (a) markdown checkboxes ``- [ ] / - [x]`` and (b) a
+# fenced ```verify block of declarative probes (file_exists / file_contains /
+# http_ok). Unchecked boxes are unmet; unknown probes are unmet. No criteria at
+# all is NOT a pass. http probes are loopback-only (no SSRF).
+
+_CHECKBOX_RE = re.compile(r"^\s*[-*+]\s+\[([ xX])\]\s+(.*\S)?\s*$")
+_VERIFY_FENCE_RE = re.compile(r"^\s*(?:```|~~~)\s*verify\s*$", re.IGNORECASE)
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+def _probe_repo_path(arg: str) -> Path | None:
+    rel = (arg or "").strip().strip("\"'")
+    if not rel or rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
+        return None
+    try:
+        root = REPO_ROOT.resolve()
+        target = (root / rel).resolve()
+    except OSError:
+        return None
+    return target if _within(target, root) else None
+
+
+def _http_get(url: str) -> int:
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=5) as r:
+        return int(getattr(r, "status", None) or r.getcode() or 0)
+
+
+def _run_probe(line: str) -> dict | None:
+    if ":" not in line:
+        return None
+    kind, _, arg = line.partition(":")
+    kind, arg = kind.strip().lower(), arg.strip()
+    if not kind or not arg:
+        return None
+    if kind == "file_exists":
+        target = _probe_repo_path(arg)
+        met = bool(target and target.is_file())
+        return {"requirement": f"file_exists: {arg}",
+                "status": "met" if met else "unmet",
+                "evidence": "file present" if met
+                            else "file missing (or outside repo)"}
+    if kind == "file_contains":
+        rel, sep, needle = arg.partition("::")
+        target = _probe_repo_path(rel) if sep else None
+        met = False
+        evidence = "malformed probe (use path::needle)"
+        if target and target.is_file():
+            try:
+                met = needle in target.read_text(errors="ignore")
+            except OSError:
+                met = False
+            evidence = "needle found" if met else "needle not found"
+        return {"requirement": f"file_contains: {arg}",
+                "status": "met" if met else "unmet", "evidence": evidence}
+    if kind in ("http_ok", "http"):
+        parsed = urlparse(arg)
+        host = (parsed.hostname or "").lower()
+        if parsed.scheme not in ("http", "https") or host not in _LOOPBACK_HOSTS:
+            return {"requirement": f"http_ok: {arg}", "status": "unmet",
+                    "evidence": "refused: only loopback HTTP probes are allowed"}
+        try:
+            code = _http_get(arg)
+            met, evidence = 0 < code < 400, f"HTTP {code}"
+        except Exception as e:  # noqa: BLE001
+            met, evidence = False, f"request failed: {type(e).__name__}: {e}"
+        return {"requirement": f"http_ok: {arg}",
+                "status": "met" if met else "unmet", "evidence": evidence}
+    return {"requirement": line.strip(), "status": "unmet",
+            "evidence": f"unsupported probe kind {kind!r}"}
+
+
+def _extract_checks(text: str) -> list[dict]:
+    checks: list[dict] = []
+    in_verify = False
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if _VERIFY_FENCE_RE.match(raw):
+            in_verify = not in_verify
+            continue
+        if in_verify:
+            probe = _run_probe(raw.strip())
+            if probe:
+                checks.append(probe)
+            continue
+        m = _CHECKBOX_RE.match(raw)
+        if m:
+            checked = m.group(1).lower() == "x"
+            checks.append({
+                "requirement": (m.group(2) or "requirement").strip(),
+                "status": "met" if checked else "unmet",
+                "evidence": "checkbox checked in directive" if checked
+                            else "checkbox unchecked in directive",
+            })
+    return checks
+
+
+def verify_completion(target: Path) -> dict:
+    """Inspect a directive's requirements and return a verdict with evidence.
+
+    Never mutates anything; returns ``{"passed", "met", "unmet", "checks",
+    "reason"}``. ``passed`` is only true when there is at least one requirement
+    and every requirement is met.
+    """
+    try:
+        text = target.read_text(errors="ignore")
+    except OSError as e:  # noqa: BLE001
+        return {"passed": False, "met": 0, "unmet": 1, "checks": [],
+                "reason": f"unreadable: {e}"}
+    checks = _extract_checks(text)
+    met = sum(1 for c in checks if c["status"] == "met")
+    unmet = len(checks) - met
+    if not checks:
+        reason = "no machine-checkable requirements found"
+    elif unmet:
+        reason = f"{unmet} of {len(checks)} requirements unmet"
+    else:
+        reason = f"all {met} requirements verified"
+    return {"passed": bool(checks) and unmet == 0, "met": met, "unmet": unmet,
+            "checks": checks, "reason": reason}
+
+
+def complete_directive(directive_id: str, by: str) -> dict:
+    """Verify, then copy → check → back up → remove. Refuses honestly otherwise."""
+    target = _resolve(directive_id)
+    verdict = verify_completion(target)
+    if not verdict["passed"]:
+        raise HTTPException(409, detail={"ok": False,
+                                         "error": "verification failed", **verdict})
+
+    import hashlib
+    data = target.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    name = target.name
+    COMPLETED_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+    dest = COMPLETED_DIR / name
+    _atomic_write_bytes(dest, data)
+    if not dest.is_file() or hashlib.sha256(dest.read_bytes()).hexdigest() != digest:
+        raise HTTPException(500, "completion copy failed verification; original kept")
+    _atomic_write_bytes(BACKUP_DIR / name, data)  # never lose the directive
+
+    meta = _load_meta()
+    meta[name] = {
+        "name": name, "bytes": len(data),
+        "completed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "by": by or "unknown", "sha256": digest,
+        "original": str(target), "verdict": verdict,
+    }
+    _atomic_write_bytes(META_FILE, json.dumps(meta, indent=2, sort_keys=True).encode())
+
+    try:
+        target.unlink()
+    except OSError:  # noqa: BLE001 - copy + backup already safe
+        pass
+
+    _audit({"at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            "action": "complete", "name": name, "by": by,
+            "met": verdict["met"], "unmet": verdict["unmet"]})
+
+    entry = dict(meta[name])
+    entry["id"] = name
+    entry["modified"] = _iso_mtime(dest)
+    return {"ok": True, "completed": entry}

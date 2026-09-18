@@ -4,6 +4,7 @@ from core.docker_actions import execute_action, container_status
 from core.remediation_memory import record_result
 from core.execution_audit import record as record_audit
 from core.decision_engine import load_decisions
+from core.logger import info
 
 
 def get_approved():
@@ -34,12 +35,48 @@ def find_root_cause(incident_id, action, fallback):
     return fallback
 
 
-def process():
+def _safe_record_result(request, result):
+    try:
+        record_result(
+            request.get("incident"),
+            request["action"],
+            result.get("status", "failed"),
+            issue=request.get("reason"),
+            root_cause=find_root_cause(request.get("incident"), request["action"], request.get("reason"))
+        )
+    except Exception as error:
+        info(f"remediation result record failed: {type(error).__name__}: {error}")
 
-    results = []
 
-    for request in get_approved():
+def _safe_record_audit(request, remediation, result):
+    try:
+        record_audit({
+            "operator": request.get("approved_by") or "unknown",
+            "action": request["action"],
+            "service": request["service"],
+            "command": f"{request['action']} on {request['service']}",
+            "result": result.get("status", "failed"),
+            "request_id": request["id"],
+            "remediation_id": remediation["id"] if remediation else None
+        })
+    except Exception as error:
+        info(f"execution audit record failed: {type(error).__name__}: {error}")
 
+
+def _process_request(request):
+    """Execute one approved remediation request.
+
+    Never raises: before the Docker guard, a missing `docker` binary made
+    container_status() raise FileNotFoundError here, which propagated out of
+    run_cycle() and aborted the whole orchestrator cycle every tick. Each
+    side effect is individually guarded, and the request is always marked
+    terminal (`executed`) so a failing action can never re-trigger forever.
+    """
+
+    remediation = None
+    result = {"status": "failed"}
+
+    try:
         before = container_status(request["service"])
 
         remediation = create_remediation(
@@ -58,38 +95,39 @@ def process():
         try:
             result = execute_action(request["action"], request["service"])
         except Exception as error:
-            result = {"status": "failed", "error": str(error)}
+            result = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
 
         complete_remediation(remediation["id"], result)
 
+    except Exception as error:
+        result = {"status": "failed", "error": f"{type(error).__name__}: {error}"}
+        info(f"remediation request {request.get('id')} failed: {type(error).__name__}: {error}")
+
+    _safe_record_result(request, result)
+    _safe_record_audit(request, remediation, result)
+
+    try:
         mark_executed(request["id"])
+    except Exception as error:
+        info(f"remediation request {request.get('id')} could not be marked executed: {type(error).__name__}: {error}")
 
-        record_result(
-            request.get("incident"),
-            request["action"],
-            result.get("status", "failed"),
-            issue=request.get("reason"),
-            root_cause=find_root_cause(request.get("incident"), request["action"], request.get("reason"))
-        )
+    return {
+        "request_id": request["id"],
+        "remediation_id": remediation["id"] if remediation else None,
+        "service": request["service"],
+        "trace_id": request.get("incident"),
+        "status": result.get("status", "failed"),
+        "result": result
+    }
 
-        record_audit({
-            "operator": request.get("approved_by") or "unknown",
-            "action": request["action"],
-            "service": request["service"],
-            "command": f"{request['action']} on {request['service']}",
-            "result": result.get("status", "failed"),
-            "request_id": request["id"],
-            "remediation_id": remediation["id"]
-        })
 
-        results.append({
-            "request_id": request["id"],
-            "remediation_id": remediation["id"],
-            "service": request["service"],
-            "trace_id": request.get("incident"),
-            "status": result.get("status", "failed"),
-            "result": result
-        })
+def process():
+
+    results = []
+
+    for request in get_approved():
+
+        results.append(_process_request(request))
 
     return results
 

@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 from datetime import datetime
 
@@ -9,8 +10,23 @@ ALLOWED_ACTIONS = (
 )
 
 
+def docker_available():
+    """True only when a docker CLI is present on this host.
+
+    CT111 (the orchestrator runner) deliberately has no docker. Every
+    Docker-touching operation must degrade to a clean "unknown"/unsupported
+    result instead of raising FileNotFoundError from subprocess.run -- that
+    uncaught error aborted the whole orchestrator cycle on every tick
+    (2026-09-18 audit, P0 scheduler wedge).
+    """
+    return shutil.which("docker") is not None
+
 
 def container_exists(service):
+
+    if not docker_available():
+
+        return False
 
     result = subprocess.run(
         [
@@ -27,6 +43,10 @@ def container_exists(service):
 
 
 def container_status(service):
+
+    if not docker_available():
+
+        return "unknown"
 
     result = subprocess.run(
         [
@@ -134,11 +154,26 @@ if __name__ == "__main__":
     )
 def execute_action(action, service):
 
+    # Security classification still raises SecurityViolation -- enforcement
+    # must never be silently swallowed. Only the execution itself is
+    # fail-safe so a broken docker call cannot abort the cycle.
     enforce_action_is_safe(action, f"{action} on {service}")
 
     if action == "restart_container":
 
-        return restart_container(service)
+        try:
+
+            return restart_container(service)
+
+        except Exception as error:
+
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "service": service,
+                "action": action,
+                "status": "failed",
+                "reason": f"{type(error).__name__}: {error}"
+            }
 
     return {
         "timestamp": datetime.now().isoformat(),

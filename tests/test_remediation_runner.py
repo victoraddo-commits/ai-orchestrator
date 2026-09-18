@@ -137,6 +137,44 @@ def test_process_records_what_happened_in_remediation_history():
     assert entry["issue"] == "Repeated critical incident: Container unhealthy"
 
 
+def test_process_survives_container_status_failure(monkeypatch):
+    # P0 scheduler wedge: a failing Docker probe must not abort the cycle --
+    # the request is still marked terminal so it cannot re-trigger forever.
+    request = create_request("restart_container", NONEXISTENT_SERVICE, "reason", incident_id="inc1")
+    approve(request["id"])
+
+    import core.remediation_runner as runner
+
+    def boom(service):
+        raise FileNotFoundError("docker")
+
+    monkeypatch.setattr(runner, "container_status", boom)
+
+    results = process()
+
+    assert len(results) == 1
+    assert results[0]["status"] == "failed"
+    assert load_requests()[0]["status"] == "executed"
+
+
+def test_process_survives_execute_action_failure(monkeypatch):
+    request = create_request("restart_container", NONEXISTENT_SERVICE, "reason", incident_id="inc1")
+    approve(request["id"])
+
+    import core.remediation_runner as runner
+
+    def boom(action, service):
+        raise RuntimeError("exploded")
+
+    monkeypatch.setattr(runner, "execute_action", boom)
+
+    results = process()
+
+    assert len(results) == 1
+    assert results[0]["status"] == "failed"
+    assert load_requests()[0]["status"] == "executed"
+
+
 def test_process_records_actual_decision_reasoning_as_root_cause():
     from core.incident_manager import create_incident
     from core.decision_engine import evaluate_incidents

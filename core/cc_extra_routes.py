@@ -173,6 +173,32 @@ def directives_health():
         return JSONResponse({"ok": False, "error": str(e)})
 
 
+# ── Reports (KAI 2.0 Phase 3) — proxies the directives service reports API ──
+# Same token-gated backend proxy as directives; the CC session gates the UI.
+
+def _reports_quote(report_id: str) -> str:
+    import urllib.parse
+    return urllib.parse.quote(report_id, safe="")
+
+
+@cc_extra_router.get("/api/reports/list")
+def reports_list():
+    """List discoverable markdown reports (docs/, reports/, directives/)."""
+    return _directives_proxy("/api/reports")
+
+
+@cc_extra_router.get("/api/reports/get/{report_id}")
+def reports_get(report_id: str):
+    """Fetch one report with its markdown rendered to sanitized HTML."""
+    return _directives_proxy("/api/reports/" + _reports_quote(report_id))
+
+
+@cc_extra_router.get("/api/reports/download/{report_id}")
+def reports_download(report_id: str):
+    """Download the raw markdown of a report."""
+    return _directives_proxy("/api/reports/" + _reports_quote(report_id) + "/download")
+
+
 # ── Service Directory (proxy to kai-directory :8097, CT114) ─────────────────
 DIRECTORY_BASE = os.environ.get("KAI_DIRECTORY_BASE", "http://192.168.1.114:8097")
 

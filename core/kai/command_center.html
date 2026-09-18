@@ -866,6 +866,22 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .sidebar-nav { overscroll-behavior: contain; }
 .table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+/* Rendered reports (KAI 2.0 Phase 3) — server-sanitized markdown */
+.report-render { font-size: 0.74rem; line-height: 1.55; max-height: 560px; overflow: auto;
+  border: 1px solid var(--border); border-radius: 4px; padding: 12px; background: var(--bg); }
+.report-render h1 { font-size: 1.05rem; margin: 10px 0 6px; }
+.report-render h2 { font-size: 0.92rem; margin: 10px 0 6px; }
+.report-render h3 { font-size: 0.82rem; margin: 8px 0 4px; }
+.report-render p { margin: 6px 0; }
+.report-render ul, .report-render ol { margin: 6px 0; padding-left: 20px; }
+.report-render li { margin: 2px 0; }
+.report-render pre { background: var(--panel); padding: 8px; border-radius: 4px; overflow: auto; }
+.report-render code { font-family: var(--font-mono); font-size: 0.68rem; }
+.report-render table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.report-render th, .report-render td { border: 1px solid var(--border); padding: 4px 6px; text-align: left; }
+.report-render blockquote { border-left: 3px solid var(--border); margin: 6px 0; padding-left: 10px; color: var(--fg-muted); }
+.report-render a { color: var(--accent); }
+
 /* Tablet / narrow desktop: narrower sidebar, ≤2 columns */
 @media (min-width: 769px) and (max-width: 1100px) {
   :root { --sidebar-width: 176px; }
@@ -3422,8 +3438,13 @@ function filterDirectory(){
     tr.style.display=(!q||(tr.getAttribute('data-q')||'').indexOf(q)>=0)?'':'none';
   });
 }
+function _dirTabbar(active){
+  const b=(k,label)=>'<button class="btn btn-xs '+(k===active?'btn-accent':'')+'" onclick="showDirectivesTab(\''+k+'\')">'+label+'</button>';
+  return '<div class="card"><div class="action-row" style="gap:6px">'+b('directives','Directives')+b('reports','Reports')+'</div></div>';
+}
+function showDirectivesTab(k){ if(k==='reports'){loadReports();} else {loadDirectives();} }
 async function loadDirectives(){
-  const el=$('directives-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  const el=$('directives-content'); if(!el) return; el.innerHTML=_dirTabbar('directives')+'<span class="loading">loading…</span>';
   const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
   try{
     const [d,h]=await Promise.all([g('/api/directives/list'),g('/kai/directives/health')]);
@@ -3454,8 +3475,8 @@ async function loadDirectives(){
       html+='</tbody></table></div>';
     }
     html+='</div>';
-    el.innerHTML=html;
-  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+    el.innerHTML=_dirTabbar('directives')+html;
+  }catch(e){el.innerHTML=_dirTabbar('directives')+'<span class="error-text">'+esc(e.message)+'</span>';}
 }
 async function directiveUpload(){
   const res=$('dir-result'); if(res)res.textContent='uploading…';
@@ -3498,6 +3519,57 @@ async function directiveAck(name,btn){
   if(btn)btn.disabled=true;
   try{await api('/api/directives/ack/'+encodeURIComponent(name),{method:'POST',body:'{}'});toast('acked '+name);loadDirectives();}
   catch(e){toast('ack failed: '+e.message,'err');if(btn)btn.disabled=false;}
+}
+// ── Reports sub-tab (KAI 2.0 Phase 3) ─────────────────────────────────
+async function loadReports(){
+  const el=$('directives-content'); if(!el) return;
+  el.innerHTML=_dirTabbar('reports')+'<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  const d=await g('/api/reports/list');
+  const rows=(d&&Array.isArray(d.reports))?d.reports:[];
+  let html='<div class="card"><h3>Reports <span class="badge info">'+(d.error?'\u2014':rows.length)+'</span>'
+    +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="loadReports()">Refresh</button></span></h3>'
+    +'<p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">Markdown artifacts under docs/, reports/ &amp; directives/ &middot; token-gated backend proxy</p>'
+    +(d.error?'<div class="error-text" style="margin-top:6px">'+esc(d.error)+'</div>':'');
+  if(!d.error){
+    if(!rows.length) html+='<p class="empty">no reports found</p>';
+    else{
+      html+='<div class="table-wrap"><table><thead><tr><th>Title</th><th>Type</th><th>Date</th><th>Source</th><th>Actions</th></tr></thead><tbody>';
+      for(const r of rows){
+        html+='<tr><td>'+esc(r.title||r.path)
+          +'<div style="font-size:0.6rem;color:var(--fg-muted)"><code>'+esc(r.path)+'</code></div></td>'
+          +'<td><span class="badge info">'+esc(r.type||'doc')+'</span></td><td>'+esc(r.mtime||'')+'</td><td>'+esc(r.source||'')+'</td>'
+          +'<td class="action-row"><button class="btn btn-xs" onclick="reportView(\''+r.id+'\')">Open</button> '
+          +'<button class="btn btn-xs" onclick="reportDownload(\''+r.id+'\')">Download</button></td></tr>';
+      }
+      html+='</tbody></table></div>';
+    }
+  }
+  html+='</div>';
+  el.innerHTML=_dirTabbar('reports')+html;
+}
+async function reportView(id){
+  const el=$('directives-content'); if(!el) return;
+  el.innerHTML=_dirTabbar('reports')+'<span class="loading">loading…</span>';
+  const r=await api('/api/reports/get/'+encodeURIComponent(id)).catch(e=>({error:e.message}));
+  el.innerHTML=_dirTabbar('reports')+'<div class="card"><h3>'+esc(r.title||'Report')
+    +'<span class="card-header-actions"><button class="btn btn-xs" onclick="loadReports()">Back</button>'
+    +'<button class="btn btn-xs" onclick="reportDownload(\''+id+'\')">Download .md</button></span></h3>'
+    +'<div style="font-size:0.6rem;color:var(--fg-muted)"><code>'+esc(r.path||'')+'</code> &middot; '+esc(r.type||'')+'</div>'
+    +(r.error?'<span class="error-text">'+esc(r.error)+'</span>':'<div class="report-render">'+(r.html||'')+'</div>')
+    +'</div>';
+}
+async function reportDownload(id){
+  try{
+    const h={}; if(S.token)h['X-Kai-Session']=S.token;
+    const res=await fetch('/api/reports/download/'+encodeURIComponent(id),{headers:h});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=(id||'report')+'.md'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    toast('downloading report');
+  }catch(e){toast('download failed: '+e.message,'err');}
 }
 // ═══════════════════════════════════════════════════════════════════
 // PANEL: MODEL FABRIC — index + per-model pages (KAI 2.0 Phase 2)

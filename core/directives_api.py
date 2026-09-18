@@ -14,12 +14,15 @@ how the Command Center backend proxy reaches the service.
 """
 from __future__ import annotations
 
+import base64
+import html as _html
 import json
 import os
 import re
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -39,6 +42,16 @@ DUO_TIMEOUT = int(os.environ.get("KAI_DIRECTIVES_DUO_TIMEOUT", "45"))
 _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
 DIR.mkdir(parents=True, exist_ok=True)
+
+# ── Reports ─────────────────────────────────────────────────────────────────
+# Read-only markdown report discovery. Roots live under REPORTS_BASE and every
+# resolved path is checked to stay inside one of them (no traversal/symlinks).
+REPORTS_BASE = Path(os.environ.get("KAI_REPORTS_BASE", "/opt/ai-orchestrator"))
+REPORTS_DIRS = tuple(
+    d.strip() for d in os.environ.get("KAI_REPORTS_DIRS", "docs,reports,directives").split(",")
+    if d.strip()
+)
+REPORT_EXT = {".md", ".markdown"}
 
 
 def _token() -> str:
@@ -146,6 +159,261 @@ def _load_acked() -> set:
 def _audit(entry: dict) -> None:
     with AUDIT_FILE.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(entry) + "\n")
+
+
+# ── Reports: discovery, rendering, path safety ──────────────────────────────
+
+_SAFE_LINK_SCHEMES = {"http", "https", "mailto"}
+_CODE_RE = re.compile(r"`([^`]+)`")
+_LINK_RE = re.compile(r"!?\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
+_ITALIC_RE = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+_UL_RE = re.compile(r"^[-*+]\s+")
+_OL_RE = re.compile(r"^\d+[.)]\s+")
+_TABLE_SEP_RE = re.compile(
+    r"^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$")
+
+
+def _within(child: Path, parent: Path) -> bool:
+    try:
+        child = child.resolve()
+        parent = parent.resolve()
+    except OSError:
+        return False
+    return child == parent or parent in child.parents
+
+
+def _report_roots() -> list[Path]:
+    roots = []
+    for name in REPORTS_DIRS:
+        root = REPORTS_BASE / name
+        if _within(root, REPORTS_BASE) and root.resolve().is_dir():
+            roots.append(root.resolve())
+    return roots
+
+
+def _derive_title(text: str, fallback: str) -> str:
+    """First ATX ``#`` heading wins; otherwise prettify the filename stem."""
+    for line in text.splitlines():
+        m = _HEADING_RE.match(line.strip())
+        if m:
+            title = re.sub(r"[*_`]", "", m.group(2)).strip()
+            if title:
+                return title
+    stem = Path(fallback).stem
+    return re.sub(r"[_-]+", " ", stem).strip() or fallback
+
+
+def _report_type(name: str) -> str:
+    upper = name.upper()
+    for key, value in (
+        ("RECONCILIATION", "reconciliation"),
+        ("DISCOVERY", "discovery"),
+        ("AUDIT", "audit"),
+        ("REPORT", "report"),
+        ("PROTOCOL", "protocol"),
+        ("PLAN", "plan"),
+    ):
+        if key in upper:
+            return value
+    return "doc"
+
+
+def _report_id(rel: str) -> str:
+    return base64.urlsafe_b64encode(rel.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _report_rel(report_id: str) -> str:
+    pad = "=" * (-len(report_id) % 4)
+    try:
+        return base64.urlsafe_b64decode(report_id + pad).decode("utf-8")
+    except Exception:  # noqa: BLE001
+        raise HTTPException(404, "not found")
+
+
+def _resolve_report(report_id: str) -> Path:
+    """Map an opaque id to a file inside an allowed root, or 404."""
+    rel = _report_rel(report_id)
+    if not rel or rel.startswith(("/", "\\")) or ".." in Path(rel).parts:
+        raise HTTPException(404, "not found")
+    target = (REPORTS_BASE / rel).resolve()
+    if not any(_within(target, root) for root in _report_roots()):
+        raise HTTPException(404, "not found")
+    if not target.is_file() or target.suffix.lower() not in REPORT_EXT:
+        raise HTTPException(404, "not found")
+    return target
+
+
+def _report_item(rel: str, target: Path) -> dict:
+    st = target.stat()
+    text = target.read_text(errors="ignore")
+    return {
+        "id": _report_id(rel),
+        "title": _derive_title(text, target.name),
+        "path": rel,
+        "type": _report_type(target.name),
+        "size": st.st_size,
+        "mtime": datetime.fromtimestamp(st.st_mtime, timezone.utc)
+        .strftime("%Y-%m-%dT%H:%MZ"),
+        "source": rel.split("/", 1)[0],
+    }
+
+
+def _discover_reports() -> list[dict]:
+    items: list[dict] = []
+    seen: set[str] = set()
+    for root in _report_roots():
+        for p in sorted(root.rglob("*")):
+            if not p.is_file() or p.suffix.lower() not in REPORT_EXT:
+                continue
+            resolved = p.resolve()
+            if not _within(resolved, root):
+                continue  # symlink escaping the allowed root
+            rel = resolved.relative_to(REPORTS_BASE.resolve()).as_posix()
+            if rel in seen:
+                continue
+            seen.add(rel)
+            try:
+                items.append(_report_item(rel, resolved))
+            except OSError:
+                continue
+    items.sort(key=lambda r: (r["mtime"], r["path"]), reverse=True)
+    return items
+
+
+def _safe_href(url: str) -> str:
+    url = (url or "").strip()
+    if not url:
+        return ""
+    scheme = urlparse(url).scheme.lower()
+    if scheme and scheme not in _SAFE_LINK_SCHEMES:
+        return ""
+    return url
+
+
+def _inline_md(text: str) -> str:
+    """Escape inline text first, then add a safe subset of markdown."""
+    stashed: list[str] = []
+
+    def _stash(fragment: str) -> str:
+        stashed.append(fragment)
+        return f"\x00{len(stashed) - 1}\x00"
+
+    text = _CODE_RE.sub(lambda m: _stash("<code>" + _html.escape(m.group(1)) + "</code>"), text)
+    text = _html.escape(text, quote=False)
+
+    def _link(m: "re.Match") -> str:
+        label = m.group(1)
+        href = _safe_href(_html.unescape(m.group(2)))
+        if not href:
+            return label
+        return (f'<a href="{_html.escape(href, quote=True)}" '
+                f'target="_blank" rel="noopener noreferrer">{label}</a>')
+
+    text = _LINK_RE.sub(_link, text)
+    text = _BOLD_RE.sub(r"<strong>\1</strong>", text)
+    text = _ITALIC_RE.sub(r"<em>\1</em>", text)
+    for i, fragment in enumerate(stashed):
+        text = text.replace(f"\x00{i}\x00", fragment)
+    return text
+
+
+def _split_row(row: str) -> list[str]:
+    row = row.strip()
+    if row.startswith("|"):
+        row = row[1:]
+    if row.endswith("|"):
+        row = row[:-1]
+    return [c.strip() for c in row.split("|")]
+
+
+def _render_markdown(md: str) -> str:
+    """Render a safe subset of markdown. All raw HTML is escaped, never emitted."""
+    lines = md.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: list[str] = []
+    para: list[str] = []
+
+    def flush_para() -> None:
+        if para:
+            out.append("<p>" + " ".join(_inline_md(x.strip()) for x in para) + "</p>")
+            para.clear()
+
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            flush_para()
+            fence = stripped[:3]
+            code: list[str] = []
+            i += 1
+            while i < n and not lines[i].strip().startswith(fence):
+                code.append(lines[i])
+                i += 1
+            i += 1  # closing fence
+            out.append("<pre><code>" + _html.escape("\n".join(code)) + "</code></pre>")
+            continue
+        if not stripped:
+            flush_para()
+            i += 1
+            continue
+        m = _HEADING_RE.match(stripped)
+        if m:
+            flush_para()
+            level = len(m.group(1))
+            out.append(f"<h{level}>" + _inline_md(m.group(2).strip()) + f"</h{level}>")
+            i += 1
+            continue
+        if re.match(r"^(-{3,}|\*{3,}|_{3,})$", stripped):
+            flush_para()
+            out.append("<hr>")
+            i += 1
+            continue
+        if stripped.startswith(">"):
+            flush_para()
+            quote = []
+            while i < n and lines[i].strip().startswith(">"):
+                quote.append(lines[i].strip()[1:].strip())
+                i += 1
+            out.append("<blockquote>" + _inline_md(" ".join(quote)) + "</blockquote>")
+            continue
+        if _UL_RE.match(stripped):
+            flush_para()
+            items = []
+            while i < n and _UL_RE.match(lines[i].strip()):
+                items.append(_inline_md(_UL_RE.sub("", lines[i].strip())))
+                i += 1
+            out.append("<ul>" + "".join(f"<li>{x}</li>" for x in items) + "</ul>")
+            continue
+        if _OL_RE.match(stripped):
+            flush_para()
+            items = []
+            while i < n and _OL_RE.match(lines[i].strip()):
+                items.append(_inline_md(_OL_RE.sub("", lines[i].strip())))
+                i += 1
+            out.append("<ol>" + "".join(f"<li>{x}</li>" for x in items) + "</ol>")
+            continue
+        if ("|" in stripped and i + 1 < n
+                and _TABLE_SEP_RE.match(lines[i + 1].strip())):
+            flush_para()
+            header = _split_row(stripped)
+            i += 2
+            rows = []
+            while i < n and lines[i].strip() and "|" in lines[i]:
+                rows.append(_split_row(lines[i].strip()))
+                i += 1
+            thead = "".join(f"<th>{_inline_md(c)}</th>" for c in header)
+            tbody = "".join(
+                "<tr>" + "".join(f"<td>{_inline_md(c)}</td>" for c in r) + "</tr>"
+                for r in rows)
+            out.append("<table><thead><tr>" + thead + "</tr></thead><tbody>"
+                       + tbody + "</tbody></table>")
+            continue
+        para.append(line)
+        i += 1
+    flush_para()
+    return "\n".join(out)
 
 
 app = FastAPI(title="Kai Directives")
@@ -372,6 +640,54 @@ def ack_directive(directive_id: str, request: Request):
     ACK_FILE.write_text(json.dumps(sorted(acked)))
     _audit({"action": "ack", "name": target.name})
     return {"ok": True, "id": target.name, "acked": True}
+
+
+# ── Reports API (auth = same as directives) ────────────────────────────────
+
+
+@app.get("/api/reports")
+def list_reports(request: Request):
+    """List markdown report artifacts discovered under the allowed roots."""
+    if not _authorized(request):
+        raise HTTPException(401, "unauthorized")
+    payload = {"reports": _discover_reports()}
+    # Sliding session: an authenticated page load refreshes the idle timer.
+    claims = _session_claims(request)
+    if claims:
+        duo_sso, _ = _duo()
+        if duo_sso is not None:
+            new = duo_sso.sign_session(claims.get("sub") or "",
+                                       scopes=[SESSION_SCOPE], ttl=SESSION_TTL)
+            return _set_session(JSONResponse(payload), new)
+    return payload
+
+
+@app.get("/api/reports/{report_id}")
+def get_report(report_id: str, request: Request):
+    """Return one report with its markdown rendered to sanitized HTML."""
+    if not _authorized(request):
+        raise HTTPException(401, "unauthorized")
+    target = _resolve_report(report_id)
+    rel = target.relative_to(REPORTS_BASE.resolve()).as_posix()
+    item = _report_item(rel, target)
+    item["html"] = _render_markdown(target.read_text(errors="ignore"))
+    return item
+
+
+@app.get("/api/reports/{report_id}/download")
+def download_report(report_id: str, request: Request):
+    """Download the raw markdown of a report as a file attachment."""
+    if not _authorized(request):
+        raise HTTPException(401, "unauthorized")
+    target = _resolve_report(report_id)
+    data = target.read_bytes()
+    _audit({"at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            "action": "report_download", "name": target.name, "bytes": len(data)})
+    return Response(
+        content=data,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{target.name}"'},
+    )
 
 
 def _resolve(directive_id: str) -> Path:

@@ -216,6 +216,61 @@ class TestMergeNewestWins:
         assert len(merged) == 2
 
 
+class TestMultiVersionEntityHead:
+    """?entity=X must keep the head even when it supersedes older versions.
+
+    Production stores (e.g. operational/system_state.json) append every new
+    version with supersedes=<previous id>. The old merge logic walked the
+    winner's supersedes chain -- the OLDER records it replaces -- and dropped
+    the winner if any of them was present, which is always true for a
+    multi-version entity. Result: entity-filtered retrieval returned 0 rows.
+    """
+
+    def test_head_kept_when_it_supersedes_older_versions(self):
+        v1 = make_record("system_state.json", timestamp="2024-01-01T00:00:00Z", id="v1")
+        v2 = make_record("system_state.json", timestamp="2024-02-01T00:00:00Z", id="v2")
+        v3 = make_record("system_state.json", timestamp="2024-03-01T00:00:00Z", id="v3")
+        v2.supersedes = "v1"
+        v3.supersedes = "v2"
+
+        router = SecondBrainRouter(stores_base="/tmp/fake")
+        results = [
+            QueryResult(
+                records=[v3, v2, v1],
+                store="operational",
+                merge_policy=MergePolicy.NEWEST_WINS,
+            ),
+        ]
+
+        merged = router._merge(results)
+
+        assert [r.id for r in merged] == ["v3"]
+
+    def test_superseded_candidate_dropped_under_source_authority(self):
+        # authority winner (old) is explicitly replaced by a newer record ->
+        # the head is gone from this candidate set, so nothing is returned
+        # rather than resurrecting the superseded record.
+        old = make_record(
+            "svc-a",
+            timestamp="2024-01-01T00:00:00Z",
+            source_authority=SourceAuthority.LIVE_SYSTEM,
+            id="old",
+        )
+        new = make_record(
+            "svc-a",
+            timestamp="2024-06-01T00:00:00Z",
+            source_authority=SourceAuthority.INFERENCE,
+            id="new",
+        )
+        new.supersedes = "old"
+        old.superseded_by = "new"
+
+        router = SecondBrainRouter(stores_base="/tmp/fake")
+        merged = router._apply_merge_policy([old, new], MergePolicy.SOURCE_AUTHORITY)
+
+        assert merged == []
+
+
 class TestMergeSourceAuthority:
     """test_merge_source_authority — two records for same entity, highest authority wins."""
 

@@ -234,21 +234,27 @@ class SecondBrainRouter:
                 winner = recs[0]
 
             if winner:
-                # Check if this winner is superseded by any other record in recs.
-                # Build the supersedes chain: winner → winner.supersedes → ... → None
-                superseded_ids: set[str] = set()
-                current = winner.supersedes
-                while current:
-                    superseded_ids.add(current)
-                    # Find the record with this id
-                    parent = next((r for r in recs if r.id == current), None)
-                    if parent:
-                        current = parent.supersedes
-                    else:
-                        break
-                # If any OTHER record in recs supersedes the winner, skip it
-                other_ids = {r.id for r in recs if r.id != winner.id}
-                if not (other_ids & superseded_ids):
+                # The selected winner is the head for this entity and must be
+                # kept unless ANOTHER record in this candidate set supersedes
+                # it:
+                #   - other.supersedes == winner.id  (other declares it replaces winner)
+                #   - winner.superseded_by == other.id (winner was marked replaced by other)
+                #
+                # The previous implementation walked winner.supersedes -- the
+                # OLDER records the winner REPLACES -- and dropped the winner
+                # whenever any of them was present. That is always true for a
+                # multi-version entity (each new version supersedes the prior
+                # head), so entity-filtered retrieval returned 0 rows
+                # (2026-09-18 audit, P0).
+                superseded_by_other = any(
+                    other.id != winner.id
+                    and (
+                        other.supersedes == winner.id
+                        or winner.superseded_by == other.id
+                    )
+                    for other in recs
+                )
+                if not superseded_by_other:
                     results.append(winner)
 
         results.sort(key=lambda r: r.timestamp, reverse=True)

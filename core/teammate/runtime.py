@@ -182,13 +182,42 @@ class TeammateRuntime:
         """
         try:
             from core.teammate import model_fabric
-            return model_fabric.resolve_model_plan(teammate_id, skill_id, skill_registry)
+            plan = model_fabric.resolve_model_plan(teammate_id, skill_id, skill_registry)
         except Exception as exc:
             logger.warning("runtime: model plan for %s fell back: %s", skill_id, exc)
             from core.ai import ai_router
             from core.teammate.model_fabric import ModelPlan
-            return ModelPlan(skill_id=skill_id, task_type="planning",
+            plan = ModelPlan(skill_id=skill_id, task_type="planning",
                              provider_chain=ai_router.get_effective_providers("planning"))
+        return self._apply_learning(teammate_id, plan)
+
+    def _apply_learning(self, teammate_id: str, plan: Any) -> Any:
+        """Reorder a provider chain to prefer models this teammate succeeded
+        with (§40). Never drops a provider — a stable reorder keeps the
+        fail-closed chain intact."""
+        chain = list(getattr(plan, "provider_chain", []) or [])
+        if len(chain) < 2:
+            return plan
+        mate = self.registry.get(teammate_id)
+        models = ((getattr(mate, "performance_metrics", {}) or {}).get("models") or {})
+        scored = {p: m for p, m in models.items()
+                  if (int(m.get("completed", 0)) + int(m.get("failed", 0))) > 0}
+        if not scored:
+            return plan
+
+        def _score(provider: str) -> float:
+            m = scored.get(provider)
+            if not m:
+                return -1.0
+            n = int(m.get("completed", 0)) + int(m.get("failed", 0))
+            return float(m.get("completed", 0)) / n if n else -1.0
+
+        try:
+            from core.teammate.model_fabric import ModelPlan
+            return ModelPlan(skill_id=plan.skill_id, task_type=plan.task_type,
+                             provider_chain=sorted(chain, key=_score, reverse=True))
+        except Exception:
+            return plan
 
     def _dispatch_provider(self, provider: str, instruction: str, timeout: float = 60,
                            project_path: Optional[str] = None) -> Any:

@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 import uuid
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -31,6 +32,11 @@ TEAMS_STORE = "workforce_teams.json"
 MISSIONS_STORE = "factory_missions.json"
 SCHEMA_VERSION = 1
 
+# Auto-retire (§39): a teammate with no activity for this long is retired by
+# the maintenance step unless it is bound to an active mission or marked
+# persistent. Tunable for operators.
+DEFAULT_IDLE_RETIRE_S = 86400.0
+
 _ENGINEERING_KEYWORDS = (
     "build", "implement", "feature", "code", "coding", "fix", "refactor",
     "develop", "software", "module", "api", "endpoint", "script",
@@ -40,6 +46,27 @@ _ENGINEERING_TEAM = ("planner", "coder", "qa", "reviewer")
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_dt(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _model_of(output: Any) -> str:
+    if isinstance(output, dict):
+        for key in ("provider", "model"):
+            val = output.get(key)
+            if isinstance(val, str) and val:
+                return val
+    return ""
 
 
 def _mission_text(obj: Any) -> str:
@@ -103,6 +130,85 @@ class WorkforceEngine:
             return None
         self.runtime.registry.retire(teammate_id, reason=reason)
         return self._teammate_dict(self.runtime.registry.get(teammate_id))
+
+    def _active_mission_members(self) -> set:
+        members: set = set()
+        for mission in self.list_missions():
+            if mission.get("status") in ("CREATED", "RUNNING"):
+                members.update(mission.get("team_member_ids") or [])
+                members.update(t.get("teammate_id") for t in mission.get("tasks", [])
+                               if t.get("teammate_id"))
+        return members
+
+    def auto_retire(self, *, idle_seconds: Optional[float] = None,
+                    retire_failed: bool = True,
+                    reason: str = "auto-retire") -> list[dict]:
+        """Retire idle/failed teammates per a rule (§39).
+
+        Reuses :meth:`retire_teammate` (the same path the operator endpoint
+        uses). Teammates bound to a mission that is still CREATED/RUNNING are
+        never retired; a ``resource_limits.persistent`` teammate is never
+        retired automatically. Returns the list of retirements performed.
+        """
+        if idle_seconds is None:
+            idle_seconds = float(os.environ.get("KAI_TEAMMATE_IDLE_RETIRE_S",
+                                                DEFAULT_IDLE_RETIRE_S))
+        now = datetime.now(timezone.utc)
+        protected = self._active_mission_members()
+        retired: list[dict] = []
+        for t in list(self.runtime.registry.list()):
+            tid = getattr(t, "id", None)
+            if not tid or tid in protected:
+                continue
+            if (getattr(t, "resource_limits", {}) or {}).get("persistent"):
+                continue
+            status = getattr(t, "status", "")
+            if status == "RETIRED":
+                continue
+            why = ""
+            if retire_failed and (status == "FAILED" or
+                                  getattr(t, "health", "HEALTHY") == "FAILED"):
+                why = "failed"
+            else:
+                last = (_parse_dt(getattr(t, "last_active", ""))
+                        or _parse_dt(getattr(t, "created_at", "")))
+                age = (now - last).total_seconds() if last else float("inf")
+                if status in ("READY", "ASSIGNED", "WAITING", "COMPLETED") and \
+                        age >= idle_seconds:
+                    why = f"idle {int(age)}s"
+            if not why:
+                continue
+            self.retire_teammate(tid, reason=f"{reason}: {why}")
+            retired.append({"teammate_id": tid, "reason": why})
+            self._emit("teammate.retired", {
+                "teammate_id": tid, "reason": why, "automatic": True})
+        return retired
+
+    # ── performance / learning (§40/§41) ────────────────────────────────────
+    @staticmethod
+    def _perf_score(mate: Any) -> tuple:
+        pm = getattr(mate, "performance_metrics", None) or {}
+        return (float(pm.get("success_rate", 0.0) or 0.0),
+                int(pm.get("tasks_completed", 0) or 0))
+
+    def _best_capable_member(self, skill_id: str, members: list,
+                             exclude_id: Optional[str] = None) -> Any:
+        """Pick the highest-performing healthy member that has ``skill_id``.
+
+        The learning signal (§40): among equally-capable teammates prefer the
+        one with the best recorded success rate, then the most completed
+        tasks. Falls back to None when nobody qualifies.
+        """
+        candidates = [
+            m for m in members
+            if getattr(m, "id", None) != exclude_id
+            and skill_id in (getattr(m, "skills", None) or [])
+            and getattr(m, "health", "HEALTHY") == "HEALTHY"
+            and getattr(m, "status", "") != "RETIRED"
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=self._perf_score)
 
     @staticmethod
     def _teammate_dict(t: Any, created: Optional[bool] = None) -> dict:
@@ -425,13 +531,12 @@ class WorkforceEngine:
         except Exception as exc:  # a replacement is best-effort; fall back
             logger.warning("replacement teammate creation failed: %s", exc)
 
-        # Fall back to an existing healthy member capable of the skill.
-        for m in members:
-            if getattr(m, "id", None) == getattr(failed_member, "id", None):
-                continue
-            if skill_id in (getattr(m, "skills", None) or []) and \
-                    getattr(m, "health", "HEALTHY") == "HEALTHY":
-                return m
+        # Fall back to the highest-performing existing healthy member that can
+        # run the skill (§40 learning signal).
+        best = self._best_capable_member(
+            skill_id, members, exclude_id=getattr(failed_member, "id", None))
+        if best is not None:
+            return best
         return failed_member
 
     def _retry_task(self, mission: dict, task: dict, members: list,
@@ -445,9 +550,8 @@ class WorkforceEngine:
             mate = next((m for m in members
                          if getattr(m, "id", None) == task.get("teammate_id")), None)
             if mate is None:
-                mate = next((m for m in members
-                             if task["skill_id"] in (getattr(m, "skills", None) or [])),
-                            members[0] if members else None)
+                mate = (self._best_capable_member(task["skill_id"], members)
+                        or (members[0] if members else None))
             try:
                 output = runner(mate, task["skill_id"])
             except Exception as exc:  # retryable — record and try again
@@ -463,6 +567,34 @@ class WorkforceEngine:
             task["teammate_id"] = getattr(mate, "id", task.get("teammate_id"))
             return True
         return False
+
+    def _record_metric(self, mate: Any, skill_id: str, success: bool,
+                       latency_ms: float, model: str) -> None:
+        tid = getattr(mate, "id", None)
+        if not tid:
+            return
+        try:
+            self.runtime.registry.record_performance(
+                tid, success=success, latency_ms=latency_ms, model=model,
+                skill_id=skill_id)
+        except Exception:  # metrics must never break a mission
+            logger.debug("performance record failed", exc_info=True)
+
+    def _instrumented_runner(self, base_runner: Callable) -> Callable:
+        """Time every task attempt and persist §41 metrics on the teammate."""
+        def _run(mate: Any, skill_id: str):
+            start = time.monotonic()
+            try:
+                output = base_runner(mate, skill_id)
+            except Exception:
+                self._record_metric(mate, skill_id, False,
+                                    (time.monotonic() - start) * 1000.0, "")
+                raise
+            self._record_metric(mate, skill_id, True,
+                                (time.monotonic() - start) * 1000.0,
+                                _model_of(output))
+            return output
+        return _run
 
     def _run_mission(self, mission: dict, members: list, plan: Any,
                      project_path: Optional[str]) -> None:
@@ -490,9 +622,9 @@ class WorkforceEngine:
             failovers.append({"skill_id": skill_id, "from_model": provider,
                               "error": error})
 
-        runner = self.runtime.team_task_runner(
+        runner = self._instrumented_runner(self.runtime.team_task_runner(
             mission["goal"], project_path=project_path,
-            mission_id=mission["id"], on_failover=_on_failover)
+            mission_id=mission["id"], on_failover=_on_failover))
         results = team.execute(runner, tasks=[t["skill_id"] for t in mission["tasks"]])
 
         by_skill = {r.skill_id: r for r in results}
@@ -535,9 +667,9 @@ class WorkforceEngine:
                  "from": getattr(failed_member, "id", None),
                  "to": getattr(replacement, "id", None)})
 
-            repl_runner = self.runtime.team_task_runner(
+            repl_runner = self._instrumented_runner(self.runtime.team_task_runner(
                 mission["goal"], project_path=project_path,
-                mission_id=mission["id"], on_failover=_on_failover)
+                mission_id=mission["id"], on_failover=_on_failover))
             if self._retry_task(mission, task, [replacement], repl_runner,
                                 self.max_attempts):
                 recovered_any = True

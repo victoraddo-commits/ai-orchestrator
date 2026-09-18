@@ -192,6 +192,21 @@ def start():
             except Exception:
                 pass
 
+            # KAI 2.0 (§31/§39/§43): workforce maintenance — auto-retire idle/
+            # failed teammates and resolve capability gaps. Fail-safe: a
+            # workforce problem must never break the cycle.
+            try:
+                from core.teammate.engine import WorkforceEngine
+                _ws = WorkforceEngine()
+                _retired = _ws.auto_retire()
+                if _retired:
+                    info(f"workforce: auto-retired {len(_retired)} teammate(s)")
+                _gaps = _ws.scan_capability_gaps()
+                if _gaps:
+                    info(f"workforce: resolved {len(_gaps)} capability gap(s)")
+            except Exception as _ws_exc:
+                info(f"workforce maintenance failed: {type(_ws_exc).__name__}: {_ws_exc}")
+
             findings = len(
                 result.get("findings", [])
             )

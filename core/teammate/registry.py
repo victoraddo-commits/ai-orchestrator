@@ -371,6 +371,54 @@ class TeammateRegistry:
             t.updated_at = now
             self.save()
 
+    def record_performance(self, teammate_id: str, *, success: bool,
+                           latency_ms: float = 0.0, model: str = "",
+                           skill_id: str = "", retries: int = 0
+                           ) -> dict[str, Any] | None:
+        """Accumulate per-teammate performance metrics (§40/§41).
+
+        Metrics live on the teammate record (persisted in ``teammates.json``)
+        so the Command Center, the learning signal and any process can read
+        them. ``history`` is bounded so the record never grows without limit.
+        """
+        t = self._teammates.get(teammate_id)
+        if t is None:
+            return None
+        pm = dict(t.performance_metrics or {})
+        completed = int(pm.get("tasks_completed", 0)) + (1 if success else 0)
+        failed = int(pm.get("tasks_failed", 0)) + (0 if success else 1)
+        total_latency = float(pm.get("total_latency_ms", 0.0)) + float(latency_ms or 0.0)
+        attempts = completed + failed
+        pm["tasks_completed"] = completed
+        pm["tasks_failed"] = failed
+        pm["retries"] = int(pm.get("retries", 0)) + int(retries or 0)
+        pm["total_latency_ms"] = round(total_latency, 2)
+        pm["avg_latency_ms"] = round(total_latency / attempts, 2) if attempts else 0.0
+        pm["success_rate"] = round(completed / attempts, 3) if attempts else 0.0
+        if model:
+            models = dict(pm.get("models") or {})
+            m = dict(models.get(model) or {"completed": 0, "failed": 0,
+                                           "total_latency_ms": 0.0})
+            m["completed"] = int(m.get("completed", 0)) + (1 if success else 0)
+            m["failed"] = int(m.get("failed", 0)) + (0 if success else 1)
+            m["total_latency_ms"] = round(
+                float(m.get("total_latency_ms", 0.0)) + float(latency_ms or 0.0), 2)
+            models[model] = m
+            pm["models"] = models
+            pm["last_model"] = model
+        now = _now_iso()
+        pm["last_task_at"] = now
+        history = list(pm.get("history") or [])
+        history.append({"skill_id": skill_id, "success": bool(success),
+                        "latency_ms": round(float(latency_ms or 0.0), 2),
+                        "model": model, "at": now})
+        pm["history"] = history[-20:]
+        t.performance_metrics = pm
+        t.last_active = now
+        t.updated_at = now
+        self.save()
+        return pm
+
     def retire(self, teammate_id: str, reason: str) -> None:
         """Force RETIRED state. Terminal — subsequent transitions raise."""
         t = self._teammates.get(teammate_id)

@@ -130,6 +130,31 @@ def retire_teammate(teammate_id: str, body: TeammateRetire = TeammateRetire(),
     return {"operator": operator, "teammate": mate}
 
 
+# ── lifecycle maintenance (§31/§39/§43) ─────────────────────────────────────
+class MaintenanceRequest(BaseModel):
+    idle_seconds: Optional[float] = None
+
+
+@teammate_router.get("/api/workforce/capability-gaps")
+def list_capability_gaps(mission_id: str = "",
+                         operator: str = Depends(_require_operator)):
+    return {"gaps": get_engine().list_capability_gaps(
+        mission_id=mission_id or None)}
+
+
+@teammate_router.post("/api/workforce/maintenance")
+def run_maintenance(body: MaintenanceRequest = MaintenanceRequest(),
+                    operator: str = Depends(_require_operator)):
+    """Run the workforce maintenance step: auto-retire (§39) + capability-gap
+    resolution (§31/§43). Safe and idempotent; also run by the scheduler."""
+    engine = get_engine()
+    return {
+        "operator": operator,
+        "retired": engine.auto_retire(idle_seconds=body.idle_seconds),
+        "gaps_resolved": engine.scan_capability_gaps(),
+    }
+
+
 # ── teams ───────────────────────────────────────────────────────────────────
 @teammate_router.post("/api/workforce/teams")
 def form_team(body: TeamCreate, operator: str = Depends(_require_operator)):

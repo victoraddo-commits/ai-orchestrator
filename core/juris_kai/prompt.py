@@ -27,6 +27,34 @@ _DATABASE_FIRST = (
 
 _PREAMBLE = _JURISDICTION_GATE + "\n" + _DATABASE_FIRST
 
+# Per-task generation ceilings (tokens). These bound both the streaming path
+# (Ollama ``num_predict``) and are the canonical budget tables the Command
+# Center displays. Teaching/flashcards stay short; research gets more room.
+TASK_MAX_TOKENS = {
+    "legal_teaching": 700,
+    "legal_case_analysis": 800,
+    "legal_research": 1100,
+    "legal_argument": 900,
+    "legal_flashcards": 450,
+    "juris_legal_teaching": 700,
+    "juris_case_analysis": 800,
+    "juris_research": 1100,
+    "juris_argument_construction": 900,
+    "juris_flashcards": 450,
+    "juris_chat": 700,
+}
+DEFAULT_MAX_TOKENS = 800
+
+
+def budget_for(task_type: str) -> int:
+    """Return the ``num_predict``/max-token budget for a task type."""
+    return TASK_MAX_TOKENS.get(task_type or "", DEFAULT_MAX_TOKENS)
+
+
+def max_tokens_for(task_type: str) -> int:
+    """Alias used by non-streamed local providers."""
+    return budget_for(task_type)
+
 
 def build_prompt(task_type: str, content: str) -> str:
     """Build Ghana-scoped legal prompts based on task type."""

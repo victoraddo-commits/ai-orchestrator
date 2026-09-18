@@ -1442,6 +1442,36 @@ def juris_kai_security_log(
         return {"error": str(e), "events": []}
 
 
+# ── Juris Kai speed layer: TTL cache -----------------------------------------
+
+@app.get("/api/juris-kai/cache")
+def juris_kai_cache_stats(
+    _: str = Depends(require_bridge_token),
+):
+    """Return generation + retrieval cache statistics."""
+    try:
+        from core.juris_kai.cache import cache_stats
+        return cache_stats()
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/juris-kai/cache/clear")
+def juris_kai_cache_clear(
+    operator: str = Depends(_require_write_capability("juris.admin")),
+    request: Request = None,
+):
+    """Clear both cache layers (operator-gated)."""
+    _check_admin_rate_limit(request, operator)
+    try:
+        from core.juris_kai.cache import clear_caches
+        result = clear_caches()
+        _log_juris_admin(operator, "", "cache_clear", result)
+        return {"success": True, **result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SUSU Admin API — User & group management
 # ═══════════════════════════════════════════════════════════════════════════

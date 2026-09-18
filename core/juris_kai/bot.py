@@ -28,6 +28,12 @@ from typing import Optional
 
 import requests
 
+try:
+    from core.telegram import registry as _tg_registry, guard as _tg_guard
+    _TG_BOT = _tg_registry.resolve_bot(token_env="JURIS_KAI_BOT_TOKEN")
+except Exception:  # noqa: BLE001 - Telegram Module optional (compat layer)
+    _tg_registry = _tg_guard = _TG_BOT = None
+
 from core.juris_kai.accounts import (
     get_account_manager,
     DISCLAIMER_TEXT,
@@ -35,6 +41,8 @@ from core.juris_kai.accounts import (
 )
 from core.juris_kai.commands import handle_command
 from core.juris_kai import menus as _menus
+from core.juris_kai import cache as _cache
+from core.juris_kai import streaming as _streaming
 # Convenience aliases for frequently-used menu functions
 main_menu = _menus.main_menu
 admin_main_menu = _menus.admin_main_menu
@@ -65,12 +73,16 @@ BOT_TOKEN: str = ""  # filled lazily on first use
 
 
 def _get_bot_token() -> str:
-    """Load JURIS_KAI_BOT_TOKEN from vault (fallback: env)."""
+    """Load JURIS_KAI_BOT_TOKEN from env (vault temporarily disabled).
+
+    HOTFIX 2026-09-09: credential_vault.retrieve_api_key() returns encrypted
+    token. Bypass vault until decryption is fixed.
+    """
     global BOT_TOKEN
     if BOT_TOKEN:
         return BOT_TOKEN
-    from core.ai.credential_vault import retrieve_api_key
-    BOT_TOKEN = retrieve_api_key("juris_kai") or os.environ.get("JURIS_KAI_BOT_TOKEN", "")
+    # Direct .env load (working)
+    BOT_TOKEN = os.environ.get("JURIS_KAI_BOT_TOKEN", "")
     return BOT_TOKEN
 ADMIN_IDS: set[int] = set()
 _raw_admin = os.environ.get("JURIS_KAI_ADMIN_IDS", "")
@@ -353,6 +365,137 @@ def _delegate_with_timeout(prompt: str, task_type: str, fallback_label: str, acc
         return f"⚠️ Unable to load {fallback_label}. Please try again later.", ""
 
 
+# ---------------------------------------------------------------------------
+# Streaming generation (local-only) + TTL cache
+# ---------------------------------------------------------------------------
+# The local model supports token streaming, so instead of waiting ~19s for a
+# full answer we send a placeholder and edit the Telegram message as tokens
+# arrive (throttled to respect Telegram's edit rate limits). Any failure in
+# this path falls back to the original blocking _delegate_with_timeout().
+STREAM_EDIT_INTERVAL = float(os.environ.get("JURIS_KAI_STREAM_EDIT_INTERVAL", "1.0"))
+STREAM_MIN_CHARS = int(os.environ.get("JURIS_KAI_STREAM_MIN_CHARS", "24"))
+STREAM_MAX_MESSAGE = 3900
+STREAM_PLACEHOLDER = "⚖️ _Searching Ghana law…_"
+
+
+def _stream_enabled() -> bool:
+    val = os.environ.get("JURIS_KAI_STREAM", "1").strip().lower()
+    return val not in ("0", "false", "no", "off")
+
+
+def _edit_message_text(chat_id, message_id, text, reply_markup=None,
+                       parse_mode="Markdown") -> dict:
+    data = {"chat_id": chat_id, "message_id": message_id, "text": text}
+    if reply_markup:
+        data["reply_markup"] = reply_markup
+    if parse_mode:
+        data["parse_mode"] = parse_mode
+    return telegram_api("editMessageText", data)
+
+
+def _send_placeholder(chat_id) -> int | None:
+    resp = telegram_api("sendMessage", {
+        "chat_id": chat_id, "text": STREAM_PLACEHOLDER, "parse_mode": "Markdown",
+    })
+    if resp.get("ok") and resp.get("result"):
+        return resp["result"].get("message_id")
+    return None
+
+
+def _finalize_stream(chat_id, message_id, text, reply_markup=None) -> None:
+    """Final edit of a streamed message; keeps the reply keyboard.
+
+    Legal answers routinely contain characters that break Telegram Markdown,
+    so a failed Markdown edit is retried as plain text rather than lost.
+    """
+    final = text if len(text) <= STREAM_MAX_MESSAGE else text[:STREAM_MAX_MESSAGE]
+    resp = _edit_message_text(chat_id, message_id, final,
+                              reply_markup=reply_markup, parse_mode="Markdown")
+    if not resp.get("ok"):
+        resp = _edit_message_text(chat_id, message_id, final,
+                                  reply_markup=reply_markup, parse_mode=None)
+    if not resp.get("ok"):
+        send_message(chat_id, final, reply_markup=reply_markup, parse_mode=None)
+    if len(text) > STREAM_MAX_MESSAGE:
+        send_message(chat_id, text[STREAM_MAX_MESSAGE:], parse_mode=None)
+
+
+def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
+    """Stream a local generation into Telegram, editing as tokens arrive.
+
+    Returns (text, model, delivered):
+      * delivered=True  — the full text is already in the chat; the caller
+        must not send it again.
+      * delivered=False — streaming was unusable; text is None and the caller
+        should use the blocking path.
+    """
+    message_id = _send_placeholder(chat_id)
+    if not message_id:
+        return None, "", False
+
+    acc = ""
+    last_edit = 0.0
+    last_len = 0
+    model = _streaming.DEFAULT_MODEL
+    try:
+        for piece in _streaming.stream_chat(prompt, task_type=task_type):
+            acc += piece
+            now = time.time()
+            if (len(acc) - last_len >= STREAM_MIN_CHARS
+                    and now - last_edit >= STREAM_EDIT_INTERVAL):
+                _edit_message_text(chat_id, message_id, acc[:STREAM_MAX_MESSAGE],
+                                   parse_mode=None)
+                last_edit = now
+                last_len = len(acc)
+        if not acc.strip():
+            _edit_message_text(chat_id, message_id,
+                               "⚠️ The model returned an empty reply.",
+                               reply_markup=reply_markup, parse_mode=None)
+            return None, "", False
+        _finalize_stream(chat_id, message_id, acc, reply_markup)
+        return acc, model, True
+    except Exception as exc:  # noqa: BLE001 - any stream failure must fall back
+        logger.warning(f"Telegram streaming failed for {task_type}: {exc}")
+        if acc.strip():
+            # Partial output is already visible; finish delivering it.
+            try:
+                _finalize_stream(chat_id, message_id, acc, reply_markup)
+            except Exception:
+                send_message(chat_id, acc, reply_markup=reply_markup, parse_mode=None)
+            return acc, model, True
+        telegram_api("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
+        return None, "", False
+
+
+def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
+                    chat_id=None, reply_markup=None):
+    """Generate a legal answer: cache → stream → blocking fallback.
+
+    Returns (text, model, streamed, cached). ``streamed=True`` means the text
+    was already delivered to Telegram by this function and must not be sent
+    again by the caller.
+    """
+    corpus_ver = _cache.corpus_version()
+    key = _cache.generation_key(task_type, query, corpus_ver)
+    hit = _cache.GENERATION_CACHE.get(key)
+    if hit and hit.get("text"):
+        return hit["text"], hit.get("model", ""), False, True
+
+    if chat_id and _stream_enabled():
+        text, model, delivered = _stream_to_telegram(
+            prompt, task_type, chat_id, reply_markup)
+        if delivered and text:
+            _cache.GENERATION_CACHE.set(
+                key, {"text": text, "model": model, "corpus_version": corpus_ver})
+            return text, model, True, False
+
+    text, model = _delegate_with_timeout(prompt, task_type, fallback_label, account_id)
+    if text:
+        _cache.GENERATION_CACHE.set(
+            key, {"text": text, "model": model, "corpus_version": corpus_ver})
+    return text, model, False, False
+
+
 def handle_message(update: dict) -> dict | None:
     """Process a single incoming Telegram message.
 
@@ -384,6 +527,20 @@ def handle_message(update: dict) -> dict | None:
 
     if not telegram_id or not message_text:
         return None
+
+    # KAI Telegram Module authorization (directive §20-§22): this bot may only
+    # act within its registered capabilities — deny-by-default. Juris is
+    # registered for legal.* only, so it can never reach admin capabilities.
+    if _tg_guard is not None and _TG_BOT is not None:
+        verdict = _tg_guard.require(_TG_BOT, "legal.query",
+                                    chat_id=chat_id, user_id=telegram_id)
+        if not verdict["allowed"]:
+            logger.warning("telegram module denied legal.query: %s",
+                           verdict["reason"])
+            return {
+                "chat_id": chat_id,
+                "text": "This request is not authorized by the Telegram Module.",
+            }
 
     # Rate limit
     if not check_rate_limit(telegram_id):
@@ -685,7 +842,10 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
 
     # Run delegate with a hard wall-clock timeout so one slow provider
     # doesn't block the bot's entire polling loop indefinitely.
-    response_text, model = _delegate_with_timeout(prompt, "juris_legal_teaching", f"information about {topic_display}", account["account_id"])
+    response_text, model, streamed, _cache_hit = _generate_reply(
+        prompt, "juris_legal_teaching", f"Ghana {topic_display}",
+        f"information about {topic_display}", account["account_id"],
+        chat_id=chat_id, reply_markup=learn_menu())
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"],
@@ -695,8 +855,9 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
 
     return {
         "chat_id": chat_id,
-        "text": response_text,
+        "text": None if streamed else response_text,
         "reply_markup": learn_menu(),
+        "parse_mode": None if streamed else "Markdown",
     }
 
 
@@ -710,7 +871,10 @@ def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
 
     base_prompt = build_prompt("legal_case_analysis", f"{query_type} in Ghana law")
     prompt = base_prompt + context_preamble
-    response_text, model = _delegate_with_timeout(prompt, "juris_case_analysis", query_type.lower(), account["account_id"])
+    response_text, model, streamed, _cache_hit = _generate_reply(
+        prompt, "juris_case_analysis", f"{query_type} in Ghana law",
+        query_type.lower(), account["account_id"],
+        chat_id=chat_id, reply_markup=case_law_menu())
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"],
@@ -720,8 +884,9 @@ def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
 
     return {
         "chat_id": chat_id,
-        "text": response_text,
+        "text": None if streamed else response_text,
         "reply_markup": case_law_menu(),
+        "parse_mode": None if streamed else "Markdown",
     }
 
 
@@ -1079,7 +1244,10 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
     from core.juris_kai.prompt import build_prompt
     base_prompt = build_prompt("legal_research", text)
     prompt = base_prompt + context_preamble
-    response_text, model = _delegate_with_timeout(prompt, "juris_research", text, account["account_id"])
+    reply_markup = main_menu() if not admin else admin_main_menu()
+    response_text, model, streamed, _cache_hit = _generate_reply(
+        prompt, "juris_research", text, text, account["account_id"],
+        chat_id=chat_id, reply_markup=reply_markup)
 
     if not response_text or not response_text.strip():
         logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
@@ -1092,8 +1260,9 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
 
     return {
         "chat_id": chat_id,
-        "text": response_text,
-        "reply_markup": main_menu() if not admin else admin_main_menu(),
+        "text": None if streamed else response_text,
+        "reply_markup": reply_markup,
+        "parse_mode": None if streamed else "Markdown",
     }
 
 
@@ -1166,16 +1335,8 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     legal_docs = query_knowledge_base(text)
     context_preamble = build_context_preamble(legal_docs)
 
-    prompt = build_prompt(prompt_type, text) + context_preamble
-    response_text, model = _delegate_with_timeout(prompt, task_type, f"your {step.replace('_', ' ')} request", account["account_id"])
-
-    mgr.record_query(account["account_id"],
-                     input_tokens=_estimate_tokens(prompt),
-                     output_tokens=_estimate_tokens(response_text),
-                     model=model)
-    del _conversation_state[state_key]
-
-    # Route back to appropriate menu
+    # Resolve the return keyboard before streaming so the final edited message
+    # carries it.
     menu_fn_name = menu_routing.get(step)
     if menu_fn_name:
         from core.juris_kai import menus
@@ -1184,7 +1345,23 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     else:
         keyboard = main_menu()
 
-    return {"chat_id": chat_id, "text": response_text, "reply_markup": keyboard}
+    prompt = build_prompt(prompt_type, text) + context_preamble
+    response_text, model, streamed, _cache_hit = _generate_reply(
+        prompt, task_type, text, f"your {step.replace('_', ' ')} request",
+        account["account_id"], chat_id=chat_id, reply_markup=keyboard)
+
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(prompt),
+                     output_tokens=_estimate_tokens(response_text),
+                     model=model)
+    del _conversation_state[state_key]
+
+    return {
+        "chat_id": chat_id,
+        "text": None if streamed else response_text,
+        "reply_markup": keyboard,
+        "parse_mode": None if streamed else "Markdown",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1383,6 +1560,15 @@ def run_forever():
 
     logger.info("Juris Kai bot starting...")
     print("⚖️ Juris Kai bot starting...")
+
+    # KAI Telegram Module: confirm this bot's registered identity/owner/caps.
+    if _TG_BOT is not None:
+        logger.info("telegram module: bot=%s owner=%s caps=%s",
+                    _TG_BOT.bot_id, _TG_BOT.owner_module,
+                    sorted(_TG_BOT.capabilities))
+        if not _tg_registry.is_enabled(_TG_BOT):
+            logger.error("telegram module: bot %s is DISABLED in the registry",
+                         _TG_BOT.bot_id)
 
     # Ensure DB is initialized
     mgr = get_account_manager()

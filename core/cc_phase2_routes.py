@@ -339,13 +339,44 @@ def fabric_summary():
     for m in models:
         h = (m.get("health") or "unknown")
         by_health[h] = by_health.get(h, 0) + 1
+
+    # §7 local diversity: per-provider health/node + per-role failover verdict
+    # derived from the already-collected catalog (no extra provider probes).
+    from core.model_registry import node_for
+    provider_state = {}
+    for m in models:
+        provider_state[m["id"]] = {
+            "kind": m.get("kind"),
+            "available": bool(m.get("available")),
+            "enabled": bool(m.get("enabled")),
+            "cost_tier": m.get("cost_tier"),
+            "endpoint": m.get("endpoint"),
+            "node": node_for(m["id"]),
+            "health": m.get("health"),
+        }
+    diversity = {}
+    for role, chain in chains.items():
+        nodes = {node_for(p) for p in chain if p in provider_state}
+        avail_nodes = {
+            node_for(p) for p in chain
+            if p in provider_state and provider_state[p]["available"]
+            and provider_state[p]["enabled"]
+        }
+        diversity[role] = {
+            "providers": len(chain),
+            "nodes": len(nodes),
+            "available_nodes": len(avail_nodes),
+            "has_failover": len(nodes) >= 2,
+        }
     return {
         "schema": 1,
         "generated_at": catalog["generated_at"],
         "counts": catalog["counts"],
         "by_health": by_health,
         "routing": {"chains": chains, "default_chains": default_chains,
-                    "overrides": overrides},
+                    "overrides": overrides,
+                    "provider_state": provider_state,
+                    "diversity": diversity},
         "utilization": {"gpu_arbiter": arbiter,
                         "loaded_models": [{"id": m["id"], "model": m["model"],
                                            "vram_gb": m["gpu"]["vram_gb"],

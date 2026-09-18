@@ -3826,8 +3826,16 @@ async function loadModels(){
       html+='</tbody></table></div>'; }
     html+='</div>';
     const chainsD=(chains&&chains.chains)||{};
-    html+='<div class="card"><h3>Routing chains <span class="badge info">'+Object.keys(chainsD).length+' roles</span></h3><div class="table-wrap"><table><thead><tr><th>Role</th><th>Effective chain</th></tr></thead><tbody>';
-    for(const role of Object.keys(chainsD).sort()) html+='<tr><td><code>'+esc(role)+'</code></td><td style="font-size:0.64rem">'+esc((chainsD[role]||[]).join(' \u2192 ')||'\u2014')+'</td></tr>';
+    const pstate=(chains&&chains.provider_state)||{};
+    const div=(chains&&chains.diversity)||{};
+    const chainBadge=function(p){const st=pstate[p]||{};const ok=st.available&&st.enabled!==false;return '<span class="badge '+(ok?'ok':'bad')+'" title="'+esc((st.node||'unknown')+' \u2014 '+(ok?'available':'unavailable'))+'" style="margin:1px">'+esc(p)+'</span>';};
+    html+='<div class="card"><h3>Routing chains <span class="badge info">'+Object.keys(chainsD).length+' roles</span></h3>'
+      +'<p style="font-size:0.6rem;color:var(--fg-muted)">Local failover \u2014 each role spans multiple local nodes (VM104 GPU \u00b7 VM112 CPU). Green = available, red = down; a failed/timing-out model falls through to the next local model. No cloud fallback.</p>'
+      +'<div class="table-wrap"><table><thead><tr><th>Role</th><th>Effective chain (priority \u2192 failover)</th><th>Nodes</th></tr></thead><tbody>';
+    for(const role of Object.keys(chainsD).sort()){ const d=div[role]||{}; const okFail=d.has_failover;
+      html+='<tr><td><code>'+esc(role)+'</code></td><td style="font-size:0.64rem">'+((chainsD[role]||[]).map(chainBadge).join(' \u2192 ')||'\u2014')+'</td>'
+        +'<td><span class="badge '+(okFail?'ok':'warn')+'">'+(d.nodes!=null?d.nodes:0)+' node'+((d.nodes||0)===1?'':'s')+'</span>'+(okFail?'':' <span class="badge bad">SPOF</span>')+'</td></tr>';
+    }
     html+='</tbody></table></div></div>';
     const names=Object.keys(prov).sort();
     html+='<div class="card"><h3>Providers <span class="badge info">'+names.length+'</span></h3><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Kind</th><th>Cost</th><th>State</th><th>Actions</th></tr></thead><tbody>';

@@ -2,12 +2,14 @@
 
 Resolves a teammate skill to a task type and a provider chain sourced from
 the fabric (``core/ai/ai_router.py``). The skill's declared roles are the
-allow-set; the fabric's effective chain (after rotation, overrides, health)
-is canonical and order is preserved. Every teammate prompt routes through
-``ai_router.delegate`` — never a direct llm_clients/core.ai_provider call.
+*preference* order; the fabric's effective chain (after rotation, overrides,
+health) supplies the remaining local failover providers and is appended in
+order, so a single-role skill still gets a multi-node chain (§7). Every
+teammate prompt routes through ``ai_router.delegate`` — never a direct
+llm_clients/core.ai_provider call.
 
-Fail-closed: ambiguous capability or an empty chain after filtering is an
-error, not a silent fallback.
+Fail-closed: ambiguous capability or an empty effective chain is an error,
+not a silent fallback to a hardcoded provider.
 """
 from __future__ import annotations
 
@@ -68,8 +70,15 @@ def resolve_model_plan(teammate_id: str, skill_id: str,
         raise KeyError(f"unknown skill_id: {skill_id}")
     task_type = resolve_task_type(skill)
     effective = ai_router.get_effective_providers(task_type)
-    roles = set((skill.model_requirements or {}).get("roles") or [])
-    chain = [p for p in effective if p in roles]
+    roles = list((skill.model_requirements or {}).get("roles") or [])
+    # §7 local diversity: the skill's declared roles are the *preference*
+    # order, not the whole chain. Append every other provider the fabric
+    # serves for this task type as local failover, so a teammate task still
+    # completes when its preferred local model/node is unavailable or times
+    # out. Order is preserved (preference first); providers are never dropped.
+    preferred = [p for p in effective if p in roles]
+    failover = [p for p in effective if p not in preferred]
+    chain = preferred + failover
     if not chain:
         raise SkillModelError(
             f"skill {skill_id}: no fabric provider in roles "

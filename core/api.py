@@ -1740,8 +1740,15 @@ def enterprise_dashboard_endpoint():
 
 
 @app.get("/providers")
-def providers_endpoint():
-    return list_providers()
+def providers_endpoint(fabric: int = 0):
+    providers = list_providers()
+    if not fabric:
+        return providers
+    # §7: chain + health + node-diversity view for the Model Fabric surface.
+    # Default shape is unchanged (raw provider map) for existing consumers.
+    from core.ai.ai_router import provider_chain_report
+    report = provider_chain_report()
+    return {"providers": providers, **report}
 
 
 @app.get("/models/registry")
@@ -1820,12 +1827,22 @@ def get_all_chains():
     """
     overrides = provider_config_editor.load_overrides().get("overrides", {})
     fallback_order = overrides.get("fallback_order", {})
+    # §7: enrich each chain with per-provider health + physical node and a
+    # per-role node-diversity verdict so the UI can show which roles can
+    # survive a single local node outage.
+    from core.ai.ai_router import provider_chain_report
+    report = provider_chain_report()
     chains = {}
     default_chains = {}
     for module, default_chain in ROLE_PROVIDERS.items():
-        default_chains[module] = default_chain
-        chains[module] = fallback_order.get(module, default_chain)
-    return {"chains": chains, "default_chains": default_chains}
+        default_chains[module] = list(default_chain)
+        chains[module] = list(fallback_order.get(module, default_chain))
+    return {
+        "chains": chains,
+        "default_chains": default_chains,
+        "provider_state": report["provider_state"],
+        "diversity": report["diversity"],
+    }
 
 
 # ---- V3: GPU & Pipeline endpoints ----

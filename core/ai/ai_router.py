@@ -40,294 +40,85 @@ TASK_TYPE_KEYWORDS = {
     "documentation": ["document", "documentation", "readme", "docs"],
 }
 
-# Ordered by preference within each role; every list ends with "claude" as
-# the universal fallback, since it's the one provider guaranteed capable of
-# any task type.
+# Local-only provider configuration — updated 2026-09-09
+# All roles now use local Ollama models only (qwen2.5:7b primary, llama3.2:3b fallback)
+# Cloud providers removed per operational directive to eliminate API dependencies
 ROLE_PROVIDERS = {
-    # Claude (CloudCLI/Anthropic subscription) stays first -- most proven,
-    # deepest test/review discipline. On quota/limit exhaustion, opencode_claude
-    # (Claude Fable 5 billed through OpenCode Zen's separate, well-funded
-    # account) is the second try -- same model family, independent billing,
-    # and deliberately maximizes Zen credit usage per user directive
-    # (2026-07-28). If Fable 5 is *also* unavailable/failing (confirmed live
-    # 2026-07-29: the CloudCLI subscription hit its weekly limit mid-session),
-    # escalate within the same Zen account to Sonnet 5 then Opus 5 before
-    # giving up on "a real Claude model" entirely -- per user directive
-    # (2026-07-29). Only after all three Claude-family options are exhausted
-    # does the list fall through to "opencode" (DeepSeek V4 Pro, a different
-    # model family) as the last resort. "opencode" was dropped 2026-07-28
-    # while its only model was minimax-m2.7 (paused, see below); restored
-    # 2026-07-29 now that core.opencode_bridge.OPENCODE_DEFAULT_MODEL points
-    # at deepseek-v4-pro instead, via a dedicated OpenCode Zen credential
-    # confirmed live (2026-07-29) to have full account access, not narrowly
-    # scoped to DeepSeek -- it authenticates fine for the claude-fable-5/
-    # sonnet-5/opus-5 routes too, so swapping it into the shared "opencode"
-    # auth.json slot didn't risk any of them.
-    #
-    # 13U (2026-07-30) appends "opencode_deepseek" (openrouter/deepseek/
-    # deepseek-v4-pro via the opencode CLI's shared openrouter auth slot,
-    # not the Zen credential) between the Claude-family Zen tiers and the
-    # generic Zen "opencode" route, plus "deepseek" (llm_clients.call_deepseek,
-    # its own dedicated DEEPSEEK_OPENROUTER_API_KEY) on the planning/
-    # documentation/review text_task roles.
-    #
-    # 13T (2026-07-29) appends "opencode_minimax" (opencode/minimax-m2.7,
-    # pinned in ai_provider) -- the half of the 2026-07-28 blanket minimax
-    # pause the usage history does *not* support. Reviewed via
-    # core.ai.provider_evidence over memory/ai_usage_history.json, with the
-    # "opencode" aggregate split per model by matching each entry's timestamp
-    # and duration against the opencode CLI session store
-    # (~/.local/share/opencode/opencode.db, session.model/time_updated;
-    # every match was within 0.2s):
-    #
-    #   minimax-m2.7    3 attempts, 3 successes (100%)
-    #   deepseek-v4-pro 4 attempts, 2 successes  (50%) -- both of the
-    #                   provider's recorded failures were deepseek's: a 600s
-    #                   wall-clock timeout (2026-07-29T04:40:03) and missing
-    #                   memory/*.json tool errors (19:45:45, environmental,
-    #                   fixed by a2ab1d4)
-    #
-    # Same-capability comparators over the same history: opencode_claude
-    # (Fable 5) 4/8 with three timeouts, claude 3/5, opencode_claude_sonnet
-    # 1/1. minimax-m2.7 is the only coding-agent model with zero recorded
-    # timeouts, tool errors, or hallucinated-tool-call events on this path.
-    #
-    # Cross-checked against git history rather than trusting the success
-    # flag alone (13S: flags were content-blind before 4c69637): commits
-    # e622a14+34a7ac3 (13F, implementation + tests, merged to main via
-    # 7bd8f73) and b17d199 (13G, API endpoints + 123 test lines) were both
-    # authored inside a minimax session window. The third run (2640db8, 13R)
-    # committed work authored during the *preceding* timed-out Fable session
-    # -- a salvage, not original authorship -- so 2 of 3 are verified
-    # original implementations, not 3.
-    #
-    # Placed last, deliberately: 3 attempts is below
-    # provider_evidence.MIN_SAMPLE_SIZE, which caps it at "observe" rather
-    # than "trusted". That earns a real slot in the rotation (see
-    # _rotate_candidates -- every candidate gets a turn as primary, so this
-    # is how it accumulates the evidence to be re-judged on), not a
-    # promotion ahead of the Claude family, and not a change to
-    # opencode_bridge.OPENCODE_DEFAULT_MODEL.
-    #
-    # 13M (2026-07-30): the direct Claude/Anthropic subscription's credit is
-    # preserved by never trying "claude" first. The three alt-Claude routes
-    # (Opus 4.7 + Sonnet 4.6 via the OpenRouter account, Fable 5 via OpenCode
-    # Zen -- all billed independently of the subscription) formed a rotating
-    # front group (CODING_ROTATING_FRONT, see _candidates_for), openrouter_
-    # claude_opus first per explicit user directive (2026-07-30).
-    #
-    # 2026-08-02 operator directive: both the direct Claude/Anthropic
-    # subscription AND the OpenRouter account are out of credit right now.
-    # openrouter_claude_opus, openrouter_claude_sonnet, and opencode_deepseek
-    # (all billed through the OpenRouter account, the last via opencode's
-    # own stored OpenRouter credential) are pulled from this list entirely --
-    # same "still registered in core.ai_provider, easy to re-add once quota
-    # clears" treatment as gemini got the same day. opencode_claude (Fable 5,
-    # billed through OpenCode Zen -- a separate, unaffected account) is now
-    # CODING_ROTATING_FRONT's only member and this list's primary. Direct
-    # "claude" stays in the fixed tail as a fallback (not disabled -- the
-    # operator asked to reroute its work, not remove it) rather than being
-    # pulled outright, so it resumes taking real traffic automatically once
-    # its credit renews.
-    #
-    # qwen4_coding joined CODING_ROTATING_FRONT once tool-calling was
-    # confirmed live on the RunPod pod (see core.ai_provider's
-    # QWEN3_CODING_MODEL comment), rotating 50/50 with Fable 5 at first --
-    # later the same day, explicit operator directive assigned it the
-    # roadmap outright ("priority is the roadmap... qwen3 builds and fable
-    # checks and approves"): qwen4_coding is now CODING_ROTATING_FRONT's
-    # sole member and this list's primary, maximizing real usage of the
-    # pay-per-use GPU rather than splitting its attempts with Fable 5.
-    # opencode_claude drops to the fixed tail's first entry -- still the
-    # immediate fallback if qwen4_coding fails, but its new primary job is
-    # advisory code review (core.build_manager._opencode_claude_code_review,
-    # née _claude_code_review) rather than co-primary generation. "fable...
-    # approves" is advisory only, same as the pre-existing code review step
-    # it replaced -- it does not call approve_architecture/approve_deploy
-    # (see tests/test_kai_identity.py's structural guarantee); a human still
-    # makes every approve/reject decision.
-    # 2026-08-05: Qwen4 (pod ldtqgcshb2dwsw, RTX PRO 6000 96GB) is now the
-    # primary for every role — qwen4_coding for coding_agent work,
-    # qwen4_text for all text_task roles. All other providers shifted
-    # to fallback positions. 8-way concurrency verified live.
-    # 2026-08-07: qwen4_coding/qwen4Z removed — both RunPod pods OFFLINE.
-    # opencode_claude (Fable 5 via OpenCode Zen) is now the primary coding
-    # agent — separate billing from CloudCLI/Anthropic subscription.
-    # 17S: opencode_fable5 (dedicated key) is highest priority for coding
-    # per operator directive 2026-08-02.
-    # 2026-08-09: deepseek_native is now PRIMARY across ALL roles per operator
-    # directive ("set it as a primary"). For coding, deepseek routes through
-    # OmniRoute's auto/best-coding (which prefers deepseek models) and via
-    # the dedicated omniroute_deepseek path. opencode providers are fallback.
-    # 2026-08-10: deepseek (via omniroute_deepseek_coding) remains primary
-    # per operator directive. claude is first fallback (coding_bridge directly).
-    # All opencode providers removed 2026-08-10 (INSUFFICIENT BALANCE on
-    # OpenCode Zen). gpuai_minimax replaces opencode_minimax as tail fallback.
-    "coding": [
-        "omniroute_deepseek_coding",
-        "claude",
-        "omniroute",
-        "gpuai_minimax",
-    ],
-    # minimax stays out of every text_task role -- unchanged from the
-    # 2026-07-28 pause, but 13T re-grounded it in the full usage history
-    # instead of the single 13P incident that triggered it:
-    #
-    #   minimax/planning  4 attempts, 3 flagged "success" (75%), 1
-    #                     ConnectionError -- but all 3 of those flags predate
-    #                     13S's plan validation (4c69637), when any HTTP 200
-    #                     counted as success regardless of content. Checked
-    #                     against the plan text actually stored in
-    #                     memory/builds.json, every one of the 3 was
-    #                     hallucinated <minimax:tool_call>/<invoke> markup
-    #                     with no plan in it: ca7ff314/13P, 56e6c3d7/13R,
-    #                     and e75e4848/13Q -- a third incident found only by
-    #                     this review. Verified usable outputs: 0/4.
-    #   comparators       gemini 41/42 (97.6%), openrouter 11/12 (91.7%)
-    #
-    # log_analysis and documentation have no recorded minimax attempts at
-    # all, so on counts alone they'd be "insufficient_history" -- but they
-    # reach minimax through the identical tools-less code path
-    # (ai_provider._minimax_run_text_task -> llm_clients.call_minimax, no
-    # tools wired up), which is the established cause of the failure, so the
-    # planning evidence carries. The registry entry stays registered; only
-    # the routing is withheld.
-    #
-    # gemini is listed first on real evidence (97.6% success, see the
-    # comparison above) and, like "architecture" below, is in
-    # FIXED_ORDER_TASK_TYPES -- rotation was silently undoing that evidence
-    # by giving every candidate an equal first-try turn, so in practice
-    # gemini was only tried first ~1-in-4 calls despite being the
-    # demonstrably better choice. User flagged this live 2026-07-31 ("why is
-    # kai not using gemini mainly for planning where it exceeds").
-    # 2026-08-02 operator directive: gemini is quota-exhausted (429, its own
-    # Google billing) -- delegated its primary slot to deepseek_native_flash
-    # (native api.deepseek.com, no shared-quota exposure to gemini's or
-    # OpenRouter's outage). Initially moved to last rather than removed;
-    # operator then directed disabling it outright ("disable gemini for
-    # now") after an 18-phase pileup confirmed every one of those failures
-    # traced to this same gemini/openrouter quota wall -- removed from every
-    # role's candidate list below, not merely deprioritized.
-    #
-    # Re-enabled later the same day ("gemini credit has been reloaded") --
-    # restored to the front per the original 2026-07-31 evidence (97.6%
-    # success, see comparison above); everything added to this role while
-    # gemini was out (opencode_claude, deepseek_native_pro, and their
-    # rationale below) stays, just behind gemini again now that its quota
-    # problem is gone.
-    # openrouter dropped 2026-08-02 (OpenRouter account out of credit, same
-    # operator directive as "coding" and "architecture" below). opencode_claude
-    # (Fable 5, via its new text_task route -- see core.ai_provider's
-    # _opencode_claude_run_text_task) added same day per operator directive:
-    # Fable 5 answers Kai's operator-chat questions (this role is what
-    # core.ai.ai_router.chat/Kai's Telegram Q&A actually calls) alongside the
-    # deepseek family. Never touches approvals -- those stay human-only,
-    # unrelated to this role entirely.
-    #
-    # deepseek_native_pro joins the same day, explicit operator directive
-    # ("assign DeepSeek-V4-Pro to help kai with the chats") -- another real,
-    # independently-billed (native api.deepseek.com, no OpenRouter/Zen quota
-    # exposure) candidate for Kai's Q&A redundancy/quality, alongside its
-    # already-routed sibling deepseek_native_flash.
-    # 17Z: qwen4_text (self-hosted RunPod RTX 5090) added as fallback
-    # capacity after every primary provider and before the universal claude
-    # tail in every text-task role below -- this is capacity, not a
-    # replacement for anything currently working.
-    # 2026-08-06: Dual-pod architecture — Pod A (ldtqgcshb2dwsw, qwen4_text)
-    # is the GENERATOR primary for every text-task role. Pod B (60jwzf36623b0o,
-    # qwen4_pod_b) is the REVIEW/DEPLOY primary — it never waits behind Pod A's
-    # generation queue. Each pod is a physically separate RTX PRO 6000 GPU.
-    # 2026-08-07: qwen4_text/qwen4_pod_b removed — RunPod pods OFFLINE.
-    # deepseek_native_flash is now primary — 100% reliable, ~$20/month.
-    # 17S: opencode_gemini_pro + opencode_fable5 (dedicated keys) are highest
-    # priority for every text role per operator directive 2026-08-02.
-    # 2026-08-09: DeepSeek PRIMARY for ALL text roles per operator directive.
-    # deepseek_native_pro first (full model, best quality), deepseek_native_flash
-    # second (fast + proven 100% reliable). All other providers are fallback.
-    # 2026-08-09: gemini/geminix moved ahead of deepseek_native_flash after
-    # deepseek_native_flash produced 4 consecutive unusable planning responses.
-    # deepseek_native_pro stays first per operator directive but its auth is
-    # currently failing; gemini is the proven fallback.
-    # 2026-08-12 operator directive: the best LOCAL model (qwen2.5:7b, provider
-    # "local" via Ollama on Proxmox B) is Kai's MAIN BRAIN -- primary for
-    # planning/architecture/review, which also drives Kai's operator chat
-    # (core.ai.ai_router.chat delegates with task_type="planning"). The lighter
-    # llama3.2:3b (provider "llama3") HELPS with the quick utility roles --
-    # classification, log_analysis, documentation -- where its fast, fence-free
-    # output suits short low-latency tasks. Both are availability-gated on
-    # check_ollama_available(), so if Ollama on Proxmox B is down the router
-    # falls straight through to the cloud chain below -- local is a live
-    # primary, never a hard dependency. Coding is untouched: neither local
-    # model registers a run_coding_task.
-    # 2026-08-23: DeepSeek (native + via OmniRoute) demoted below the
-    # verified-live providers -- BOTH deepseek billing accounts are 402
-    # Insufficient Balance (live-verified), so as primaries they burned a
-    # failover attempt on every call. Operator directive 2026-08-23: keep
-    # all entries in place, reorder only; restore original order once the
-    # accounts are funded. gemini/geminix/openrouter live-probed OK;
-    # local/llama3 availability-gated on Ollama.
-    # KAI 2.0 Model Fabric (2026-09-08): local_brain_fast (Qwen2.5-7B on Tesla P40)
-    # is PRIMARY for all planning/reasoning/analysis tasks (41 t/s generation).
-    # local_coder (Qwen2.5-Coder-7B) handles code-specific text tasks.
-    "planning": ["local_brain_fast", "local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "architecture": ["local_brain_fast", "local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "log_analysis": ["local_brain_fast", "llama3", "local", "groq", "gemini", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
-    "documentation": ["local_brain_fast", "llama3", "local", "gemini", "groq", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
-    "review": ["local_brain_fast", "local", "gemini", "geminix", "openrouter", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "classification": ["local_brain_fast", "llama3", "local", "groq", "gemini", "geminix", "deepseek_native_flash", "deepseek_native_pro", "omniroute_deepseek_flash", "claude"],
+    "planning": ["kai_brain", "local"],  # 2026-09-10: kai_brain:27b for complex reasoning
+    "architecture": ["kai_brain", "local"],  # 2026-09-10: kai_brain for architectural decisions
+    "review": ["kai_brain", "local"],  # 2026-09-10: kai_brain for thorough reviews
+    "coding": ["kai_coder", "local"],  # 2026-09-10: kai_coder:7b specialist (7.6s response!)
+    "classification": ["local", "kai_brain"],  # 2026-09-10: local fast for simple classification
+    "documentation": ["kai_coder", "local"],  # 2026-09-10: kai_coder for technical docs
+    "log_analysis": ["local", "kai_brain"],  # 2026-09-10: local fast, kai_brain for complex patterns
 }
 
-# 2026-07-31: Law Tutor bot (core.law_tutor) -- a completely separate product
-# domain (legal education for one specific user, not software operations),
-# kept in its own "law_*" namespace rather than mixed into the roles above so
-# its usage/evidence never blends with this system's own operational
-# history. Every entry here is FIXED_ORDER (see below): these are deliberate
-# task-fit assignments from real reasoning about each provider's strengths
-# (gemini's long context for textbooks, claude's depth for case analysis,
-# groq's speed for quick chat), the same rationale "architecture" was given
-# fixed-order treatment for from day one -- not a claim that evidence
-# already backs this ordering, since it's brand new.
+# Law Tutor bot provider configuration — updated 2026-09-09 to local-only
 LAW_TUTOR_ROLE_PROVIDERS = {
-    # 2026-08-23: deepseek demoted below live providers (402 unfunded, see
-    # ROLE_PROVIDERS note). Order restores to the 2026-08-09 arrangement
-    # when funded.
-    "law_document": ["gemini", "geminix", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash", "claude"],
-    "law_case_analysis": ["gemini", "claude", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash"],
-    "law_teaching": ["gemini", "claude", "deepseek_native_pro", "deepseek_native_flash"],
-    "law_exam": ["gemini", "claude", "deepseek_native_pro"],
-    "law_flashcards": ["groq", "gemini", "claude", "deepseek_native_flash"],
-    "law_chat": ["groq", "gemini", "claude", "deepseek_native_flash"],
-    # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
-    "law_document_vision": ["gpuai_gemma", "claude"],
+    "planning": ["kai_brain", "local"],  # 2026-09-10: kai_brain:27b for complex reasoning
+    "architecture": ["kai_brain", "local"],  # 2026-09-10: kai_brain for architectural decisions
+    "review": ["kai_brain", "local"],  # 2026-09-10: kai_brain for thorough reviews
+    "coding": ["kai_coder", "local"],  # 2026-09-10: kai_coder:7b specialist (7.6s response!)
+    "classification": ["local", "kai_brain"],  # 2026-09-10: local fast for simple classification
+    "documentation": ["kai_coder", "local"],  # 2026-09-10: kai_coder for technical docs
+    "log_analysis": ["local", "kai_brain"],  # 2026-09-10: local fast, kai_brain for complex patterns
 }
 
-# 2026-08-03: Juris Kai Legal Expert - Phase 17Z
-# Legal teaching and explanation - requires strong comprehension and educational ability
-# Legal case analysis - needs deep reasoning, precedent understanding, and case interpretation
-# Legal research - needs accuracy, reliable information sources, and document analysis
-# Legal argument construction - requires strong logical reasoning and persuasive writing
-# Flashcard generation - needs structured output and organization
-# General legal chat - needs quick responses and conversational ability
+# Juris Kai Legal Expert provider configuration — updated 2026-09-09 to local-only
 JURIS_KAI_ROLE_PROVIDERS = {
-    # 2026-08-23: deepseek demoted below live providers (402 unfunded, see
-    # ROLE_PROVIDERS note).
-    "juris_legal_teaching": ["gemini", "groq", "deepseek_native_pro", "deepseek_native_flash"],
-    "juris_case_analysis": ["gemini", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash"],
-    "juris_research": ["gemini", "geminix", "deepseek_native_pro", "deepseek_native_flash", "omniroute_deepseek_flash"],
-    "juris_argument_construction": ["gemini", "groq", "deepseek_native_pro", "deepseek_native_flash"],
-    "juris_flashcards": ["groq", "deepseek_native_flash", "deepseek_native_pro"],
-    "juris_chat": ["groq", "gemini", "deepseek_native_flash", "deepseek_native_pro"],
-    # Vision task types — Gemma 4 31B IT via GPU.ai primary, handles images/scans
-    "juris_document_vision": ["gpuai_gemma"],
+    "planning": ["kai_brain", "local"],  # 2026-09-10: kai_brain:27b for complex reasoning
+    "architecture": ["kai_brain", "local"],  # 2026-09-10: kai_brain for architectural decisions
+    "review": ["kai_brain", "local"],  # 2026-09-10: kai_brain for thorough reviews
+    "coding": ["kai_coder", "local"],  # 2026-09-10: kai_coder:7b specialist (7.6s response!)
+    "classification": ["local", "kai_brain"],  # 2026-09-10: local fast for simple classification
+    "documentation": ["kai_coder", "local"],  # 2026-09-10: kai_coder for technical docs
+    "log_analysis": ["local", "kai_brain"],  # 2026-09-10: local fast, kai_brain for complex patterns
 }
 
 ROLE_PROVIDERS.update(LAW_TUTOR_ROLE_PROVIDERS)
 ROLE_PROVIDERS.update(JURIS_KAI_ROLE_PROVIDERS)
 
-# 2026-08-09: Legal module coding — deepseek via OmniRoute primary, opencode_claude fallback.
-# 2026-08-23: claude leads while OmniRoute/DeepSeek is unfunded (402) —
-# restore deepseek to front when the account is topped up.
-ROLE_PROVIDERS["legal_coding"] = ["claude", "omniroute_deepseek_coding"]
+# Legal module coding — updated 2026-09-10 to kai_coder
+ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
+
+# ── §7 Model Fabric (2026-09-18): local node diversity + failover ──────────
+# Every role chain used to terminate only on VM104 (ollama localhost:11434):
+# kai_brain, kai_coder, kai_deep, local and llama3 all share that one GPU
+# node, so losing VM104 (tunnel drop, GPU hang, OOM) took every role with it.
+# llama_coder_cpu is an independent local node — the llama.cpp server on VM112
+# (192.168.1.242:5001, Qwen2.5-Coder-7B-Q4_K_M) — already present in the
+# coding/juris chains. Appending it to every remaining role as the tail
+# fallback keeps routing 100% local while removing the single-GPU SPOF: when
+# VM104 is unavailable or times out, delegate() walks to VM112 automatically.
+LOCAL_FAILOVER_PROVIDERS = ("llama_coder_cpu",)
+
+
+def _with_local_failover(chain):
+    """Append the local failover node(s) to a chain without duplication."""
+    out = list(chain)
+    for provider in LOCAL_FAILOVER_PROVIDERS:
+        if provider not in out:
+            out.append(provider)
+    return out
+
+
+# Juris Kai per-task_type chains — added 2026-09-11 after legal module
+# audit found the juris_* task_types had no ROLE_PROVIDERS entry and
+# silently fell through to length-1 `["local"]` chains (no redundancy).
+# Now: kai_brain (primary local reasoning, qwen3-coder:kai) → llama_coder_cpu
+# (VM 112 CPU coder) → local (ollama on VM 104) — fully-local.
+# 2026-09-12: koboldcpp_cpu_a/_b (VM 112 CPU) retired and swapped for
+# kai_coder_gpu_a/_b (dedicated ollama instances on VM 104 P40, ports 11435
+# + 11436 via ssh -L tunnels). 2026-09-12 (model reorg): those replicas then
+# retired with the kai-coder:7b deletion; the CPU coder returns as
+# llama_coder_cpu (llama.cpp server on VM 112, port 5001).
+_JURIS_CHAIN = ["kai_brain", "llama_coder_cpu", "local"]
+for _t in (
+    "juris_legal_teaching", "juris_case_analysis", "juris_research",
+    "juris_argument_construction", "juris_flashcards", "juris_chat",
+    "juris_document_vision",
+):
+    ROLE_PROVIDERS[_t] = list(_JURIS_CHAIN)
 
 # 2026-08-23 (coding role): omniroute_deepseek_coding demoted below claude
 # for the same funding reason. NOTE: claude's own model path still resolves
@@ -337,19 +128,44 @@ ROLE_PROVIDERS["legal_coding"] = ["claude", "omniroute_deepseek_coding"]
 # 2026-08-27: free_coding (cohere/nemotron/poolside free OpenRouter models
 # via Free Model Manager) inserted as the FIRST free fallback before any
 # paid option — verified free, circuit-broken, pool-rotating.
-# KAI 2.0 Model Fabric (2026-09-08): local_coder added as text-task fallback
-# for code-related questions (not full coding_agent capability, which requires
-# file access). For actual code generation with tool use, the chain below
-# (free_coding → claude → ...) still applies.
+# Coding role — updated 2026-09-10 to kai_coder specialist
+# Note: local Ollama models are text-completion only, but kai_coder and
+# kai_brain both register a run_coding_task via core.local_coding_bridge —
+# a deterministic harness that turns their fenced-file output into real
+# writes + git commits — so they satisfy the coding_agent capability.
 ROLE_PROVIDERS["coding"] = [
-    "free_coding",
-    "claude",
-    "omniroute_deepseek_coding",
-    "omniroute",
-    "gpuai_minimax",
+    "kai_coder",         # kai.coder — Qwen3-Coder-30B (qwen3-coder:kai) on VM 104 P40 (primary ollama instance)
+    "llama_coder_cpu",   # Qwen2.5-Coder-7B on VM 112 CPU-only (llama.cpp server, port 5001) — benchmarked 2026-09-12
+    "local",             # ollama fallback
 ]
-# Add local_coder to a new "code_review" role for text-only code analysis
-ROLE_PROVIDERS["code_review"] = ["local_coder", "local_brain_fast", "gemini", "claude"]
+# Fanout pool for additional coding capacity.
+# 2026-09-12: kai_coder_gpu_a/_b GPU replicas retired (dedicated 11435/11436
+# ollama instances disabled, kai-coder:7b deleted — P40 can't fit 3× 18GB);
+# CPU-only capacity via llama_coder_cpu (llama.cpp server, Qwen2.5-Coder-7B
+# on port 5001).
+ROLE_PROVIDERS["coding_cpu_pool"] = ["llama_coder_cpu"]
+# Code review role — updated 2026-09-10 to kai_brain for thorough analysis
+ROLE_PROVIDERS["code_review"] = ["kai_coder", "local"]
+
+# KAI MODEL TEAM roles (2026-09-10):
+#   kai.deep    — Qwen3.6-27B (kai-brain:27b) deep-reasoning escalation
+#   kai.security— security advisory (qwen2.5:7b); deterministic controls authoritative
+ROLE_PROVIDERS["deep"] = ["kai_deep", "local"]
+ROLE_PROVIDERS["security"] = ["local"]
+
+# §7: apply local node diversity across EVERY role now that all role lists
+# have been declared. coding_cpu_pool is already CPU-only and is a fanout
+# pool, not a task role, so it is left untouched. Idempotent: a provider
+# already in a chain is never duplicated.
+for _role, _chain in list(ROLE_PROVIDERS.items()):
+    if _role == "coding_cpu_pool" or not _chain:
+        continue
+    ROLE_PROVIDERS[_role] = _with_local_failover(_chain)
+# Keep the per-module views (used by callers that read them directly) in sync.
+for _mapping in (LAW_TUTOR_ROLE_PROVIDERS, JURIS_KAI_ROLE_PROVIDERS):
+    for _role, _chain in list(_mapping.items()):
+        if _chain:
+            _mapping[_role] = _with_local_failover(_chain)
 
 CHAT_HISTORY_MAX_MESSAGES = 40
 
@@ -369,6 +185,7 @@ DEFAULT_TASK_TYPE = "coding"
 FIXED_ORDER_TASK_TYPES = frozenset({
     "architecture", "planning", "review", "log_analysis",
     "documentation", "classification",
+    "deep", "security",  # KAI MODEL TEAM: strict-priority escalation/advisory chains
     "law_document", "law_case_analysis", "law_teaching", "law_exam", "law_flashcards", "law_chat",
     "law_document_vision",
     "juris_legal_teaching", "juris_case_analysis", "juris_research",
@@ -434,8 +251,20 @@ def classify_task(description):
 # auto/best-coding model which prefers DeepSeek models.
 # 2026-08-23: front rotation emptied while OmniRoute/DeepSeek is unfunded —
 # a rotating front member that 402s on every call just burns failover time.
-# Restore to ["omniroute_deepseek_coding"] when the account is topped up.
-CODING_ROTATING_FRONT = []
+# 2026-09-12: rotation restored across the local workers per operator
+# directive — real parallelism when multiple coding jobs are in flight.
+# 2026-09-12 (model reorg): GPU replicas kai_coder_gpu_a/_b retired (their
+# ollama-a/-b instances disabled, kai-coder:7b deleted, P40 can't hold 3×
+# 18GB qwen3-coder:kai). Primary kai_coder now serves qwen3-coder:kai; the
+# CPU instance llama_coder_cpu (VM 112) is a fallback, kept out of the
+# rotating front because it is ~4-5x slower (CPU vs P40).
+SLOW_CODING_PROVIDERS = frozenset({
+    "llama_coder_cpu", "koboldcpp_cpu", "koboldcpp_cpu_a", "koboldcpp_cpu_b",
+})
+CODING_ROTATING_FRONT = [
+    p for p in ["kai_coder", "llama_coder_cpu"]
+    if p not in SLOW_CODING_PROVIDERS
+]
 
 # --- Purge disabled providers from all routing on import ---
 # Reads memory/provider_state.json and removes any provider whose persisted
@@ -512,7 +341,68 @@ def get_effective_providers(task_type: str) -> list[str]:
     override = provider_config_editor.get_fallback_order(task_type)
     if override:
         return override
-    return ROLE_PROVIDERS.get(task_type, ["claude"])
+    return ROLE_PROVIDERS.get(task_type, ["local"])
+
+
+def provider_chain_report() -> dict:
+    """§7: routing chains enriched with per-provider health + physical node.
+
+    Backs ``/providers?fabric=1``, ``/providers/chains`` and the Command
+    Center Model Fabric page. For each role it returns the *effective* chain
+    (operator override or shipped default), each provider's availability/
+    enabled state, the physical local node behind it, and a per-role diversity
+    verdict answering "can this role survive one local node outage?".
+
+    Read-only over existing sources of truth — it never mutates routing.
+    """
+    from core import provider_config_editor
+    from core.ai_provider import list_providers
+    from core.model_registry import endpoint_for, node_for
+
+    try:
+        overrides = provider_config_editor.load_overrides().get("overrides", {}) or {}
+        fallback_order = overrides.get("fallback_order", {}) or {}
+    except Exception:  # pragma: no cover - a corrupt store must not 500 the API
+        fallback_order = {}
+
+    live = list_providers()
+    provider_state = {}
+    for name, info in live.items():
+        provider_state[name] = {
+            "kind": info.get("kind"),
+            "available": bool(info.get("available")),
+            "enabled": bool(info.get("enabled", True)),
+            "cost_tier": info.get("cost_tier"),
+            "endpoint": endpoint_for(name),
+            "node": node_for(name),
+        }
+
+    chains = {}
+    default_chains = {}
+    diversity = {}
+    for role, default in ROLE_PROVIDERS.items():
+        default_chain = list(default or [])
+        effective = list(fallback_order.get(role, default) or [])
+        default_chains[role] = default_chain
+        chains[role] = effective
+        nodes = {node_for(p) for p in effective if p in live}
+        available_nodes = {
+            node_for(p) for p in effective
+            if p in live and provider_state[p]["available"]
+            and provider_state[p]["enabled"]
+        }
+        diversity[role] = {
+            "providers": len(effective),
+            "nodes": len(nodes),
+            "available_nodes": len(available_nodes),
+            "has_failover": len(nodes) >= 2,
+        }
+    return {
+        "chains": chains,
+        "default_chains": default_chains,
+        "provider_state": provider_state,
+        "diversity": diversity,
+    }
 
 
 def _candidates_for(task_type):
@@ -1142,6 +1032,16 @@ def chat(messages, signals):
     # which injects long-term operator context, compressed history, and
     # preserved citations/directives before the recent messages.
     from core.kai.conversation import build_chat_prompt
+
+    # 27G: ground the answer in the permission-aware Knowledge Fabric.
+    try:
+        last_user = next((m.get("content", "") for m in reversed(messages or [])
+                          if m.get("role") == "user"), "")
+        if last_user and not (signals or {}).get("knowledge_context"):
+            from core.knowledge.rag import build_signals
+            signals = build_signals(last_user, signals)
+    except Exception:
+        pass
 
     prompt = build_chat_prompt(messages, signals)
 

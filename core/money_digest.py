@@ -81,6 +81,13 @@ def build_message() -> str:
     if "error" not in st:
         lines.append(f"📊 Arbitra: {st.get('ventures', 0)} ventures "
                      f"({st.get('active_ventures', 0)} active) · {st.get('opportunities', 0)} opportunities")
+    ops = t.get("operations", []) if isinstance(t, dict) else []
+    if ops:
+        lines.append("⚙️ Engines (allocated · P&L):")
+        for o in ops:
+            bal = num((o.get("treasury_balance") or {}).get("balance"))
+            pnl = num((o.get("pnl") or {}).get("pnl"))
+            lines.append(f"    {o.get('slug')}: {fmt(bal)} · {'+' if pnl >= 0 else ''}{fmt(pnl)} · {o.get('health', '?')}")
     if "error" not in perf:
         lines.append(f"    revenue {fmt(num(perf.get('revenue')))} · expenses {fmt(num(perf.get('expenses')))} "
                      f"· net *{fmt(num(perf.get('net_profit')))}*  ({'+' if d_profit >= 0 else ''}{fmt(d_profit)})")

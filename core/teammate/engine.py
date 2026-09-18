@@ -92,6 +92,14 @@ class WorkforceEngine:
         t = self.runtime.registry.get(teammate_id)
         return self._teammate_dict(t) if t is not None else None
 
+    def retire_teammate(self, teammate_id: str, reason: str = "operator retirement") -> Optional[dict]:
+        """Retire a teammate (operator action from the Command Center)."""
+        t = self.runtime.registry.get(teammate_id)
+        if t is None:
+            return None
+        self.runtime.registry.retire(teammate_id, reason=reason)
+        return self._teammate_dict(self.runtime.registry.get(teammate_id))
+
     @staticmethod
     def _teammate_dict(t: Any, created: Optional[bool] = None) -> dict:
         d = asdict(t)

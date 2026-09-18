@@ -111,6 +111,21 @@ def get_teammate(teammate_id: str, operator: str = Depends(_require_operator)):
     return {"teammate": mate}
 
 
+class TeammateRetire(BaseModel):
+    reason: Optional[str] = None
+
+
+@teammate_router.post("/api/workforce/teammates/{teammate_id}/retire")
+def retire_teammate(teammate_id: str, body: TeammateRetire = TeammateRetire(),
+                    operator: str = Depends(_require_operator)):
+    """Retire a teammate — operator action from the Command Center."""
+    mate = get_engine().retire_teammate(
+        teammate_id, reason=body.reason or "operator retirement")
+    if mate is None:
+        raise HTTPException(status_code=404, detail="teammate not found")
+    return {"operator": operator, "teammate": mate}
+
+
 # ── teams ───────────────────────────────────────────────────────────────────
 @teammate_router.post("/api/workforce/teams")
 def form_team(body: TeamCreate, operator: str = Depends(_require_operator)):

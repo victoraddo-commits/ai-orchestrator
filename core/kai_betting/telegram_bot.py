@@ -13,6 +13,8 @@ Integrates with the main Kai Telegram infrastructure via the betting router.
 
 from __future__ import annotations
 
+import re
+
 import logging
 import os
 from datetime import datetime, timezone
@@ -70,7 +72,8 @@ class BettingTelegramBot:
             return self._cmd_help()
         elif text.startswith("/picks") or text.startswith("/predictions"):
             return self._cmd_picks(text)
-        elif text.startswith("/odds") or text.startswith("/group"):
+        elif (text.startswith("/odds") or text.startswith("/group")
+              or text.startswith("/groups")):
             return self._cmd_odds(text)
         elif text.startswith("/subscribe"):
             return self._cmd_subscribe(chat_id, user_id)
@@ -113,7 +116,8 @@ class BettingTelegramBot:
             "`/odds 10` — Show a group + its selections\n"
             "`/odds 50 moderate` — 50 ODDS, moderate risk\n"
             "`/group 10` — Alias for /odds 10\n"
-            "`/odds summary` — Short list (no selections)\n\n"
+            "`/odds summary` — Short list (no selections)\n"
+            "`/groups` — Pick a group from a menu\n\n"
             "*Results & Stats*\n"
             "`/results` — Last 10 results\n"
             "`/performance` — Win rate, ROI, calibration\n"
@@ -436,6 +440,100 @@ class BettingTelegramBot:
                 f"Daily picks: 3\n\n"
                 "_Use `/subscribe` to upgrade._"
             )
+
+    # ── Interactive odds menu ───────────────────────────────────────────────
+
+    def _linked_user_id(self, user_id):
+        if not user_id:
+            return None
+        with get_db() as db:
+            ta = db.execute(
+                "SELECT user_id FROM telegram_accounts WHERE telegram_id = ? AND is_active = 1",
+                (str(user_id),),
+            ).fetchone()
+        return ta["user_id"] if ta else None
+
+    def is_premium(self, user_id) -> bool:
+        uid = self._linked_user_id(user_id)
+        if not uid:
+            return False
+        return bool(self._subscription_mgr.check_access(uid)["has_access"])
+
+    def _active_groups(self):
+        with get_db() as db:
+            return db.execute(
+                "SELECT * FROM odds_groups WHERE status = 'active' ORDER BY target_odds ASC"
+            ).fetchall()
+
+    @staticmethod
+    def _risk_emoji(level):
+        return {"conservative": "\U0001f6e1", "moderate": "\u2696", "aggressive": "\U0001f525",
+                "high_risk": "\U0001f48e"}.get(level, "\U0001f4ca")
+
+    def odds_menu(self, user_id) -> dict:
+        groups = self._active_groups()
+        if not groups:
+            return {"text": "Odds Groups\n\n_No active groups yet._", "reply_markup": None}
+        lines = ["*Odds Groups*\n"]
+        for g in groups:
+            lines.append(
+                f"{self._risk_emoji(g['risk_level'])} *{g['label']}* - "
+                f"{g['combined_odds']:.2f} | {g['num_selections']} sel | {g['average_confidence']:.0f}%"
+            )
+        if self.is_premium(user_id):
+            lines.append("\n_Tap a group to see its selections._")
+            kb = {"inline_keyboard": [
+                [{"text": f"{g['label']}", "callback_data": f"og:{g['target_odds']:g}"}]
+                for g in groups
+            ]}
+            return {"text": "\n".join(lines), "reply_markup": kb}
+        lines.append("\n_Selections are premium. Use /subscribe to unlock._")
+        return {"text": "\n".join(lines), "reply_markup": None}
+
+    def odds_detail(self, target: float, user_id) -> dict:
+        if not self.is_premium(user_id):
+            return {"text": "*Premium required.*\n\n_Use /subscribe to view selections._", "reply_markup": None}
+        with get_db() as db:
+            row = db.execute(
+                "SELECT * FROM odds_groups WHERE status='active' AND target_odds=? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (target,),
+            ).fetchone()
+            if not row:
+                return {"text": f"No active group for *{target:g} ODDS*.", "reply_markup": None}
+            legs = self._group_legs(db, row["id"])
+        text = (
+            f"{self._risk_emoji(row['risk_level'])} *{row['label']}* ({row['risk_level']})\n"
+            f"Combined: {row['combined_odds']:.2f} | {row['num_selections']} sel | "
+            f"{row['average_confidence']:.0f}%\n\n"
+            + ("\n".join(legs) if legs else "_No selections._")
+        )
+        return {"text": text, "reply_markup": {"inline_keyboard": [
+            [{"text": "Back to groups", "callback_data": "og:menu"}]]}}
+
+    def handle_update(self, chat_id: str, text: str, user_id: str = None) -> dict:
+        t = (text or "").strip()
+        low = t.lower()
+        if low.startswith("/odds") or low.startswith("/group") or low.startswith("/groups"):
+            if "summary" in low:
+                return {"text": self._cmd_odds(t), "reply_markup": None}
+            m = re.search(r"(\d+(?:\.\d+)?)", t)
+            if m:
+                return self.odds_detail(float(m.group(1)), user_id)
+            return self.odds_menu(user_id)
+        return {"text": self.handle_message(chat_id, t, user_id), "reply_markup": None}
+
+    def handle_callback(self, data: str, user_id: str = None) -> dict:
+        if data.startswith("og:"):
+            key = data.split(":", 1)[1]
+            if key == "menu":
+                return self.odds_menu(user_id)
+            try:
+                return self.odds_detail(float(key), user_id)
+            except ValueError:
+                return {"text": "Unknown group.", "reply_markup": None}
+        return {"text": "Unknown action.", "reply_markup": None}
+
 
     # ── Notification Sending ──────────────────────────────────────────────────
 

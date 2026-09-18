@@ -984,6 +984,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <a class="nav-item" href="#wireguard" data-hash="wireguard"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">WireGuard</span></a>
       <a class="nav-item" href="#directives" data-hash="directives"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span><span class="label">Directives</span></a>
       <a class="nav-item" href="#directory" data-hash="directory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Directory</span></a>
+      <a class="nav-item" href="#media" data-hash="media"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M10 9l5 3-5 3z"/></svg></span><span class="label">Media</span></a>
       <div class="sidebar-section-label">System</div>
       <a class="nav-item" href="#security" data-hash="security"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><span class="label">Security</span></a>
       <a class="nav-item" href="#settings" data-hash="settings"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Settings</span></a>
@@ -1221,6 +1222,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <section class="panel" id="panel-wireguard"><div id="wireguard-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-directives"><div id="directives-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-directory"><div id="directory-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-media"><div id="media-content"><span class="loading">loading…</span></div></section>
 
     </div>
 
@@ -1329,7 +1331,8 @@ const PANEL_TITLES = {
   missions:'Missions', executive:'Executive', enhancements:'Enhancements', factory:'Factory',
   evolution:'Evolution', network:'Network', models:'Models', vault:'Vault', secondbrain:'2nd Brain',
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
-  sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise'
+  sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise',
+  media:'Media Factory'
 };
 
 const $=id=>document.getElementById(id);
@@ -1511,7 +1514,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory,media:loadMedia};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -4178,6 +4181,198 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPalette();}
   else if(e.key==='Escape'){closePalette();}
 });
+
+// ===== Media Revenue Factory (core/media_factory) =====
+const MEDIA='/api/media';
+async function mediaG(p){return api(MEDIA+p);}
+const MEDIA_TABS=[['overview','Overview'],['trends','Trends'],['content','Content'],['production','Production'],['publishing','Publishing'],['analytics','Analytics'],['revenue','Revenue'],['experiments','Experiments'],['strategy','Strategy'],['rights','Rights'],['workers','Workers']];
+
+function mediaStatusClass(s){
+  s=String(s||'').toUpperCase();
+  if(s==='VERIFIED'||s==='OK'||s==='ONLINE'||s==='ACTIVE'||s==='OWNED')return 'ok';
+  if(s==='PARTIALLY_VERIFIED')return 'info';
+  if(s==='BLOCKED'||s==='FAILED'||s==='ERROR'||s==='OFFLINE')return 'bad';
+  if(s==='DEGRADED'||s==='UNVERIFIED'||s==='MISSING'||s==='WARN')return 'warn';
+  return 'info';
+}
+function mediaBadge(s){return '<span class="badge '+mediaStatusClass(s)+'">'+esc(s==null?'—':s)+'</span>';}
+function mediaMetric(l,v,c){return '<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v==null||v===''?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';}
+function mediaTbl(rows,preferred){
+  rows=Array.isArray(rows)?rows:[];
+  if(!rows.length)return '<p class="empty">none yet</p>';
+  const keys=Object.keys(rows[0]);
+  let cols=(preferred||[]).filter(k=>keys.indexOf(k)>=0);
+  keys.forEach(k=>{if(cols.length<9&&cols.indexOf(k)<0)cols.push(k);});
+  const head='<tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>';
+  const body=rows.map(r=>'<tr>'+cols.map(c=>{
+    const v=r[c],k=String(c).toLowerCase();
+    if(k==='status'||k==='state'||k.endsWith('_status'))return '<td>'+mediaBadge(v)+'</td>';
+    if(typeof v==='boolean')return '<td>'+(v?'yes':'no')+'</td>';
+    if(v==null||v==='')return '<td><span style="color:var(--fg-muted)">—</span></td>';
+    if(typeof v==='object')return '<td style="font-size:0.62rem;max-width:260px;overflow:hidden;text-overflow:ellipsis" title="'+esc(JSON.stringify(v))+'">'+esc(JSON.stringify(v))+'</td>';
+    return '<td>'+esc(String(v))+'</td>';
+  }).join('')+'</tr>').join('');
+  return '<div class="table-wrap"><table><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div>';
+}
+function mediaBlockedList(caps){
+  const blocked=Object.keys(caps||{}).filter(k=>caps[k]&&caps[k].blocked_reason);
+  if(!blocked.length)return '';
+  return '<div style="margin-top:8px;font-size:0.62rem;color:var(--fg-secondary)">'
+    + blocked.map(k=>'<div><span class="badge bad">BLOCKED</span> <b>'+esc(k)+'</b> — '+esc(caps[k].blocked_reason)+'</div>').join('')
+    + '</div>';
+}
+async function loadMedia(){
+  const el=$('media-content'); if(!el) return;
+  el.innerHTML='<div class="card"><h3>Media Revenue Factory <span class="badge info">/api/media</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadMedia()">Refresh</button></span></h3>'
+    +'<div class="muted" style="font-size:0.62rem">Honest capability plane — generation and live publishing are BLOCKED with reasons; trends, rights, revenue and strategy ledgers are live.</div>'
+    +'<div class="action-row" style="flex-wrap:wrap;gap:6px;margin-top:8px">'+MEDIA_TABS.map(t=>'<button class="btn btn-xs" data-mtab="'+t[0]+'" onclick="mediaTab(\''+t[0]+'\')">'+t[1]+'</button>').join('')+'</div></div>'
+    +'<div id="media-body"><span class="loading">loading…</span></div>';
+  mediaTab('overview');
+}
+function mediaTab(n){
+  document.querySelectorAll('[data-mtab]').forEach(b=>b.classList.toggle('btn-accent',b.getAttribute('data-mtab')===n));
+  const m={overview:mediaTOverview,trends:mediaTTrends,content:mediaTContent,production:mediaTProduction,publishing:mediaTPublishing,analytics:mediaTAnalytics,revenue:mediaTRevenue,experiments:mediaTExperiments,strategy:mediaTStrategy,rights:mediaTRights,workers:mediaTWorkers};
+  (m[n]||mediaTOverview)();
+}
+function mediaBody(h){const b=$('media-body');if(b)b.innerHTML=h;}
+async function mediaTOverview(){
+  mediaBody('<span class="loading">loading…</span>');
+  const g=async p=>{try{return await mediaG(p);}catch(e){return {error:e.message};}};
+  const [st,dash]=await Promise.all([g('/status'),g('/dashboard')]);
+  let h='';
+  if(st.error){h+='<div class="card"><span class="error-text">status: '+esc(st.error)+'</span></div>';}
+  else{
+    const caps=st.details||{};
+    h+='<div class="card"><h3>Capabilities <span class="badge '+mediaStatusClass(st.overall)+'">'+esc(st.overall||'?')+'</span></h3>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:5px">'
+      + Object.keys(caps).map(k=>'<span class="badge '+mediaStatusClass(caps[k].status)+'" title="'+esc(caps[k].blocked_reason||caps[k].detail||'')+'">'+esc(k)+': '+esc(caps[k].status)+'</span>').join('')
+      + '</div>'+mediaBlockedList(caps)+'</div>';
+  }
+  if(!dash.error){
+    const c=dash.counts||{};
+    h+='<div class="card"><h3>Dashboard</h3><div class="metric-row">'
+      +mediaMetric('Trends',c.trends)+mediaMetric('Opportunities',c.opportunities)+mediaMetric('Content',c.content)
+      +mediaMetric('Patterns',c.patterns)+mediaMetric('Publishing jobs',c.publishing_jobs)+mediaMetric('Experiments',c.experiments)
+      +mediaMetric('Revenue rows',c.revenue)+mediaMetric('Cost rows',c.costs)+'</div></div>';
+    const lc=dash.latest_cycle;
+    h+='<div class="card"><h3>Latest cycle</h3>';
+    if(!lc){h+='<p class="empty">no cycle recorded yet</p>';}
+    else{
+      const det=lc.detail||{};
+      h+='<div class="metric-row">'+mediaMetric('Status',lc.status)+mediaMetric('Cycle',lc.cycle_id)+mediaMetric('Stage',lc.stage)+mediaMetric('When',(lc.created_at||'').slice(0,19))+'</div>';
+      h+='<div style="margin-top:6px;font-size:0.62rem">'+Object.keys(det.stages||{}).map(k=>'<span class="badge '+mediaStatusClass((det.stages[k]||{}).status)+'" style="margin:1px">'+esc(k)+': '+esc((det.stages[k]||{}).status)+'</span>').join(' ')+'</div>';
+    }
+    h+='</div>';
+    const prof=dash.profitability||{};
+    h+='<div class="card"><h3>Profitability '+mediaBadge(prof.status)+'</h3><div class="metric-row">'
+      +mediaMetric('Revenue',prof.revenue_total)+mediaMetric('Verified',prof.revenue_verified)+mediaMetric('Unverified',prof.revenue_unverified)
+      +mediaMetric('Costs',prof.cost_total)+mediaMetric('Profit',prof.profit)+mediaMetric('Currency',prof.currency)+'</div>'
+      +(!prof.has_data?'<div class="muted" style="font-size:0.62rem;margin-top:4px">no revenue/cost data recorded yet — UNVERIFIED</div>':'')
+      +'</div>';
+    if((dash.content_by_state||[]).length){h+='<div class="card"><h3>Content by state</h3>'+mediaTbl(dash.content_by_state)+'</div>';}
+  }
+  mediaBody(h);
+}
+async function mediaTTrends(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/trends?limit=50');
+    const rows=(d.data||[]).map(t=>({id:t.id,title:t.title,geo:t.geo,source:t.source,score:(t.normalized||{}).score,momentum:(t.normalized||{}).momentum,shelf_life:(t.normalized||{}).shelf_life,status:t.status,created_at:(t.created_at||'').slice(0,19)}));
+    mediaBody('<div class="card"><h3>Trend signals <span class="badge info">'+(d.count!=null?d.count:rows.length)+'</span></h3>'+mediaTbl(rows)+'</div>');
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTContent(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/content?limit=50');
+    const rows=(d.data||[]).map(c=>({id:c.id,title:c.title,factory_key:c.factory_key,kind:c.kind,state:c.state,status:c.status,duration_s:c.duration_s,published_at:c.published_at,updated_at:(c.updated_at||'').slice(0,19)}));
+    mediaBody('<div class="card"><h3>Content items <span class="badge info">'+(d.count!=null?d.count:rows.length)+'</span></h3>'+mediaTbl(rows)+'</div>');
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTProduction(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/production?limit=50');
+    const gen=d.generation||{};
+    let h='<div class="card"><h3>Production capability</h3><div style="display:flex;flex-wrap:wrap;gap:6px">'
+      +'<span class="badge '+(gen.ffmpeg?'ok':'bad')+'">ffmpeg: '+(gen.ffmpeg?'present':'missing')+'</span>'
+      +'<span class="badge '+(gen.ffprobe?'ok':'bad')+'">ffprobe: '+(gen.ffprobe?'present':'missing')+'</span></div>'
+      +'<div class="muted" style="font-size:0.62rem;margin-top:4px">Asset generation is BLOCKED — no image/video models or ffmpeg on CT111.</div></div>';
+    h+='<div class="card"><h3>Content <span class="badge info">'+(d.counts||{}).content+'</span></h3>'+mediaTbl((d.content||[]).map(c=>({id:c.id,title:c.title,state:c.state,status:c.status,factory_key:c.factory_key})))+'</div>';
+    h+='<div class="card"><h3>Assets <span class="badge info">'+(d.counts||{}).assets+'</span></h3>'+mediaTbl((d.assets||[]).map(a=>({id:a.id,content_id:a.content_id,kind:a.kind,path:a.path,status:a.status})))+'</div>';
+    h+='<div class="card"><h3>Publishing jobs <span class="badge info">'+(d.counts||{}).jobs+'</span></h3>'+mediaTbl((d.publishing_jobs||[]).map(j=>({id:j.id,content_id:j.content_id,mode:j.mode,status:j.status,blocked_reason:j.blocked_reason})))+'</div>';
+    mediaBody(h);
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTPublishing(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/publishing?limit=50');
+    const rows=(d.data||[]).map(j=>({id:j.id,content_id:j.content_id,mode:j.mode,status:j.status,blocked_reason:j.blocked_reason,last_error:j.last_error,attempt:j.attempt,created_at:(j.created_at||'').slice(0,19)}));
+    mediaBody('<div class="card"><h3>Publishing jobs <span class="badge info">'+(d.count!=null?d.count:rows.length)+'</span></h3>'+mediaTbl(rows)+'</div>');
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTAnalytics(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/analytics?limit=50');
+    const av=d.availability||{};
+    let h='<div class="card"><h3>Platform ingestion</h3><div style="display:flex;flex-wrap:wrap;gap:6px">'
+      +Object.keys(av).map(p=>'<span class="badge '+mediaStatusClass(av[p].status)+'">'+esc(p)+': '+esc(av[p].status)+'</span>').join('')
+      +'</div>'
+      +Object.keys(av).filter(p=>av[p].blocked_reason).map(p=>'<div style="font-size:0.62rem;color:var(--fg-secondary);margin-top:4px"><span class="badge bad">BLOCKED</span> <b>'+esc(p)+'</b> — '+esc(av[p].blocked_reason)+'</div>').join('')
+      +'</div>';
+    h+='<div class="card"><h3>Metrics <span class="badge info">'+(d.data||[]).length+'</span></h3>'+mediaTbl((d.data||[]).map(m=>({id:m.id,content_id:m.content_id,platform:m.platform,metric:m.metric,value:m.value,status:m.status})))+'</div>';
+    mediaBody(h);
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTRevenue(){
+  mediaBody('<span class="loading">loading…</span>');
+  const g=async p=>{try{return await mediaG(p);}catch(e){return {error:e.message};}};
+  const [rev,costs,prof]=await Promise.all([g('/revenue?limit=50'),g('/costs?limit=50'),g('/profitability')]);
+  const p=prof.error?{}:prof;
+  let h='<div class="card"><h3>Profitability '+mediaBadge(p.status)+'</h3><div class="metric-row">'
+    +mediaMetric('Revenue',p.revenue_total)+mediaMetric('Verified',p.revenue_verified)+mediaMetric('Unverified',p.revenue_unverified)
+    +mediaMetric('Costs',p.cost_total)+mediaMetric('Profit',p.profit)+mediaMetric('Currency',p.currency)+'</div>'
+    +(!p.has_data?'<div class="muted" style="font-size:0.62rem;margin-top:4px">no revenue/cost data recorded yet — UNVERIFIED</div>':'')+'</div>';
+  h+='<div class="card"><h3>Revenue ledger <span class="badge info">'+((rev.data||[]).length)+'</span></h3>'+mediaTbl((rev.data||[]).map(r=>({id:r.id,amount:r.amount,currency:r.currency,source:r.source,verified:r.verified,content_id:r.content_id,occurred_at:r.occurred_at})))+'</div>';
+  h+='<div class="card"><h3>Cost ledger <span class="badge info">'+((costs.data||[]).length)+'</span></h3>'+mediaTbl((costs.data||[]).map(c=>({id:c.id,amount:c.amount,currency:c.currency,category:c.category,content_id:c.content_id,occurred_at:c.occurred_at})))+'</div>';
+  mediaBody(h);
+}
+async function mediaTExperiments(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/experiments?limit=50');
+    const rows=(d.data||[]).map(x=>({id:x.id,key:x.key,name:x.name,metric:x.metric,status:x.status,created_at:(x.created_at||'').slice(0,19)}));
+    mediaBody('<div class="card"><h3>Experiments <span class="badge info">'+(d.count!=null?d.count:rows.length)+'</span></h3>'+mediaTbl(rows)+'</div>');
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTStrategy(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/strategy?limit=50');
+    const act=d.active||{};
+    let h='<div class="card"><h3>Active strategy '+mediaBadge(act.status)+'</h3>';
+    if(act.version==null){h+='<p class="empty">no active strategy version</p>';}
+    else{h+='<div class="metric-row">'+mediaMetric('Version',act.version)+mediaMetric('Approved by',act.approved_by)+mediaMetric('Created',(act.created_at||'').slice(0,19))+'</div>'
+      +'<pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word;max-height:240px;overflow:auto;margin-top:6px">'+esc(JSON.stringify(act.strategy||{},null,1))+'</pre>';}
+    h+='</div>';
+    h+='<div class="card"><h3>Versions <span class="badge info">'+((d.data||[]).length)+'</span></h3>'+mediaTbl((d.data||[]).map(v=>({id:v.id,version:v.version,status:v.status,approved_by:v.approved_by,created_at:(v.created_at||'').slice(0,19)})))+'</div>';
+    mediaBody(h);
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTRights(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/rights?limit=50');
+    const rows=(d.data||[]).map(r=>({id:r.id,content_id:r.content_id,title:r.title,creator:r.creator,rights_status:r.rights_status,license:r.license,public_domain:r.public_domain,confidence:r.confidence,status:r.status}));
+    mediaBody('<div class="card"><h3>Rights / provenance <span class="badge info">'+(d.count!=null?d.count:rows.length)+'</span></h3>'+mediaTbl(rows)+'</div>');
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
+async function mediaTWorkers(){
+  mediaBody('<span class="loading">loading…</span>');
+  try{const d=await mediaG('/workers?limit=50');
+    const mw=d.media_worker||{};
+    let h='<div class="card"><h3>Media worker</h3><div class="metric-row">'
+      +mediaMetric('Callable',mw.callable)
+      +'<div class="metric"><span class="val"><span class="badge '+(mw.scheduler_registered?'ok':'warn')+'">'+(mw.scheduler_registered?'registered':'not registered')+'</span></span><span class="lbl">Scheduler</span></div></div>'
+      +'<div class="muted" style="font-size:0.62rem;margin-top:4px">Self-throttled to MEDIA_CYCLE_MIN_INTERVAL; fails safe into the scheduler cycle.</div></div>';
+    h+='<div class="card"><h3>Worker records <span class="badge info">'+((d.data||[]).length)+'</span></h3>'+mediaTbl((d.data||[]).map(w=>({id:w.id,key:w.key,role:w.role,status:w.status,created_at:(w.created_at||'').slice(0,19)})))+'</div>';
+    mediaBody(h);
+  }catch(e){mediaBody('<span class="error-text">'+esc(e.message)+'</span>');}
+}
 </script>
 <div class="modal-overlay" id="palette" style="display:none;align-items:flex-start;justify-content:center">
   <div class="modal-box" style="max-width:560px;width:92%;margin-top:10vh;padding:0">

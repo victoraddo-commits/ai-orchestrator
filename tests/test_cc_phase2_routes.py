@@ -9,7 +9,6 @@ from core.cc_phase2_routes import (
     cc_phase2_router,
 )
 
-
 PROVIDERS = {
     "kai_brain": {
         "kind": "local", "available": True, "enabled": True,
@@ -128,3 +127,25 @@ def test_routes_registered():
     assert "/api/fabric/summary" in paths
     assert "/api/models/{model_id}/test" in paths
     assert "/api/security/overview" in paths
+
+
+def test_catalog_cache_serves_stale_without_recompute(monkeypatch):
+    """collect_catalog must serve the cached snapshot instead of re-probing."""
+    import core.cc_phase2_routes as m
+
+    calls = {"n": 0}
+
+    def fake_uncached():
+        calls["n"] += 1
+        return {"schema": 1, "counts": {}, "models": [{"id": "x"}]}
+
+    monkeypatch.setattr(m, "_collect_catalog_uncached", fake_uncached)
+    monkeypatch.setitem(m._CATALOG_CACHE, "data", None)
+    monkeypatch.setitem(m._CATALOG_CACHE, "at", 0.0)
+    monkeypatch.setattr(m, "_CATALOG_REFRESHING", False)
+    monkeypatch.setattr(m, "_start_catalog_refresh", lambda: None)
+
+    first = m.collect_catalog()
+    second = m.collect_catalog()
+    assert first["models"] == second["models"]
+    assert calls["n"] == 1

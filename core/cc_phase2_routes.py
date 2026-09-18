@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import socket
+import threading
 import time
 import urllib.request
 from typing import Any, Optional
@@ -33,7 +34,11 @@ logger = logging.getLogger(__name__)
 cc_phase2_router = APIRouter(tags=["kai-2.0-command-center"])
 
 OLLAMA_URL = "http://127.0.0.1:11434"
-_HTTP_TIMEOUT = 2.5
+_HTTP_TIMEOUT = 1.5
+_CATALOG_TTL = 60.0
+_CATALOG_CACHE: dict = {"data": None, "at": 0.0}
+_CATALOG_LOCK = threading.Lock()
+_CATALOG_REFRESHING = False
 
 # Static fallback specs for local artefacts where a live probe is unavailable.
 MODEL_SPECS = {
@@ -207,7 +212,71 @@ def build_catalog(providers: dict, registry: dict, dashboard: dict,
     }
 
 
-def collect_catalog() -> dict:
+def collect_catalog(force: bool = False) -> dict:
+    """Return the per-model catalog, refreshing in the background when stale.
+
+    ``list_providers`` + ``get_provider_dashboard`` each probe every provider
+    (~6s each), so a synchronous rebuild blocks the request for >12s. We keep a
+    snapshot, serve it immediately, and refresh in a daemon thread. The first
+    ever call (cold cache) may block; the daemon pre-warm below makes that rare.
+    """
+    now = time.time()
+    with _CATALOG_LOCK:
+        data = _CATALOG_CACHE["data"]
+        age = now - _CATALOG_CACHE["at"]
+    if data is not None:
+        if force or age > _CATALOG_TTL:
+            _start_catalog_refresh()
+        return data
+    # Cold cache: build synchronously (only on the very first request).
+    return _build_and_cache()
+
+
+def _build_and_cache() -> dict:
+    # If a background refresh is already running (e.g. the import pre-warm),
+    # wait for it instead of duplicating the ~12s provider probe.
+    deadline = time.time() + 20.0
+    while time.time() < deadline:
+        with _CATALOG_LOCK:
+            if _CATALOG_CACHE["data"] is not None:
+                return _CATALOG_CACHE["data"]
+            refreshing = _CATALOG_REFRESHING
+        if not refreshing:
+            break
+        time.sleep(0.2)
+    with _CATALOG_LOCK:
+        if _CATALOG_CACHE["data"] is not None:
+            return _CATALOG_CACHE["data"]
+        data = _collect_catalog_uncached()
+        _CATALOG_CACHE["data"] = data
+        _CATALOG_CACHE["at"] = time.time()
+        return data
+
+
+def _start_catalog_refresh() -> None:
+    global _CATALOG_REFRESHING
+    with _CATALOG_LOCK:
+        if _CATALOG_REFRESHING:
+            return
+        _CATALOG_REFRESHING = True
+
+    def _run():
+        global _CATALOG_REFRESHING
+        try:
+            data = _collect_catalog_uncached()
+            with _CATALOG_LOCK:
+                _CATALOG_CACHE["data"] = data
+                _CATALOG_CACHE["at"] = time.time()
+        except Exception:  # noqa: BLE001
+            pass
+        finally:
+            with _CATALOG_LOCK:
+                _CATALOG_REFRESHING = False
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _collect_catalog_uncached() -> dict:
     from core.ai_provider import list_providers
     from core.model_registry import build_registry, _ENDPOINTS
     from core.ai.ai_router import get_provider_dashboard, ROLE_PROVIDERS
@@ -237,9 +306,9 @@ def collect_catalog() -> dict:
 
 # ── endpoints ────────────────────────────────────────────────────────────────
 @cc_phase2_router.get("/api/models/catalog")
-def models_catalog():
+def models_catalog(refresh: int = 0):
     """Per-model catalog backing the Model Fabric index + per-model pages."""
-    return collect_catalog()
+    return collect_catalog(force=bool(refresh))
 
 
 @cc_phase2_router.get("/api/fabric/summary")
@@ -406,3 +475,15 @@ def _probe(host: str, port: int) -> bool:
             return True
     except Exception:  # noqa: BLE001
         return False
+
+
+# Pre-warm the model catalog at import (background) so the Command Center's
+# Model Fabric / per-model pages have data ready without a 12s first request.
+# Skipped under pytest so tests never probe live providers.
+import os as _os  # noqa: E402
+import sys as _sys  # noqa: E402
+if "pytest" not in _sys.modules and not _os.environ.get("PYTEST_CURRENT_TEST"):
+    try:
+        _start_catalog_refresh()
+    except Exception:  # noqa: BLE001
+        pass

@@ -3,7 +3,7 @@
 **Directive:** `directives/20260918T095558Z-pasted-directive.md` — *KAI 2.0 — Unified Brain + Model Fabric + Autonomous Teammate Factory*
 **Program plan:** `docs/superpowers/plans/2026-09-18-kai-2.0-unified-brain-teammate-factory.md`
 **Audit basis:** `docs/KAI_AUDIT_REPORT_2026-09-18.md` (pre-fix) · Phase reports: `docs/KAI_PHASE1_TEAMMATE_FACTORY_REPORT.md`, `docs/KAI_PHASE2_COMMAND_CENTER_REPORT.md`, `docs/COMMAND_CENTER_CANONICAL.md`
-**Date:** 2026-09-18 · **Host:** LXC 111 `kai-orchestrator` (`/opt/ai-orchestrator`, branch `main`, HEAD `b8b59b9`)
+**Date:** 2026-09-18 · **Host:** LXC 111 `kai-orchestrator` (`/opt/ai-orchestrator`, branch `main`, HEAD `b8b59b9`; §37 addendum commit `5cefa74`)
 **Method:** evidence-first. Every status below was produced by a command run in this session against the live system; observed output is cited. Statuses: **VERIFIED** | **PARTIALLY_VERIFIED** | **UNVERIFIED** | **MISSING** | **BLOCKED** | **FAILED**.
 
 ---
@@ -12,10 +12,9 @@
 
 **Overall: PARTIALLY_VERIFIED — the KAI 2.0 core capability is real and running, not complete.**
 
-The central deliverable — an autonomous teammate factory that creates workers, forms teams, decomposes and executes missions through the Model Fabric, verifies output, and recovers from worker/model failure with persistent state — is **VERIFIED live** (§19–§21, §25–§26, §38, §46–§52, §54). It runs on KAI's own local brain with Claude Code offline.
+The central deliverable — an autonomous teammate factory that creates workers, forms teams, decomposes and executes missions through the Model Fabric, verifies output, and recovers from worker/model failure with persistent state — is **VERIFIED live** (§19–§21, §25–§26, §38, §46–§52, §54). It runs on KAI's own local brain with Claude Code offline. **Module integration (§37) is now VERIFIED**: 18 KAI modules (Juris, Money, Susu, IT Manager, Betting, Network, …) expose their capability through `core/integration`, and a module capability request runs through the one teammate factory + mission engine with the outcome written back into the module's Second Brain record (live cross-module path `mis-844f7d5813` COMPLETED, SB record `26d37117-cdd1-4d0d-8f07-0194e37346c9`; see §3.1).
 
 It is **not** a finished "one unified KAI" (the directive's §56 end state). Honest gaps:
-- **Module integration (§37) is MISSING** — no KAI module (Juris, Money, Susu, IT Manager…) consumes the workforce yet.
 - **Temporary-teammate auto-lifecycle (§39), teammate learning/performance feedback (§40–§41), and the autonomous capability-gap loop (§31/§43) are PARTIALLY_VERIFIED** — code exists, but not all is wired into live behaviour.
 - **Cloud model paths remain degraded** (local-only SPOF); Telegram (§53) is wired and unit-tested but was not exercised live this session.
 - **45 roadmap phases** carry a reconciliation flag needing human review; several owner-only credential rotations remain open.
@@ -29,6 +28,7 @@ No claim of 100% is made anywhere that is not backed by the evidence in the matr
 | Action | Evidence |
 |---|---|
 | Repo at HEAD | `git rev-parse --short HEAD` → `b8b59b9` (last commit `feat(teammate): mission auto-recovery loop`, `13954ad`) |
+| §37 module integration commit | `5cefa74` (`feat(integration): §37 module integration`); `ai-orchestrator-api.service` restarted & active `18:43 UTC`, startup logs `Application startup complete` |
 | `ai-orchestrator-api.service` restarted & active | pre `17:47:47` → post `Active: active (running) since Fri 2026-09-18 17:59:46 UTC` |
 | `kai-scheduler.service` restarted & active | pre `11:14:12` → post `active since 17:59:46 UTC` |
 | `kai-directives.service` restarted & active | pre `12:17:51` → post `active since 17:59:46 UTC` |
@@ -77,6 +77,7 @@ Runner: `/opt/ai-orchestrator/.venv/bin/python -m pytest`.
 | Teammate + workforce + mission (mocked model) | `pytest tests/test_teammate_runtime.py tests/test_mission_recovery.py tests/test_teammate_execution_guard.py tests/test_teammate_skills.py tests/test_teammate_worker_integration.py tests/test_workforce_*.py` | **119 passed** in 262.97 s |
 | Live end-to-end (§46/§47, real `qwen3-coder:kai`) | `KAI_E2E=1 pytest tests/test_teammate_e2e.py` | **2 passed** in 22.19 s |
 | Reports + Command Center | `pytest tests/test_directives_reports.py tests/test_19o_command_center.py tests/test_command_center_13o.py` | **72 passed** in 137.56 s |
+| Module integration (§37) | `pytest tests/test_module_integration.py` | **16 passed** (mocked model; live path in §3.1) |
 
 | Criterion | Status | Evidence |
 |---|---|---|
@@ -89,6 +90,21 @@ Runner: `/opt/ai-orchestrator/.venv/bin/python -m pytest`.
 | §52 Persistence (restart → mission recovered, workers rehydrated, resumes) | **VERIFIED** | `test_acceptance_52_persistence_survives_restart`; live: `mis-7c0d54c0e8` (created before the 17:59 service restart) returned `200` after restart |
 | §53 Telegram (approved interface → KAI → auth/policy → mission → workers → progress → verify → notify) | **PARTIALLY_VERIFIED** | `test_acceptance_53_telegram_commands` passes; chain `command_bus.py → kai_control_commands.handle_control_command → handle_team_command → live WorkforceEngine` verified by code read; **no live Telegram-sent mission was executed this session** |
 | §54 Command Center (workers/missions/tasks/models/health/resources/verification/failures/security + control) | **VERIFIED** | Canonical CC 200; panels `ai-workforce`, `missions`, `models`, `security`, `infrastructure` present + dispatcher entries; live APIs 200 |
+
+### 3.1 §37 MODULE INTEGRATION — LIVE EVIDENCE (added 2026-09-18)
+
+| Action | Evidence |
+|---|---|
+| Module capability catalog exposed | `GET /api/integration/modules` → **18 modules**, e.g. `juris-kai → legal_researcher [legal-ai, legal_research, document-analysis]`, `susu → savings_operator`, `it-manager → infra_engineer`, `kai-betting → betting_analyst`, `kai-net → network_engineer` |
+| Module requests capability (live, real local brain) | `scripts/kai_module_integration_e2e.py` → mission `mis-844f7d5813` **COMPLETED**, teammate `3fc276993525` (`legal_researcher`; created then reused by the mission team), 2/2 tasks COMPLETED, `verification.passed=true`, outputs from provider `kai_brain` |
+| Outcome written back into the module | Second Brain entity `module:juris-kai:legal_research`, record `26d37117-cdd1-4d0d-8f07-0194e37346c9` (`status=COMPLETED`, `verified=true`); module journal `memory/module_integration.json` (`status=COMPLETED`) |
+| Events on the KAI bus | `module.capability.requested`, `teammate.created`, `teammate.reused`, `teammate.progress` ×2, `mission.created`, `mission.completed`, `module.mission.recorded` |
+| HTTP module request (live API after restart) | `POST /api/integration/modules/command-center/capabilities/ops-coordination/request` → teammate `ccbfcbf8f210`, mission `mis-829d71ad2c` **COMPLETED** |
+| Real module call sites | Juris Kai `/research` (`core/juris_kai/commands.py::handle_research`) and Telegram `/module`, `/module-request` (`core/team_commands.py`) call the bridge; legacy direct model call retained as fallback |
+| No duplication | Bridge reuses `core/teammate/{runtime,engine,factory,skills,model_fabric}`, `gpu_arbiter`, `agentguard`, `kai_event_bus`, `core.memory`, Second Brain and the workforce registry; no second factory/router/registry built |
+| Tests | `pytest tests/test_module_integration.py` → **16 passed**; touched suites pass (`test_teammate_runtime.py`, `test_mission_recovery.py`, `test_workforce_endpoints.py`, `test_module_registry.py`, `test_workforce_recovery.py`, `test_second_brain_writer.py`) |
+
+**Residual (honest):** module-internal pipelines beyond the two wired call sites (e.g. Susu/Money/Betting bots) are unchanged and reach the workforce through the same bridge/API; they are not yet refactored to make their own calls. This is additive by design (§5 preserve existing functionality). An unrelated pre-existing failure remains in `tests/test_juris_kai_multitenant.py::TestHubtelPayments::test_payment_client_not_configured_without_creds` (`HUBTEL_CLIENT_ID` attribute missing).
 
 ---
 
@@ -132,7 +148,7 @@ Runner: `/opt/ai-orchestrator/.venv/bin/python -m pytest`.
 | §34 | Claude Code independence | **VERIFIED** | Runs on local `qwen3-coder:kai`; tailnet shows `claude-code` offline 5 days |
 | §35 | Failure handling (timeout/retry/classify/checkpoint/recovery/audit) | **PARTIALLY_VERIFIED** | Recovery + events present; uniform timeout/rollback across all ops not verified |
 | §36 | Security invariants (12) | **PARTIALLY_VERIFIED** | ttyd gone, secrets 0600, firewall persistent, auth enforced, AgentGuard + vault scope; owner-only rotations still open |
-| §37 | Module integration (Juris/Money/Susu/IT/…) requests capability from KAI | **MISSING** | No module imports `teammate.engine`/`runtime` or calls `/api/missions` |
+| §37 | Module integration (Juris/Money/Susu/IT/…) requests capability from KAI | **VERIFIED** | `core/integration` (catalog + bridge + API); 18 modules exposed (`GET /api/integration/modules`); live `juris-kai` request → mission `mis-844f7d5813` COMPLETED, SB record `26d37117…`; Juris `/research` + Telegram `/module-request` call the bridge; 16 tests. See §3.1 |
 | §38 | Teammate reuse before creation | **VERIFIED** | `create_teammate` returns `created:false` + same id on healthy match |
 | §39 | Temporary vs persistent teammates (auto-retire) | **PARTIALLY_VERIFIED** | Persistent supported; `retire` endpoint exists; automatic COMPLETED→RETIRED not implemented |
 | §40 | Teammate learning into Second Brain | **PARTIALLY_VERIFIED** | Team/mission records written to SB (`source="workforce_engine"`); learning signal not fed back to routing |
@@ -140,10 +156,10 @@ Runner: `/opt/ai-orchestrator/.venv/bin/python -m pytest`.
 | §42 | Autonomous decision loop | **PARTIALLY_VERIFIED** | Observe→plan→select→execute→verify→recover works; loop is not yet continuously self-initiated |
 | §43 | Capability gap loop | **PARTIALLY_VERIFIED** | Factory can create skills/teammates; no autonomous gap→create→resume trigger |
 | §44 | Factory hierarchy sharing KAI primitives | **PARTIALLY_VERIFIED** | Teammate Factory real and shares primitives; other factories not yet routed through it |
-| §45 | Implement (not just document) + test | **VERIFIED** | Live APIs + 119 mocked + 2 live E2E + 72 CC/report tests |
+| §45 | Implement (not just document) + test | **VERIFIED** | Live APIs + 119 mocked + 2 live E2E + 72 CC/report + 16 module-integration tests |
 | §46–§54 | Acceptance tests | see §3 | §46–§52, §54 VERIFIED; §53 PARTIALLY_VERIFIED |
 | §55 | Produce implementation audit with explicit statuses | **VERIFIED** | `docs/KAI_AUDIT_REPORT_2026-09-18.md` + this document |
-| §56 | Final operating principle — one KAI autonomous workforce | **PARTIALLY_VERIFIED** | Mission path is one coherent KAI; module integration + learning loops incomplete |
+| §56 | Final operating principle — one KAI autonomous workforce | **PARTIALLY_VERIFIED** | Mission path is one coherent KAI and module integration is now VERIFIED (§37); learning/performance loops incomplete |
 
 ---
 
@@ -171,7 +187,7 @@ The prior audit disclosed extension-less tokens in a transcript. Verified rotati
 - Roadmap currently: **281 phases** → 274 completed, 3 failed (`15C`, `AI-4`, `AI-5`), 1 blocked (`17P`), 1 cancelled (`17N`), 2 proposed (`26AC`, `KAI2U-ACCEPT`).
 
 ### 6.3 UNVERIFIED / MISSING capability
-- **§37 Module integration — MISSING** (no module consumes the workforce).
+- **§37 Module integration — RESOLVED (VERIFIED)**: 18 modules exposed and a live cross-module mission completed with the outcome recorded in the module's Second Brain record (see §3.1). Residual: module-internal pipelines not yet refactored to call the bridge themselves (they can via the same API).
 - **§39** temporary-teammate auto-retire; **§40–§41** learning/performance feedback into routing; **§31/§43** autonomous capability-gap loop — code present, not wired into live behaviour.
 - **§53 Telegram** — wired + unit-tested, not exercised live.
 - Cloud model paths degraded (local-only SPOF); FreeLLMAPI/OpenRouter/OmniRoute not re-certified in this pass.
@@ -189,6 +205,7 @@ The prior audit disclosed extension-less tokens in a transcript. Verified rotati
 | Scheduler / orchestration | VERIFIED |
 | Cost / Second Brain / Model Fabric APIs | VERIFIED (live 200s) |
 | Teammate Factory + Mission Engine + recovery | VERIFIED (live + tests) |
+| Module integration (§37) | VERIFIED (live cross-module path + 16 tests) |
 | Acceptance §46–§52, §54 | VERIFIED |
 | Acceptance §53 | PARTIALLY_VERIFIED |
 | Canonical Command Center + per-model pages | VERIFIED |

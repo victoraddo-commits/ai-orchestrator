@@ -199,11 +199,17 @@ def start():
                 from core.teammate.engine import WorkforceEngine
                 _ws = WorkforceEngine()
                 _retired = _ws.auto_retire()
-                if _retired:
-                    info(f"workforce: auto-retired {len(_retired)} teammate(s)")
                 _gaps = _ws.scan_capability_gaps()
-                if _gaps:
-                    info(f"workforce: resolved {len(_gaps)} capability gap(s)")
+                for _r in _retired:
+                    info(f"workforce: auto-retired {_r['teammate_id']} ({_r['reason']})")
+                for _g in _gaps:
+                    info(f"workforce: resolved capability gap {_g['skill_id']} "
+                         f"-> {_g['teammate_id']} ({_g['gap_id']})")
+                if _retired or _gaps:
+                    info(f"workforce maintenance: retired={len(_retired)} "
+                         f"gaps={len(_gaps)}")
+                else:
+                    info("workforce maintenance: retired=0 gaps=0")
             except Exception as _ws_exc:
                 info(f"workforce maintenance failed: {type(_ws_exc).__name__}: {_ws_exc}")
 

@@ -171,3 +171,50 @@ nav + auto-generated "More" sheet. New model pages follow the same shell.
   longer blocks for ~100s when a Proxmox node API is unreachable.
 - Infrastructure `loadInfra()` fetches each source in parallel with hard
   timeouts, so one slow upstream can no longer wedge the panel.
+
+## Juris Kai control plane (Part B, 2026-09-18)
+
+The `legal` panel's Juris Kai surface is now a real control plane
+(`core/juris_kai/cc_routes.py`, mounted in `core/api.py`), replacing the old
+read-only account card. Card `#juris-cc` renders tabs via `jurisMount()`:
+
+| Tab | Loader | Backend |
+|---|---|---|
+| Overview | `jurisOverview()` | `GET /api/juris-kai/{health,routing,metrics}` |
+| Corpus | `jurisCorpus()` | `GET /api/juris-kai/corpus/{stats,search,documents,document/{id}}` |
+| Ingest | `jurisIngest()` | `POST /api/juris-kai/corpus/ingest` (write-gated) |
+| Accounts | `jurisAccounts()` | `GET /api/juris-kai/cc/accounts[|/{id}]`, `/cc/usage`, `/cc/payments`; grant-days/tier/ban via existing `/api/juris-kai/accounts/*` |
+| Referrals | `jurisReferrals()` | `GET /api/juris-kai/cc/referrals`, `POST /api/juris-kai/referrals/generate` |
+| Bot | `jurisBot()` | `GET /api/juris-kai/cc/service`, `POST /api/juris-kai/cc/service/{action}`, `GET /api/juris-kai/activity` |
+| Model | `jurisModel()` | `GET /api/juris-kai/routing`, `POST /api/juris-kai/cc/test-query` |
+| Cache | `jurisCache()` | `GET/POST /api/juris-kai/cc/cache[/clear]` |
+
+### Endpoints added / aliased (all auth-gated)
+
+| Method | Path | Gate |
+|---|---|---|
+| GET | `/api/juris-kai/cc/service` | `require_cc_read` |
+| POST | `/api/juris-kai/cc/service/{action}` | `require_juris_write` + rate limit + audit |
+| POST | `/api/juris-kai/cc/test-query` | `require_juris_write` + rate limit |
+| POST | `/api/juris-kai/cc/cache/clear` | `require_juris_write` + rate limit + audit |
+
+Verified `200` with bridge token **and** operator session, `401` without
+(13 reads + 3 writes + 2 status/clear; see `tests/test_juris_cc_routes.py`,
+55 passed with Part A speed tests).
+
+### Responsive
+
+Playwright (`/opt/visual-qa`, operator JWT session, real API) captured all
+8 tabs at **360 / 768 / 1280** — 24/24 rendered, **zero horizontal overflow**
+(`documentElement.scrollWidth == innerWidth`), tabs scroll on mobile, tables
+live in `.table-wrap`. Interactions verified: test-query returns a real
+`qwen3-coder:kai` answer with latency/TTFT, cache clear (`success:true`),
+account detail, corpus document detail (integrity + versions), bot state.
+
+### Related fix
+
+`loadLegal()`'s SUSU card hit bridge-only `/api/susu/stats`, whose 401 was
+clearing the operator session and bouncing the CC to login. Added `apiSoft()`
+(no session-clearing side effect) for that decorative read. Also fixed a tab
+race: a slow initial `jurisOverview` fetch could overwrite the newly selected
+tab; each async view now carries a per-switch token and drops stale renders.

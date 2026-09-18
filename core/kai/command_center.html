@@ -803,6 +803,46 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 /* ── Field hint ─────────────────────────────────────────────────── */
 
 .field-hint { font-size: 0.62rem; color: var(--fg-muted); margin-top: 3px; font-family: var(--font-mono); }
+
+/* ── Juris Kai control plane (Part B) ───────────────────────────── */
+.juris-tabs { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin: 10px 0 14px; }
+.juris-tabs .jtab {
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--fg-muted); cursor: pointer; font-family: var(--font-mono);
+  font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px;
+  padding: 8px 10px; white-space: nowrap; min-height: 38px;
+}
+.juris-tabs .jtab:hover { color: var(--fg); }
+.juris-tabs .jtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.juris-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.juris-sub {
+  font-family: var(--font-mono); font-size: 0.62rem; color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 0.5px; margin: 14px 0 6px;
+}
+.juris-form label {
+  display: block; font-family: var(--font-mono); font-size: 0.62rem;
+  color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.5px;
+  margin: 8px 0 3px;
+}
+.juris-form input, .juris-form select, .juris-form textarea {
+  width: 100%; box-sizing: border-box; background: var(--bg-deep);
+  border: 1px solid var(--border); color: var(--fg); padding: 6px 8px;
+  font-size: 0.72rem; font-family: var(--font-mono);
+}
+.juris-form textarea { min-height: 110px; resize: vertical; }
+.juris-answer {
+  white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-deep);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px;
+  font-size: 0.72rem; max-height: 420px; overflow: auto;
+}
+@media (max-width: 768px) {
+  .juris-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .juris-tabs .jtab { flex-shrink: 0; }
+}
+@media (max-width: 480px) {
+  .juris-grid { grid-template-columns: 1fr; }
+  .juris-tabs .jtab { padding: 8px 7px; font-size: 0.62rem; }
+}
 /* ── Design System v2 — cohesive, modern, aesthetic ─────────────── */
 :root{ --radius: 8px; --radius-sm: 6px; --shadow-sm: 0 1px 2px rgba(0,0,0,.30); --shadow-md: 0 8px 24px rgba(0,0,0,.35); }
 body{ font-size: 13.5px; letter-spacing: .1px; }
@@ -1455,6 +1495,16 @@ async function apiT(path, ms, opts){
   catch(e){ if(e.name==='AbortError') throw new Error('timeout after '+(ms||7000)+'ms'); throw e; }
   finally{ clearTimeout(t); }
 }
+// api() without the session-clearing side effect — for purely decorative
+// reads that may hit bridge-only endpoints (e.g. /api/susu/stats) so a 401
+// there can never log an operator out of the Command Center.
+async function apiSoft(path, opts={}){
+  const h={'Content-Type':'application/json',...(opts.headers||{})};
+  if(S.token) h['X-Kai-Session']=S.token;
+  const r=await fetch(path,{...opts,headers:h});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
 
 function showLogin() {
   $('login-screen').classList.remove('hidden');$('app-wrap').classList.remove('active');clearToken();
@@ -2086,26 +2136,23 @@ async function loadLegal(){
     if(!legal.length){el.innerHTML='<p class="empty">No legal modules registered</p>';return;}
     let html='<div style="margin-bottom:20px"><div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Applications</div>';
     // Juris Kai
-    try{const jk=await api('/api/juris-kai/stats');const d=jk.juris_kai||jk;
-      html+=`<div class="card" style="margin-bottom:12px"><h3>juris-kai — Account Management  <span class="badge ok">${d.active_accounts||0} active</span> <span class="badge info">${d.total_accounts||0} total</span></h3>
-        <div style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap">
-          <input type="text" id="legal-search" placeholder="Search by name, phone, telegram ID…" class="search-input" onkeyup="if(event.key==='Enter')doLegalSearch()">
-          <select id="legal-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono);cursor:pointer"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>
-          <button class="btn btn-sm btn-accent" onclick="doLegalSearch()">Find Users</button>
-          <button class="btn btn-sm" onclick="generateReferralCode()">Generate Referral</button>
-        </div>
-        <div id="legal-user-results"><p style="font-size:0.7rem;color:var(--fg-muted)">Search for accounts or browse below</p></div>
-      </div>`;}
-    catch(e){html+=`<div class="card"><h3>juris-kai</h3><span class="error-text">${esc(e.message)}</span></div>`;}
+    // Juris Kai — Command Center control plane (Part B). Views mount lazily
+    // via jurisMount(): overview, corpus, ingest, accounts, referrals, bot,
+    // model routing/test-query and cache management.
+    html+=`<div class="card" style="margin-bottom:12px" id="juris-cc">
+      <h3>juris-kai — Control Plane <span class="badge ok">legal</span></h3>
+      <div class="juris-tabs" id="juris-tabs"><span class="loading">loading…</span></div>
+      <div id="juris-tab-content"><span class="loading">loading…</span></div>
+    </div>`;
     // SUSU
-    try{const s=await api('/api/susu/stats');
+    try{const s=await apiSoft('/api/susu/stats');
       html+=`<div class="card" style="margin-bottom:12px"><h3>susu — Savings Groups  <span class="badge info">${s.total_users||0} users</span> <span class="badge ok">${s.active_groups||0}/${s.total_groups||0} groups</span></h3>
         <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">Deposits: ${s.total_deposits_ghs||0} GHS &middot; Fees: ${s.total_fees_collected_ghs||0} GHS &middot; Pending: ${s.pending_transactions||0} tx</div>
       </div>`;}
-    catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>susu</h3><span class="error-text">${esc(e.message)}</span></div>`;}
+    catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>susu</h3><span class="field-hint">stats unavailable in this session</span></div>`;}
     // Legal Brain (Knowledge Engine) — full management via /cc/legal proxy
     try{const lb=await api('/cc/legal/stats');
-      html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain — Knowledge Engine  <span class="badge info">${lb.documents||0} docs</span> <span class="badge ok">${lb.sources||0} sources</span></h3>
+      html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain — Knowledge Engine  <span class="badge info" style="white-space:nowrap">${lb.documents||0} docs</span> <span class="badge ok" style="white-space:nowrap">${lb.sources||0} sources</span></h3>
         <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:10px">Sessions: ${lb.sessions||0} &middot; Jurisdictions: ${Object.keys(lb.by_jurisdiction||{}).join(', ')||'Ghana'}</div>
         <div class="action-row" style="flex-wrap:wrap;gap:6px">
           <button class="btn btn-xs btn-accent" onclick="lbView('documents')">Documents</button>
@@ -2127,9 +2174,449 @@ async function loadLegal(){
         <div id="lb-results" style="margin-top:10px;max-height:420px;overflow:auto"></div>
       </div>`;}
     catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain</h3><span class="error-text">${esc(e.message)}</span></div>`;}
-    html+='</div>';el.innerHTML=html;}
+    html+='</div>';el.innerHTML=html;
+    if(typeof jurisMount==='function'&&document.getElementById('juris-tabs'))jurisMount();}
   catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// JURIS KAI — COMMAND CENTER CONTROL PLANE (Part B)
+// Tabs: Overview · Corpus · Ingest · Accounts · Referrals · Bot · Model · Cache
+// All reads flow through core/juris_kai/cc_routes.py; writes are operator-gated.
+// ═══════════════════════════════════════════════════════════════════
+const JURIS_TABS=[
+  {n:'overview',l:'Overview'},{n:'corpus',l:'Corpus'},{n:'ingest',l:'Ingest'},
+  {n:'accounts',l:'Accounts'},{n:'referrals',l:'Referrals'},{n:'bot',l:'Bot'},
+  {n:'model',l:'Model'},{n:'cache',l:'Cache'}
+];
+let JURIS_ACTIVE='overview';
+
+// esc() covers text nodes but not quotes; attr() additionally escapes quotes
+// so values embedded in HTML attributes can never break out of the attribute.
+function attr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function _jm(l,v,c){return '<div class="metric"><span class="val"'+(c?' style="color:'+c+'"':'')+'>'+esc(v==null?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';}
+// True when an async view resolved after the user switched away from it —
+// guards against a slow fetch clobbering the now-active tab.
+function _jurisStale(tab){const a=document.querySelector('#juris-tabs .jtab.active');return !a||a.dataset.jtab!==tab;}
+
+function jurisMount(){
+  const tabs=$('juris-tabs');if(!tabs)return;
+  tabs.innerHTML=JURIS_TABS.map(t=>'<button type="button" class="jtab'+(t.n===JURIS_ACTIVE?' active':'')+'" data-jtab="'+attr(t.n)+'" onclick="jurisSwitch(\''+attr(t.n)+'\')">'+esc(t.l)+'</button>').join('');
+  jurisSwitch(JURIS_ACTIVE);
+}
+function jurisSwitch(tab){
+  JURIS_ACTIVE=tab;
+  document.querySelectorAll('#juris-tabs .jtab').forEach(b=>b.classList.toggle('active',b.dataset.jtab===tab));
+  const c=$('juris-tab-content');if(!c)return;
+  c.dataset.jtab=tab;
+  const views={overview:jurisOverview,corpus:jurisCorpus,ingest:jurisIngest,accounts:jurisAccounts,referrals:jurisReferrals,bot:jurisBot,model:jurisModel,cache:jurisCache};
+  (views[tab]||jurisOverview)(c,tab);
+}
+
+// ── Overview / health ─────────────────────────────────────────────
+async function jurisOverview(c,tab){
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const [h,r,m]=await Promise.all([api('/api/juris-kai/health'),api('/api/juris-kai/routing'),api('/api/juris-kai/metrics')]);
+    const bot=h.bot||{},lb=h.legal_brain||{},met=(m.metrics||h.metrics||{}),chains=r.chains||{};
+    let html='<div class="juris-grid">'
+      +_jm('Bot service',bot.state||'unknown',bot.active?'var(--accent)':'var(--destructive)')
+      +_jm('Legal brain',lb.ok?'online':'offline',lb.ok?'var(--accent)':'var(--destructive)')
+      +_jm('Model chains',Object.keys(chains).length,'var(--info)')
+      +_jm('Avg latency',met.avg_ms==null?'—':met.avg_ms+' ms','var(--warn)')
+      +_jm('Samples',met.samples||0)
+      +_jm('Success',met.success_rate==null?'—':Math.round(met.success_rate*100)+'%','var(--accent)')
+      +'</div>';
+    if(bot.health_file_age_s!=null)html+='<p class="field-hint">health file '+esc(bot.health_file_age_s)+'s old</p>';
+    html+='<div class="juris-sub">Model routing chains</div>'+_jurisChains(chains);
+    const by=met.by_task||{};
+    if(Object.keys(by).length){
+      html+='<div class="juris-sub">Latency by task</div><div class="table-wrap"><table><thead><tr><th>Task</th><th>Count</th><th>Success</th><th>Avg ms</th></tr></thead><tbody>'
+        +Object.entries(by).map(([k,v])=>'<tr><td>'+esc(k)+'</td><td>'+esc(v.count)+'</td><td>'+esc(v.success)+'</td><td>'+esc(v.avg_ms)+'</td></tr>').join('')
+        +'</tbody></table></div>';
+    }
+    html+='<div class="action-row" style="margin-top:12px"><button class="btn btn-sm btn-accent" onclick="jurisSwitch(\'overview\')">Refresh</button><button class="btn btn-sm" onclick="jurisSwitch(\'model\')">Test a query</button></div>';
+    if(_jurisStale(tab))return;
+    c.innerHTML=html;
+  }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function _jurisChains(chains){
+  const names=Object.keys(chains||{});
+  if(!names.length)return '<p class="empty">No juris_* chains reported</p>';
+  return names.map(n=>{
+    const chain=(chains[n]||[]).map(p=>'<code>'+esc(p)+'</code>').join(' <span style="color:var(--fg-muted)">→</span> ');
+    return '<div style="margin-bottom:5px;font-family:var(--font-mono);font-size:0.66rem"><span class="badge info">'+esc(n)+'</span> '+chain+'</div>';
+  }).join('');
+}
+function _provState(v){
+  if(v==null)return '—';
+  if(typeof v==='object'){
+    if(v.ok!=null)return v.ok?'ok':'down';
+    if(v.available!=null)return v.available?'available':'unavailable';
+    if(v.status!=null)return String(v.status);
+    if(v.state!=null)return String(v.state);
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
+
+// ── Corpus browse / search / detail ───────────────────────────────
+async function jurisCorpus(c,tab){
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const st=await api('/api/juris-kai/corpus/stats');
+    const s=st.stats||{};
+    let html='<div class="juris-grid">'
+      +_jm('Documents',(s.documents!=null?s.documents:(s.total!=null?s.total:'—')))
+      +_jm('Sources',(s.sources!=null?s.sources:'—'))
+      +_jm('Jurisdictions',Object.keys(s.by_jurisdiction||{}).length)
+      +_jm('Statuses',Object.keys(s.by_status||{}).length)
+      +'</div>';
+    if(!st.ok)html+='<p class="error-text">'+esc(st.error||'stats unavailable')+'</p>';
+    html+='<div class="juris-sub">Search</div><div class="action-row">'
+      +'<input type="text" id="jc-q" class="search-input" placeholder="Search Ghana statutes, cases, gazettes…" onkeyup="if(event.key===\'Enter\')jurisCorpusSearch()">'
+      +'<button class="btn btn-sm btn-accent" onclick="jurisCorpusSearch()">Search</button></div>'
+      +'<div id="jc-results"></div>'
+      +'<div class="juris-sub">Browse documents</div><div class="action-row">'
+      +'<input type="text" id="jc-jur" class="search-input" placeholder="jurisdiction" style="max-width:160px">'
+      +'<input type="text" id="jc-status" class="search-input" placeholder="status" style="max-width:160px">'
+      +'<button class="btn btn-sm" onclick="jurisCorpusList()">List</button></div>'
+      +'<div id="jc-list"></div><div id="jc-detail"></div>';
+    if(_jurisStale(tab))return;
+    c.innerHTML=html;
+    jurisCorpusList();
+  }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisCorpusSearch(){
+  const q=($('jc-q')||{}).value||'',el=$('jc-results');if(!el)return;
+  el.innerHTML='<span class="loading">searching…</span>';
+  try{
+    const d=await api('/api/juris-kai/corpus/search?q='+encodeURIComponent(q));
+    if(!d.ok){el.innerHTML='<span class="error-text">'+esc(d.error||'search failed')+'</span>';return;}
+    const rs=d.results||[];
+    if(!rs.length){el.innerHTML='<p class="empty">No matches</p>';return;}
+    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>Title</th><th>Type</th><th>Jurisdiction</th><th>Status</th><th></th></tr></thead><tbody>'
+      +rs.slice(0,25).map(r=>{const id=(r.id!=null?r.id:r.document_id);
+        return '<tr><td>'+esc(r.title||r.name||'—')+'</td><td>'+esc(r.doc_type||r.type||'—')+'</td><td>'+esc(r.jurisdiction||'—')+'</td><td>'+esc(r.status||'—')+'</td><td>'+(id!=null?'<button class="btn btn-xs" data-doc="'+attr(id)+'" onclick="jurisDocDetail(this.dataset.doc)">Open</button>':'')+'</td></tr>';}).join('')
+      +'</tbody></table></div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisCorpusList(){
+  const el=$('jc-list');if(!el)return;
+  const jur=($('jc-jur')||{}).value||'',status=($('jc-status')||{}).value||'';
+  el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/api/juris-kai/corpus/documents?jurisdiction='+encodeURIComponent(jur)+'&status='+encodeURIComponent(status)+'&limit=50');
+    const docs=d.documents||[];
+    if(!d.ok){el.innerHTML='<span class="error-text">'+esc(d.error||'failed')+'</span>';return;}
+    if(!docs.length){el.innerHTML='<p class="empty">No documents</p>';return;}
+    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Type</th><th>Jurisdiction</th><th>Status</th><th>Year</th><th></th></tr></thead><tbody>'
+      +docs.map(doc=>'<tr><td>'+esc(doc.id)+'</td><td>'+esc(doc.title||'—')+'</td><td>'+esc(doc.doc_type||doc.type||'—')+'</td><td>'+esc(doc.jurisdiction||'—')+'</td><td>'+esc(doc.status||'—')+'</td><td>'+esc(doc.year||'—')+'</td><td><button class="btn btn-xs" data-doc="'+attr(doc.id)+'" onclick="jurisDocDetail(this.dataset.doc)">Open</button></td></tr>').join('')
+      +'</tbody></table></div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisDocDetail(id){
+  const el=$('jc-detail');if(!el)return;
+  el.innerHTML='<span class="loading">loading document…</span>';
+  try{
+    const d=await api('/api/juris-kai/corpus/document/'+encodeURIComponent(id));
+    if(!d.ok){el.innerHTML='<div class="juris-sub">Document '+esc(id)+'</div><span class="error-text">'+esc(d.error||'not found')+'</span>';return;}
+    const doc=d.document||{},vers=d.versions||[],integ=d.integrity||{},content=doc.content||doc.text||'';
+    let h='<div class="juris-sub">Document #'+esc(id)+'</div><div style="font-size:0.75rem"><strong>'+esc(doc.title||'—')+'</strong></div>'
+      +'<div class="field-hint">type: '+esc(doc.doc_type||doc.type||'—')+' · jurisdiction: '+esc(doc.jurisdiction||'—')+' · status: '+esc(doc.status||'—')+' · year: '+esc(doc.year||'—')+'</div>';
+    h+='<div class="juris-sub">Integrity</div>';
+    const ik=Object.keys(integ||{});
+    h+=ik.length?ik.map(k=>'<span class="badge '+(integ[k]===true||integ[k]==='ok'?'ok':'info')+'" style="margin:1px 2px">'+esc(k)+': '+esc(String(integ[k]))+'</span>').join(''):'<span class="field-hint">no integrity record</span>';
+    h+='<div class="juris-sub">Versions ('+vers.length+')</div>';
+    h+=vers.length?'<div class="table-wrap"><table><thead><tr><th>Version</th><th>Hash</th><th>Created</th></tr></thead><tbody>'
+      +vers.map(v=>'<tr><td>'+esc(v.version!=null?v.version:(v.id!=null?v.id:'—'))+'</td><td style="max-width:220px;overflow-wrap:anywhere">'+esc(v.content_hash||v.hash||'—')+'</td><td>'+esc(String(v.created_at||'').slice(0,19))+'</td></tr>').join('')
+      +'</tbody></table></div>':'<p class="empty">No version history</p>';
+    if(content)h+='<div class="juris-sub">Content</div><pre style="max-height:260px;overflow:auto">'+esc(String(content).slice(0,4000))+'</pre>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+// ── Ingest ────────────────────────────────────────────────────────
+function jurisIngest(c){
+  c.innerHTML='<form class="juris-form" onsubmit="return jurisIngestSubmit(event)">'
+    +'<div class="juris-grid">'
+    +'<div><label for="ji-title">Title *</label><input id="ji-title" type="text" required maxlength="300"></div>'
+    +'<div><label for="ji-type">Type</label><input id="ji-type" type="text" placeholder="act / judgment / gazette"></div>'
+    +'<div><label for="ji-jur">Jurisdiction</label><input id="ji-jur" type="text" value="ghana"></div>'
+    +'<div><label for="ji-citation">Citation</label><input id="ji-citation" type="text"></div>'
+    +'<div><label for="ji-court">Court</label><input id="ji-court" type="text"></div>'
+    +'<div><label for="ji-year">Year</label><input id="ji-year" type="number" min="0" max="2100"></div>'
+    +'</div>'
+    +'<label for="ji-content">Content * <span style="color:var(--fg-muted)">(min 20 characters)</span></label>'
+    +'<textarea id="ji-content" required></textarea>'
+    +'<div class="action-row" style="margin-top:10px"><button class="btn btn-sm btn-accent" type="submit">Submit to corpus</button>'
+    +'<span class="field-hint">Write-gated · requires juris.admin</span></div>'
+    +'<div id="ji-result" style="margin-top:10px;font-size:0.7rem"></div></form>';
+}
+async function jurisIngestSubmit(ev){
+  ev.preventDefault();
+  const el=$('ji-result');if(!el)return false;
+  el.innerHTML='<span class="loading">submitting…</span>';
+  const body={title:($('ji-title')||{}).value||'',type:($('ji-type')||{}).value||'',
+    jurisdiction:($('ji-jur')||{}).value||'ghana',citation:($('ji-citation')||{}).value||'',
+    court:($('ji-court')||{}).value||'',year:parseInt(($('ji-year')||{}).value||'0',10)||0,
+    content:($('ji-content')||{}).value||''};
+  try{
+    const d=await api('/api/juris-kai/corpus/ingest',{method:'POST',body:JSON.stringify(body)});
+    if(d.success){el.innerHTML='<span class="badge ok">Ingested</span> <span style="font-family:var(--font-mono)">id='+esc((d.result||{}).id!=null?(d.result||{}).id:'—')+'</span>';toast('Document ingested');}
+    else{const errs=(d.validation_errors||[]).concat(d.error?[d.error]:[]);el.innerHTML='<span class="badge bad">Rejected</span> <span>'+esc(errs.join('; ')||'unknown error')+'</span>';}
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  return false;
+}
+
+// ── Accounts + detail / usage / payments ──────────────────────────
+async function jurisAccounts(c){
+  c.innerHTML='<div class="action-row" style="margin-bottom:10px">'
+    +'<input type="text" id="jka-q" class="search-input" placeholder="Search name, phone, telegram id…" onkeyup="if(event.key===\'Enter\')jurisAccountsSearch()">'
+    +'<select id="jka-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono);cursor:pointer"><option value="">All Tiers</option><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap"><input type="checkbox" id="jka-active">Active only</label>'
+    +'<button class="btn btn-sm btn-accent" onclick="jurisAccountsSearch()">Search</button>'
+    +'<button class="btn btn-sm" onclick="jurisAccountUsage()">Recent usage</button>'
+    +'<button class="btn btn-sm" onclick="jurisAccountPayments()">Payments</button></div>'
+    +'<div id="jka-result"></div><div id="jka-detail"></div>';
+  jurisAccountsSearch();
+}
+async function jurisAccountsSearch(){
+  const q=($('jka-q')||{}).value||'',tier=($('jka-tier')||{}).value||'',active=($('jka-active')||{}).checked;
+  const el=$('jka-result');if(!el)return;
+  el.innerHTML='<span class="loading">searching…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/accounts?q='+encodeURIComponent(q)+'&tier='+encodeURIComponent(tier)+(active?'&active_only=true':''));
+    if(d.error){el.innerHTML='<span class="error-text">'+esc(d.error)+'</span>';return;}
+    const accts=d.accounts||[];
+    if(!accts.length){el.innerHTML='<p class="empty">No accounts found</p>';return;}
+    let h='<div class="field-hint">'+esc(d.total!=null?d.total:accts.length)+' account(s)'+(d.total_pages>1?' · page '+esc(d.page||1)+'/'+esc(d.total_pages):'')+'</div>';
+    h+='<div class="table-wrap"><table><thead><tr><th>Name</th><th>Telegram</th><th>Tier</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+    for(const a of accts){
+      const sub=a.subscription||{},tierV=sub.tier||a.subscription_tier||'unknown',isActive=(a.is_active!==false);
+      const id=attr(a.account_id);
+      h+='<tr><td>'+esc(a.full_name||'Unnamed')+'</td><td>'+esc(a.telegram_id||a.account_id)+'</td>'
+        +'<td><span class="badge '+(tierV==='annual_pro'?'ok':tierV==='monthly_pro'?'info':tierV==='monthly_basic'?'warn':'info')+'">'+esc(String(tierV).replace(/_/g,' '))+'</span></td>'
+        +'<td><span class="badge '+(isActive?'ok':'bad')+'">'+(isActive?'active':'banned')+'</span></td>'
+        +'<td><div class="action-row">'
+        +'<select id="jka-gd-'+id+'" style="padding:2px 18px 2px 4px;font-size:0.62rem"><option value="">Grant…</option><option value="1">1d</option><option value="3">3d</option><option value="7">7d</option><option value="14">14d</option><option value="30">30d</option></select>'
+        +'<button class="btn btn-xs btn-accent" data-id="'+id+'" onclick="jurisAccountGrant(this.dataset.id)">Apply</button>'
+        +'<select id="jka-ct-'+id+'" style="padding:2px 18px 2px 4px;font-size:0.62rem"><option value="">Tier…</option><option value="free_trial">Free</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual</option></select>'
+        +'<button class="btn btn-xs" data-id="'+id+'" onclick="jurisAccountTier(this.dataset.id)">Apply</button>'
+        +(isActive?'<button class="btn btn-xs btn-warn" data-id="'+id+'" data-name="'+attr(a.full_name||a.account_id)+'" onclick="jurisAccountBan(this.dataset.id,this.dataset.name)">Ban</button>'
+                 :'<button class="btn btn-xs btn-accent" data-id="'+id+'" onclick="jurisAccountUnban(this.dataset.id)">Unban</button>')
+        +'<button class="btn btn-xs" data-id="'+id+'" onclick="jurisAccountDetail(this.dataset.id)">Details</button>'
+        +'<button class="btn btn-xs" data-id="'+id+'" onclick="jurisAccountInvite(this.dataset.id)">Invite</button>'
+        +'</div></td></tr>';
+    }
+    h+='</tbody></table></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisAccountGrant(id){
+  const sel=$('jka-gd-'+id);if(!sel||!sel.value){toast('Select days first','err');return;}
+  const days=parseInt(sel.value,10);
+  try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/grant-days',{method:'POST',body:JSON.stringify({days:days,reason:'command_center'})});toast('Granted '+days+'d');jurisAccountsSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function jurisAccountTier(id){
+  const sel=$('jka-ct-'+id);if(!sel||!sel.value){toast('Select a tier first','err');return;}
+  try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/subscription',{method:'POST',body:JSON.stringify({tier:sel.value})});toast('Tier → '+sel.value.replace(/_/g,' '));jurisAccountsSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+function jurisAccountBan(id,name){
+  confirmAction('Ban User','Ban '+(name||id)+'?',async()=>{
+    try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/deactivate',{method:'POST',body:JSON.stringify({reason:'command_center'})});toast('User banned');jurisAccountsSearch();}
+    catch(e){toast('Error: '+e.message,'err');}});
+}
+async function jurisAccountUnban(id){
+  try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/activate',{method:'POST'});toast('User unbanned');jurisAccountsSearch();}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function jurisAccountInvite(id){
+  try{const d=await api('/api/juris-kai/referrals/generate',{method:'POST',body:JSON.stringify({account_id:id})});
+    if(d.success){if(navigator.clipboard)navigator.clipboard.writeText(d.invite_code).catch(()=>{});toast('Code: '+d.invite_code+' (copied)');}
+    else toast('Error: '+(d.error||'unknown'),'err');}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+async function jurisAccountDetail(id){
+  const el=$('jka-detail');if(!el)return;
+  el.innerHTML='<span class="loading">loading account…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/accounts/'+encodeURIComponent(id));
+    const sub=d.subscription||{},usage=d.usage||{},q=usage.queries||{},dc=usage.documents||{};
+    let h='<div class="juris-sub">Account '+esc(id)+'</div><div class="juris-grid">'
+      +_jm('Name',d.full_name||'—')+_jm('Status',d.is_active?'active':'banned',d.is_active?'var(--accent)':'var(--destructive)')
+      +_jm('Tier',sub.tier||d.subscription_tier||'—')+_jm('Queries today',q.used==null?'—':q.used+'/'+(q.limit==null?'∞':q.limit))
+      +_jm('Docs today',dc.used==null?'—':dc.used+'/'+(dc.limit==null?'∞':dc.limit))
+      +_jm('Expires',String(sub.end||d.subscription_end||'').slice(0,10)||'—')+'</div>';
+    const pay=d.payments||[],use=d.usage_log||[];
+    h+='<div class="juris-sub">Recent payments ('+pay.length+')</div>';
+    h+=pay.length?'<div class="table-wrap"><table><thead><tr><th>Amount</th><th>Type</th><th>Status</th><th>Date</th></tr></thead><tbody>'
+      +pay.map(p=>'<tr><td>'+esc(p.amount_ghs!=null?p.amount_ghs+' GHS':'—')+'</td><td>'+esc(p.payment_type||'—')+'</td><td>'+esc(p.hubtel_status||'—')+'</td><td>'+esc(String(p.created_at||'').slice(0,10))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="empty">No payments</p>';
+    h+='<div class="juris-sub">Recent usage ('+use.length+')</div>';
+    h+=use.length?'<div class="table-wrap"><table><thead><tr><th>Action</th><th>Model</th><th>Tokens</th><th>Date</th></tr></thead><tbody>'
+      +use.map(u=>'<tr><td>'+esc(u.action_type||'—')+'</td><td>'+esc(u.model||'—')+'</td><td>'+esc((u.input_tokens||0)+'/'+(u.output_tokens||0))+'</td><td>'+esc(String(u.created_at||'').slice(0,19))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="empty">No usage</p>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisAccountUsage(){
+  const el=$('jka-detail');if(!el)return;
+  el.innerHTML='<span class="loading">loading usage…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/usage?limit=50');
+    const rows=d.usage||[];
+    let h='<div class="juris-sub">Global recent usage</div>';
+    h+=rows.length?'<div class="table-wrap"><table><thead><tr><th>Account</th><th>Action</th><th>Model</th><th>Date</th></tr></thead><tbody>'
+      +rows.map(u=>'<tr><td>'+esc(u.account_id||'—')+'</td><td>'+esc(u.action_type||'—')+'</td><td>'+esc(u.model||'—')+'</td><td>'+esc(String(u.created_at||'').slice(0,19))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="empty">No usage</p>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisAccountPayments(){
+  const el=$('jka-detail');if(!el)return;
+  el.innerHTML='<span class="loading">loading payments…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/payments?limit=50');
+    const rows=d.payments||[];
+    let h='<div class="juris-sub">Global recent payments</div>';
+    h+=rows.length?'<div class="table-wrap"><table><thead><tr><th>Account</th><th>Amount</th><th>Type</th><th>Status</th><th>Date</th></tr></thead><tbody>'
+      +rows.map(p=>'<tr><td>'+esc(p.account_id||'—')+'</td><td>'+esc(p.amount_ghs!=null?p.amount_ghs+' GHS':'—')+'</td><td>'+esc(p.payment_type||'—')+'</td><td>'+esc(p.hubtel_status||'—')+'</td><td>'+esc(String(p.created_at||'').slice(0,10))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="empty">No payments</p>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+// ── Referrals ─────────────────────────────────────────────────────
+async function jurisReferrals(c){
+  c.innerHTML='<div class="action-row" style="margin-bottom:10px">'
+    +'<input type="text" id="jr-acct" class="search-input" placeholder="account_id to generate a code for" style="max-width:280px">'
+    +'<button class="btn btn-sm btn-accent" onclick="jurisReferralGenerate()">Generate code</button>'
+    +'<button class="btn btn-sm" onclick="jurisSwitch(\'referrals\')">Refresh</button></div>'
+    +'<div id="jr-result"></div>';
+  jurisReferralsList();
+}
+async function jurisReferralsList(){
+  const el=$('jr-result');if(!el)return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/referrals?limit=100');
+    const rs=d.referrals||[];
+    if(!rs.length){el.innerHTML='<p class="empty">No referrals yet</p>';return;}
+    el.innerHTML='<div class="table-wrap"><table><thead><tr><th>Code</th><th>Inviter</th><th>Invitee</th><th>Status</th><th>Reward</th><th>Created</th></tr></thead><tbody>'
+      +rs.map(r=>'<tr><td><code>'+esc(r.invite_code)+'</code></td><td>'+esc(r.inviter_name||r.inviter_account_id||'—')+'</td><td>'+esc(r.invitee_telegram_id||'—')+'</td><td><span class="badge '+(r.status==='accepted'?'ok':'info')+'">'+esc(r.status||'—')+'</span></td><td>'+esc(r.reward_days||0)+'d</td><td>'+esc(String(r.created_at||'').slice(0,10))+'</td></tr>').join('')
+      +'</tbody></table></div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisReferralGenerate(){
+  const acct=($('jr-acct')||{}).value||'';
+  try{const d=await api('/api/juris-kai/referrals/generate',{method:'POST',body:JSON.stringify({account_id:acct})});
+    if(d.success){toast('Code: '+d.invite_code);if($('jr-acct'))$('jr-acct').value='';jurisReferralsList();}
+    else toast('Error: '+(d.error||'unknown'),'err');}
+  catch(e){toast('Error: '+e.message,'err');}
+}
+
+// ── Bot control + activity ────────────────────────────────────────
+async function jurisBot(c,tab){
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const [s,a]=await Promise.all([api('/api/juris-kai/cc/service'),api('/api/juris-kai/activity?limit=40')]);
+    let h='<div class="juris-grid">'
+      +_jm('juris-kai.service',s.state||'unknown',s.active?'var(--accent)':'var(--destructive)')
+      +_jm('Health file',s.health_file?'present':'missing',s.health_file?'var(--accent)':'var(--warn)')
+      +_jm('File age',s.health_file_age_s!=null?s.health_file_age_s+' s':'—')
+      +'</div>'
+      +'<div class="juris-sub">Service control <span style="color:var(--fg-muted)">(operator-gated)</span></div>'
+      +'<div class="action-row">'
+      +'<button class="btn btn-sm btn-accent" data-act="start" onclick="jurisBotAction(this.dataset.act)">Start</button>'
+      +'<button class="btn btn-sm" data-act="restart" onclick="jurisBotAction(this.dataset.act)">Restart</button>'
+      +'<button class="btn btn-sm btn-warn" data-act="stop" onclick="jurisBotAction(this.dataset.act)">Stop</button>'
+      +'<span id="jb-msg" class="field-hint"></span></div>';
+    const sec=a.security||[],use=a.usage||[];
+    h+='<div class="juris-sub">Recent activity</div><div class="table-wrap"><table><thead><tr><th>When</th><th>Source</th><th>Detail</th></tr></thead><tbody>';
+    for(const e of sec.slice(0,20))h+='<tr><td>'+esc(String(e.created_at||'').slice(0,19))+'</td><td>'+esc(e.event_type||'security')+'</td><td style="overflow-wrap:anywhere">'+esc(e.details||'')+'</td></tr>';
+    for(const u of use.slice(0,20))h+='<tr><td>'+esc(String(u.created_at||'').slice(0,19))+'</td><td>'+esc(u.account_id||'usage')+'</td><td style="overflow-wrap:anywhere">'+esc(u.action_type||'')+'</td></tr>';
+    if(!sec.length&&!use.length)h+='<tr><td colspan="3" class="empty">No activity</td></tr>';
+    h+='</tbody></table></div>';
+    if(_jurisStale(tab))return;
+    c.innerHTML=h;
+  }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function jurisBotAction(action){
+  confirmAction((action==='stop'?'Stop':'Restart')+' juris-kai','Are you sure you want to '+action+' juris-kai.service?',async()=>{
+    const msg=$('jb-msg');if(msg)msg.textContent='running '+action+'…';
+    try{const d=await api('/api/juris-kai/cc/service/'+encodeURIComponent(action),{method:'POST'});
+      if(msg)msg.textContent=d.success?('done: '+action):('failed: '+(d.error||d.stderr||'unknown'));
+      toast(d.success?('juris-kai '+action+'ed'):'Action failed',d.success?'ok':'err');
+      setTimeout(()=>jurisSwitch('bot'),600);}
+    catch(e){if(msg)msg.textContent='error: '+e.message;toast('Error: '+e.message,'err');}});
+}
+
+// ── Model & routing + test query ──────────────────────────────────
+async function jurisModel(c,tab){
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const r=await api('/api/juris-kai/routing');
+    const chains=r.chains||{},state=r.provider_state||{},budgets=r.task_budgets||{},prov=r.providers||{};
+    let h='<div class="juris-sub">juris_* chains</div>'+_jurisChains(chains);
+    h+='<div class="juris-sub">Providers</div>';
+    h+=Object.keys(prov).length?'<div class="table-wrap"><table><thead><tr><th>Provider</th><th>Endpoint</th><th>Node</th><th>State</th></tr></thead><tbody>'
+      +Object.entries(prov).map(([n,p])=>'<tr><td>'+esc(n)+'</td><td>'+esc(p.endpoint||'—')+'</td><td>'+esc(p.node||'—')+'</td><td>'+esc(_provState(state[n]!=null?state[n]:state[n+'_state']))+'</td></tr>').join('')+'</tbody></table></div>':'<p class="empty">No provider details</p>';
+    h+='<div class="juris-sub">Token budgets</div><div class="action-row">';
+    for(const [k,v] of Object.entries(budgets))h+='<span class="badge info" style="margin:1px 2px">'+esc(k)+': '+esc(v)+'</span>';
+    h+='</div>';
+    h+='<div class="juris-sub">Test query <span style="color:var(--fg-muted)">(local only)</span></div>'
+      +'<div class="action-row"><select id="jm-task" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono)">'
+      +'<option value="juris_research">juris_research</option><option value="juris_case_analysis">juris_case_analysis</option><option value="juris_legal_teaching">juris_legal_teaching</option><option value="juris_argument_construction">juris_argument_construction</option><option value="juris_flashcards">juris_flashcards</option><option value="juris_chat">juris_chat</option></select>'
+      +'<input type="text" id="jm-q" class="search-input" placeholder="Ask a Ghana law question…" onkeyup="if(event.key===\'Enter\')jurisTestQuery()">'
+      +'<button class="btn btn-sm btn-accent" onclick="jurisTestQuery()">Run</button></div>'
+      +'<div id="jm-result" style="margin-top:10px"></div>';
+    if(_jurisStale(tab))return;
+    c.innerHTML=h;
+  }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function jurisTestQuery(){
+  const q=($('jm-q')||{}).value||'',task=($('jm-task')||{}).value||'juris_research';
+  const el=$('jm-result');if(!el)return;
+  if(!q.trim()){toast('Enter a query first','err');return;}
+  el.innerHTML='<span class="loading">generating… (local model)</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/test-query',{method:'POST',body:JSON.stringify({query:q,task_type:task,stream:true})});
+    if(!d.success){el.innerHTML='<span class="error-text">'+esc(d.error||'query failed')+'</span>';return;}
+    el.innerHTML='<div class="action-row" style="margin-bottom:6px"><span class="badge ok">'+esc(d.model||'local')+'</span>'
+      +'<span class="badge info">'+esc(d.latency_ms!=null?d.latency_ms+' ms':'—')+'</span>'
+      +(d.ttft_ms!=null?'<span class="badge warn">ttft '+esc(d.ttft_ms)+' ms</span>':'')
+      +'<span class="badge">'+esc(d.context_chunks||0)+' chunks</span></div>'
+      +'<div class="juris-answer">'+esc(d.text||'')+'</div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+// ── Cache stats + clear ───────────────────────────────────────────
+async function jurisCache(c,tab){
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/cache');
+    const gen=d.generation||{},ret=d.retrieval||{};
+    const block=(t,b)=>'<div class="juris-sub">'+esc(t)+'</div><div class="juris-grid">'
+      +_jm('Entries',b.size||0)+_jm('Max',b.maxsize||0)+_jm('Hit rate',b.hit_rate==null?'—':Math.round(b.hit_rate*100)+'%','var(--accent)')
+      +_jm('Hits',b.hits||0)+_jm('Misses',b.misses||0)+_jm('Evictions',b.evictions||0)+'</div>';
+    let h=block('Generation cache',gen)+block('Retrieval cache',ret)
+      +'<div class="field-hint" style="margin-top:8px">corpus version: '+esc(d.corpus_version||'na')+'</div>'
+      +'<div class="action-row" style="margin-top:12px"><button class="btn btn-sm" onclick="jurisSwitch(\'cache\')">Refresh</button>'
+      +'<button class="btn btn-sm btn-warn" onclick="jurisCacheClear()">Clear caches</button>'
+      +'<span id="jc-clear-msg" class="field-hint"></span></div>';
+    if(_jurisStale(tab))return;
+    c.innerHTML=h;
+  }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function jurisCacheClear(){
+  confirmAction('Clear caches','Clear the generation and retrieval caches? This only affects in-process caches.',async()=>{
+    const msg=$('jc-clear-msg');if(msg)msg.textContent='clearing…';
+    try{const d=await api('/api/juris-kai/cc/cache/clear',{method:'POST'});
+      if(d.success){if(msg)msg.textContent='cleared '+(d.cleared||0)+' entries';toast('Caches cleared');setTimeout(()=>jurisSwitch('cache'),500);}
+      else{if(msg)msg.textContent='error: '+(d.error||'failed');toast('Clear failed','err');}}
+    catch(e){if(msg)msg.textContent='error: '+e.message;toast('Error: '+e.message,'err');}});
+}
+
 async function lbView(path){
   const el=$('lb-results');if(!el)return;el.innerHTML='<span class="loading">loading…</span>';
   try{const d=await api('/cc/legal/'+path);el.innerHTML='<pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(JSON.stringify(d,null,1))+'</pre>';}

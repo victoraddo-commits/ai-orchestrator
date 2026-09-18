@@ -4401,6 +4401,17 @@ except Exception as _cce_exc:
     _lg2.getLogger(__name__).warning('cc_extra_routes unavailable: %s', _cce_exc)
 
 
+# Juris Kai Command Center control plane (Part B) — health, corpus, ingest,
+# accounts, referrals, bot control, routing, test-query, cache.
+try:
+    from core.juris_kai.cc_routes import router as _juris_cc_router
+    app.include_router(_juris_cc_router)
+except Exception as _juris_cc_exc:
+    import logging as _lgjc
+    _lgjc.getLogger(__name__).warning(
+        'juris_kai cc_routes unavailable: %s', _juris_cc_exc)
+
+
 # Teammate Factory runtime API (KAI 2.0 Phase 1) — workforce/teams/missions.
 # Mounts the live runtime so Kai (Command Center/Telegram) and OpenCode can
 # create teammates, form teams and run missions.

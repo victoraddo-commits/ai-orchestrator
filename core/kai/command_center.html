@@ -3440,9 +3440,14 @@ function filterDirectory(){
 }
 function _dirTabbar(active){
   const b=(k,label)=>'<button class="btn btn-xs '+(k===active?'btn-accent':'')+'" onclick="showDirectivesTab(\''+k+'\')">'+label+'</button>';
-  return '<div class="card"><div class="action-row" style="gap:6px">'+b('directives','Directives')+b('reports','Reports')+'</div></div>';
+  return '<div class="card"><div class="action-row" style="gap:6px;flex-wrap:wrap">'+b('directives','Directives')+b('completed','Completed')+b('docs','Docs / Reports')+b('reports','Reports')+'</div></div>';
 }
-function showDirectivesTab(k){ if(k==='reports'){loadReports();} else {loadDirectives();} }
+function showDirectivesTab(k){
+  if(k==='completed'){loadCompletedDirectives();}
+  else if(k==='docs'){loadDocsFiles();}
+  else if(k==='reports'){loadReports();}
+  else {loadDirectives();}
+}
 async function loadDirectives(){
   const el=$('directives-content'); if(!el) return; el.innerHTML=_dirTabbar('directives')+'<span class="loading">loading…</span>';
   const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
@@ -3470,7 +3475,8 @@ async function loadDirectives(){
           +'<td><span class="badge '+(r.acked?'ok':'info')+'">'+(r.acked?'ACKED':'new')+'</span></td>'
           +'<td class="action-row"><button class="btn btn-xs" onclick="directiveView(\''+esc(r.name)+'\')">View</button> '
           +'<button class="btn btn-xs" onclick="directiveDownload(\''+esc(r.name)+'\')">Download</button> '
-          +'<button class="btn btn-xs btn-accent" onclick="directiveAck(\''+esc(r.name)+'\',this)">Ack</button></td></tr>';
+          +'<button class="btn btn-xs" onclick="directiveAck(\''+esc(r.name)+'\',this)">Ack</button> '
+          +'<button class="btn btn-xs btn-accent" onclick="directiveComplete(\''+esc(r.name)+'\',this)">Complete</button></td></tr>';
       }
       html+='</tbody></table></div>';
     }
@@ -3519,6 +3525,92 @@ async function directiveAck(name,btn){
   if(btn)btn.disabled=true;
   try{await api('/api/directives/ack/'+encodeURIComponent(name),{method:'POST',body:'{}'});toast('acked '+name);loadDirectives();}
   catch(e){toast('ack failed: '+e.message,'err');if(btn)btn.disabled=false;}
+}
+async function directiveComplete(name,btn){
+  confirmAction('Complete directive',
+    'Verify "'+name+'" against its requirements, then move it to completed/ ? '
+    +'If verification fails the directive stays active and the unmet items are shown.',
+    async()=>{
+      if(btn)btn.disabled=true;
+      try{
+        const h={'Content-Type':'application/json'}; if(S.token)h['X-Kai-Session']=S.token;
+        const r=await fetch('/api/directives/complete/'+encodeURIComponent(name),
+          {method:'POST',headers:h,body:JSON.stringify({by:S.username||'owner'})});
+        const j=await r.json().catch(()=>({}));
+        if(r.ok){toast('completed '+name);loadDirectives();return;}
+        const d=j.detail||{};
+        const unmet=(d.checks||[]).filter(c=>c.status==='unmet')
+          .map(c=>'• '+(c.requirement||'requirement')+' — '+(c.evidence||'')).join('\n');
+        alert('Verification refused — directive NOT completed.\n\n'
+          +(d.reason||j.error||('HTTP '+r.status))
+          +(unmet?'\n\nUnmet:\n'+unmet:''));
+        if(btn)btn.disabled=false;
+      }catch(e){toast('complete failed: '+e.message,'err');if(btn)btn.disabled=false;}
+    });
+}
+// ── Completed + Docs sub-tabs ─────────────────────────────────────────
+async function loadCompletedDirectives(){
+  const el=$('directives-content'); if(!el) return; el.innerHTML=_dirTabbar('completed')+'<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  const d=await g('/api/directives/completed');
+  const rows=(d&&Array.isArray(d.completed))?d.completed:[];
+  let html='<div class="card"><h3>Completed directives <span class="badge ok">'+(d.error?'\u2014':rows.length)+'</span>'
+    +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="loadCompletedDirectives()">Refresh</button></span></h3>'
+    +'<p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">Moved to directives/completed/ &middot; backup kept in directives/.completed-backup/</p>'
+    +(d.error?'<div class="error-text" style="margin-top:6px">'+esc(d.error)+'</div>':'');
+  if(!d.error){
+    if(!rows.length) html+='<p class="empty">no completed directives yet</p>';
+    else{
+      html+='<div class="table-wrap"><table><thead><tr><th>Directive</th><th>Completed</th><th>By</th><th>Verdict</th><th>Size</th></tr></thead><tbody>';
+      for(const r of rows){
+        const v=r.verdict||{};
+        html+='<tr><td><code>'+esc(r.name)+'</code></td><td>'+esc(r.completed_at||r.modified||'')+'</td>'
+          +'<td>'+esc(r.by||'')+'</td>'
+          +'<td><span class="badge '+(v.passed?'ok':'warn')+'">'+(v.passed?'verified':'unverified')+' '+esc(v.met||0)+'/'+esc((v.met||0)+(v.unmet||0))+'</span></td>'
+          +'<td>'+esc(r.bytes)+' B</td></tr>';
+      }
+      html+='</tbody></table></div>';
+    }
+  }
+  html+='</div>';
+  el.innerHTML=_dirTabbar('completed')+html;
+}
+async function loadDocsFiles(){
+  const el=$('directives-content'); if(!el) return; el.innerHTML=_dirTabbar('docs')+'<span class="loading">loading…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  const d=await g('/api/directives/docs/list');
+  const rows=(d&&Array.isArray(d.docs))?d.docs:[];
+  let html='<div class="card"><h3>Docs / Reports <span class="badge info">'+(d.error?'\u2014':rows.length)+'</span>'
+    +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="loadDocsFiles()">Refresh</button></span></h3>'
+    +'<p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">Files under the repo docs/ folder &middot; download-only, token-gated backend proxy</p>'
+    +(d.error?'<div class="error-text" style="margin-top:6px">'+esc(d.error)+'</div>':'');
+  if(!d.error){
+    if(!rows.length) html+='<p class="empty">no docs found</p>';
+    else{
+      html+='<div class="table-wrap"><table><thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Actions</th></tr></thead><tbody>';
+      for(const r of rows){
+        html+='<tr><td><code>'+esc(r.path)+'</code></td><td>'+esc(r.size)+' B</td><td>'+esc(r.mtime||'')+'</td>'
+          +'<td class="action-row"><button class="btn btn-xs" onclick="docDownload(\''+esc(r.path)+'\')">Download</button></td></tr>';
+      }
+      html+='</tbody></table></div>';
+    }
+  }
+  html+='</div>';
+  el.innerHTML=_dirTabbar('docs')+html;
+}
+async function docDownload(path){
+  try{
+    const h={}; if(S.token)h['X-Kai-Session']=S.token;
+    const url='/api/directives/docs/download/'+String(path).split('/').map(encodeURIComponent).join('/');
+    const res=await fetch(url,{headers:h});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const blob=await res.blob();
+    const u=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=u; a.download=String(path).split('/').pop()||'download';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),2000);
+    toast('downloading '+path);
+  }catch(e){toast('download failed: '+e.message,'err');}
 }
 // ── Reports sub-tab (KAI 2.0 Phase 3) ─────────────────────────────────
 async function loadReports(){

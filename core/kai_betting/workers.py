@@ -139,7 +139,7 @@ class KaiBettingWorkers:
 
             # Find finished events with pending predictions
             rows = db.execute("""
-                SELECT p.id as prediction_id, p.selection, p.market_type,
+                SELECT p.id as prediction_id, p.selection, p.market_type, p.line,
                        e.id as event_id, e.home_score, e.away_score,
                        e.status as event_status
                 FROM predictions p
@@ -157,6 +157,7 @@ class KaiBettingWorkers:
                 row["selection"],
                 row["home_score"],
                 row["away_score"],
+                row["line"],
             )
 
             if outcome:
@@ -298,6 +299,11 @@ class KaiBettingWorkers:
         metrics = self._perf_tracker.get_metrics(period="daily")
         return {"win_rate": metrics.get("win_rate", 0), "total": metrics.get("total_predictions", 0)}
 
+    def backfill_results_flashscore(self) -> Dict[str, Any]:
+        """Backfill final scores from the FlashScore feed (reachable from runner)."""
+        from core.kai_betting import results_flashscore
+        return results_flashscore.backfill()
+
     # ── Run All Workers ─────────────────────────────────────────────────────
 
     def run_cycle(self) -> Dict[str, Any]:
@@ -328,6 +334,12 @@ class KaiBettingWorkers:
             import traceback
             logger.error(f"refresh_sync failed: {e}", exc_info=True)
             results["odds_sync_error"] = str(e)
+
+        # Backfill final scores from FlashScore, then settle
+        try:
+            results["results_backfill"] = self.backfill_results_flashscore()
+        except Exception as e:
+            results["results_backfill_error"] = str(e)
 
         # Auto-settle finished events
         try:
@@ -423,11 +435,13 @@ class KaiBettingWorkers:
             return result
         except ImportError as e:
             return {"sent": 0, "error": str(e)}
+    @staticmethod
     def _determine_outcome(
         market_type: str,
         selection: str,
         home_score: int,
         away_score: int,
+        line: Optional[float] = None,
     ) -> Optional[str]:
         """Determine prediction outcome from actual scores."""
         selection_lower = selection.lower()
@@ -459,12 +473,13 @@ class KaiBettingWorkers:
                 return "won"
             return "lost"
 
-        elif market_type == "over_under":
+        elif market_type in ("over_under", "totals", "goals_over_under"):
             total = home_score + away_score
-            try:
-                line = float(market_type.split("_")[-1]) if "_" in market_type else 2.5
-            except ValueError:
-                line = 2.5
+            if line is None:
+                try:
+                    line = float(market_type.split("_")[-1]) if "_" in market_type else 2.5
+                except ValueError:
+                    line = 2.5
             is_over = total > line
             if (is_over and selection_lower == "over") or (not is_over and selection_lower == "under"):
                 return "won"

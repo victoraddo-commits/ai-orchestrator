@@ -125,6 +125,15 @@ def workforce_resources(operator: str = Depends(_require_operator)):
             "resources": get_engine().workforce_health()["resources"]}
 
 
+@teammate_router.get("/api/workforce/tools")
+def workforce_tools(operator: str = Depends(_require_operator)):
+    """§12: inspectable tool catalog — risk, permissions, environments,
+    auth/rollback/audit requirements and the skills that use/forbid each tool."""
+    from core.teammate.runtime import get_runtime
+    from core.teammate.tool_fabric import tool_catalog
+    return {"operator": operator, **tool_catalog(get_runtime().skills)}
+
+
 @teammate_router.get("/api/workforce/teammates/{teammate_id}")
 def get_teammate(teammate_id: str, operator: str = Depends(_require_operator)):
     mate = get_engine().get_teammate(teammate_id)

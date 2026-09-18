@@ -140,3 +140,86 @@ class ToolFabric:
         path = SANDBOX_ROOT / str(tid) / "workspace"
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+
+# ── §12 tool registry projection ────────────────────────────────────────────
+_LEVEL_TO_RISK = {"low": "safe", "medium": "controlled",
+                  "high": "high_risk", "critical": "high_risk"}
+_RISK_ORDER = {"safe": 0, "controlled": 1, "high_risk": 2}
+
+
+def tool_catalog(skill_registry: Any = None) -> dict:
+    """Unified, inspectable (§12) tool catalog.
+
+    Merges the authoritative KAI tool-bus specs (risk, input/output schema,
+    timeout, auth, rollback, audit) with the tools the canonical skills
+    grant/forbid, so every tool carries its risk level, required permissions,
+    allowed environments and the skills that use or forbid it.
+    """
+    tools: dict = {}
+
+    def _entry(name: str) -> dict:
+        return tools.setdefault(name, {
+            "tool": name, "risk": "safe", "inputs": {}, "outputs": "json",
+            "timeout_s": None, "auth_required": False, "rollback": None,
+            "audit": True,
+            "permissions": {"vault": [], "network": [], "filesystem": []},
+            "environments": ["production"],
+            "used_by_skills": [], "forbidden_by": [], "registered": False,
+        })
+
+    # 1. KAI tool-bus specs (the declared schema). Importing builtin triggers
+    #    the @tool decorators that register the canonical tools.
+    try:
+        from core.kai_tools import builtin  # noqa: F401
+        from core.kai_tools.registry import REGISTRY
+        for s in REGISTRY.list():
+            e = _entry(s.id)
+            e.update({
+                "risk": s.risk, "inputs": dict(s.inputs or {}),
+                "outputs": s.outputs, "timeout_s": s.timeout_s,
+                "auth_required": bool(getattr(s, "auth_required", False)),
+                "rollback": getattr(s, "rollback", None),
+                "audit": bool(getattr(s, "audit", True)),
+                "permissions": dict(getattr(s, "permissions", {}) or {}),
+                "environments": list(getattr(s, "environments", None)
+                                     or ["production"]),
+                "registered": True,
+            })
+    except Exception:  # tool bus absent in lean checkouts — skill view only
+        pass
+
+    # 2. Skill grants — conservative risk from the skill's security level.
+    if skill_registry is not None:
+        try:
+            skills = skill_registry.list()
+        except Exception:
+            skills = []
+        for skill in skills:
+            level = (skill.security_requirements or {}).get("level", "low")
+            risk = _LEVEL_TO_RISK.get(level, "safe")
+            perms = skill.required_permissions or {}
+            for name in (skill.allowed_tools or []):
+                e = _entry(name)
+                if skill.skill_id not in e["used_by_skills"]:
+                    e["used_by_skills"].append(skill.skill_id)
+                if _RISK_ORDER.get(risk, 0) > _RISK_ORDER.get(e["risk"], 0):
+                    e["risk"] = risk
+                for bucket in ("secrets", "network", "filesystem"):
+                    target = "vault" if bucket == "secrets" else bucket
+                    tgt = e["permissions"].setdefault(target, [])
+                    for value in (perms.get(bucket) or []):
+                        if value not in tgt:
+                            tgt.append(value)
+            for name in (skill.forbidden_tools or []):
+                e = _entry(name)
+                if skill.skill_id not in e["forbidden_by"]:
+                    e["forbidden_by"].append(skill.skill_id)
+
+    for e in tools.values():
+        for bucket in ("vault", "network", "filesystem"):
+            e["permissions"][bucket] = sorted(set(e["permissions"].get(bucket) or []))
+        e["used_by_skills"] = sorted(e["used_by_skills"])
+        e["forbidden_by"] = sorted(e["forbidden_by"])
+    return {"schema": 1, "count": len(tools),
+            "tools": {name: tools[name] for name in sorted(tools)}}

@@ -47,6 +47,14 @@ class ToolSpec:
     owner: str = "core"
     version: str = "1.0.0"
     tags: list[str] = field(default_factory=list)
+    # §12: explicit capability boundary declarations. Defaults are the most
+    # restrictive-safe interpretation (no extra permissions, production only,
+    # no external auth, audited); tools opt into more.
+    permissions: dict = field(default_factory=dict)   # {"vault":[],"network":[],"filesystem":[]}
+    environments: list[str] = field(default_factory=lambda: ["production"])
+    auth_required: bool = False
+    rollback: str | None = None                       # inverse operation or None
+    audit: bool = True
 
 
 @dataclass
@@ -109,6 +117,11 @@ def describe_all() -> list[dict]:
             "risk": s.risk, "inputs": s.inputs, "outputs": s.outputs,
             "timeout_s": s.timeout_s, "owner": s.owner, "version": s.version,
             "tags": s.tags,
+            "permissions": dict(s.permissions or {}),
+            "environments": list(s.environments or ["production"]),
+            "auth_required": bool(s.auth_required),
+            "rollback": s.rollback,
+            "audit": bool(s.audit),
         }
         for s in REGISTRY.list()
     ]

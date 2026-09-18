@@ -99,6 +99,32 @@ def image_timeout() -> float:
     """Seconds to wait for the OpenAI image endpoint (generation is slow)."""
     return float(os.environ.get("MEDIA_IMAGE_TIMEOUT", "180"))
 
+
+# ── Image generation (Gemini primary, key resolved from kai-vault) ─────────
+# Gemini is preferred because the OpenAI account has no image credits; OpenAI
+# stays wired as an honest fallback. Model/limit are env-overridable.
+DEFAULT_GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image"
+GEMINI_API_BASE = os.environ.get(
+    "MEDIA_GEMINI_BASE_URL",
+    "https://generativelanguage.googleapis.com/v1beta",
+)
+GEMINI_VAULT_PROVIDER = os.environ.get("MEDIA_GEMINI_VAULT_PROVIDER", "gemini")
+
+
+def gemini_image_model() -> str:
+    """Default Gemini image model, env-overridable (MEDIA_GEMINI_IMAGE_MODEL)."""
+    return (
+        os.environ.get("MEDIA_GEMINI_IMAGE_MODEL") or DEFAULT_GEMINI_IMAGE_MODEL
+    ).strip()
+
+
+def gemini_image_timeout() -> float:
+    """Seconds to wait for the Gemini generateContent endpoint."""
+    return float(
+        os.environ.get("MEDIA_GEMINI_IMAGE_TIMEOUT")
+        or os.environ.get("MEDIA_IMAGE_TIMEOUT", "180")
+    )
+
 # ── Trend discovery ────────────────────────────────────────────────────────
 TREND_GEO = os.environ.get("MEDIA_TREND_GEO", "GH")
 GOOGLE_TRENDS_RSS = os.environ.get(

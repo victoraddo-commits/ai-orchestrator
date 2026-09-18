@@ -140,7 +140,7 @@ def test_missing_key_is_blocked_without_calling_provider(media_root, db_stub, mo
     result = assets.generate_image("anything")
 
     assert result["status"] == config.STATUS_BLOCKED
-    assert result["blocked_reason"] == "no openai key"
+    assert result["blocked_reason"] == "no image provider key (gemini/openai)"
     assert result["assets"] == []
     assert called["post"] is False
 
@@ -196,7 +196,8 @@ def test_image_capability_blocked_without_key(monkeypatch):
     monkeypatch.setattr(assets, "resolve_openai_key", lambda: None)
     cap = assets.image_capability()
     assert cap["status"] == config.STATUS_BLOCKED
-    assert cap["blocked_reason"] == "no openai key"
+    assert cap["blocked_reason"] == "no image provider key"
+    assert cap["providers"] == {"gemini": False, "openai": False}
 
 
 def test_generate_asset_route_wires_through(monkeypatch):
@@ -213,3 +214,203 @@ def test_list_assets_route_paginates(monkeypatch):
     monkeypatch.setattr(routes.assets_mod, "latest", lambda limit, offset: [{"id": 1}])
     result = routes.list_assets(limit=5, offset=0)
     assert result == {"data": [{"id": 1}], "count": 1, "limit": 5, "offset": 0}
+
+
+# ── Gemini provider (primary) ──────────────────────────────────────────────
+JPEG = b"\xff\xd8\xff" + b"fake-jpeg-payload-0123456789"
+
+
+def _gemini_payload(data=PNG, mime="image/png", camel=True):
+    inline_key = "inlineData" if camel else "inline_data"
+    mime_key = "mimeType" if camel else "mime_type"
+    return {"candidates": [{"content": {"parts": [
+        {inline_key: {mime_key: mime,
+                      "data": base64.b64encode(data).decode()}}
+    ]}}]}
+
+
+def _capture_posts(monkeypatch, handler):
+    seen = []
+
+    def fake_post(url, **kwargs):
+        seen.append({"url": url, **kwargs})
+        return handler(url, kwargs)
+
+    monkeypatch.setattr(assets.requests, "post", fake_post)
+    return seen
+
+
+def test_gemini_inline_image_is_saved_and_registered(media_root, db_stub, monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    monkeypatch.setattr(assets, "resolve_openai_key", lambda: "okey")
+    seen = _capture_posts(monkeypatch,
+                          lambda url, kw: FakeResp(payload=_gemini_payload()))
+
+    result = assets.generate_image("a friendly robot")
+
+    assert result["status"] == config.STATUS_VERIFIED
+    assert result["provider"] == "gemini"
+    assert result["model"] == config.DEFAULT_GEMINI_IMAGE_MODEL
+    assert result["asset_id"] == 42
+    # Request contract: Gemini called, OpenAI never attempted.
+    assert len(seen) == 1
+    assert seen[0]["url"].endswith(
+        f"/models/{config.DEFAULT_GEMINI_IMAGE_MODEL}:generateContent")
+    assert seen[0]["params"] == {"key": "gkey"}
+    assert seen[0]["json"] == {"contents": [{"parts": [{"text": "a friendly robot"}]}]}
+    # File + sidecar carry the gemini provenance.
+    digest = hashlib.sha256(PNG).hexdigest()
+    assert (media_root / "assets" / f"{digest}.png").is_file()
+    meta = json.loads((media_root / "assets" / f"{digest}.json").read_text())
+    assert meta["provider"] == "gemini"
+    assert meta["model"] == config.DEFAULT_GEMINI_IMAGE_MODEL
+    assert meta["mime"] == "image/png"
+    assert result["files"][0]["sha256"] == digest
+
+
+def test_generate_image_falls_back_to_openai_when_gemini_fails(media_root, db_stub,
+                                                               monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    monkeypatch.setattr(assets, "resolve_openai_key", lambda: "okey")
+
+    def handler(url, kwargs):
+        if "generativelanguage" in url:
+            return FakeResp(status_code=500, payload={"error": {"message": "boom"}})
+        return FakeResp(payload={"data": [{"b64_json": base64.b64encode(PNG).decode()}]})
+
+    seen = _capture_posts(monkeypatch, handler)
+
+    result = assets.generate_image("fallback please")
+
+    assert result["status"] == config.STATUS_VERIFIED
+    assert result["provider"] == "openai"
+    assert len(seen) == 2
+    assert "generativelanguage" in seen[0]["url"]
+    assert seen[1]["url"].endswith("/images/generations")
+    assert seen[1]["headers"]["Authorization"] == "Bearer okey"
+
+
+def test_generate_image_failed_when_all_providers_fail(media_root, db_stub, monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    monkeypatch.setattr(assets, "resolve_openai_key", lambda: "okey")
+    _capture_posts(monkeypatch, lambda url, kw: FakeResp(
+        status_code=503, payload={"error": {"message": "down"}}))
+
+    result = assets.generate_image("nope")
+
+    assert result["status"] == config.STATUS_FAILED
+    assert "all providers failed" in result["reason"]
+    assert result["assets"] == []
+    assert not (media_root / "assets").exists()
+
+
+def test_generate_image_gemini_only_does_not_fall_back(media_root, db_stub, monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    seen = _capture_posts(monkeypatch, lambda url, kw: FakeResp(
+        status_code=500, payload={"error": {"message": "boom"}}))
+
+    result = assets.generate_image("only gemini")
+
+    assert result["status"] == config.STATUS_FAILED
+    assert result["provider"] == "gemini"
+    assert len(seen) == 1
+
+
+def test_gemini_http_error_is_failed_and_writes_nothing(media_root, db_stub, monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    _capture_posts(monkeypatch, lambda url, kw: FakeResp(
+        status_code=400, payload={"error": {"message": "bad model"}}))
+
+    result = assets.generate_image_gemini("prompt")
+
+    assert result["status"] == config.STATUS_FAILED
+    assert result["provider"] == "gemini"
+    assert "provider HTTP 400" in result["reason"]
+    assert not (media_root / "assets").exists()
+
+
+def test_gemini_missing_inline_data_is_failed(media_root, db_stub, monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    _capture_posts(monkeypatch, lambda url, kw: FakeResp(payload={
+        "candidates": [{"content": {"parts": [{"text": "no image here"}]}}]}))
+
+    result = assets.generate_image_gemini("prompt")
+
+    assert result["status"] == config.STATUS_FAILED
+    assert "no image data" in result["reason"]
+    assert not (media_root / "assets").exists()
+
+
+def test_gemini_snake_case_inline_data_parsed(media_root, db_stub, monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    _capture_posts(monkeypatch, lambda url, kw: FakeResp(
+        payload=_gemini_payload(data=JPEG, mime="image/jpeg", camel=False)))
+
+    result = assets.generate_image_gemini("a photo")
+
+    assert result["status"] == config.STATUS_VERIFIED
+    digest = hashlib.sha256(JPEG).hexdigest()
+    assert (media_root / "assets" / f"{digest}.jpg").is_file()
+    assert result["files"][0]["mime"] == "image/jpeg"
+
+
+def test_gemini_missing_key_is_blocked(media_root, db_stub, monkeypatch):
+    result = assets.generate_image_gemini("anything")
+    assert result["status"] == config.STATUS_BLOCKED
+    assert result["provider"] == "gemini"
+    assert result["blocked_reason"] == "no gemini key"
+
+
+def test_image_capability_reports_configured_providers(monkeypatch):
+    monkeypatch.setattr(assets, "resolve_gemini_key", lambda: "gkey")
+    monkeypatch.setattr(assets, "resolve_openai_key", lambda: "okey")
+    monkeypatch.setattr(assets.db, "query_one", lambda *a, **k: {"n": 0})
+
+    cap = assets.image_capability()
+
+    assert cap["status"] == config.STATUS_PARTIALLY_VERIFIED
+    assert cap["provider"] == "gemini"
+    assert cap["providers"] == {"gemini": True, "openai": True}
+
+
+def test_status_asset_gen_verified_when_image_exists(monkeypatch):
+    from core.media_factory import status as status_mod
+
+    monkeypatch.setattr(assets, "image_asset_count", lambda: 1)
+    monkeypatch.setattr(assets, "generation_capability", lambda: {
+        "status": config.STATUS_VERIFIED,
+        "ffmpeg": True, "ffprobe": True,
+        "blocked_reason": config.BLOCKED_ASSET_GEN,
+        "image": {"status": config.STATUS_VERIFIED, "provider": "gemini",
+                  "model": config.DEFAULT_GEMINI_IMAGE_MODEL,
+                  "providers": {"gemini": True, "openai": False},
+                  "detail": "x", "blocked_reason": config.BLOCKED_ASSET_VIDEO},
+    })
+
+    cap = status_mod.asset_gen_capability()
+
+    assert cap.status == config.STATUS_VERIFIED
+    assert "1 image asset(s)" in cap.detail
+    assert cap.evidence["provider"] == "gemini"
+
+
+def test_status_asset_gen_partial_when_provider_configured(monkeypatch):
+    from core.media_factory import status as status_mod
+
+    monkeypatch.setattr(assets, "image_asset_count", lambda: 0)
+    monkeypatch.setattr(assets, "generation_capability", lambda: {
+        "status": config.STATUS_PARTIALLY_VERIFIED,
+        "ffmpeg": True, "ffprobe": True,
+        "blocked_reason": config.BLOCKED_ASSET_GEN,
+        "image": {"status": config.STATUS_PARTIALLY_VERIFIED, "provider": "gemini",
+                  "model": config.DEFAULT_GEMINI_IMAGE_MODEL,
+                  "providers": {"gemini": True, "openai": False},
+                  "detail": "image provider configured (gemini); no image generated yet",
+                  "blocked_reason": config.BLOCKED_ASSET_VIDEO},
+    })
+
+    cap = status_mod.asset_gen_capability()
+
+    assert cap.status == config.STATUS_PARTIALLY_VERIFIED
+    assert "gemini" in cap.detail
+    assert cap.verified is False

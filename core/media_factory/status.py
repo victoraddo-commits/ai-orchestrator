@@ -29,6 +29,41 @@ def _probe_trends(force: bool = False) -> tuple[bool, str]:
     return ok, detail
 
 
+def asset_gen_capability() -> Capability:
+    """asset_gen is VERIFIED only once a hashed image asset exists.
+
+    Otherwise it reports PARTIALLY_VERIFIED when a provider is configured, or
+    BLOCKED when none is — always with the concrete provider reason.
+    """
+    from core.media_factory import assets
+
+    gen = assets.generation_capability()
+    img = gen["image"]
+    produced = assets.image_asset_count()
+    if produced > 0:
+        status = config.STATUS_VERIFIED
+        detail = (f"{produced} image asset(s) generated via "
+                  f"{img.get('provider')}/{img.get('model')}")
+    elif img.get("providers") and any(img["providers"].values()):
+        status = config.STATUS_PARTIALLY_VERIFIED
+        detail = img["detail"]
+    else:
+        status = config.STATUS_BLOCKED
+        detail = img["detail"]
+    return Capability(
+        "asset_gen", status, detail,
+        blocked_reason=img["blocked_reason"],
+        evidence={
+            "provider": img.get("provider"),
+            "providers": img.get("providers"),
+            "model": img.get("model"),
+            "images_produced": produced,
+            "ffmpeg": gen["ffmpeg"],
+            "ffprobe": gen["ffprobe"],
+        },
+        verified=status == config.STATUS_VERIFIED)
+
+
 def capabilities(probe_network: bool = True) -> dict:
     from core.media_factory import assets, content
 
@@ -82,19 +117,7 @@ def capabilities(probe_network: bool = True) -> dict:
         verified=False)
 
     # Assets / production — images are real; video stays blocked.
-    gen = assets.generation_capability()
-    img = gen["image"]
-    caps["asset_gen"] = Capability(
-        "asset_gen", img["status"], img["detail"],
-        blocked_reason=img["blocked_reason"],
-        evidence={
-            "provider": img.get("provider"),
-            "model": img.get("model"),
-            "images_produced": img.get("images_produced"),
-            "ffmpeg": gen["ffmpeg"],
-            "ffprobe": gen["ffprobe"],
-        },
-        verified=img["status"] == config.STATUS_VERIFIED)
+    caps["asset_gen"] = asset_gen_capability()
     caps["voice_audio"] = Capability(
         "voice_audio", config.STATUS_BLOCKED, "no TTS/voice model",
         blocked_reason=config.BLOCKED_VOICE, verified=False)

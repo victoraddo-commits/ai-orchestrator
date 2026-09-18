@@ -964,7 +964,6 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <div class="sidebar-section-label">Management</div>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
-      <a class="nav-item" href="#money" data-hash="money"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span class="label">Money</span></a>
       <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-4 12.7V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.3A7 7 0 0 0 12 2z"/><line x1="10" y1="21" x2="14" y2="21"/></svg></span><span class="label">Arbitra</span></a>
       <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
       <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
@@ -1113,7 +1112,6 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <section class="panel" id="panel-enhancements"><div id="enhancements-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-factory"><div id="factory-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-evolution"><div id="evolution-content"><span class="loading">loading…</span></div></section>
-      <section class="panel" id="panel-money"><div id="money-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-arbitra"><div id="arbitra-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-bet"><div id="bet-content"><span class="loading">loading…</span></div></section>
 
@@ -1323,7 +1321,7 @@ const S = {
 };
 const SK = 'kai_command_session_v3';
 const PANEL_TITLES = {
-  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', money:'money', arbitra:'Arbitra', bet:'KAI Bet',
+  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', arbitra:'Arbitra', bet:'KAI Bet',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
   'kai-chat':'Kai Chat', devices:'Devices', talent:'Talent', android:'Android', docs:'Documents', hubtel:'Hubtel',
@@ -1513,7 +1511,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,money:loadMoney,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory};
   if(fns[name])fns[name]();
 }
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
@@ -2145,144 +2143,6 @@ async function loadWorkforce(){
   catch(e){$('ai-workforce-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// PANEL: MONEY (ME-13) — read-only executive view of the ecosystem
-// ═══════════════════════════════════════════════════════════════════
-function moneyCard(label, value, sub){
-  return `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${value}</div>${sub?`<div class="stat-sub">${esc(sub)}</div>`:''}</div>`;
-}
-async function loadMoney(){
-  try{
-    const d=await api('/api/command-center/money');
-    let html='';
-    // Treasury headline — honest errors surfaced per section (§54)
-    const tr=d.treasury&&!d.treasury.error?d.treasury:null;
-    if(tr){
-      html+='<div class="grid-stats">';
-      html+=moneyCard('Total Ecosystem Capital','$'+Number(tr.total_ecosystem_capital??0).toLocaleString());
-      html+=moneyCard('Available for Allocation','$'+Number(tr.available_for_allocation??0).toLocaleString());
-      html+=moneyCard('Deployed in Operations','$'+Number(tr.deployed_in_operations??0).toLocaleString());
-      html+='</div>';
-    } else {
-      html+=`<p class="empty">Treasury unavailable${d.treasury&&d.treasury.error?': '+esc(JSON.stringify(d.treasury.error)):''}</p>`;
-    }
-    // KAI position
-    const kp=d.kai_position&&!d.kai_position.error?d.kai_position:null;
-    if(kp){
-      html+='<h3>KAI Position</h3><div class="grid-stats">';
-      html+=moneyCard('KAI Accrued (paper)','$'+Number(kp.total_accrued??0).toLocaleString(),'share of op P&L, not cash');
-      html+=moneyCard('Distributed Cash','$'+Number(kp.total_distributed_cash??0).toLocaleString(),'actually paid out');
-      html+='</div>';
-    }
-    // KAI account (ME-Ultimate C) — KAI's own treasury
-    const ka=d.kai_account&&!d.kai_account.error&&d.kai_account.exists?d.kai_account:null;
-    if(ka){
-      html+='<h3>KAI Account</h3><div class="grid-stats">';
-      html+=moneyCard('KAI Balance','$'+Number(ka.balance??0).toLocaleString(),'$'+Number(ka.earned_balance??0).toLocaleString()+' earned');
-      html+='</div>';
-      const trs=ka.profit_transfers||[];
-      if(trs.length){
-        html+='<table class="data-table"><thead><tr><th>When</th><th>From</th><th>Amount</th><th>Reason</th></tr></thead><tbody>';
-        for(const t of trs.slice(0,5)){
-          html+=`<tr><td>${esc(String(t.ts||'').slice(0,16).replace('T',' '))}</td><td>${esc(t.from_treasury)}</td><td>$${Number(t.amount).toLocaleString()}</td><td>${esc((t.reason||'').slice(0,50))}</td></tr>`;
-        }
-        html+='</tbody></table>';
-      }
-    }
-    // Operations table
-    const ops=Array.isArray(d.operations)?d.operations:[];
-    if(ops.length){
-      html+='<h3>Operations</h3><table class="data-table"><thead><tr><th>Operation</th><th>Status</th><th>Mode</th></tr></thead><tbody>';
-      for(const o of ops){
-        html+=`<tr><td>${esc(o.name||o.slug)}</td><td>${esc(o.status||'—')}</td><td>${esc(o.mode||'—')}</td></tr>`;
-      }
-      html+='</tbody></table>';
-    }
-    // KAI audit reports (ME-Ultimate D)
-    const ka2=d.kai_audit&&!d.kai_audit.error?d.kai_audit:[];
-    if(Array.isArray(ka2)&&ka2.length){
-      html+='<h3>KAI Profit Audits</h3><table class="data-table"><thead><tr><th>When</th><th>Scope</th><th>Net</th><th>Anomalies</th><th>Summary</th></tr></thead><tbody>';
-      for(const r of ka2.slice(0,5)){
-        html+=`<tr><td>${esc(String(r.ts||r.day||'').slice(0,16).replace('T',' '))}</td><td>${esc(r.scope||'all')}</td><td>$${Number(r.total_net??0).toLocaleString()}</td><td>${r.anomalies?'⚠ '+r.anomalies:'✓'}</td><td>${esc((r.summary||'').slice(0,60))}</td></tr>`;
-      }
-      html+='</tbody></table>';
-    }
-    // Open risk events
-    const risk=d.risk_events&&(Array.isArray(d.risk_events)?d.risk_events:d.risk_events.events)||[];
-    if(risk.length){
-      html+='<h3>Open Risk Events</h3><ul>';
-      for(const r of risk.slice(0,8)){
-        html+=`<li>[${esc(r.severity||'?')}] ${esc(r.kind||r.description||'risk event')}</li>`;
-      }
-      html+='</ul>';
-    }
-    // Recent decisions
-    const dec=Array.isArray(d.decisions)?d.decisions:(d.decisions&&d.decisions.decisions)||[];
-    if(dec.length){
-      html+='<h3>Recent Decisions</h3><table class="data-table"><thead><tr><th>When</th><th>Operation</th><th>Decision</th><th>Reason</th></tr></thead><tbody>';
-      for(const x of dec.slice(0,10)){
-        html+=`<tr><td>${esc((x.created_at||'').slice(0,16).replace('T',' '))}</td><td>${esc(x.operation_slug||'')}</td><td>${esc(x.decision||'')}</td><td>${esc((x.reason||'').slice(0,80))}</td></tr>`;
-      }
-      html+='</tbody></table>';
-    }
-    // Arbitra — economic OS (read + write via /cc/arbitra)
-    html+='<div class="card" style="margin-top:12px"><h3>Arbitra &mdash; Economic OS <span class="badge info">/cc/arbitra</span></h3>';
-    html+='<div class="action-row" style="flex-wrap:wrap;gap:6px"><button class="btn btn-xs btn-accent" onclick="arbView(\'status\')">Status</button><button class="btn btn-xs" onclick="arbView(\'opportunities\')">Opportunities</button><button class="btn btn-xs" onclick="arbView(\'ventures\')">Ventures</button><button class="btn btn-xs" onclick="arbView(\'portfolio\')">Portfolio</button><button class="btn btn-xs" onclick="arbView(\'performance\')">Performance</button><button class="btn btn-xs" onclick="arbView(\'capital\')">Capital</button><button class="btn btn-xs" onclick="arbView(\'recommendations\')">Recommendations</button></div>';
-    html+='<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><input type="text" id="arb-title" placeholder="opportunity title" class="search-input" style="max-width:200px"><input type="number" id="arb-profit" placeholder="expected net profit" class="search-input" style="max-width:170px"><input type="number" id="arb-capital" placeholder="capital required" class="search-input" style="max-width:150px"><input type="number" id="arb-conf" step="0.05" placeholder="confidence 0-1" class="search-input" style="max-width:130px"><button class="btn btn-xs btn-accent" onclick="arbCreateOpp()">Add Opportunity</button></div>';
-    html+='<div id="arb-results" style="margin-top:10px;max-height:360px;overflow:auto"></div></div>';
-    // Balances + transfers (money-center, operator-gated)
-    html+='<div class="card" style="margin-top:12px"><h3>Balances &amp; Transfers <span class="badge info">money-center</span></h3>'
-      +'<div id="mt-balances"><span class="loading">loading…</span></div>'
-      +'<h4 style="font-size:0.7rem;margin-top:8px">Register withdrawal destination</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
-      +'<input id="mt-label" class="search-input" placeholder="label" style="max-width:130px">'
-      +'<input id="mt-chain" class="search-input" placeholder="chain (eth/btc/trc20)" style="max-width:180px">'
-      +'<input id="mt-addr" class="search-input" placeholder="address" style="max-width:300px">'
-      +'<button class="btn btn-xs btn-accent" onclick="mtAddWallet()">Register</button></div>'
-      +'<div class="muted" style="font-size:0.6rem;margin-top:4px">write-once, disable-only. Register before transferring.</div>'
-      +'<h4 style="font-size:0.7rem;margin-top:8px">Transfer from balance</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
-      +'<input id="mt-from" class="search-input" placeholder="from treasury (master)" style="max-width:180px" value="master">'
-      +'<input id="mt-amount" type="number" class="search-input" placeholder="amount" style="max-width:110px">'
-      +'<input id="mt-wallet" type="number" class="search-input" placeholder="wallet id" style="max-width:110px">'
-      +'<input id="mt-dest" class="search-input" placeholder="or dest address" style="max-width:240px">'
-      +'<button class="btn btn-xs btn-warn" onclick="mtTransfer()">Request transfer</button></div>'
-      +'<div class="muted" style="font-size:0.6rem;margin-top:4px">Operator-gated. Kai never signs or auto-sends.</div>'
-      +'<div id="mt-msg" class="muted" style="font-size:0.62rem;margin-top:6px"></div>'
-      +'<div id="mt-payouts" style="margin-top:8px"></div></div>';
-    $('money-content').innerHTML=html||'<p class="empty">No money data available yet</p>';
-    mtLoad();
-  }
-  catch(e){$('money-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
-}
-
-async function mtLoad(){
-  const b=$('mt-balances'), p=$('mt-payouts');
-  const metric=(l,v)=>'<div class="metric"><span class="val">'+esc('$'+Number(v||0).toLocaleString())+'</span><span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(l)+'</span></div>';
-  try{const t=await api('/api/money/treasury');
-    if(b) b.innerHTML='<div class="metric-row">'+metric('master',(t.master||{}).balance)+metric('available',t.available_for_allocation)+metric('deployed',t.deployed_in_operations)+'</div>';
-  }catch(e){ if(b) b.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
-  try{const w=await api('/api/money/wallets');
-    const rows=(w.wallets||[]).map(x=>'<tr><td>'+esc(x.id)+'</td><td>'+esc(x.label)+'</td><td>'+esc(x.chain)+'</td><td>'+esc(x.address)+'</td></tr>').join('');
-    if(p) p.innerHTML='<div class="muted" style="font-size:0.62rem">Destinations</div>'+arbTbl(['id','label','chain','address'],rows);
-  }catch(e){ if(p) p.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
-}
-async function mtAddWallet(){
-  const label=($('mt-label')||{}).value, chain=($('mt-chain')||{}).value, address=($('mt-addr')||{}).value;
-  if(!label||!chain||!address){toast('label, chain, address required','err');return;}
-  try{await api('/api/money/wallets',{method:'POST',body:JSON.stringify({label:label,chain:chain,address:address})});toast('wallet registered');mtLoad();}
-  catch(e){toast('error: '+e.message,'err');}
-}
-async function mtTransfer(){
-  const from=($('mt-from')||{}).value||'master';
-  const amount=Number(($('mt-amount')||{}).value);
-  const body={from_treasury:from,amount:amount};
-  const wid=($('mt-wallet')||{}).value; if(wid) body.wallet_id=Number(wid);
-  const dest=($('mt-dest')||{}).value; if(dest) body.dest_address=dest;
-  if(!(amount>0)){toast('amount required','err');return;}
-  if(!confirm('Request transfer of '+amount+' from '+from+'? (operator-gated payout request)'))return;
-  const msg=$('mt-msg');
-  try{const d=await api('/api/money/payouts',{method:'POST',body:JSON.stringify(body)});if(msg)msg.textContent='request: '+JSON.stringify(d).slice(0,200);toast('transfer requested');mtLoad();}
-  catch(e){ if(msg) msg.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
-}
 async function toggleProvider(name, enable){
   try{
     const d=await api(`/providers/${name}/toggle`,{method:'PUT',body:JSON.stringify({enabled:enable})});

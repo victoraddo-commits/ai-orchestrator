@@ -2954,58 +2954,6 @@ def _fmt_duration(seconds):
     return f"{s}s"
 
 
-# ME-13: read-only money ecosystem view for the Command Center. Proxies
-# Money Center's own endpoints with a dedicated viewer token (read-only by
-# construction — every write guard in money-center checks role 'user'/'kai').
-# No secret values are ever returned; the token lives server-side only.
-_MONEY_CENTER_URL = os.environ.get("MONEY_CENTER_URL", "http://192.168.1.118:8095")
-_MONEY_VIEWER_TOKEN_FILE = os.environ.get(
-    "MONEY_VIEWER_TOKEN_FILE", "/root/.credentials/money-viewer-token"
-)
-
-
-def _money_viewer_token() -> str | None:
-    try:
-        tok = Path(_MONEY_VIEWER_TOKEN_FILE).read_text(encoding="utf-8").strip()
-        return tok or None
-    except OSError:
-        return None
-
-
-@app.get("/api/command-center/money")
-def command_center_money():
-    """ME-13: consolidated READ-ONLY money ecosystem payload for the CC panel."""
-    import requests as _rq
-
-    tok = _money_viewer_token()
-    if not tok:
-        raise HTTPException(status_code=503, detail="money viewer token not provisioned")
-    headers = {"authorization": f"Bearer {tok}"}
-    out: dict = {}
-    for key, path in (
-        ("treasury", "/treasury/summary"),
-        ("operations", "/operations"),
-        ("kai_position", "/kai/position"),
-        ("kai_account", "/kai/account"),
-        ("kai_audit", "/kai/audit/reports"),
-        ("risk_events", "/risk/events?status=open&limit=20"),
-        ("decisions", "/decisions?limit=15"),
-    ):
-        try:
-            r = _rq.get(f"{_MONEY_CENTER_URL}{path}", headers=headers, timeout=8)
-            out[key] = r.json() if r.ok else {"error": r.status_code}
-        except Exception as exc:
-            # §54 honesty: an unreachable section is reported, never fabricated.
-            out[key] = {"error": str(exc)[:120]}
-    # Notifications — recent operational alerts from local notify store.
-    try:
-        from core.notify_endpoint import get_recent_notifications
-        out["notifications"] = {"notifications": get_recent_notifications(limit=10)}
-    except Exception as exc:
-        out["notifications"] = {"error": str(exc)[:120]}
-    return out
-
-
 @app.get("/command-center/summary")
 def command_center_summary():
     """13G: Fetches all data for the Kai Command Center dashboard."""

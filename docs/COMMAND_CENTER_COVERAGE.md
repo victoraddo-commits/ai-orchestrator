@@ -49,7 +49,6 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 | `evolution` | Evolution | loadEvolution | /kai/evolution |
 | `wireguard` | WireGuard | loadWireguard | **NEW 2026-09-16** · /api/wg/status, /api/wg/raw |
 | `directory` | Service Directory | loadDirectory | /api/directory/services, /api/directory/conformance |
-| `media` | Media Factory | loadMedia | **NEW 2026-09-18** · /api/media/{status,dashboard,trends,content,production,publishing,analytics,revenue,experiments,strategy,rights,workers} |
 
 ## Fixes 2026-09-16
 

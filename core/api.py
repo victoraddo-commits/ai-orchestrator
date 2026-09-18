@@ -4344,16 +4344,6 @@ except Exception as _v_exc:
     _lv.getLogger(__name__).warning('vault broker unavailable: %s', _v_exc)
 
 
-# KAI Media Revenue Factory — native subsystem API (§57)
-try:
-    from core.media_factory.routes import router as _media_router, install as _media_install
-    app.include_router(_media_router)
-    _media_install(app)
-except Exception as _media_exc:
-    import logging as _lm
-    _lm.getLogger(__name__).warning('media factory unavailable: %s', _media_exc)
-
-
 # ── Backup & Disaster Recovery (roadmap 27E) ───────────────────────
 
 @app.get("/api/backups")

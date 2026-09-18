@@ -23,7 +23,7 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 | `docker` | Docker | loadDocker | /api/docker |
 | `telegram` | Telegram | loadTelegram | /kai/telegram* |
 | `airdrop` | Airdrop | loadAirdrop | /kai/airdrop* |
-| `infrastructure` | Infra | loadInfra | /kai/infra* |
+| `infrastructure` | Infra | loadInfra | /kai/infra*, /api/infra/usage |
 | `security` | Security | loadSecurity | /kai/security* |
 | `settings` | Settings | loadSettings | /kai/settings, /auth/status |
 | `logs` | Logs | loadLogs | /kai/logs |
@@ -125,8 +125,25 @@ cards, resource utilization, routing chains, provider management, overrides.
 | Missions (`missions`) | `/api/missions`, `/api/missions/{id}`; active/history, task graph, verification checks, artifacts, checkpoints |
 | Model Fabric (`models`) | `/api/models/catalog`, `/api/fabric/summary`, `/providers`, `/providers/chains`, `/providers/config` |
 | Security (`security`) | `/api/security/overview`, `/auth/status`, `/kai/vault/metadata`; AgentGuard, RBAC, policy, vault, events, logins |
-| Infrastructure (`infrastructure`) | `/proxmox/registry`, `/api/docker/containers`, `/api/directory/services`, `/api/fabric/summary`, `/network/*`, `/api/vpn/status` |
+| Infrastructure (`infrastructure`) | `/proxmox/registry`, `/api/docker/containers`, `/api/directory/services`, `/api/fabric/summary`, `/network/*`, `/api/vpn/status`, `/api/infra/usage` |
 | Communication (`telegram`, `approvals`) | `/kai/telegram*`, `/approvals`, `/api/telegram/webapp-auth` |
+
+### Data Usage panel (2026-09-18)
+
+`Infrastructure` now includes a full-width **Data Usage** card rendered by
+`loadInfraUsage()` from `GET /api/infra/usage` (`core/cc_extra_routes.py`).
+It shows per-host/CT/VM disk **used/total/%** (with usage bars), network
+**rx/tx totals**, and **byte/s rates** derived from successive samples.
+
+Collector: `core/infra_usage.py` — one bounded SSH call to Proxmox B runs host
+`df -P -B1` + `/proc/net/dev`, `pct list`/`qm list`, fans out `pct exec <id> df
+/proc/net/dev` to every running CT **in parallel**, and hops to Proxmox C via
+the node (`100.116.165.100`). Units are pure functions (`parse_df`,
+`parse_netdev`, `compute_rates`, `build_usage`) with fixture tests in
+`tests/test_infra_usage.py`. Results are cached (TTL 8s) and refreshed in a
+background thread; `?refresh=1` does a synchronous refresh (Refresh button).
+Mounts `/mnt/wd`, `/mnt/evo`, `/mnt/vm104-nvme`, `/mnt/kai-c` plus the new
+`/mnt/sandisk128` are surfaced automatically from the host `df`.
 
 ### New/extended endpoints
 
@@ -134,6 +151,7 @@ cards, resource utilization, routing chains, provider management, overrides.
 - `POST /api/models/{model_id}/test` — live fabric test call (operator session / bridge token)
 - `GET  /api/fabric/summary` — models/providers/health/routing/utilization
 - `GET  /api/security/overview` — AgentGuard/permissions/policy/vault/events
+- `GET  /api/infra/usage[?refresh=1]` — disk + network usage per host/CT/VM, with byte/s rates
 - `POST /api/workforce/teammates/{id}/retire` — operator retirement
 
 ### Responsive

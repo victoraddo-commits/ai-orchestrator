@@ -1176,6 +1176,13 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <!-- INFRASTRUCTURE -->
       <section class="panel" id="panel-infrastructure">
         <div class="grid">
+          <div class="card" style="grid-column:1/-1">
+            <div class="spread" style="margin-bottom:10px">
+              <h3 style="margin-bottom:0">Data Usage <span class="badge info" id="infra-usage-at">—</span></h3>
+              <button class="btn btn-xs" onclick="loadInfraUsage(true)">Refresh</button>
+            </div>
+            <div id="infra-usage"><span class="loading">loading…</span></div>
+          </div>
           <div class="card"><h3>Network Topology</h3><div id="infra-network"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Proxmox Nodes</h3><div id="infra-proxmox"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Proxmox Inventory (VMs / CTs / storage)</h3><div id="infra-registry"><span class="loading">loading…</span></div></div>
@@ -1385,6 +1392,11 @@ const PANEL_TITLES = {
 
 const $=id=>document.getElementById(id);
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};
+// Byte / rate formatters for the Data Usage panel (decimal units, mono-friendly).
+const fmtBytes=n=>{if(n==null||n==='')return '—';n=Number(n);if(!isFinite(n))return '—';
+  if(n>=1e12)return (n/1e12).toFixed(2)+' TB';if(n>=1e9)return (n/1e9).toFixed(2)+' GB';
+  if(n>=1e6)return (n/1e6).toFixed(1)+' MB';if(n>=1e3)return (n/1e3).toFixed(1)+' KB';return n+' B';};
+const fmtRate=n=>(n==null?'—':fmtBytes(n)+'/s');
 
 // ── Toast ─────────────────────────────────────────────────────────
 function toast(msg, type='ok') {
@@ -2870,8 +2882,9 @@ async function airdropBroadcast(){
 // PANEL: INFRA
 // ═══════════════════════════════════════════════════════════════════
 async function loadInfra(){
-  // ── Network Topology (independent, fire-and-forget) ───────────────
+  // ── Network Topology + Data Usage (independent, fire-and-forget) ───
   loadNetworkTopology();
+  loadInfraUsage();
   // Each source updates its own card independently and always leaves
   // the card in a terminal state (data, empty, or error) — never stuck.
   apiT('/proxmox/registry', 9000).then(function(reg){
@@ -3007,6 +3020,75 @@ async function loadNetworkTopology(){
   } catch(e){
     el.innerHTML = `<span class="error-text">${esc(e.message)}</span>`;
   }
+}
+
+// ── Data Usage: disk + network per host/CT/VM with rates ─────────────
+async function loadInfraUsage(force){
+  const el=$('infra-usage'); if(!el) return;
+  el.innerHTML='<span class="loading">collecting from PVE-B/PVE-C (may take a few seconds)…</span>';
+  const diskBar=pct=>{
+    const p=Math.max(0,Math.min(100,Number(pct)||0));
+    const col=p>=90?'var(--destructive)':p>=75?'var(--warn)':'var(--accent)';
+    return '<div class="progress-bar" style="min-width:60px"><div class="progress-fill" style="width:'+p+'%;background:'+col+'"></div></div>'
+      +'<span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(pct==null?'—':pct+'%')+'</span>';
+  };
+  try{
+    const d=await apiT('/api/infra/usage'+(force?'?refresh=1':''), 25000);
+    if(!(d.hosts||[]).length){ el.innerHTML='<span class="error-text">'+esc(d.error||'no data')+'</span>'; return; }
+    const t=d.totals||{};
+    let html='<div class="metric-row">'
+      +'<div class="metric"><span class="val">'+esc(fmtBytes(t.disk_used))+'</span><span class="lbl">Disk used</span></div>'
+      +'<div class="metric"><span class="val">'+esc(fmtBytes(t.disk_total))+'</span><span class="lbl">Disk total</span></div>'
+      +'<div class="metric"><span class="val'+(t.disk_pct>=85?' warn':'')+'">'+esc(t.disk_pct==null?'—':t.disk_pct+'%')+'</span><span class="lbl">Estate used</span></div>'
+      +'<div class="metric"><span class="val info">'+esc(fmtBytes(t.rx_total))+'</span><span class="lbl">Net RX</span></div>'
+      +'<div class="metric"><span class="val info">'+esc(fmtBytes(t.tx_total))+'</span><span class="lbl">Net TX</span></div>'
+      +'<div class="metric"><span class="val">'+esc(fmtRate(t.rx_rate))+'</span><span class="lbl">RX rate</span></div>'
+      +'<div class="metric"><span class="val">'+esc(fmtRate(t.tx_rate))+'</span><span class="lbl">TX rate</span></div>'
+      +'</div>';
+    html+='<div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:8px">Sampled '
+      +esc(d.generated_at||'—')+(d.interval_s?' · Δ'+Number(d.interval_s).toFixed(1)+'s':'')+' · rates from successive samples</div>';
+    for(const h of (d.hosts||[])){
+      html+='<div class="card" style="margin-bottom:10px;background:var(--bg-deep)">'
+        +'<div class="spread" style="margin-bottom:6px">'
+        +'<span style="font-weight:600;font-size:0.72rem;font-family:var(--font-mono)">'+esc(h.name)
+        +' <span style="color:var(--fg-muted)">'+esc(h.host)+'</span></span>'
+        +'<span class="badge '+(h.reachable?'ok':'bad')+'">'+(h.reachable?'up':'unreachable')+'</span></div>';
+      if(!h.reachable){ html+='<p class="empty">'+esc(h.error||'unreachable')+'</p></div>'; continue; }
+      html+='<div style="font-size:0.64rem;font-family:var(--font-mono);color:var(--fg-secondary);margin-bottom:6px">'
+        +'net rx '+esc(fmtBytes(h.net.rx_total))+' ('+esc(fmtRate(h.net.rx_rate))+') · tx '
+        +esc(fmtBytes(h.net.tx_total))+' ('+esc(fmtRate(h.net.tx_rate))+')</div>';
+      html+='<div class="table-wrap"><table><thead><tr><th>Mount</th><th>Filesystem</th><th>Used / Total</th><th>Usage</th></tr></thead><tbody>';
+      for(const disk of (h.disks||[])){
+        html+='<tr><td>'+esc(disk.mount)+'</td><td style="font-size:0.6rem">'+esc(disk.filesystem)+'</td>'
+          +'<td>'+esc(fmtBytes(disk.used))+' / '+esc(fmtBytes(disk.total))+'</td>'
+          +'<td>'+diskBar(disk.pct)+'</td></tr>';
+      }
+      html+='</tbody></table></div>';
+      const cts=h.containers||[];
+      if(cts.length){
+        html+='<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>CT</th><th>Name</th><th>Disk</th><th>Usage</th><th>RX</th><th>TX</th></tr></thead><tbody>';
+        for(const ct of cts){ const dk=ct.disk||{};
+          html+='<tr><td>'+esc(ct.vmid)+'</td><td>'+esc(ct.name)+'</td>'
+            +'<td>'+esc(fmtBytes(dk.used))+' / '+esc(fmtBytes(dk.total))+'</td>'
+            +'<td>'+diskBar(dk.pct)+'</td>'
+            +'<td>'+esc(fmtBytes(ct.net.rx_total))+'</td><td>'+esc(fmtBytes(ct.net.tx_total))+'</td></tr>';
+        }
+        html+='</tbody></table></div>';
+      }
+      const vms=h.vms||[];
+      if(vms.length){
+        html+='<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>VM</th><th>Name</th><th>Status</th><th>Memory</th><th>Boot disk</th></tr></thead><tbody>';
+        for(const vm of vms){ html+='<tr><td>'+esc(vm.vmid)+'</td><td>'+esc(vm.name)+'</td>'
+          +'<td><span class="badge '+(vm.status==='running'?'ok':'bad')+'">'+esc(vm.status)+'</span></td>'
+          +'<td>'+esc(vm.mem_mb)+' MB</td><td>'+esc(vm.bootdisk_gb)+' GB</td></tr>'; }
+        html+='</tbody></table></div>';
+      }
+      html+='</div>';
+    }
+    if(d.interval_s==null) html+='<p class="empty">First sample — byte/s rates appear on the next refresh.</p>';
+    el.innerHTML=html;
+    if($('infra-usage-at')) $('infra-usage-at').textContent=d.generated_at?String(d.generated_at).replace('T',' ').replace('Z',''):'—';
+  }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
 }
 
 // ═══════════════════════════════════════════════════════════════════

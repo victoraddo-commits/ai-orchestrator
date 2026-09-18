@@ -49,6 +49,19 @@ def network_overview():
     }
 
 
+@cc_extra_router.get("/api/infra/usage")
+def infra_usage(refresh: bool = False):
+    """Per-host/CT/VM data usage: disk used/total/% and network rx/tx + rates."""
+    from core.infra_usage import collect_usage
+    try:
+        return JSONResponse(content=collect_usage(force=refresh),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(
+            {"error": f"{type(e).__name__}: {e}", "hosts": [], "mounts": [], "totals": {}},
+            status_code=502)
+
+
 @cc_extra_router.get("/api/wg/status")
 def wg_status():
     """Live WireGuard peer status for the Kai exit node (kaidash on CT103),

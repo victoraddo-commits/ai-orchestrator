@@ -984,6 +984,23 @@ def route_inbound_reply(message, pending_builds=None):
             return {"routed": True, "action": "betting_command",
                     "reply": f"Betting command error: {_bet_exc}"}
 
+    # KAI 2.0 §53: explicit slash commands (control + team/module commands)
+    # route through the Command Bus so AgentGuard authorizes + audits them.
+    # The Telegram Module identity gate above and the operator-chat filter in
+    # poll_updates are the transport-level auth; the bus is the policy layer.
+    if _money_text.startswith("/"):
+        try:
+            from core.kai_control_commands import handle_control_command
+            _ctrl_reply = handle_control_command(
+                _money_text, via_bus=True, source="telegram",
+                user=_operator_name(message.get("from") or {}))
+            if _ctrl_reply is not None:
+                return {"routed": True, "action": "control_command",
+                        "reply": _ctrl_reply}
+        except Exception as _ctrl_exc:
+            return {"routed": True, "action": "control_command",
+                    "reply": f"Command error: {_ctrl_exc}"}
+
     if pending_builds is None:
         replied_build = _build_from_reply_to(message)
         if replied_build is not None:

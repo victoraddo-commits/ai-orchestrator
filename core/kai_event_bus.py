@@ -166,6 +166,8 @@ class KAIEventBus:
                 severity == CRITICAL
                 or topic.startswith("remediation.")
                 or topic.startswith("recovery.")
+                or topic.startswith("mission.recovered")
+                or topic.startswith("mission.failed")
                 or topic.startswith("service.down")
             )
         envelope["journal"] = journal

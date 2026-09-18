@@ -85,7 +85,15 @@ class Team:
 
     # -- public API ---------------------------------------------------------
     def execute(self, task_runner: Callable,
-                tasks: Optional[list] = None) -> list[TaskResult]:
+                tasks: Optional[list] = None,
+                task_runner_for: Optional[Callable] = None) -> list[TaskResult]:
+        """Run ``tasks`` across the team.
+
+        ``task_runner_for`` is an optional ``(teammate, skill_id) -> runner``
+        factory that lets a caller swap the worker (e.g. a replacement
+        teammate) without rebuilding the team. When omitted the single
+        ``task_runner`` is used for every task.
+        """
         if tasks is None:
             tasks = list(getattr(self.plan, "required_skills", []) or [])
         tasks = list(tasks)
@@ -96,11 +104,17 @@ class Team:
         sequential = [s for s in (getattr(self.plan, "sequential", []) or [])
                       if s in task_set]
 
+        def _runner_for(skill_id: str) -> Callable:
+            if task_runner_for is None:
+                return task_runner
+            mate = self._member_for(skill_id)
+            return task_runner_for(mate, skill_id)
+
         results: dict[str, TaskResult] = {}
 
         if parallel:
             with ThreadPoolExecutor(max_workers=len(parallel)) as pool:
-                futures = {pool.submit(self._run_one, task_runner, s): s
+                futures = {pool.submit(self._run_one, _runner_for(s), s): s
                            for s in parallel}
                 for fut in as_completed(futures):
                     result = fut.result()
@@ -122,13 +136,13 @@ class Team:
                     "blocked_by": failed,
                 })
                 continue
-            result = self._run_one(task_runner, sid)
+            result = self._run_one(_runner_for(sid), sid)
             results[sid] = result
             self._emit_progress(result)
 
         for sid in tasks:
             if sid not in results:
-                result = self._run_one(task_runner, sid)
+                result = self._run_one(_runner_for(sid), sid)
                 results[sid] = result
                 self._emit_progress(result)
 

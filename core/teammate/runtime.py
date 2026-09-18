@@ -195,14 +195,22 @@ class TeammateRuntime:
         """The real runner: one prompt to one provider via ai_router.delegate."""
         from core.ai import ai_router
         task_type = getattr(_CTX, "task_type", None)
-        return ai_router.delegate(
-            instruction,
-            task_type=task_type,
-            timeout=int(timeout),
-            project_path=project_path,
-            provider=provider,
-            return_attempts=True,
-        )
+        try:
+            return ai_router.delegate(
+                instruction,
+                task_type=task_type,
+                timeout=int(timeout),
+                project_path=project_path,
+                provider=provider,
+                return_attempts=True,
+            )
+        except Exception as exc:
+            # Model failure on one provider: the dispatcher walks the
+            # fabric's chain to a compatible model. Record the substitution
+            # so the mission can emit a recovery event (directive §49).
+            _CTX.model_failover = (provider, getattr(_CTX, "skill_id", ""),
+                                   f"{type(exc).__name__}: {exc}"[:200])
+            raise
 
     # ── skills / teammates ──────────────────────────────────────────────────
     def role_skills(self, role: str) -> list[str]:
@@ -270,6 +278,8 @@ class TeammateRuntime:
         prompt = instruction or self._instruction_for(teammate, skill_id, mission_objective)
         plan = self._resolve_plan(getattr(teammate, "id", ""), skill_id, self.skills)
         _CTX.task_type = getattr(plan, "task_type", None)
+        _CTX.skill_id = skill_id
+        _CTX.model_failover = None
 
         def _fn(_ctx):
             return self.dispatcher.dispatch(
@@ -283,16 +293,41 @@ class TeammateRuntime:
         safe_details = (f"skill={skill_id} "
                         f"teammate={getattr(teammate, 'id', '')} "
                         f"action={getattr(action, 'value', action)}")
-        return self.guard.execute(
+        result = self.guard.execute(
             teammate, skill_id, action,
             resource=skill_id, details=safe_details, fn=_fn,
             mate_registry=self.registry,
         )
+        failover = getattr(_CTX, "model_failover", None)
+        if failover is not None:
+            provider, failed_skill, error = failover
+            cb = getattr(_CTX, "on_failover", None)
+            if callable(cb):
+                try:
+                    cb(skill_id, provider, error)
+                except Exception:
+                    pass
+            if self.bus is not None:
+                try:
+                    self.bus.publish("teammate.model_failover", {
+                        "mission_id": getattr(_CTX, "mission_id", None),
+                        "skill_id": failed_skill or skill_id,
+                        "teammate_id": getattr(teammate, "id", ""),
+                        "from_model": provider,
+                        "error": error,
+                    }, source="teammate_runtime")
+                except Exception:
+                    pass
+        return result
 
     def team_task_runner(self, mission_objective: str,
-                         project_path: Optional[str] = None) -> Callable:
+                         project_path: Optional[str] = None,
+                         mission_id: Optional[str] = None,
+                         on_failover: Optional[Callable] = None) -> Callable:
         """Return a ``task_runner(teammate, skill_id)`` bound to a mission."""
         def _runner(teammate, skill_id):
+            _CTX.mission_id = mission_id
+            _CTX.on_failover = on_failover
             return self.task_runner(teammate, skill_id,
                                     mission_objective=mission_objective,
                                     project_path=project_path)

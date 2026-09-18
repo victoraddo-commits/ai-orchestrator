@@ -21,7 +21,7 @@ import threading
 import uuid
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from core.memory import load as _load, save as _save
 
@@ -71,6 +71,10 @@ class WorkforceEngine:
         if model_verify is None:
             model_verify = os.environ.get("KAI_TEAM_MODEL_VERIFY", "") == "1"
         self.model_verify = bool(model_verify)
+        # Recovery caps (§26/§48): bounded retries on the same worker, then a
+        # bounded number of attempts on the replacement teammate.
+        self.max_task_retries = int(os.environ.get("KAI_MISSION_TASK_RETRIES", "2"))
+        self.max_attempts = int(os.environ.get("KAI_MISSION_MAX_ATTEMPTS", "2"))
         self._lock = _lock_store()
 
     # ── teammates ───────────────────────────────────────────────────────────
@@ -261,6 +265,7 @@ class WorkforceEngine:
                 "output": None,
                 "error": "",
                 "verification": None,
+                "recovery": [],
             })
 
         mission = {
@@ -319,6 +324,104 @@ class WorkforceEngine:
                 m["updated_at"] = _now()
                 self._put_mission(m)
 
+    # ── recovery loop (§26 / §48 / §49) ─────────────────────────────────────
+    def _emit(self, topic: str, payload: dict) -> None:
+        if self.runtime.bus is None:
+            return
+        try:
+            self.runtime.bus.publish(topic, payload, source="workforce_engine")
+        except Exception:
+            logger.debug("event publish failed for %s", topic, exc_info=True)
+
+    @staticmethod
+    def _classify_failure(error: str) -> str:
+        """Map a task error string to a recovery failure class.
+
+        Reuses the classes declared in :mod:`core.teammate.recovery`
+        (ACTION_BY_CLASS) rather than inventing a parallel taxonomy.
+        """
+        text = (error or "").lower()
+        if any(k in text for k in ("all providers failed", "no available provider",
+                                   "provider", "model", "quota", "circuit",
+                                   "not available", "disabled")):
+            return "model_failure"
+        if any(k in text for k in ("worker", "unavailable", "vanished",
+                                   "gone", "offline", "dead")):
+            return "worker_unavailable"
+        if any(k in text for k in ("resource", "memory", "cpu", "exhaust",
+                                   "timeout", "timed out")):
+            return "resource_exhaustion"
+        if any(k in text for k in ("security", "unauthorized", "forbidden",
+                                   "guarddenied", "capabilit")):
+            return "security_violation"
+        return "tool_failure"
+
+    def _replacement_member(self, failed_member: Any, skill_id: str,
+                            members: list) -> Any:
+        """Create/reuse a healthy replacement teammate for ``skill_id``.
+
+        The replacement keeps the same specialization/skills so the mission's
+        logical worker identity survives; only the physical teammate is new.
+        Falls back to any existing healthy member that can run the skill.
+        """
+        spec = getattr(failed_member, "specialization", None)
+        skill = self.runtime.skills.get(skill_id)
+        caps = list((skill.required_capabilities if skill else None) or
+                    getattr(failed_member, "capabilities", []) or [])
+        try:
+            result = self.runtime.factory.create_from_requirement(
+                {"specialization": spec,
+                 "required_skills": [skill_id],
+                 "capabilities": caps,
+                 "name": f"{spec or 'worker'}-replacement"},
+                mission_id=None,
+            )
+            mate = result.teammate
+            if mate is not None and getattr(mate, "id", None) != getattr(failed_member, "id", None):
+                members.append(mate)
+                return mate
+        except Exception as exc:  # a replacement is best-effort; fall back
+            logger.warning("replacement teammate creation failed: %s", exc)
+
+        # Fall back to an existing healthy member capable of the skill.
+        for m in members:
+            if getattr(m, "id", None) == getattr(failed_member, "id", None):
+                continue
+            if skill_id in (getattr(m, "skills", None) or []) and \
+                    getattr(m, "health", "HEALTHY") == "HEALTHY":
+                return m
+        return failed_member
+
+    def _retry_task(self, mission: dict, task: dict, members: list,
+                    runner: Callable, attempts_left: int) -> bool:
+        """Retry ``task`` in place up to ``attempts_left`` times.
+
+        Returns True when the task completes. Each attempt is recorded on the
+        task so the mission keeps an auditable recovery trail.
+        """
+        for n in range(attempts_left):
+            mate = next((m for m in members
+                         if getattr(m, "id", None) == task.get("teammate_id")), None)
+            if mate is None:
+                mate = next((m for m in members
+                             if task["skill_id"] in (getattr(m, "skills", None) or [])),
+                            members[0] if members else None)
+            try:
+                output = runner(mate, task["skill_id"])
+            except Exception as exc:  # retryable — record and try again
+                task.setdefault("recovery", []).append(
+                    {"action": "retry", "attempt": n + 1,
+                     "error": f"{type(exc).__name__}: {exc}"})
+                task["error"] = f"{type(exc).__name__}: {exc}"
+                self._put_mission(mission)
+                continue
+            task["status"] = "COMPLETED"
+            task["output"] = _truncate(output)
+            task["error"] = ""
+            task["teammate_id"] = getattr(mate, "id", task.get("teammate_id"))
+            return True
+        return False
+
     def _run_mission(self, mission: dict, members: list, plan: Any,
                      project_path: Optional[str]) -> None:
         from core.teammate.execution import Team
@@ -332,11 +435,22 @@ class WorkforceEngine:
             mission["error"] = "no teammates available for mission"
             mission["updated_at"] = _now()
             self._put_mission(mission)
+            self._emit("mission.failed", {
+                "mission_id": mission["id"], "status": "FAILED",
+                "diagnosis": mission["error"]})
             return
 
         team = Team(mission_id=mission["id"], members=members, plan=plan,
                     bus=self.runtime.bus, skill_registry=self.runtime.skills)
-        runner = self.runtime.team_task_runner(mission["goal"], project_path=project_path)
+        failovers: list = []
+
+        def _on_failover(skill_id, provider, error):
+            failovers.append({"skill_id": skill_id, "from_model": provider,
+                              "error": error})
+
+        runner = self.runtime.team_task_runner(
+            mission["goal"], project_path=project_path,
+            mission_id=mission["id"], on_failover=_on_failover)
         results = team.execute(runner, tasks=[t["skill_id"] for t in mission["tasks"]])
 
         by_skill = {r.skill_id: r for r in results}
@@ -348,6 +462,48 @@ class WorkforceEngine:
             task["teammate_id"] = r.teammate_id or task.get("teammate_id")
             task["output"] = _truncate(r.output)
             task["error"] = r.error
+        self._put_mission(mission)
+
+        # Recover each failed task: bounded retry → replacement teammate →
+        # (for a model failure) a compatible model chosen by the fabric.
+        recovered_any = False
+        for task in mission["tasks"]:
+            if task["status"] != "FAILED":
+                continue
+            failure_class = self._classify_failure(task.get("error", ""))
+            task["failure_class"] = failure_class
+            task.setdefault("recovery", [])
+
+            if self._retry_task(mission, task, members, runner,
+                                self.max_task_retries):
+                recovered_any = True
+                task["recovered_by"] = "retry"
+                self._put_mission(mission)
+                continue
+
+            failed_member = next(
+                (m for m in members
+                 if getattr(m, "id", None) == task.get("teammate_id")), None)
+            replacement = self._replacement_member(
+                failed_member, task["skill_id"], members)
+            task["replaced_teammate_id"] = getattr(replacement, "id", None)
+            task["recovery"].append(
+                {"action": "replace_teammate",
+                 "failure_class": failure_class,
+                 "from": getattr(failed_member, "id", None),
+                 "to": getattr(replacement, "id", None)})
+
+            repl_runner = self.runtime.team_task_runner(
+                mission["goal"], project_path=project_path,
+                mission_id=mission["id"], on_failover=_on_failover)
+            if self._retry_task(mission, task, [replacement], repl_runner,
+                                self.max_attempts):
+                recovered_any = True
+                task["recovered_by"] = "replace_teammate"
+            else:
+                task["status"] = "FAILED"
+                task["error"] = task.get("error") or "recovery exhausted"
+            self._put_mission(mission)
 
         mission["verification"] = self.verify_mission(mission, members)
         all_ok = all(t["status"] == "COMPLETED" for t in mission["tasks"])
@@ -356,13 +512,47 @@ class WorkforceEngine:
             "FAILED" if not all_ok else "COMPLETED_UNVERIFIED")
         mission["updated_at"] = _now()
         self._put_mission(mission)
-        if self.runtime.bus is not None:
-            try:
-                self.runtime.bus.publish("mission.completed", {
-                    "mission_id": mission["id"], "status": mission["status"],
-                    "verified": verified}, source="workforce_engine")
-            except Exception:
-                pass
+
+        if failovers:
+            for f in failovers:
+                for t in mission["tasks"]:
+                    if t["skill_id"] == f["skill_id"]:
+                        t.setdefault("recovery", []).append(
+                            {"action": "replace_model",
+                             "from_model": f["from_model"],
+                             "error": f["error"],
+                             "failure_class": "model_failure"})
+                        t["recovered_by"] = t.get("recovered_by") or "replace_model"
+            self._put_mission(mission)
+
+        if recovered_any or failovers:
+            recovered = sorted({
+                *(t["skill_id"] for t in mission["tasks"] if t.get("recovered_by")),
+                *(f["skill_id"] for f in failovers),
+            })
+            self._emit("mission.recovered", {
+                "mission_id": mission["id"],
+                "status": mission["status"],
+                "recovered": recovered,
+                "tasks": recovered,
+                "model_failovers": failovers,
+                "verified": verified})
+        if mission["status"] == "FAILED":
+            diagnoses = [
+                {"skill_id": t["skill_id"],
+                 "failure_class": t.get("failure_class", ""),
+                 "error": t.get("error", ""),
+                 "recovery": t.get("recovery", [])}
+                for t in mission["tasks"] if t["status"] != "COMPLETED"]
+            mission["diagnosis"] = diagnoses
+            self._put_mission(mission)
+            self._emit("mission.failed", {
+                "mission_id": mission["id"], "status": "FAILED",
+                "diagnosis": diagnoses})
+        else:
+            self._emit("mission.completed", {
+                "mission_id": mission["id"], "status": mission["status"],
+                "verified": verified})
 
     # ── verification ────────────────────────────────────────────────────────
     def verify_mission(self, mission: dict, members: list) -> dict:

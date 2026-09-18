@@ -19,5 +19,17 @@
  {"id":"freellmapi","name":"freellmapi","display_name":"FreeLLMAPI","ip":"192.168.1.34","port":3001,"category":"ai"},
  {"id":"opencode-serve","name":"opencode","display_name":"OpenCode Serve","ip":"192.168.1.34","port":4096,"category":"ai"},
  {"id":"opencode-inbox","name":"inbox","display_name":"OpenCode Inbox","ip":"192.168.1.34","port":8333,"category":"ai"},
- {"id":"susu","name":"susu","display_name":"SUSU Dashboard","ip":"192.168.1.168","port":8050,"category":"finances"}
+ {"id":"susu","name":"susu","display_name":"SUSU Dashboard","ip":"192.168.1.168","port":8050,"category":"finances"},
+ {"id":"media-factory","name":"media-factory","display_name":"KAI Media Revenue Factory","ip":"192.168.1.111","port":8000,"category":"media","tags":"media,factory,revenue,control-plane","health_url":"http://192.168.1.111:8000/health"},
+ {"id":"media-overview","name":"media-overview","display_name":"Media Factory — Overview","category":"media","tags":"media,command-center,overview","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-trends","name":"media-trends","display_name":"Media Factory — Trends","category":"media","tags":"media,command-center,trends","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-content","name":"media-content","display_name":"Media Factory — Content","category":"media","tags":"media,command-center,content","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-production","name":"media-production","display_name":"Media Factory — Production","category":"media","tags":"media,command-center,production","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-publishing","name":"media-publishing","display_name":"Media Factory — Publishing","category":"media","tags":"media,command-center,publishing","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-analytics","name":"media-analytics","display_name":"Media Factory — Analytics","category":"media","tags":"media,command-center,analytics","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-revenue","name":"media-revenue","display_name":"Media Factory — Revenue","category":"media","tags":"media,command-center,revenue","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-experiments","name":"media-experiments","display_name":"Media Factory — Experiments","category":"media","tags":"media,command-center,experiments","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-strategy","name":"media-strategy","display_name":"Media Factory — Strategy","category":"media","tags":"media,command-center,strategy","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-rights","name":"media-rights","display_name":"Media Factory — Rights","category":"media","tags":"media,command-center,rights","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"},
+ {"id":"media-workers","name":"media-workers","display_name":"Media Factory — Workers","category":"media","tags":"media,command-center,workers","internal_url":"https://command.tail82a9ca.ts.net/#media","target_url":"https://command.tail82a9ca.ts.net/#media"}
 ]

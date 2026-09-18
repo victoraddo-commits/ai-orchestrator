@@ -357,7 +357,10 @@ def fabric_summary():
 def _require_model_operator(
         x_kai_session: str | None = Header(default=None),
         authorization: str | None = Header(default=None)) -> str:
-    """Accept a bridge token or a session with delegate.use."""
+    """Accept a bridge token or a session with delegate.use.
+
+    Returns a safe label — never the raw session token.
+    """
     import hmac
     from core import authz
     from core.bridge_auth import BRIDGE_OPERATOR, _load_api_token
@@ -366,7 +369,7 @@ def _require_model_operator(
             authorization.encode(), f"Bearer {_load_api_token()}".encode()):
         return BRIDGE_OPERATOR
     if x_kai_session and authz.check_capability(x_kai_session, "delegate.use"):
-        return x_kai_session
+        return "operator"
     raise HTTPException(status_code=401, detail="Missing or invalid credentials")
 
 

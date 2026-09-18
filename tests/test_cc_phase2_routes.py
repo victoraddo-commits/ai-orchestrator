@@ -149,3 +149,20 @@ def test_catalog_cache_serves_stale_without_recompute(monkeypatch):
     second = m.collect_catalog()
     assert first["models"] == second["models"]
     assert calls["n"] == 1
+
+
+def test_model_operator_returns_label_not_session_token(monkeypatch):
+    """The dependency must never echo the raw session token back."""
+    import core.cc_phase2_routes as m
+    from core import authz
+
+    monkeypatch.setattr(authz, "check_capability", lambda tok, cap: True)
+    assert m._require_model_operator(x_kai_session="SECRET-TOKEN", authorization=None) == "operator"
+
+
+def test_model_operator_accepts_bridge_token(monkeypatch):
+    import core.cc_phase2_routes as m
+    import core.bridge_auth as ba
+
+    monkeypatch.setattr(ba, "_load_api_token", lambda: "abc123")
+    assert m._require_model_operator(authorization="Bearer abc123") == ba.BRIDGE_OPERATOR

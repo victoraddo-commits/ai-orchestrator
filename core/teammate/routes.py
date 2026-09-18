@@ -52,12 +52,16 @@ def get_engine() -> WorkforceEngine:
 
 def _require_operator(authorization: str | None = Header(default=None),
                       x_kai_session: str | None = Header(default=None)) -> str:
-    """Operator gate: bridge token (operator) or a session with delegate.use."""
+    """Operator gate: bridge token (operator) or a session with delegate.use.
+
+    Returns a safe role label — never the raw session token — so responses
+    cannot echo credentials back to the caller.
+    """
     expected = f"Bearer {_load_api_token()}"
     if authorization and hmac.compare_digest(authorization.encode(), expected.encode()):
         return BRIDGE_OPERATOR
     if x_kai_session and authz.check_capability(x_kai_session, "delegate.use"):
-        return x_kai_session
+        return "operator"
     raise HTTPException(status_code=401, detail="Missing or invalid credentials")
 
 

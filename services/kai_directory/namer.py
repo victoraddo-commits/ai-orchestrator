@@ -47,7 +47,7 @@ def policy_block(records: list[Record]) -> str:
 
 def serve_commands(records: list[Record], node: str) -> list[str]:
     return [
-        f"tailscale serve --bg --service=svc:{r.name} {r.target_url}"
+        f"tailscale serve --service=svc:{r.name} --https=443 {r.target_url}"
         for r in records
-        if r.proxy_node == node and r.target_url
+        if r.proxy_node == node and r.target_url and r.tailnet_name
     ]

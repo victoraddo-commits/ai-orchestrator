@@ -30,10 +30,10 @@ def test_policy_block_shape():
 
 
 def test_serve_commands_shape():
-    recs = [Record(id="money", name="money", target_url="http://192.168.1.118:8095",
-                   proxy_node="proxmox-b")]
+    recs = [Record(id="money", name="money", tailnet_name=f"money.{SUFFIX}",
+                   target_url="http://192.168.1.118:8095", proxy_node="proxmox-b")]
     cmds = serve_commands(recs, node="proxmox-b")
-    assert cmds and cmds[0] == "tailscale serve --bg --service=svc:money http://192.168.1.118:8095"
+    assert cmds and cmds[0] == "tailscale serve --service=svc:money --https=443 http://192.168.1.118:8095"
 
 
 def test_proxy_node_for():

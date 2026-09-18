@@ -139,7 +139,8 @@ def capabilities(probe_network: bool = True) -> dict:
         "universe/character/episode/canon memory tables", verified=True)
     caps["media_worker"] = Capability(
         "media_worker", config.STATUS_PARTIALLY_VERIFIED,
-        "run_media_cycle() callable; not yet registered with the scheduler",
+        "run_media_cycle() called by the scheduler each 60s; self-throttled, "
+        "failure-isolated; no live cycle outcomes verified yet",
         verified=False)
 
     # If the DB is down every ledger-backed capability degrades too.

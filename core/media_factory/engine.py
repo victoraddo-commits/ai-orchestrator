@@ -46,12 +46,15 @@ def run_cycle(
     stages: dict[str, dict] = {}
 
     if not config.media_enabled():
-        return {
+        summary = {
             "cycle_id": cycle_id,
             "status": config.STATUS_UNVERIFIED,
             "detail": "MEDIA_ENABLED=false; cycle skipped",
             "stages": {},
         }
+        _notify("warn", "Media cycle skipped",
+                "MEDIA_ENABLED=false; no media cycle ran")
+        return summary
 
     from core.media_factory import (
         analytics, assets, content, opportunities, patterns, publishing,
@@ -123,7 +126,41 @@ def run_cycle(
     db.record_event("cycle", overall, cycle_id=cycle_id, detail=summary)
     db.audit("cycle.completed", payload={"cycle_id": cycle_id, "status": overall,
                                          "stages": {k: v["status"] for k, v in stages.items()}})
+    _notify_cycle(summary)
     return summary
+
+
+def _notify(severity: str, title: str, message: str) -> None:
+    """Emit a notification without ever raising into the cycle."""
+    try:
+        from core.media_factory import notify
+
+        notify.emit(severity, title, message)
+    except Exception as exc:  # noqa: BLE001 - notifications are best-effort
+        logger.debug("media notify skipped (%s)", type(exc).__name__)
+
+
+def _notify_cycle(summary: dict) -> None:
+    overall = summary.get("status")
+    severity = "info" if overall in (config.STATUS_VERIFIED,
+                                     config.STATUS_PARTIALLY_VERIFIED) else "warn"
+    if overall == config.STATUS_FAILED:
+        severity = "critical"
+    stages = summary.get("stages", {})
+    _notify(severity, f"Media cycle {overall}",
+            f"cycle {summary.get('cycle_id')}: " + ", ".join(
+                f"{name}={result.get('status')}" for name, result in stages.items()))
+
+    publishing = stages.get("publishing", {})
+    if publishing.get("status") in (config.STATUS_BLOCKED, config.STATUS_FAILED):
+        _notify("warn", "Media publish blocked",
+                publishing.get("blocked_reason") or "publishing is blocked")
+
+    intelligence = stages.get("intelligence", {})
+    pattern_ids = (intelligence.get("data") or {}).get("pattern_ids") or []
+    if pattern_ids:
+        _notify("info", "New media pattern learned",
+                f"{len(pattern_ids)} pattern(s) created from validated trends")
 
 
 # ── Stage implementations ──────────────────────────────────────────────────

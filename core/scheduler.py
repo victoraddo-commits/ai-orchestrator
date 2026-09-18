@@ -183,6 +183,15 @@ def start():
             except Exception:
                 pass
 
+            # Media Revenue Factory — self-throttled cycle. run_media_cycle()
+            # enforces MEDIA_CYCLE_MIN_INTERVAL internally and never raises, but
+            # guard the import/call anyway so it can never break the main cycle.
+            try:
+                from core.media_factory.worker import run_media_cycle
+                run_media_cycle()
+            except Exception:
+                pass
+
             findings = len(
                 result.get("findings", [])
             )

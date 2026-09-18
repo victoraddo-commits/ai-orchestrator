@@ -17,6 +17,10 @@ from core.media_factory import config, engine
 
 logger = logging.getLogger(__name__)
 
+# True once the scheduler wires run_media_cycle() into its 60s cycle
+# (see core/scheduler.py). Surfaced honestly by GET /api/media/workers.
+SCHEDULER_REGISTERED = True
+
 _lock = threading.Lock()
 _last_run_memory = 0.0
 

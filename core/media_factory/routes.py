@@ -21,6 +21,7 @@ from core.media_factory import (
     content as content_mod,
     db,
     experiments as experiments_mod,
+    notify,
     opportunities as opportunities_mod,
     patterns as patterns_mod,
     publishing as publishing_mod,
@@ -29,6 +30,7 @@ from core.media_factory import (
     status as status_mod,
     strategy as strategy_mod,
     trends as trends_mod,
+    worker as worker_mod,
 )
 
 logger = logging.getLogger(__name__)
@@ -343,6 +345,8 @@ def create_experiment(payload: ExperimentCreateRequest,
         metric=payload.metric, variant_a=payload.variant_a, variant_b=payload.variant_b)
     db.audit("api.experiment.create", entity_type="experiment",
              entity_id=row.get("id"), actor=operator, payload={"key": payload.key})
+    notify.emit("info", "Media experiment created",
+                f"{payload.key} metric={payload.metric}")
     return _one(row)
 
 
@@ -401,7 +405,7 @@ def list_workers(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge
     return {
         "data": rows,
         "media_worker": {"callable": "core.media_factory.worker.run_media_cycle",
-                         "scheduler_registered": False},
+                         "scheduler_registered": worker_mod.SCHEDULER_REGISTERED},
         "limit": limit, "offset": offset,
     }
 

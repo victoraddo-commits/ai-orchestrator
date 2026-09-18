@@ -82,6 +82,7 @@ class SubscriptionManager:
                 phone_number=phone_number,
                 payment_method=payment_method,
                 plan_key=plan_key,
+                email=user["email"] or "",
             )
 
             return payment_result

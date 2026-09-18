@@ -19,21 +19,35 @@ logger = logging.getLogger(__name__)
 
 
 class BettingPaymentClient:
-    """Handles subscription payments via Hubtel mobile money.
+    """Handles subscription payments.
 
-    Falls back to simulated/test mode when Hubtel credentials are not set —
-    this is the standard Kai pattern for all payments.
+    Default processor is Hubtel mobile money (legacy behaviour). Set
+    ``PAYMENT_PROVIDER=paystack`` to route through the reusable
+    :class:`core.payments.paystack.PaystackProvider` instead. If Paystack is
+    selected but not configured, the client falls back to the existing Hubtel
+    simulated/live behaviour so subscriptions never hard-fail.
+
+    Falls back to simulated/test mode when the selected provider's credentials
+    are not set — this is the standard Kai pattern for all payments.
     """
 
     def __init__(self):
         self._client_id = os.environ.get("HUBTEL_CLIENT_ID")
         self._client_secret = os.environ.get("HUBTEL_CLIENT_SECRET")
         self._merchant_number = os.environ.get("HUBTEL_MERCHANT_NUMBER")
+        self._provider_name = (
+            os.environ.get("PAYMENT_PROVIDER", "hubtel") or "hubtel"
+        ).strip().lower()
         self._test_mode = (
             os.environ.get("HUBTEL_TEST_MODE", "true").lower() == "true"
             or not self._is_configured()
         )
         self._base_url = "https://api.hubtel.com/v1"
+
+    @property
+    def provider_name(self) -> str:
+        """The configured processor: 'hubtel' (default) or 'paystack'."""
+        return self._provider_name
 
     def _is_configured(self) -> bool:
         """Check if Hubtel credentials are available."""
@@ -51,20 +65,39 @@ class BettingPaymentClient:
         phone_number: str = "",
         payment_method: str = "mobile_money",
         plan_key: str = "",
+        email: str = "",
     ) -> Dict[str, Any]:
-        """Initiate a mobile money payment request.
+        """Initiate a payment request.
 
         Args:
             user_id: Database user ID
-            amount: Amount to charge
+            amount: Amount to charge (major units, e.g. GHS)
             currency: Currency code (default GHS)
             phone_number: Mobile money phone number
             payment_method: 'mobile_money', 'card', etc.
             plan_key: Subscription plan key being purchased
+            email: Customer email (required by Paystack)
 
         Returns:
             Dict with transaction_id, status, checkout_url (if applicable)
         """
+        if self._provider_name == "paystack":
+            try:
+                return self._paystack_payment(
+                    user_id=user_id,
+                    amount=amount,
+                    currency=currency,
+                    phone_number=phone_number,
+                    payment_method=payment_method,
+                    plan_key=plan_key,
+                    email=email,
+                )
+            except Exception as exc:  # config/transport — preserve Hubtel fallback
+                logger.warning(
+                    "paystack processor unavailable (%s: %s) — falling back to hubtel",
+                    type(exc).__name__, exc,
+                )
+
         transaction_id = f"KBT-{uuid.uuid4().hex[:12].upper()}"
 
         if self._test_mode:
@@ -86,8 +119,81 @@ class BettingPaymentClient:
             "transaction_id": transaction_id,
         }
 
+    def _paystack_payment(
+        self,
+        user_id: int,
+        amount: float,
+        currency: str,
+        phone_number: str,
+        payment_method: str,
+        plan_key: str,
+        email: str = "",
+    ) -> Dict[str, Any]:
+        """Route a subscription purchase through the Paystack provider."""
+        from core.payments.paystack import PaystackProvider
+
+        customer_email = email or self._user_email(user_id)
+        if not customer_email:
+            raise ValueError(f"no email available for user {user_id}")
+
+        transaction_id = f"KBT-{uuid.uuid4().hex[:12].upper()}"
+        channels = None
+        if payment_method == "mobile_money":
+            channels = ["mobile_money"]
+        elif payment_method == "card":
+            channels = ["card"]
+
+        provider = PaystackProvider()
+        result = provider.initialize(
+            amount=provider.to_minor_units(amount),
+            currency=currency,
+            email=customer_email,
+            reference=transaction_id,
+            channels=channels,
+            metadata={
+                "module": "kai_betting",
+                "plan_key": plan_key,
+                "user_id": user_id,
+                "phone_number": phone_number,
+            },
+        )
+        checkout_url = result.get("authorization_url", "")
+        logger.info(
+            "paystack subscription payment initialized: %s (%s %s) for %s",
+            transaction_id, currency, amount, plan_key,
+        )
+        return {
+            "success": bool(checkout_url),
+            "transaction_id": transaction_id,
+            "reference": transaction_id,
+            "provider": "paystack",
+            "status": "processing",
+            "checkout_url": checkout_url,
+            "authorization_url": checkout_url,
+            "mode": result.get("mode", "test"),
+            "test_mode": result.get("mode", "test") != "live",
+        }
+
+    def _user_email(self, user_id: int) -> str:
+        """Best-effort lookup of a betting user's email for Paystack."""
+        try:
+            with get_db() as db:
+                row = db.execute(
+                    "SELECT email FROM users WHERE id = ?", (user_id,)
+                ).fetchone()
+            return (row["email"] if row and row["email"] else "") or ""
+        except Exception:
+            return ""
+
     def verify_payment(self, transaction_id: str) -> Dict[str, Any]:
         """Verify a payment's status."""
+        if self._provider_name == "paystack":
+            try:
+                from core.payments.paystack import PaystackProvider
+
+                return PaystackProvider().verify(transaction_id)
+            except Exception as exc:
+                logger.warning("paystack verify unavailable: %s", exc)
         if self._test_mode:
             return self._simulate_verify(transaction_id)
 

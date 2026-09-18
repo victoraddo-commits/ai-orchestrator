@@ -6,7 +6,24 @@ across configured Proxmox nodes.
 """
 
 from datetime import datetime, timezone
+import socket
+import threading
+import time
+
 from core.proxmox_monitor import _get_node_configs, _api_get
+
+
+def _tcp_reachable(host, default_port: int = 8006, timeout: float = 5.0) -> bool:
+    """True if a TCP connection to ``host[:port]`` succeeds."""
+    if not host:
+        return False
+    h, _, p = str(host).partition(":")
+    port = int(p) if p else default_port
+    try:
+        with socket.create_connection((h, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 def discover_node_inventory(node):
@@ -20,6 +37,13 @@ def discover_node_inventory(node):
 
     node_info = _api_get(node, "nodes")
     if not node_info:
+        # A node can be UP while the API call fails (e.g. a stale API token
+        # returns 401). Never report a live node as "down": fall back to a TCP
+        # reachability probe and mark the guest inventory as unavailable.
+        if _tcp_reachable(node.get("host")):
+            inv["reachable"] = True
+            inv["api_unavailable"] = True
+            return inv
         inv["error"] = "unreachable"
         return inv
     inv["reachable"] = True
@@ -95,7 +119,23 @@ def discover_all_inventory():
 
 
 def get_registry_summary():
-    """Summary for the dashboard."""
+    """Summary for the dashboard — served from a background-refreshed cache.
+
+    Full discovery can block for a long time when a Proxmox node's API is
+    unreachable (network timeouts). Returning the last snapshot immediately
+    and refreshing in a daemon thread keeps the Command Center responsive.
+    """
+    with _CACHE_LOCK:
+        data = _CACHE["data"]
+        stale = (time.time() - _CACHE["at"]) > _CACHE_TTL
+    if data is None or stale:
+        _start_refresh()
+    if data is None:
+        return _empty_summary()
+    return data
+
+
+def _build_summary():
     inv = discover_all_inventory()
     total_ct = sum(len(n.get("containers", [])) for n in inv)
     total_vm = sum(len(n.get("vms", [])) for n in inv)
@@ -111,4 +151,52 @@ def get_registry_summary():
         "vms": total_vm, "running_vms": running_vm,
         "storage_total_gb": round(total_disk_gb, 1), "storage_used_gb": round(used_disk_gb, 1),
         "inventory": inv,
+        "cached": True,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _empty_summary():
+    return {"nodes": 0, "reachable": 0, "containers": 0, "running_containers": 0,
+            "vms": 0, "running_vms": 0, "storage_total_gb": 0.0,
+            "storage_used_gb": 0.0, "inventory": [], "cached": False,
+            "discovering": True}
+
+
+_CACHE = {"data": None, "at": 0.0}
+_CACHE_LOCK = threading.Lock()
+_CACHE_TTL = 300.0
+_REFRESH_LOCK = threading.Lock()
+_REFRESHING = {"busy": False}
+
+
+def _refresh_cache():
+    try:
+        data = _build_summary()
+        with _CACHE_LOCK:
+            _CACHE["data"] = data
+            _CACHE["at"] = time.time()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _start_refresh():
+    with _REFRESH_LOCK:
+        if _REFRESHING["busy"]:
+            return
+        _REFRESHING["busy"] = True
+    def _run():
+        try:
+            _refresh_cache()
+        finally:
+            _REFRESHING["busy"] = False
+    threading.Thread(target=_run, daemon=True).start()
+
+
+# Pre-warm the inventory in the background at import so the first dashboard
+# request already has a snapshot (or at least does not block on discovery).
+# Skipped under pytest so the test suite never makes real network calls.
+import os as _os
+import sys as _sys
+if "pytest" not in _sys.modules and not _os.environ.get("PYTEST_CURRENT_TEST"):
+    _start_refresh()

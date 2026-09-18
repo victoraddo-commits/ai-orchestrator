@@ -15,6 +15,8 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from core.workforce.resource_governor import ResourceExhausted
+
 logger = logging.getLogger(__name__)
 
 SOURCE = "teammate_factory"
@@ -61,7 +63,7 @@ def _normalize_requirement(req: Any, mission_id: Optional[str]) -> dict:
 
 class Factory:
     def __init__(self, registry=None, integrator=None, bus=None,
-                 skill_registry=None) -> None:
+                 skill_registry=None, governor=None) -> None:
         if registry is None:
             from core.teammate.registry import TeammateRegistry
             registry = TeammateRegistry()
@@ -69,6 +71,16 @@ class Factory:
         self.integrator = integrator
         self.bus = bus
         self.skill_registry = skill_registry
+        self.governor = governor
+
+    def _governor(self):
+        if self.governor is not None:
+            return self.governor
+        try:
+            from core.workforce.resource_governor import governor
+            return governor
+        except Exception:  # pragma: no cover - governor is best-effort
+            return None
 
     # -- events -------------------------------------------------------------
     def _emit(self, topic: str, payload: dict) -> None:
@@ -114,6 +126,13 @@ class Factory:
         created = teammate is None
 
         if created:
+            # §18 resource governor: reuse was already attempted; refuse to
+            # grow the workforce past the configured cap.
+            gov = self._governor()
+            if gov is not None:
+                allowed, reason = gov.can_spawn(self.registry)
+                if not allowed:
+                    raise ResourceExhausted(reason)
             teammate = self.registry.create({
                 "name": spec["name"] or f"{spec['specialization']}-{uuid.uuid4().hex[:6]}",
                 "specialization": spec["specialization"],

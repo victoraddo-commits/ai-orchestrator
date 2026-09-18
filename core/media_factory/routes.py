@@ -411,8 +411,20 @@ def list_models(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=
     rows = _serialize(db.query(
         "SELECT * FROM models ORDER BY created_at DESC LIMIT %s OFFSET %s", (limit, offset)))
     available, detail = content_mod.model_available(timeout=4.0)
+    registry = None
+    try:
+        from core.model_registry import build_registry
+
+        reg = build_registry()
+        registry = {
+            "counts": reg.get("counts", {}),
+            "models": sorted(reg.get("models", {}).keys()),
+        }
+    except Exception as exc:  # noqa: BLE001 - registry is a read-only projection
+        logger.warning("model registry unavailable: %s", type(exc).__name__)
     return {"data": rows,
             "live": {"model": config.LLM_MODEL, "available": available, "detail": detail},
+            "registry": registry,
             "limit": limit, "offset": offset}
 
 

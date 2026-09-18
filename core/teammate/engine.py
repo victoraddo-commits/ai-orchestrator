@@ -102,18 +102,82 @@ class WorkforceEngine:
 
     # ── teams ───────────────────────────────────────────────────────────────
     def _plan_for(self, requirement: Any):
-        from core.teammate.planner import plan_team
+        from core.teammate.planner import (
+            SPECIALIST_CATALOG, _max_level, _partition, plan_team,
+        )
         plan = plan_team(requirement, self.runtime.skills)
         text = _mission_text(requirement).lower()
-        if any(k in text for k in _ENGINEERING_KEYWORDS):
-            specs = list(plan.specializations)
-            for spec in _ENGINEERING_TEAM:
-                if spec not in specs:
-                    specs.append(spec)
-            ordered = [s for s in _ENGINEERING_TEAM if s in specs]
-            ordered += [s for s in specs if s not in ordered]
-            plan = replace(plan, specializations=ordered)
-        return plan
+        if not any(k in text for k in _ENGINEERING_KEYWORDS):
+            return plan
+
+        specs = list(plan.specializations)
+        for spec in _ENGINEERING_TEAM:
+            if spec not in specs:
+                specs.append(spec)
+        ordered = [s for s in _ENGINEERING_TEAM if s in specs]
+        ordered += [s for s in specs if s not in ordered]
+
+        # Recompute the task set from the FULL team — plan_team only saw the
+        # matched specializations (e.g. coder for "build a feature"), so the
+        # augmented planner/qa/reviewer skills must be folded in explicitly.
+        skill_ids: list[str] = []
+        for spec in ordered:
+            for sid in (SPECIALIST_CATALOG.get(spec, {}).get("skills") or []):
+                if sid not in skill_ids and self.runtime.skills.get(sid) is not None:
+                    skill_ids.append(sid)
+        changed = True
+        while changed:
+            changed = False
+            for sid in list(skill_ids):
+                for dep in (self.runtime.skills.get(sid).dependencies or []):
+                    if dep not in skill_ids and self.runtime.skills.get(dep) is not None:
+                        skill_ids.append(dep)
+                        changed = True
+
+        skills = {sid: self.runtime.skills.get(sid) for sid in skill_ids}
+        tools: set = set()
+        perms: dict = {"secrets": set(), "network": set(), "filesystem": set()}
+        models: list[str] = []
+        verification: list[str] = []
+        levels: list[str] = [SPECIALIST_CATALOG.get(s, {}).get("risk_level", "low")
+                             for s in ordered]
+        for sid in skill_ids:
+            skill = skills[sid]
+            forbidden = set(skill.forbidden_tools or [])
+            tools.update(t for t in (skill.allowed_tools or []) if t not in forbidden)
+            rp = skill.required_permissions or {}
+            for bucket in ("secrets", "network", "filesystem"):
+                perms[bucket].update(rp.get(bucket, []) or [])
+            for role in (skill.model_requirements or {}).get("roles", []) or []:
+                if role not in models:
+                    models.append(role)
+            if skill.verification_method and skill.verification_method not in verification:
+                verification.append(skill.verification_method)
+            levels.append((skill.security_requirements or {}).get("level", "low"))
+
+        parallelizable, sequential = _partition(skills, skill_ids)
+        expertise = [SPECIALIST_CATALOG[s]["expertise"] for s in ordered
+                     if SPECIALIST_CATALOG.get(s, {}).get("expertise")]
+        return replace(
+            plan,
+            specializations=ordered,
+            required_expertise=expertise,
+            required_skills=skill_ids,
+            required_tools=sorted(tools),
+            required_permissions={k: sorted(v) for k, v in perms.items()},
+            required_models=models,
+            expected_workload={
+                "specialists": len(ordered),
+                "skills": len(skill_ids),
+                "estimated_timeout_s": (plan.expected_workload or {}).get(
+                    "estimated_timeout_s", 0),
+            },
+            parallelizable=parallelizable,
+            sequential=sequential,
+            verification_requirements=verification,
+            security_requirements={"level": _max_level(levels)},
+            risk_level=_max_level(levels),
+        )
 
     def form_team(self, requirement: Any, mission_id: Optional[str] = None,
                   plan: Any = None) -> dict:

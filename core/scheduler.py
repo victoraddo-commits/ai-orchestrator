@@ -21,7 +21,6 @@ from core.logger import info
 from core.workers.deepseek_pool import start_pool, stop_pool
 from core.workers.telegram_monitor import TelegramMonitor
 from core.network_discovery_cycle import run_network_discovery_cycle
-from core.money_cycle import run_money_cycle
 from core.provider_health_monitor import start_monitor as start_provider_health_monitor
 
 # Worker pool, Telegram monitor, Health Worker, and Provider Health Monitor — started on first cycle,
@@ -167,14 +166,6 @@ def start():
         heartbeat.start()
 
         try:
-
-            # PHASE 7 — autonomous money cycle (Arbitra). Runs before
-            # run_cycle() so it is independent of that cycle's success;
-            # self-throttling + fail-safe.
-            try:
-                run_money_cycle()
-            except Exception:
-                pass
 
             result = run_cycle()
 

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 TEAMS_STORE = "workforce_teams.json"
 MISSIONS_STORE = "factory_missions.json"
+GAPS_STORE = "capability_gaps.json"
 SCHEMA_VERSION = 1
 
 # Auto-retire (§39): a teammate with no activity for this long is retired by
@@ -329,8 +330,13 @@ class WorkforceEngine:
             raise ValueError("a requirement (or mission) is required")
         plan = plan or self._plan_for(requirement)
         team_id = f"team-{uuid.uuid4().hex[:10]}"
+        covered_before = self._covered_skills()
         members = self.runtime.linker.assign_team(mission_id or team_id, requirement, plan=plan)
-        return self._persist_team(team_id, text, mission_id, plan, members)
+        record = self._persist_team(team_id, text, mission_id, plan, members)
+        self._journal_plan_gap(plan, mission_id or team_id, text,
+                               [getattr(m, "id", None) for m in members],
+                               covered_before)
+        return record
 
     def _explicit_plan(self, skills: list, mission_id: str,
                        specialization: Optional[str]) -> Any:
@@ -360,10 +366,15 @@ class WorkforceEngine:
     def _explicit_team(self, goal: str, plan: Any,
                        mission_id: str) -> dict:
         spec = plan.specializations[0] if plan.specializations else "module_specialist"
+        covered_before = self._covered_skills()
         result = self.runtime.create_teammate(spec, skills=plan.required_skills)
         members = [result.teammate]
-        return self._persist_team(
+        record = self._persist_team(
             f"team-{uuid.uuid4().hex[:10]}", goal, mission_id, plan, members)
+        self._journal_plan_gap(plan, mission_id, goal,
+                               [getattr(result.teammate, "id", None)],
+                               covered_before, created=getattr(result, "created", None))
+        return record
 
     def list_teams(self) -> list[dict]:
         data = self._load_teams()
@@ -848,6 +859,155 @@ class WorkforceEngine:
         if status:
             rows = [m for m in rows if m.get("status") == status]
         return sorted(rows, key=lambda m: m.get("created_at", ""), reverse=True)
+
+    # ── capability gap loop (§31/§43) ───────────────────────────────────────
+    def _covered_skills(self) -> set:
+        """Skills offered by any non-retired, non-failed healthy teammate."""
+        covered: set = set()
+        for t in self.runtime.registry.list():
+            if getattr(t, "health", "HEALTHY") == "FAILED":
+                continue
+            if getattr(t, "status", "") == "RETIRED":
+                continue
+            covered.update(getattr(t, "skills", None) or [])
+        return covered
+
+    def _journal_capability_gap(self, *, mission_id: str, goal: str,
+                                missing: list, required: list,
+                                resolution: dict) -> dict:
+        entry = {
+            "gap_id": f"gap-{uuid.uuid4().hex[:10]}",
+            "mission_id": mission_id,
+            "goal": (goal or "")[:400],
+            "required_skills": sorted(required or []),
+            "missing_skills": sorted(missing or []),
+            "resolution": resolution or {},
+            "status": "resolved",
+            "at": _now(),
+        }
+
+        def _apply(data: dict) -> dict:
+            if not isinstance(data, dict) or not isinstance(data.get("gaps"), list):
+                data = {"schema_version": SCHEMA_VERSION, "gaps": []}
+            data["schema_version"] = SCHEMA_VERSION
+            data["gaps"].append(entry)
+            data["gaps"] = data["gaps"][-500:]
+            return data
+
+        with self._lock:
+            _update(GAPS_STORE, _apply)
+        self._emit("capability.gap.detected", {
+            "mission_id": mission_id,
+            "missing_skills": entry["missing_skills"],
+            "required_skills": entry["required_skills"]})
+        self._emit("capability.gap.resolved", {
+            "mission_id": mission_id,
+            "missing_skills": entry["missing_skills"],
+            "resolution": entry["resolution"]})
+        return entry
+
+    def _journal_plan_gap(self, plan: Any, mission_id: str, goal: str,
+                          member_ids: list, covered_before: set,
+                          created: Optional[bool] = None) -> Optional[dict]:
+        required = [s for s in (getattr(plan, "required_skills", []) or []) if s]
+        missing = [s for s in required if s not in covered_before]
+        if not missing:
+            return None
+        specs = list(getattr(plan, "specializations", []) or [])
+        resolution = {
+            "teammate_id": member_ids[0] if member_ids else None,
+            "teammate_ids": [m for m in member_ids if m],
+            "specialization": specs[0] if specs else None,
+        }
+        if created is not None:
+            resolution["created"] = bool(created)
+        return self._journal_capability_gap(
+            mission_id=mission_id, goal=goal, missing=missing,
+            required=required, resolution=resolution)
+
+    def list_capability_gaps(self, mission_id: Optional[str] = None) -> list[dict]:
+        raw = _load(GAPS_STORE)
+        gaps = raw.get("gaps") if isinstance(raw, dict) else None
+        rows = [g for g in (gaps or []) if isinstance(g, dict)]
+        if mission_id:
+            rows = [g for g in rows if g.get("mission_id") == mission_id]
+        return sorted(rows, key=lambda g: g.get("at", ""), reverse=True)
+
+    @staticmethod
+    def _specialization_for_skill(skill_id: str) -> str:
+        try:
+            from core.teammate.planner import SPECIALIST_CATALOG
+            for spec, entry in SPECIALIST_CATALOG.items():
+                if skill_id in (entry.get("skills") or []):
+                    return spec
+        except Exception:
+            pass
+        return "capability_specialist"
+
+    def scan_capability_gaps(self) -> list[dict]:
+        """Autonomous maintenance: fill mission tasks that lost their worker.
+
+        For every non-terminal mission, if a required skill has no healthy
+        teammate, create/reuse one through the runtime and re-point the task,
+        journaling the gap + resolution. Safe to call every cycle.
+        """
+        resolved: list[dict] = []
+        for mission in self.list_missions():
+            if mission.get("status") not in ("CREATED", "RUNNING", "FAILED"):
+                continue
+            changed = False
+            for task in mission.get("tasks", []) or []:
+                sid = task.get("skill_id")
+                if not sid:
+                    continue
+                assigned = (self.runtime.registry.get(task.get("teammate_id"))
+                            if task.get("teammate_id") else None)
+                if (assigned is not None and assigned.status != "RETIRED"
+                        and assigned.health == "HEALTHY"
+                        and sid in (assigned.skills or [])):
+                    continue  # worker is healthy and can still run this skill
+
+                # Reuse a healthy capable teammate (best performer first), or
+                # create one when the capability is genuinely absent.
+                replacement = self._best_capable_member(
+                    sid, self.runtime.registry.list())
+                created = False
+                spec = None
+                if replacement is None:
+                    spec = self._specialization_for_skill(sid)
+                    try:
+                        result = self.runtime.create_teammate(spec, skills=[sid])
+                    except Exception as exc:  # a gap fill is best-effort
+                        logger.warning("capability gap resolve failed for %s: %s",
+                                       sid, exc)
+                        continue
+                    replacement = result.teammate
+                    created = bool(getattr(result, "created", False))
+                if replacement is None:
+                    continue
+                mate_id = getattr(replacement, "id", None)
+                task["teammate_id"] = mate_id
+                task.setdefault("recovery", []).append(
+                    {"action": "capability_gap_resolved", "skill_id": sid,
+                     "to": mate_id, "created": created})
+                changed = True
+                entry = self._journal_capability_gap(
+                    mission_id=mission["id"], goal=mission.get("goal", ""),
+                    missing=[sid], required=[sid],
+                    resolution={"teammate_id": mate_id,
+                                "specialization": spec or
+                                getattr(replacement, "specialization", None),
+                                "created": created,
+                                "reused": not created,
+                                "autonomous": True})
+                resolved.append({"mission_id": mission["id"], "skill_id": sid,
+                                 "teammate_id": mate_id,
+                                 "created": created,
+                                 "gap_id": entry["gap_id"]})
+            if changed:
+                mission["updated_at"] = _now()
+                self._put_mission(mission)
+        return resolved
 
 
 # ── helpers ─────────────────────────────────────────────────────────────────

@@ -15,6 +15,10 @@ def assign_names(records: list[Record], proxy_for: dict[str, str]) -> list[Recor
             r.tailnet_name = ""
             r.internal_url = ""
             continue
+        if "ui-page" in (r.tags or ""):
+            r.tailnet_name = ""
+            r.internal_url = r.target_url
+            continue
         base = r.name or r.id
         name, i = base, 1
         while name in used:

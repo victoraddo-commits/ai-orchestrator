@@ -91,13 +91,40 @@ def capabilities(probe_network: bool = True) -> dict:
     caps["voice_audio"] = Capability(
         "voice_audio", config.STATUS_BLOCKED, "no TTS/voice model",
         blocked_reason=config.BLOCKED_VOICE, verified=False)
+    _ff = bool(shutil.which("ffmpeg"))
+    _ffp = bool(shutil.which("ffprobe"))
     caps["editing"] = Capability(
-        "editing", config.STATUS_BLOCKED, "no ffmpeg",
-        blocked_reason=config.BLOCKED_EDITING,
-        evidence={"ffmpeg": bool(shutil.which("ffmpeg"))}, verified=False)
+        "editing",
+        config.STATUS_PARTIALLY_VERIFIED if _ff else config.STATUS_BLOCKED,
+        "ffmpeg present; no generated media to edit yet",
+        blocked_reason=None if _ff else config.BLOCKED_EDITING,
+        evidence={"ffmpeg": _ff}, verified=False)
     caps["captions"] = Capability(
-        "captions", config.STATUS_BLOCKED, "no caption/ASR tooling",
-        blocked_reason=config.BLOCKED_CAPTIONS, verified=False)
+        "captions",
+        config.STATUS_PARTIALLY_VERIFIED if _ff else config.STATUS_BLOCKED,
+        "ffmpeg subtitle tooling present; ASR unavailable",
+        blocked_reason=None if _ff else config.BLOCKED_CAPTIONS,
+        evidence={"ffmpeg": _ff}, verified=False)
+
+    # Storage: real writability check on the mounted media volume
+    _mr = getattr(config, "MEDIA_ROOT", "/mnt/media/media-factory")
+    import os as _os
+    _ok = False
+    try:
+        _os.makedirs(_mr, exist_ok=True)
+        _t = _os.path.join(_mr, ".status-write-test")
+        with open(_t, "w") as _fh:
+            _fh.write("ok")
+        _os.remove(_t)
+        _ok = True
+    except Exception:
+        _ok = False
+    caps["storage"] = Capability(
+        "storage",
+        config.STATUS_VERIFIED if _ok else config.STATUS_BLOCKED,
+        f"media volume {_mr}" + (" writable" if _ok else " not writable"),
+        blocked_reason=None if _ok else "media volume not writable/mounted",
+        evidence={"path": _mr, "writable": _ok}, verified=_ok)
 
     # QC: real file/hash checks; duration blocked without ffprobe
     caps["qc"] = Capability(

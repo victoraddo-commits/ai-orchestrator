@@ -13,6 +13,8 @@ from pathlib import Path
 # ── Paths ──────────────────────────────────────────────────────────────────
 PACKAGE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PACKAGE_DIR.parents[1]
+import os as _os
+MEDIA_ROOT = _os.environ.get("MEDIA_ROOT", "/mnt/media/media-factory")
 MIGRATIONS_DIR = PACKAGE_DIR / "migrations"
 
 # Generated media never lands in the repo; CT111 keeps it under /var/lib.
@@ -109,9 +111,9 @@ STATUS_VALUES = (
 )
 
 # ── Honest capability reasons (single source of truth for /status) ─────────
-BLOCKED_ASSET_GEN = "no image/video models installed; no ffmpeg"
+BLOCKED_ASSET_GEN = "no image/video generation models installed (ffmpeg present)"
 BLOCKED_VOICE = "no TTS/voice model installed"
-BLOCKED_EDITING = "no ffmpeg installed"
-BLOCKED_CAPTIONS = "no caption/ASR tooling installed"
+BLOCKED_EDITING = "no render pipeline / generated media to edit yet"
+BLOCKED_CAPTIONS = "no ASR (voice gateway dormant); ffmpeg subtitle tooling present"
 BLOCKED_PUBLISHING = "no TikTok/YouTube/platform OAuth tokens configured"
 BLOCKED_ANALYTICS = "no platform API tokens configured"

@@ -788,3 +788,75 @@ def sessions_action(sid: str, action: str):
         return {"ok": False, "error": "unknown action"}
     return {"ok": bool(fn(sid))}
 
+
+# ── Module registry → Command Center tab source of truth (directive 2026-09-19) ──
+
+@cc_extra_router.get("/api/cc/modules")
+def cc_modules():
+    """Registry entries that own a Command Center tab.
+
+    ``status`` is the lifecycle flag (``live|hidden|retired``); ``health`` is the
+    backing endpoint the CC probes at render time before showing the tab.
+    """
+    from core.module_registry import get_cc_modules
+    return {"modules": get_cc_modules()}
+
+
+# ── Legal Brain (Knowledge Engine) real sub-views ───────────────────────────
+# ``/cc/legal/*`` proxies straight to the legal-brain service, which has no
+# ``/knowledge`` or ``/firewall`` paths. These orchestrator-side views reuse
+# core.legal_brain_client so the CC shows real data instead of a 404 dump.
+
+def _legal_sources() -> list:
+    from core import legal_brain_client as lb
+    reg = lb.sources()
+    if isinstance(reg, dict):
+        return reg.get("sources", []) or []
+    return reg or []
+
+
+@cc_extra_router.get("/api/legal-brain/sources")
+def legal_brain_sources():
+    try:
+        sources = _legal_sources()
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(
+            {"ok": False, "error": f"{type(e).__name__}: {e}", "sources": []},
+            status_code=502)
+    return {"ok": True, "count": len(sources), "sources": sources}
+
+
+@cc_extra_router.get("/api/legal-brain/firewall")
+def legal_brain_firewall():
+    """Source-allowlist / policy status for the Knowledge Engine firewall.
+
+    The firewall is the legal brain's admitted-source registry: only enabled
+    primary/secondary domains may be ingested. This surfaces the policy and the
+    exact allowlist so the CC can show it as a real table.
+    """
+    try:
+        sources = _legal_sources()
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(
+            {"ok": False, "error": f"{type(e).__name__}: {e}",
+             "policy": {}, "sources": []}, status_code=502)
+    enabled = [s for s in sources if s.get("enabled", True)]
+    disabled = [s for s in sources if not s.get("enabled", True)]
+    domains = sorted({s.get("domain") for s in enabled if s.get("domain")})
+    by_access: dict = {}
+    for s in sources:
+        by_access[s.get("access", "unknown")] = by_access.get(s.get("access", "unknown"), 0) + 1
+    return {
+        "ok": True,
+        "policy": {
+            "mode": "allowlist",
+            "enforced": True,
+            "allowed_sources": len(enabled),
+            "blocked_sources": len(disabled),
+            "allowed_domains": len(domains),
+            "by_access": by_access,
+        },
+        "domains": domains,
+        "sources": sources,
+    }
+

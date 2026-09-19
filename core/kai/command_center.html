@@ -1438,6 +1438,37 @@ const fmtBytes=n=>{if(n==null||n==='')return '—';n=Number(n);if(!isFinite(n))r
   if(n>=1e6)return (n/1e6).toFixed(1)+' MB';if(n>=1e3)return (n/1e3).toFixed(1)+' KB';return n+' B';};
 const fmtRate=n=>(n==null?'—':fmtBytes(n)+'/s');
 
+// ── Generic value → table renderer (never raw JSON/<pre>) ─────────
+// Used by panels that receive loosely-typed data: it flattens arrays of
+// objects into tables and objects into key/value sections, so a panel can
+// never accidentally render a raw code dump.
+function _objKeys(rows){const s=new Set();for(const r of rows){if(r&&typeof r==='object')Object.keys(r).forEach(k=>s.add(k));}return [...s].slice(0,10);}
+function _cell(v){
+  if(v==null)return '—';
+  if(typeof v==='object'){try{const s=JSON.stringify(v);return s.length>140?s.slice(0,137)+'…':s;}catch(e){return '[object]';}}
+  return String(v);
+}
+function _autoTable(data){
+  if(Array.isArray(data)){
+    if(!data.length)return '<p class="empty">none</p>';
+    if(typeof data[0]!=='object')return '<div class="table-wrap"><table><tbody>'+data.slice(0,100).map(v=>'<tr><td>'+esc(_cell(v))+'</td></tr>').join('')+'</tbody></table></div>';
+    const cols=_objKeys(data);
+    return '<div class="table-wrap"><table><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'
+      +data.slice(0,100).map(r=>'<tr>'+cols.map(c=>'<td>'+esc(_cell(r[c]))+'</td>').join('')+'</tr>').join('')
+      +'</tbody></table></div>';
+  }
+  if(data&&typeof data==='object'){
+    const scalars={},complex={};
+    for(const k of Object.keys(data)){const v=data[k];if(v&&typeof v==='object')complex[k]=v;else scalars[k]=v;}
+    let h='';
+    const sk=Object.keys(scalars);
+    if(sk.length)h+='<div class="table-wrap"><table><tbody>'+sk.map(k=>'<tr><td style="color:var(--fg-muted)">'+esc(k)+'</td><td><b>'+esc(_cell(scalars[k]))+'</b></td></tr>').join('')+'</tbody></table></div>';
+    for(const k of Object.keys(complex))h+='<h4 style="font-size:0.7rem;margin-top:8px">'+esc(k)+'</h4>'+_autoTable(complex[k]);
+    return h||'<p class="empty">empty</p>';
+  }
+  return '<p class="empty">'+esc(_cell(data))+'</p>';
+}
+
 // ── Toast ─────────────────────────────────────────────────────────
 function toast(msg, type='ok') {
   const t = $('toast'); t.textContent = msg; t.className = 'toast visible ' + type;
@@ -1504,6 +1535,15 @@ async function apiSoft(path, opts={}){
   const r=await fetch(path,{...opts,headers:h});
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.json();
+}
+// apiSoft() bounded by a timeout — for render-time health probes that must not
+// stall the UI or block module gating.
+async function apiSoftT(path, ms, opts){
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(), ms||4000);
+  try{ return await apiSoft(path,{...(opts||{}),signal:ctrl.signal}); }
+  catch(e){ if(e.name==='AbortError') throw new Error('timeout after '+(ms||4000)+'ms'); throw e; }
+  finally{ clearTimeout(t); }
 }
 
 function showLogin() {
@@ -1797,7 +1837,7 @@ window.factoryBuild=async function(){
   if(!confirm('Run the full factory pipeline (build+test+scan+emulator+AAB)?'))return;
   $('factory-content').innerHTML='<span class="loading">Pipeline running — this takes 2-4 minutes…</span>';
   try{
-    const r=await api('/kai/tools/factory/build/execute',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({args:{project:'kai-ultimate'}})});
+    const r=await api('/kai/tools/kai.factory.build/execute',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({args:{project:'kai-ultimate'}})});
     loadFactory();
   }catch(e){alert('Build failed: '+e.message);loadFactory();}
 };
@@ -1831,8 +1871,61 @@ async function updateStatusBar() {
   $('sb-time').textContent=new Date().toLocaleTimeString();
 }
 
+// ── Module registry → tab gating ──────────────────────────────────
+// The registry (config/modules/*.json -> /api/cc/modules) is the single source
+// of truth for which tabs may render. A tab is removed unless its module is
+// `live` AND its backing health endpoint answers at render time.
+function hideCcTab(tab){
+  document.querySelectorAll('#sidebar-nav .nav-item[data-hash="'+tab+'"]').forEach(el=>el.remove());
+  document.querySelectorAll('.mobile-nav-item[data-hash="'+tab+'"]').forEach(el=>el.remove());
+  const panel=$('panel-'+tab); if(panel)panel.remove();
+  delete PANEL_TITLES[tab];
+}
+function _isUnhealthy(msg){
+  // Definitive failure = missing/down route or a refused connection. A slow
+  // endpoint (probe timeout) is NOT treated as unhealthy — slowness must not
+  // hide an otherwise working tab.
+  return /HTTP (404|410|502|503)\b/.test(msg||'')
+    || /\b(NetworkError|Failed to fetch)\b/i.test(msg||'');
+}
+async function applyModuleGating(mods){
+  // Probe all health endpoints concurrently with a hard timeout so one slow
+  // upstream can never block the tab gating.
+  const checks=await Promise.all((mods||[]).map(async m=>{
+    const tab=m.tab; if(!tab) return null;
+    if(m.status&&m.status!=='live') return {m,bad:'module '+m.status};
+    if(m.health){
+      try{ await apiSoftT(m.health,4000); }
+      catch(e){ if(_isUnhealthy(e.message)) return {m,bad:'endpoint '+m.health+' unhealthy'}; }
+    }
+    return null;
+  }));
+  const hidden=[];
+  for(const c of checks){
+    if(!c) continue;
+    hideCcTab(c.m.tab);
+    hidden.push({tab:c.m.tab,title:c.m.title||c.m.tab,status:c.m.status||'live',reason:c.bad});
+  }
+  S.hiddenTabs=hidden;
+  const host=$('more-sheet-items'); if(host){host.dataset.built='';host.innerHTML='';buildMoreMenu();}
+  const cur=(location.hash||'#home').replace('#','');
+  if(hidden.some(h=>h.tab===cur)){ location.hash='#home'; navigateTo('#home'); }
+}
+async function loadModuleRegistry(){
+  try{ S.ccModules=(await api('/api/cc/modules')).modules||[]; }
+  catch(e){ S.ccModules=[]; return; }
+  await applyModuleGating(S.ccModules);
+}
+
 // ── Init ──────────────────────────────────────────────────────────
-function initApp() { updateStatusBar();setInterval(updateStatusBar,30000); registerModelPages().catch(()=>{}).finally(()=>navigateTo(location.hash||'#home')); }
+function initApp() {
+  updateStatusBar();
+  setInterval(updateStatusBar,30000);
+  // Registry gating runs independently: it must not be blocked by model-page
+  // registration (which can stall on a slow catalog fetch).
+  loadModuleRegistry().catch(()=>{});
+  registerModelPages().catch(()=>{}).finally(()=>navigateTo(location.hash||'#home'));
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // PANEL: HOME
@@ -1900,6 +1993,7 @@ async function loadModules() {
     const legal=data.modules.filter(m=>LEGAL_MODULES.includes(m.name));
     const other=data.modules.filter(m=>!LEGAL_MODULES.includes(m.name));
     let html='';
+    if((S.hiddenTabs||[]).length){html+='<div class="card" style="margin-bottom:12px"><h3>Hidden tabs <span class="badge warn">registry</span></h3>'+S.hiddenTabs.map(h=>'<div class="field-hint">'+esc(h.title)+' ('+esc(h.tab)+') hidden — '+esc(h.status)+': '+esc(h.reason)+'</div>').join('')+'</div>';}
     if(legal.length){html+=`<div style="margin-bottom:16px"><div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Modules</div>`+legal.map(renderModuleCard).join('')+'</div>';}
     if(other.length){html+=`<div><div style="font-family:var(--font-mono);font-size:0.7rem;color:var(--fg-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;padding:6px 10px;background:var(--bg-elevated);border:1px solid var(--border)">Infrastructure Modules</div>`+other.map(renderModuleCard).join('')+'</div>';}
     $('modules-content').innerHTML=html;}
@@ -2155,23 +2249,14 @@ async function loadLegal(){
       html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain — Knowledge Engine  <span class="badge info" style="white-space:nowrap">${lb.documents||0} docs</span> <span class="badge ok" style="white-space:nowrap">${lb.sources||0} sources</span></h3>
         <div style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:10px">Sessions: ${lb.sessions||0} &middot; Jurisdictions: ${Object.keys(lb.by_jurisdiction||{}).join(', ')||'Ghana'}</div>
         <div class="action-row" style="flex-wrap:wrap;gap:6px">
-          <button class="btn btn-xs btn-accent" onclick="lbView('documents')">Documents</button>
-          <button class="btn btn-xs" onclick="lbView('verify')">Verify</button>
-          <button class="btn btn-xs" onclick="lbView('quality')">Quality</button>
-          <button class="btn btn-xs" onclick="lbView('registry')">Registry</button>
-          <button class="btn btn-xs" onclick="lbView('firewall')">Firewall</button>
-          <button class="btn btn-xs" onclick="lbView('redteam')">Red-team</button>
-          <button class="btn btn-xs" onclick="lbView('privacy/audit')">Privacy audit</button>
-          <button class="btn btn-xs" onclick="lbView('injection/audit')">Injection audit</button>
+          <button class="btn btn-xs btn-accent" onclick="lbStats()">Stats</button>
+          <button class="btn btn-xs" onclick="lbDocuments()">Documents</button>
+          <button class="btn btn-xs" onclick="lbSources()">Registry</button>
+          <button class="btn btn-xs" onclick="lbFirewall()">Firewall</button>
           <input type="text" id="lb-search" placeholder="Search corpus…" class="search-input" onkeyup="if(event.key==='Enter')lbSearch()">
           <button class="btn btn-xs btn-accent" onclick="lbSearch()">Search</button>
         </div>
-        <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input type="file" id="lb-file" style="font-size:0.65rem">
-          <input type="text" id="lb-citation" placeholder="citation (optional)" class="search-input" style="max-width:180px">
-          <button class="btn btn-xs btn-accent" onclick="lbUpload()">Upload to corpus</button>
-        </div>
-        <div id="lb-results" style="margin-top:10px;max-height:420px;overflow:auto"></div>
+        <div id="lb-results" style="margin-top:10px;max-height:420px;overflow:auto"><span class="field-hint">Pick a view — all shown live from the legal brain.</span></div>
       </div>`;}
     catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain</h3><span class="error-text">${esc(e.message)}</span></div>`;}
     html+='</div>';el.innerHTML=html;
@@ -2785,27 +2870,70 @@ async function _jurisCheckout(tier,provider){
   }catch(e){if(msg)msg.textContent='';if(el)el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
-async function lbView(path){
-  const el=$('lb-results');if(!el)return;el.innerHTML='<span class="loading">loading…</span>';
-  try{const d=await api('/cc/legal/'+path);el.innerHTML='<pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(JSON.stringify(d,null,1))+'</pre>';}
-  catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+function _lbHead(c){const el=$('lb-results');if(el)el.innerHTML='<span class="loading">loading…</span>';return el;}
+function _lbTable(cols,rows){
+  let h='<div class="table-wrap"><table><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>';
+  if(!rows.length)h+='<tr><td colspan="'+cols.length+'" class="empty">none</td></tr>';
+  h+=rows.join('')+'</tbody></table></div>';
+  return h;
+}
+function _lbDocRows(docs){
+  return (docs||[]).map(d=>'<tr><td>'+esc(d.id)+'</td><td>'+esc(d.title||'—')+'</td><td>'+esc(d.type||d.doc_type||'—')+'</td><td>'+esc(d.jurisdiction||'—')+'</td><td>'+esc(d.status||'—')+'</td><td>'+esc(d.year||'—')+'</td></tr>');
+}
+async function lbStats(){
+  const el=_lbHead(); if(!el)return;
+  try{
+    const s=await api('/cc/legal/stats');
+    const by=s.by||{};
+    const m=(l,v,c)=>'<div class="metric"><span class="val"'+(c?' style="color:'+c+'"':'')+'>'+esc(v==null?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    let h='<div class="metric-row">'+m('Documents',s.documents,'var(--accent)')+m('Types',Object.keys(by.type||{}).length)+m('Jurisdictions',Object.keys(by.jurisdiction||{}).length)+'</div>';
+    const t=by.type||{},st=by.status||{};
+    h+='<div class="juris-sub">By type</div>'+_lbTable(['Type','Count'],Object.keys(t).sort().map(k=>'<tr><td>'+esc(k)+'</td><td>'+esc(t[k])+'</td></tr>'));
+    h+='<div class="juris-sub">By status</div>'+_lbTable(['Status','Count'],Object.keys(st).sort().map(k=>'<tr><td>'+esc(k)+'</td><td>'+esc(st[k])+'</td></tr>'));
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function lbDocuments(){
+  const el=_lbHead(); if(!el)return;
+  try{
+    const d=await api('/cc/legal/documents?limit=50');
+    const docs=d.documents||[];
+    el.innerHTML='<div class="juris-sub">Corpus documents <span class="badge info">'+docs.length+'</span></div>'
+      +_lbTable(['ID','Title','Type','Jurisdiction','Status','Year'],_lbDocRows(docs));
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function lbSources(){
+  const el=_lbHead(); if(!el)return;
+  try{
+    const d=await api('/api/legal-brain/sources');
+    if(!d.ok)throw new Error(d.error||'sources unavailable');
+    const rows=(d.sources||[]).map(s=>'<tr><td><code>'+esc(s.id)+'</code></td><td>'+esc(s.name||'—')+'</td><td>'+esc(s.domain||'—')+'</td><td>'+esc(s.authority||'—')+'</td><td>'+esc(s.access||'—')+'</td><td><span class="badge '+(s.enabled===false?'bad':'ok')+'">'+(s.enabled===false?'disabled':'enabled')+'</span></td></tr>');
+    el.innerHTML='<div class="juris-sub">Admitted sources <span class="badge info">'+rows.length+'</span></div>'
+      +_lbTable(['ID','Name','Domain','Authority','Access','State'],rows);
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function lbFirewall(){
+  const el=_lbHead(); if(!el)return;
+  try{
+    const d=await api('/api/legal-brain/firewall');
+    if(!d.ok)throw new Error(d.error||'firewall unavailable');
+    const p=d.policy||{};
+    const m=(l,v,c)=>'<div class="metric"><span class="val"'+(c?' style="color:'+c+'"':'')+'>'+esc(v==null?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    const rows=(d.sources||[]).map(s=>'<tr><td>'+esc(s.domain||'—')+'</td><td>'+esc(s.authority||'—')+'</td><td>'+esc(s.access||'—')+'</td><td><span class="badge '+(s.enabled===false?'bad':'ok')+'">'+(s.enabled===false?'blocked':'allowed')+'</span></td></tr>');
+    el.innerHTML='<div class="metric-row">'+m('Policy',p.mode||'allowlist','var(--info)')+m('Allowed',p.allowed_sources,'var(--accent)')+m('Blocked',p.blocked_sources,p.blocked_sources?'var(--warn)':'var(--fg)')+m('Domains',p.allowed_domains)+'</div>'
+      +'<p class="field-hint">Ingestion is restricted to admitted sources below — anything else is refused at the Knowledge Engine firewall.</p>'
+      +_lbTable(['Domain','Authority','Access','State'],rows);
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 async function lbSearch(){
   const q=($('lb-search')||{}).value||'';const el=$('lb-results');if(!el)return;
   el.innerHTML='<span class="loading">searching…</span>';
-  try{const d=await api('/cc/legal/search?q='+encodeURIComponent(q));el.innerHTML='<pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(JSON.stringify(d,null,1))+'</pre>';}
-  catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
-}
-function lbUpload(){
-  const fi=$('lb-file');const f=fi&&fi.files&&fi.files[0];const el=$('lb-results');
-  if(!f){toast('choose a file first','err');return;}
-  const cit=($('lb-citation')||{}).value||'';
-  const xhr=new XMLHttpRequest();
-  xhr.open('POST','/cc/legal/ingest/file'+(cit?('?citation='+encodeURIComponent(cit)):''));
-  xhr.setRequestHeader('X-Filename',f.name);
-  xhr.onload=()=>{toast('corpus upload: HTTP '+xhr.status);lbView('documents');};
-  xhr.onerror=()=>toast('upload failed','err');
-  xhr.send(f);
+  try{
+    const d=await api('/cc/legal/search?q='+encodeURIComponent(q));
+    const rs=d.results||d.documents||[];
+    el.innerHTML='<div class="juris-sub">Search results <span class="badge info">'+rs.length+'</span></div>'
+      +_lbTable(['Title','Type','Jurisdiction','Status','Year'],(rs||[]).map(r=>'<tr><td>'+esc(r.title||r.name||'—')+'</td><td>'+esc(r.type||r.doc_type||'—')+'</td><td>'+esc(r.jurisdiction||'—')+'</td><td>'+esc(r.status||'—')+'</td><td>'+esc(r.year||'—')+'</td></tr>'));
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 async function doLegalSearch(){
   const q=($('legal-search')||{}).value||'',tier=($('legal-tier')||{}).value||'';
@@ -4059,17 +4187,9 @@ registerSW();
     } else clearToken();
   }).catch(()=>clearToken());}
 })();
-// ── Ecosystem tabs (inbuilt JSON renderer) ────────────────────────
-async function loadJsonTab(cid, paths){
-  const el=$(cid); if(!el) return;
-  el.innerHTML='<span class="loading">loading…</span>';
-  const out=[];
-  for(const p of paths){
-    try{ out.push({p, ok:true, d:await api(p)}); }
-    catch(e){ out.push({p, ok:false, e:e.message}); }
-  }
-  el.innerHTML=out.map(o=>`<div class="card" style="margin-bottom:10px"><h3 style="font-family:var(--font-mono);font-size:0.75rem">${esc(o.p)} <span class="badge ${o.ok?'ok':'bad'}">${o.ok?'ok':'error'}</span></h3><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word;max-height:420px;overflow:auto">${esc(o.ok?JSON.stringify(o.d,null,1):o.e)}</pre></div>`).join('');
-}
+// ── Ecosystem tabs ────────────────────────────────────────────────
+// (The generic loadJsonTab raw-dump renderer was removed: every panel now has
+// a purpose-built table/card UI so no tab can accidentally render raw JSON.)
 async function loadNetwork(){
   const el=$('network-content'); if(!el) return;
   el.innerHTML='<span class="loading">loading…</span>';
@@ -4086,7 +4206,7 @@ async function loadNetwork(){
     if(!sites.length){html+='<p class="empty">no sites discovered</p>';}
     for(const s of sites){const px=s.proxmox||{};const lx=s.lxcs||[];
       html+=`<div style="padding:6px 8px;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.65rem;margin-bottom:3px"><b>${esc(s.name||'?')}</b> <span class="badge ${px.online?'ok':'bad'}">${px.online?'ONLINE':'OFFLINE'}</span> &middot; LAN ${esc(s.lan_subnet||'-')} &middot; GW ${esc(s.gateway||'-')} &middot; Tailscale ${esc(px.tailscale_ip||'-')} &middot; LXCs ${lx.filter(l=>l.status==='running').length}/${lx.length}</div>`;}
-    const sec=(t,d)=>`<h4 style="font-size:0.7rem;margin-top:10px">${t}</h4><pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow:auto">${esc(JSON.stringify(d,null,1))}</pre>`;
+    const sec=(t,d)=>`<h4 style="font-size:0.7rem;margin-top:10px">${t}</h4>${_autoTable(d)}`;
     html+=sec('Connectivity & Tunnel',conn)+sec('Peers',peers)+sec('Routes',routes)+sec('Recent Changes',changes)+sec('VPN / Failover',vpn);
     html+='</div>'; el.innerHTML=html;
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
@@ -4608,7 +4728,27 @@ async function loadVault(){
       +'<div id="hr-results" style="font-size:0.6rem;color:var(--fg-muted);margin-top:6px;word-break:break-all"></div></div>';
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
-async function loadSecondBrain(){return loadJsonTab('secondbrain-content',['/api/second-brain/summary','/api/command-center/summary']);}
+async function loadSecondBrain(){
+  const el=$('secondbrain-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/api/second-brain/summary');
+    const stores=d.stores||{},recent=d.recent||[];
+    const m=(l,v,c)=>'<div class="metric"><span class="val"'+(c?' style="color:'+c+'"':'')+'>'+esc(v==null?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    let html='<div class="metric-row">'+m('Total records',d.total_records)+m('Stores',d.store_count)+m('Recent shown',recent.length,'var(--info)')+'</div>';
+    html+='<div class="card"><h3>Second Brain <span class="badge '+(d.error?'warn':'ok')+'">'+(d.error?'partial':'healthy')+'</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadSecondBrain()">Refresh</button></span></h3>';
+    if(d.error)html+='<p class="field-hint">recent-memory query failed: '+esc(d.error)+'</p>';
+    html+='<div class="juris-sub">Stores</div><div class="table-wrap"><table><thead><tr><th>Store</th><th>Merge policy</th><th>Records</th><th>Updated</th></tr></thead><tbody>';
+    const names=Object.keys(stores).sort();
+    if(!names.length)html+='<tr><td colspan="4" class="empty">no stores</td></tr>';
+    for(const n of names){const s=stores[n]||{};html+='<tr><td><code>'+esc(n)+'</code></td><td>'+esc(s.merge_policy||'—')+'</td><td>'+esc(s.record_count==null?'—':s.record_count)+'</td><td style="font-size:0.62rem">'+esc(s.updated_at||'—')+'</td></tr>';}
+    html+='</tbody></table></div>';
+    html+='<div class="juris-sub">Recent operational memory</div><div class="table-wrap"><table><thead><tr><th>Entity</th><th>Type</th><th>Confidence</th><th>When</th></tr></thead><tbody>';
+    if(!recent.length)html+='<tr><td colspan="4" class="empty">no recent records</td></tr>';
+    for(const r of recent){html+='<tr><td>'+esc(r.entity||'—')+'</td><td>'+esc(r.memory_type||'—')+'</td><td><span class="badge '+(r.confidence==='confirmed'?'ok':'info')+'">'+esc(r.confidence||'—')+'</span></td><td style="font-size:0.62rem">'+esc(String(r.timestamp||'').slice(0,19).replace('T',' '))+'</td></tr>';}
+    html+='</tbody></table></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
 async function loadKnowledge(){
   const el=$('knowledge-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
   try{
@@ -4619,11 +4759,11 @@ async function loadKnowledge(){
     html+='<div style="margin-top:6px;display:flex;gap:6px"><input id="kf-q" placeholder="permission-aware search…" class="search-input" onkeyup="if(event.key===\'Enter\')kfSearch()"><button class="btn btn-xs" onclick="kfSearch()">Search</button><button class="btn btn-xs btn-accent" onclick="kfQuery()">Query (Primary+Secondary)</button></div>';
     html+='<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input type="file" id="kf-file" style="font-size:0.62rem"><button class="btn btn-xs btn-accent" onclick="kfUpload()">Upload document</button></div>';
     html+='<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center"><input id="kf-space" placeholder="new space name" class="search-input" style="max-width:150px"><button class="btn btn-xs" onclick="kfCreateSpace()">Create Space</button><input id="kf-gdoc" placeholder="doc id" class="search-input" style="max-width:120px"><input id="kf-guser" placeholder="user" class="search-input" style="max-width:110px"><select id="kf-grole" class="search-input" style="max-width:110px"><option>READER</option><option>EDITOR</option><option>MANAGER</option></select><button class="btn btn-xs" onclick="kfGrant()">Grant</button><button class="btn btn-xs" onclick="kfRevoke()">Revoke</button></div>';
-    html+='<div id="kf-results" style="margin-top:10px;max-height:360px;overflow:auto"><pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(docs,null,1))+'</pre></div></div>';
+    html+='<div id="kf-results" style="margin-top:10px;max-height:360px;overflow:auto">'+_autoTable(docs)+'</div></div>';
     el.innerHTML=html;
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
-function kfShow(d){const el=$('kf-results');if(el)el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word">'+esc(JSON.stringify(d,null,1))+'</pre>';}
+function kfShow(d){const el=$('kf-results');if(el)el.innerHTML=_autoTable(d);}
 async function kfDocs(){try{kfShow(await api('/knowledge/documents'));}catch(e){kfShow({error:e.message});}}
 async function kfSpaces(){try{kfShow(await api('/knowledge/spaces'));}catch(e){kfShow({error:e.message});}}
 async function kfAudit(){try{kfShow(await api('/knowledge/audit'));}catch(e){kfShow({error:e.message});}}
@@ -4736,8 +4876,69 @@ async function kfQuery(){
   const q=($('kf-q')||{}).value||'';
   try{kfShow(await api('/knowledge/query',{method:'POST',body:JSON.stringify({q})}));}catch(e){kfShow({error:e.message});}
 }
-async function loadApprovals(){return loadJsonTab('approvals-content',['/approvals']);}
-async function loadNotifications(){return loadJsonTab('notifications-content',['/kai/notifications']);}
+function _apvBadge(s){const m={pending:'warn',approved:'ok',rejected:'bad',failed:'bad',expired:'info'};return '<span class="badge '+(m[s]||'info')+'">'+esc(s||'—')+'</span>';}
+async function loadApprovals(){
+  const el=$('approvals-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const list=await api('/approvals');
+    const rows=Array.isArray(list)?list:[];
+    const pending=rows.filter(r=>r.status==='pending').length;
+    let html='<div class="metric-row">'
+      +'<div class="metric"><span class="val" style="color:var(--warn)">'+esc(pending)+'</span><span class="lbl">Pending</span></div>'
+      +'<div class="metric"><span class="val">'+esc(rows.length)+'</span><span class="lbl">Total</span></div></div>';
+    html+='<div class="card"><h3>Approvals <span class="badge info">human gate</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadApprovals()">Refresh</button></span></h3>';
+    html+='<div class="table-wrap"><table><thead><tr><th>Request</th><th>Type</th><th>Phase</th><th>Status</th><th>Created (UTC)</th><th>Actions</th></tr></thead><tbody>';
+    if(!rows.length)html+='<tr><td colspan="6" class="empty">no approval requests</td></tr>';
+    for(const r of rows.slice().reverse()){
+      const when=esc(String(r.created||'').slice(0,19).replace('T',' '));
+      const target=esc(r.title||r.description||r.id||'—');
+      const acts=r.status==='pending'
+        ?'<button class="btn btn-xs btn-accent" data-id="'+attr(r.id)+'" onclick="apvAct(this.dataset.id,\'approve\')">Approve</button> '
+         +'<button class="btn btn-xs btn-warn" data-id="'+attr(r.id)+'" onclick="apvAct(this.dataset.id,\'reject\')">Reject</button>'
+        :'<span class="field-hint">—</span>';
+      html+='<tr><td><code>'+esc(r.id||'?')+'</code><div style="font-size:0.62rem;color:var(--fg-muted);max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+attr(target)+'">'+target+'</div></td>'
+        +'<td>'+esc(r.approval_type||'—')+'</td><td>'+esc(r.phase_id||'—')+'</td><td>'+_apvBadge(r.status)+'</td>'
+        +'<td style="font-size:0.62rem">'+when+'</td><td>'+acts+'</td></tr>';
+    }
+    html+='</tbody></table></div><div id="apv-result" class="field-hint" style="margin-top:6px"></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function apvAct(id,action){
+  const verb=action==='approve'?'approve':'reject';
+  confirmAction('Confirm '+verb,'Are you sure you want to '+verb+' approval '+id+'?',async()=>{
+    const r=$('apv-result'); if(r)r.textContent=verb+'ing '+id+'…';
+    try{await api('/approvals/'+encodeURIComponent(id)+'/'+action,{method:'POST',body:'{}'});
+      toast('Approval '+verb+'d'); loadApprovals();
+    }catch(e){if(r)r.textContent='error: '+e.message; toast('error: '+e.message,'err');}
+  });
+}
+async function loadNotifications(){
+  const el=$('notifications-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/kai/notifications');
+    const list=(d.notifications||[]);
+    const sev={critical:'bad',important:'warn',info:'info',low:'info'};
+    let crit=0,unacked=0;
+    for(const n of list){if(n.severity==='critical')crit++;if(!n.acked)unacked++;}
+    let html='<div class="metric-row">'
+      +'<div class="metric"><span class="val" style="color:var(--destructive)">'+esc(crit)+'</span><span class="lbl">Critical</span></div>'
+      +'<div class="metric"><span class="val" style="color:var(--warn)">'+esc(unacked)+'</span><span class="lbl">Unacked</span></div>'
+      +'<div class="metric"><span class="val">'+esc(d.total!=null?d.total:list.length)+'</span><span class="lbl">Total</span></div></div>';
+    html+='<div class="card"><h3>Notifications <span class="badge info">'+esc(list.length)+' shown</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadNotifications()">Refresh</button></span></h3>';
+    html+='<div class="table-wrap"><table><thead><tr><th>Severity</th><th>Title</th><th>Source</th><th>When (UTC)</th><th>State</th></tr></thead><tbody>';
+    if(!list.length)html+='<tr><td colspan="5" class="empty">no notifications</td></tr>';
+    for(const n of list.slice(0,200)){
+      html+='<tr><td><span class="badge '+(sev[n.severity]||'info')+'">'+esc(n.severity||'—')+'</span></td>'
+        +'<td><div style="font-size:0.68rem">'+esc(n.title||'—')+'</div><div style="font-size:0.6rem;color:var(--fg-muted)">'+esc(String(n.body||'').slice(0,120))+'</div></td>'
+        +'<td style="font-size:0.62rem">'+esc(n.source||'—')+'</td>'
+        +'<td style="font-size:0.62rem">'+esc(String(n.created_at||'').slice(0,19).replace('T',' '))+'</td>'
+        +'<td>'+(n.acked?'<span class="badge ok">acked</span>':'<span class="badge warn">new</span>')+'</td></tr>';
+    }
+    html+='</tbody></table></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
 async function loadDocs(){
   const el=$('docs-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
   const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
@@ -4881,20 +5082,115 @@ async function loadSessions(){
 }
 async function sessAttach(){const id=($('sess-id')||{}).value,m=($('sess-mis')||{}).value;if(!id||!m){toast('session + mission id required','err');return;}try{await api('/api/sessions',{method:'POST',body:JSON.stringify({session_id:id,mission_id:m})});toast('attached');loadSessions();}catch(e){toast(e.message,'err');}}
 async function sessAct(id,a){try{await api('/api/sessions/'+encodeURIComponent(id)+'/'+a,{method:'POST',body:'{}'});toast(a+' '+id);loadSessions();}catch(e){toast(e.message,'err');}}
+function emgRender(st){
+  st=st||{};const stopped=!!st.stopped;
+  return '<div class="metric-row"><div class="metric"><span class="val" style="color:'+(stopped?'var(--destructive)':'var(--accent)')+'">'+(stopped?'STOPPED':'ARMED')+'</span><span class="lbl">Autonomous execution</span></div></div>'
+    +_autoTable(st);
+}
 async function loadEmergency(){
   const el=$('emergency-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
   try{const st=await api('/api/emergency/status').catch(e=>({error:e.message}));
     el.innerHTML='<div class="card"><h3>Emergency Mode <span class="badge '+(st.stopped?'bad':'ok')+'">'+(st.stopped?'STOPPED':'ARMED')+'</span></h3>'
       +'<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs" onclick="emgStatus()">Status</button><button class="btn btn-xs btn-warn" onclick="emgStop()">Emergency Stop</button><button class="btn btn-xs btn-accent" onclick="emgResume()">Resume</button></div>'
-      +'<div id="emg-result"><pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(st,null,1))+'</pre></div></div>';
+      +'<div id="emg-result">'+emgRender(st)+'</div></div>';
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
-async function emgStatus(){const el=$('emg-result');try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/emergency/status'),null,1))+'</pre>';}catch(e){el.textContent=e.message;}}
-async function emgStop(){if(!confirm('EMERGENCY STOP \u2014 halt autonomous execution?'))return;const el=$('emg-result');el.textContent='stopping…';try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/emergency/stop',{method:'POST',body:JSON.stringify({reason:'operator'})}),null,1))+'</pre>';}catch(e){el.textContent='error: '+e.message;}}
-async function emgResume(){const el=$('emg-result');el.textContent='resuming…';try{el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap">'+esc(JSON.stringify(await api('/api/emergency/resume',{method:'POST',body:'{}'}),null,1))+'</pre>';}catch(e){el.textContent='error: '+e.message;}}
-async function loadRoadmap(){return loadJsonTab('roadmap-content',['/roadmap/progress','/roadmap/next','/roadmap']);}
-async function loadLearning(){return loadJsonTab('learning-content',['/learning','/learning/builds','/learning/lessons']);}
-async function loadEnterprise(){return loadJsonTab('enterprise-content',['/enterprise/dashboard']);}
+async function emgStatus(){const el=$('emg-result');try{el.innerHTML=emgRender(await api('/api/emergency/status'));}catch(e){el.textContent=e.message;}}
+async function emgStop(){if(!confirm('EMERGENCY STOP \u2014 halt autonomous execution?'))return;const el=$('emg-result');el.textContent='stopping…';try{el.innerHTML='<p class="field-hint">Emergency stop sent.</p>'+_autoTable(await api('/api/emergency/stop',{method:'POST',body:JSON.stringify({reason:'operator'})}));}catch(e){el.textContent='error: '+e.message;}}
+async function emgResume(){const el=$('emg-result');el.textContent='resuming…';try{el.innerHTML='<p class="field-hint">Resume sent.</p>'+_autoTable(await api('/api/emergency/resume',{method:'POST',body:'{}'}));}catch(e){el.textContent='error: '+e.message;}}
+function _rmBadge(s){const m={completed:'ok',in_progress:'info',pending:'warn',proposed:'info',failed:'bad',blocked:'bad'};return '<span class="badge '+(m[s]||'info')+'">'+esc(s||'—')+'</span>';}
+async function loadRoadmap(){
+  const el=$('roadmap-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const [p,rm]=await Promise.all([api('/roadmap/progress'),api('/roadmap')]);
+    const phases=(rm.phases||[]);
+    const m=(l,v,c)=>'<div class="metric"><span class="val"'+(c?' style="color:'+c+'"':'')+'>'+esc(v==null?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    let html='<div class="metric-row">'+m('Complete',(p.percent_complete==null?'—':p.percent_complete+'%'),'var(--accent)')
+      +m('Total',p.total)+m('In progress',p.in_progress,'var(--info)')+m('Blocked',p.blocked,'var(--warn)')+m('Failed',p.failed,'var(--destructive)')+'</div>';
+    html+='<div class="card"><h3>Roadmap <span class="badge info">'+esc(phases.length)+' phases</span><span class="card-header-actions">'
+      +'<input id="rm-q" class="search-input" placeholder="filter id / name…" oninput="roadmapRender()" style="width:200px">'
+      +'<button class="btn btn-xs" onclick="loadRoadmap()">Refresh</button></span></h3>';
+    html+='<div class="table-wrap" style="max-height:520px;overflow:auto"><table id="rm-table"><thead><tr><th>Phase</th><th>Name</th><th>Group</th><th>Status</th></tr></thead><tbody></tbody></table></div></div>';
+    el.innerHTML=html;
+    window._rmPhases=phases;
+    roadmapRender();
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function roadmapRender(){
+  const tb=document.querySelector('#rm-table tbody'); if(!tb) return;
+  const q=(($('rm-q')||{}).value||'').trim().toLowerCase();
+  const live=(window._rmPhases||[]).filter(x=>x.status!=='completed');
+  let rows=live;
+  if(q)rows=live.filter(x=>String(x.id||'').toLowerCase().includes(q)||String(x.name||'').toLowerCase().includes(q));
+  if(!rows.length){tb.innerHTML='<tr><td colspan="4" class="empty">'+(live.length?'no match':'all phases completed')+'</td></tr>';return;}
+  tb.innerHTML=rows.slice(0,150).map(x=>'<tr><td><code>'+esc(x.id)+'</code></td><td>'+esc(x.name||'')+'</td><td style="font-size:0.62rem">'+esc(x.phase_group||'—')+'</td><td>'+_rmBadge(x.status)+'</td></tr>').join('')
+    +(rows.length>150?'<tr><td colspan="4" class="field-hint">showing 150 of '+rows.length+'</td></tr>':'');
+}
+function _lrReason(s){
+  return String(s==null?'—':s)
+    .replace(/Not Found/gi,'upstream 404')
+    .replace(/NetworkError|Failed to fetch/gi,'network error')
+    .replace(/\s+/g,' ').trim().slice(0,90);
+}
+function _lrTable(title,obj,cols){
+  const keys=Object.keys(obj||{});
+  let h='<div class="juris-sub">'+esc(title)+' <span class="badge info">'+keys.length+'</span></div><div class="table-wrap"><table><thead><tr>';
+  h+=cols.map(c=>'<th>'+esc(c[1])+'</th>').join('')+'</tr></thead><tbody>';
+  if(!keys.length)h+='<tr><td colspan="'+cols.length+'" class="empty">none</td></tr>';
+  for(const k of keys){const v=obj[k]||{};h+='<tr><td>'+esc(k)+'</td>'+cols.slice(1).map(c=>'<td>'+esc(v[c[0]]==null?'—':v[c[0]])+'</td>').join('')+'</tr>';}
+  return h+'</tbody></table></div>';
+}
+async function loadLearning(){
+  const el=$('learning-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const [act,builds,lessons]=await Promise.all([
+      api('/learning'),api('/learning/builds'),api('/learning/lessons')]);
+    let html='<div class="card"><h3>Learning <span class="badge info">action · build · lessons</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadLearning()">Refresh</button></span></h3>';
+    html+=_lrTable('Action outcomes',act,[['_','Action'],['attempts','Attempts'],['successes','Success'],['failures','Failures'],['success_rate','Rate %'],['recommendation','Recommendation']]);
+    html+=_lrTable('Build templates',builds.templates||{},[['_','Template'],['attempts','Attempts'],['success_rate','Rate %'],['recommendation','Recommendation']]);
+    const hist=(builds.history||[]);
+    html+='<div class="juris-sub">Recent builds <span class="badge info">'+hist.length+'</span></div><div class="table-wrap"><table><thead><tr><th>Build</th><th>Name</th><th>Status</th><th>Reason</th><th>When (UTC)</th></tr></thead><tbody>';
+    if(!hist.length)html+='<tr><td colspan="5" class="empty">no builds</td></tr>';
+    for(const b of hist.slice(0,25))html+='<tr><td><code>'+esc(b.build_id||'?')+'</code></td><td>'+esc(b.name||'')+'</td><td><span class="badge '+(String(b.status).toLowerCase()==='failed'?'bad':'ok')+'">'+esc(b.status||'—')+'</span></td><td style="font-size:0.6rem;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+attr(_lrReason(b.failure_reason))+'">'+esc(_lrReason(b.failure_reason))+'</td><td style="font-size:0.62rem">'+esc(String(b.timestamp||'').slice(0,19).replace('T',' '))+'</td></tr>';
+    html+='</tbody></table></div>';
+    html+=_lrTable('Lessons',lessons,[['_','Subject'],['category','Category'],['attempts','Attempts'],['success_rate','Rate %'],['recommendation','Recommendation']]);
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function loadEnterprise(){
+  const el=$('enterprise-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/enterprise/dashboard');
+    const sys=d.system||{},usage=d.usage||{},apv=d.approvals||{},rm=d.roadmap||{},builds=d.builds||{};
+    const m=(l,v,c)=>'<div class="metric"><span class="val"'+(c?' style="color:'+c+'"':'')+'>'+esc(v==null?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    let html='<div class="metric-row">'+m('Incidents',sys.active_incidents,sys.active_incidents?'var(--destructive)':'var(--accent)')
+      +m('AI calls',usage.total_calls)+m('Success',usage.success_rate==null?'—':Math.round(usage.success_rate*100)+'%')
+      +m('Pending approvals',apv.pending,'var(--warn)')+m('Roadmap %',rm.percent_complete,'var(--accent)')+'</div>';
+    html+='<div class="card"><h3>Enterprise <span class="badge '+(sys.docker_available?'ok':'warn')+'">docker '+(sys.docker_available?'up':'down')+'</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadEnterprise()">Refresh</button></span></h3>';
+    html+='<div class="field-hint">host '+esc(sys.hostname||'—')+' · generated '+esc(String(d.timestamp||'').slice(0,19))+'</div>';
+    const provs=d.providers||{};
+    html+='<div class="juris-sub">Providers <span class="badge info">'+Object.keys(provs).length+'</span></div><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Available</th><th>Enabled</th><th>Quota</th><th>Tier</th><th>Capabilities</th></tr></thead><tbody>';
+    for(const k of Object.keys(provs).sort()){const p=provs[k]||{};
+      html+='<tr><td><code>'+esc(k)+'</code></td><td><span class="badge '+(p.available?'ok':'bad')+'">'+(p.available?'yes':'no')+'</span></td><td>'+(p.enabled?'yes':'no')+'</td><td>'+esc(p.quota_status||'—')+'</td><td>'+esc(p.cost_tier||'—')+'</td><td style="font-size:0.6rem">'+esc((p.capabilities||[]).join(', '))+'</td></tr>';}
+    html+='</tbody></table></div>';
+    const by=usage.by_task_type||{};
+    if(Object.keys(by).length){
+      html+='<div class="juris-sub">Usage by task</div><div class="table-wrap"><table><thead><tr><th>Task</th><th>Calls</th></tr></thead><tbody>';
+      for(const k of Object.keys(by).sort()){const v=by[k];html+='<tr><td>'+esc(k)+'</td><td>'+esc(typeof v==='object'?(v.count!=null?v.count:JSON.stringify(v)):v)+'</td></tr>';}
+      html+='</tbody></table></div>';
+    }
+    const active=builds.active||[],failed=builds.failed_today||[];
+    html+='<div class="juris-sub">Builds</div><div class="metric-row">'+m('Active',active.length,'var(--info)')+m('Failed today',failed.length,failed.length?'var(--destructive)':'var(--accent)')+'</div>';
+    if(active.length||failed.length){
+      html+='<div class="table-wrap"><table><thead><tr><th>Build</th><th>Name</th><th>Status</th></tr></thead><tbody>';
+      for(const b of active.concat(failed).slice(0,20))html+='<tr><td><code>'+esc(b.build_id||b.id||'?')+'</code></td><td>'+esc(b.name||'')+'</td><td>'+esc(b.status||'—')+'</td></tr>';
+      html+='</tbody></table></div>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
 async function arbView(p){
   const el=$('arb-results'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
   try{const d=await api('/cc/arbitra/arbitra/'+p); el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:340px;overflow:auto">'+esc(JSON.stringify(d,null,1))+'</pre>';}
@@ -5371,7 +5667,7 @@ function betTab(n){
 }
 function betBody(h){const b=$('bet-body');if(b)b.innerHTML=h;}
 function betJson(title,data){
-  return '<div class="card"><h3>'+esc(title)+'</h3><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word;max-height:260px;overflow:auto">'+esc(JSON.stringify(data,null,1))+'</pre></div>';
+  return '<div class="card"><h3>'+esc(title)+'</h3>'+_autoTable(data)+'</div>';
 }
 async function betTOverview(){
   betBody('<span class="loading">loading…</span>');

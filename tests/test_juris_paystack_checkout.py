@@ -36,6 +36,7 @@ def isolated_dbs(tmp_path, monkeypatch):
     monkeypatch.setattr(payments_store, "DB_PATH", str(tmp_path / "payments.db"))
     monkeypatch.setattr(accts, "DB_DIR", str(tmp_path))
     monkeypatch.setattr(accts, "DB_PATH", str(tmp_path / "juris_accounts.db"))
+    monkeypatch.setenv("JURIS_PLANS_PATH", str(tmp_path / "juris_plans.json"))
     accts._account_manager = None
     checkout.reset_provider()
     yield
@@ -115,6 +116,34 @@ class TestCreatePaystackCheckout:
         assert result["authorization_url"].startswith("https://checkout.paystack.com/")
         assert result["reference"].startswith("JURIS-")
         assert result["provider"] == "paystack"
+
+    def test_plan_code_attached_when_mapped(self):
+        from core.juris_kai import plans
+        plans.save_plan_map(
+            {"monthly_basic": {"plan_code": "PLN_test_basic"}},
+            mode="test", path=plans.plans_path())
+        acct = _account()
+        fake = FakeProvider()
+        result = checkout.create_paystack_checkout(
+            acct, "monthly_basic", email="buyer@example.com", provider=fake)
+        call = fake.initialize_calls[0]
+        # The test-mode plan must be attached so Paystack creates a Subscription.
+        assert call["plan"] == "PLN_test_basic"
+        assert call["metadata"]["plan_code"] == "PLN_test_basic"
+        assert result["plan_code"] == "PLN_test_basic"
+
+    def test_live_plan_not_attached_in_test_mode(self):
+        from core.juris_kai import plans
+        plans.save_plan_map(
+            {"monthly_basic": {"plan_code": "PLN_live_basic"}},
+            mode="live", path=plans.plans_path())
+        acct = _account()
+        fake = FakeProvider()
+        result = checkout.create_paystack_checkout(
+            acct, "monthly_basic", email="buyer@example.com", provider=fake)
+        # A live plan code must never be attached to a test-mode transaction.
+        assert fake.initialize_calls[0].get("plan") is None
+        assert result["plan_code"] is None
 
     def test_free_tier_rejected(self):
         acct = _account()
@@ -254,6 +283,7 @@ class TestWebhook:
                            "data": {"reference": "r1"}}).encode()
         with pytest.raises(PaystackError):
             checkout.handle_webhook(body, "deadbeef", provider=provider)
+
 
 
 # ── CC endpoints ──────────────────────────────────────────────────────────

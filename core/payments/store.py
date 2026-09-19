@@ -124,6 +124,7 @@ def update_verified(
     currency: str = "",
     raw: Optional[Any] = None,
     provider: str = "paystack",
+    mode: str = "",
 ) -> Dict[str, Any]:
     """Persist a verification result, creating the row if it does not exist."""
     raw_json = raw if isinstance(raw, str) else json.dumps(raw or {})
@@ -137,10 +138,10 @@ def update_verified(
                 INSERT INTO payments
                     (reference, provider, mode, status, amount, currency, channel,
                      gateway_response, raw_response, verified_at)
-                VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
-                    reference, provider, status, amount or 0,
+                    reference, provider, mode, status, amount or 0,
                     currency or "GHS", channel, gateway_response, raw_json,
                 ),
             )
@@ -148,14 +149,15 @@ def update_verified(
             db.execute(
                 """
                 UPDATE payments
-                SET status = ?, channel = ?, gateway_response = ?, raw_response = ?,
+                SET status = ?, mode = COALESCE(NULLIF(?, ''), mode),
+                    channel = ?, gateway_response = ?, raw_response = ?,
                     amount = COALESCE(?, amount),
                     currency = COALESCE(NULLIF(?, ''), currency),
                     verified_at = datetime('now'), updated_at = datetime('now')
                 WHERE reference = ?
                 """,
                 (
-                    status, channel, gateway_response, raw_json,
+                    status, mode, channel, gateway_response, raw_json,
                     amount, currency, reference,
                 ),
             )
@@ -173,6 +175,7 @@ def record_webhook(
     currency: str = "",
     raw: Optional[Any] = None,
     provider: str = "paystack",
+    mode: str = "",
 ) -> Dict[str, Any]:
     """Idempotently apply a webhook event.
 
@@ -193,10 +196,10 @@ def record_webhook(
                 INSERT INTO payments
                     (reference, provider, mode, status, amount, currency, channel,
                      gateway_response, raw_response, verified_at)
-                VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 """,
                 (
-                    reference, provider, status, amount or 0,
+                    reference, provider, mode, status, amount or 0,
                     currency or "GHS", channel, gateway_response, raw_json,
                 ),
             )
@@ -204,7 +207,8 @@ def record_webhook(
             db.execute(
                 """
                 UPDATE payments
-                SET status = ?, channel = CASE WHEN ? != '' THEN ? ELSE channel END,
+                SET status = ?, mode = COALESCE(NULLIF(?, ''), mode),
+                    channel = CASE WHEN ? != '' THEN ? ELSE channel END,
                     gateway_response = ?, raw_response = ?,
                     amount = COALESCE(?, amount),
                     currency = COALESCE(NULLIF(?, ''), currency),
@@ -212,7 +216,7 @@ def record_webhook(
                 WHERE reference = ?
                 """,
                 (
-                    status, channel, channel, gateway_response, raw_json,
+                    status, mode, channel, channel, gateway_response, raw_json,
                     amount, currency, reference,
                 ),
             )

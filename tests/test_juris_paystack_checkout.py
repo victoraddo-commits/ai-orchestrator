@@ -284,6 +284,20 @@ class TestWebhook:
         with pytest.raises(PaystackError):
             checkout.handle_webhook(body, "deadbeef", provider=provider)
 
+    def test_webhook_records_ledger_mode(self):
+        mgr = _accts().get_account_manager()
+        acct = _account(mgr)
+        secret = "sk_test_webhook_secret"
+        provider = PaystackProvider(secret_key=secret, mode="test")
+        event = {"event": "charge.success",
+                 "data": _success_data(acct["account_id"], "monthly_basic", "JURIS-WH3")}
+        body = json.dumps(event).encode()
+        sig = hmac.new(secret.encode(), body, hashlib.sha512).hexdigest()
+        checkout.handle_webhook(body, sig, provider=provider)
+        stored = payments_store.get_payment("JURIS-WH3")
+        assert stored is not None
+        assert stored["status"] == "success"
+        assert stored["mode"] == "test"
 
 
 # ── CC endpoints ──────────────────────────────────────────────────────────

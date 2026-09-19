@@ -131,6 +131,7 @@ async def paystack_webhook(request: Request):
         amount=data.get("amount"),
         currency=data.get("currency", "") or "",
         raw=event,
+        mode=getattr(provider, "mode", "") or "",
     )
     return {
         "status": "ok",

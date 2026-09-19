@@ -269,6 +269,7 @@ class PaystackProvider:
             amount=data.get("amount"),
             currency=data.get("currency", "") or "",
             raw=payload,
+            mode=self._mode,
         )
         result = self._result(record)
         result["raw"] = payload
@@ -294,6 +295,7 @@ class PaystackProvider:
         self._store.update_verified(
             reference, status=str(data.get("status", "refund_pending")),
             gateway_response=data.get("status", "") or "", raw=payload,
+            mode=self._mode,
         )
         return {
             "provider": "paystack",
@@ -469,6 +471,7 @@ class PaystackProvider:
             amount=data.get("amount"),
             currency=data.get("currency", "") or "",
             raw=event,
+            mode=self._mode,
         )
         return {
             "acknowledged": True,

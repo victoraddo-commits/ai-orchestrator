@@ -227,6 +227,12 @@ class TestVerify:
         assert stored is not None
         assert stored["status"] == "success"
 
+    def test_verify_records_provider_mode(self, make_provider):
+        provider, _ = make_provider(
+            [FakeResponse(200, _verify_payload(reference="orphan-mode"))])
+        provider.verify("orphan-mode")
+        assert payments_store.get_payment("orphan-mode")["mode"] == "test"
+
     def test_verify_paystack_error(self, make_provider):
         provider, _ = make_provider(
             [FakeResponse(404, {"status": False, "message": "Transaction not found"})]
@@ -282,6 +288,21 @@ class TestWebhookSignature:
         body = '{"event":"charge.success"}'
         sig = hmac.new(b"sk_test_dummy", body.encode(), hashlib.sha512).hexdigest()
         assert provider.verify_webhook(body, sig) is True
+
+
+class TestWebhookHandling:
+    def test_handle_webhook_records_provider_mode(self, make_provider):
+        provider, _ = make_provider([])
+        event = {"event": "charge.success",
+                 "data": {"reference": "wh-mode", "status": "success",
+                          "amount": 1000, "currency": "GHS"}}
+        body = json.dumps(event).encode()
+        sig = hmac.new(b"sk_test_dummy", body, hashlib.sha512).hexdigest()
+        out = provider.handle_webhook(body, sig)
+        assert out["handled"] is True
+        stored = payments_store.get_payment("wh-mode")
+        assert stored["status"] == "success"
+        assert stored["mode"] == "test"
 
 
 # ── mode gating ─────────────────────────────────────────────────────────────

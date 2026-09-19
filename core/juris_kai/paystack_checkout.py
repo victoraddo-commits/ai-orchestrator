@@ -285,6 +285,7 @@ def handle_webhook(raw_body: Any, signature: Optional[str],
                 amount=data.get("amount"),
                 currency=data.get("currency", "") or "",
                 raw=event,
+                mode=getattr(prov, "mode", "") or "",
             )
             duplicate = bool(ledger.get("duplicate"))
         except Exception:  # ledger write must never block activation

@@ -8,6 +8,7 @@ Type=simple
 WorkingDirectory=/opt/kai-directory
 Environment=KAI_DIRECTORY_DB=/var/lib/kai-directory/services.db
 Environment=KAI_DIRECTORY_PORT=8097
+Environment=KAI_DIRECTORY_INSECURE_TLS_HOSTS=192.168.1.111
 Environment=PYTHONPATH=/opt/kai-directory
 ExecStart=/opt/kai-directory/.venv/bin/python -m kai_directory.main
 Restart=always

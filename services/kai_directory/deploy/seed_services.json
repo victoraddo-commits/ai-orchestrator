@@ -1,10 +1,9 @@
 [
- {"id":"command-center","name":"command","display_name":"Kai Command Center","ip":"192.168.99.11","port":80,"category":"web"},
- {"id":"command-center-ui","name":"command-ui","display_name":"Command Center UI","ip":"192.168.99.11","port":3011,"category":"web"},
+ {"id":"command-center","name":"command-center","display_name":"Kai Command Center","host":"192.168.1.111","ip":"192.168.1.111","port":8000,"category":"core","endpoint":"https://192.168.1.111:8000/health","target_url":"https://192.168.1.111:8000/command-center","tags":"ui-page canonical"},
  {"id":"proxdash","name":"proxdash","display_name":"ProxDash","ip":"192.168.99.11","port":8091,"category":"infra"},
  {"id":"airdrop-hunter","name":"airdrop","display_name":"Airdrop Hunter","ip":"192.168.99.11","port":4202,"category":"finances"},
  {"id":"kai-voice","name":"voice","display_name":"Kai Voice Gateway","ip":"192.168.99.11","port":8130,"category":"ai"},
- {"id":"orchestrator-api","name":"orchestrator","display_name":"Kai Orchestrator API","ip":"192.168.1.111","port":8000,"category":"core"},
+ {"id":"orchestrator-api","name":"orchestrator","display_name":"Kai Orchestrator API","host":"192.168.1.111","ip":"192.168.1.111","port":8000,"category":"core","endpoint":"https://192.168.1.111:8000/health"},
  {"id":"directives","name":"directives","display_name":"Kai Directives","ip":"192.168.1.111","port":8099,"category":"core"},
  {"id":"legal-brain","name":"legal","display_name":"Kai Legal Brain","ip":"192.168.1.100","port":8100,"category":"legal"},
  {"id":"it-manager","name":"it","display_name":"IT Manager","ip":"192.168.1.112","port":8090,"category":"infra"},

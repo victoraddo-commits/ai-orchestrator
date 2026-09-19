@@ -804,3 +804,370 @@ def cc_test_query_stream(body: dict = Body(...),
             "Connection": "keep-alive",
         },
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Paystack plans & subscriptions
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _provider_status() -> dict:
+    """Non-secret provider status: mode + key presence (never the keys)."""
+    from core.payments import keys as _keys
+    status = {"mode": "unknown", "live_allowed": False,
+              "secret_key_present": False, "public_key_present": False}
+    try:
+        status["mode"] = _keys.mode()
+        status["live_allowed"] = _keys.live_allowed()
+        status["secret_key_present"] = _keys.has_secret_key()
+    except Exception as exc:
+        status["error"] = str(exc)
+    try:
+        status["public_key_present"] = bool(_keys.public_key())
+    except Exception:
+        status["public_key_present"] = False
+    return status
+
+
+@router.get("/api/juris-kai/cc/plans")
+def cc_plans(remote: bool = False, _: str = Depends(require_cc_read)):
+    """Local tiers + Paystack plan code + subscription counts."""
+    from core.juris_kai import plans as _plans
+    from core.juris_kai.pricing import load_pricing
+    from core.juris_kai.accounts import get_account_manager
+
+    doc = _plans.load_plan_map()
+    mapped = doc.get("plans") or {}
+    tiers = load_pricing().get("tiers") or {}
+    tier_rows = []
+    for key, tier in tiers.items():
+        entry = mapped.get(key) or {}
+        tier_rows.append({
+            "tier": key,
+            "name": tier.get("name", key),
+            "price_ghs": tier.get("price_ghs", 0),
+            "duration_days": tier.get("duration_days", 0),
+            "interval": _plans.interval_for_tier(key, tier),
+            "plan_code": entry.get("plan_code"),
+            "plan_name": entry.get("name"),
+            "plan_mode": entry.get("mode"),
+            "amount_minor": entry.get("amount_minor"),
+            "synced": bool(entry.get("plan_code")),
+        })
+
+    try:
+        counts = get_account_manager().subscription_counts()
+        recent = get_account_manager().list_subscriptions(limit=10)
+    except Exception as exc:
+        counts = {"total": 0, "active": 0, "by_status": {}, "by_tier": {},
+                  "error": str(exc)}
+        recent = []
+
+    remote_subscriptions = None
+    if remote:
+        try:
+            from core.juris_kai.paystack_checkout import get_paystack_provider
+            subs = get_paystack_provider().list_subscriptions()
+            remote_subscriptions = {
+                "count": len(subs),
+                "items": [{
+                    "subscription_code": s.get("subscription_code"),
+                    "status": s.get("status"),
+                    "customer": (s.get("customer") or {}).get("email"),
+                    "plan": (s.get("plan") or {}).get("plan_code"),
+                    "next_payment_date": s.get("next_payment_date"),
+                } for s in subs[:20]],
+            }
+        except Exception as exc:
+            remote_subscriptions = {"error": str(exc)}
+
+    return {
+        "success": True,
+        "mode": doc.get("mode") or _provider_status().get("mode"),
+        "provider": _provider_status(),
+        "tiers": tier_rows,
+        "subscriptions": counts,
+        "recent_subscriptions": recent,
+        "remote_subscriptions": remote_subscriptions,
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+    }
+
+
+@router.post("/api/juris-kai/cc/plans/sync")
+def cc_plans_sync(operator: str = Depends(require_juris_write),
+                  request: Request = None):
+    """Create/update the Paystack Plan for every paid tier (idempotent)."""
+    from core.juris_kai import plans as _plans
+
+    _rate_limit(request, operator)
+    try:
+        result = _plans.sync_plans(updated_by=operator)
+    except PaymentConfigError as exc:
+        return {"success": False, "error": f"payments not configured: {exc}"}
+    except PaystackError as exc:
+        logger.warning("plans sync failed: %s", exc)
+        return {"success": False, "error": str(exc)}
+    _log_admin(operator, "plans_sync", {
+        "created": result.get("created"), "updated": result.get("updated"),
+        "unchanged": result.get("unchanged"), "mode": result.get("mode"),
+    })
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Legal group management
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/api/juris-kai/cc/groups")
+def cc_groups(include_archived: bool = False, account_id: str = "",
+              _: str = Depends(require_cc_read)):
+    from core.juris_kai.accounts import get_account_manager
+    groups = get_account_manager().list_groups(
+        include_archived=include_archived, account_id=account_id or "")
+    return {"success": True, "groups": groups, "count": len(groups)}
+
+
+@router.get("/api/juris-kai/cc/users/search")
+def cc_users_search(q: str = "", tier: str = "", limit: int = 50,
+                    _: str = Depends(require_cc_read)):
+    """Search accounts for member pickers (bulk add)."""
+    from core.juris_kai.accounts import get_account_manager
+    try:
+        res = get_account_manager().find_accounts(
+            query=q, tier=tier, per_page=max(1, min(int(limit or 50), 100)))
+        return {"success": True, "users": res.get("accounts", []),
+                "total": res.get("total", 0)}
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "users": [], "total": 0}
+
+
+@router.post("/api/juris-kai/cc/groups")
+def cc_group_create(body: dict = Body(...),
+                    operator: str = Depends(require_juris_write),
+                    request: Request = None):
+    from core.juris_kai import groups as _groups
+    _rate_limit(request, operator)
+    name = (body.get("name") or "").strip()
+    created_by = str(body.get("account_id") or body.get("created_by")
+                     or operator).strip()
+    kind = body.get("kind") or ("user" if body.get("account_id") else "admin")
+    result = _groups.create_group(name, created_by, kind=kind,
+                                  description=body.get("description", ""),
+                                  actor=operator)
+    if result.get("success"):
+        _log_admin(operator, "group_create", {"name": name, "kind": kind})
+    return result
+
+
+@router.get("/api/juris-kai/cc/groups/{group_id}")
+def cc_group_detail(group_id: str, _: str = Depends(require_cc_read)):
+    from core.juris_kai.accounts import get_account_manager
+    mgr = get_account_manager()
+    group = mgr.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    gid = group["group_id"]
+    return {
+        "success": True,
+        "group": group,
+        "members": mgr.list_members(gid),
+        "reports": mgr.list_group_reports(gid),
+        "audit": mgr.get_group_audit_log(gid, limit=50),
+    }
+
+
+@router.patch("/api/juris-kai/cc/groups/{group_id}")
+def cc_group_update(group_id: str, body: dict = Body(...),
+                    operator: str = Depends(require_juris_write),
+                    request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    mgr = get_account_manager()
+    if not mgr.get_group(group_id):
+        raise HTTPException(status_code=404, detail="Group not found")
+    name = (body.get("name") or "").strip()
+    status = (body.get("status") or "").strip().lower()
+    result = {"success": True}
+    if name:
+        result = mgr.rename_group(group_id, name, actor=operator)
+    if status == "archived":
+        result = mgr.archive_group(group_id, actor=operator)
+    if result.get("success"):
+        _log_admin(operator, "group_update",
+                   {"group_id": group_id, "name": name or None, "status": status or None})
+    return result
+
+
+@router.post("/api/juris-kai/cc/groups/{group_id}/members/bulk")
+def cc_group_bulk_add(group_id: str, body: dict = Body(...),
+                      operator: str = Depends(require_juris_write),
+                      request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    ids = body.get("account_ids") or body.get("users") or []
+    if not isinstance(ids, list) or not ids:
+        return {"success": False, "error": "account_ids list is required"}
+    role = body.get("role") or "member"
+    result = get_account_manager().bulk_add_members(
+        group_id, [str(i) for i in ids], role=role, actor=operator)
+    if result.get("success") or result.get("added"):
+        _log_admin(operator, "group_bulk_add",
+                   {"group_id": group_id, "added": result.get("added"), "role": role})
+    return result
+
+
+@router.post("/api/juris-kai/cc/groups/{group_id}/members")
+def cc_group_add_member(group_id: str, body: dict = Body(...),
+                        operator: str = Depends(require_juris_write),
+                        request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    account_id = str(body.get("account_id") or "").strip()
+    role = body.get("role") or "member"
+    if not account_id:
+        return {"success": False, "error": "account_id is required"}
+    result = get_account_manager().add_member(group_id, account_id, role=role,
+                                              actor=operator)
+    if result.get("added"):
+        _log_admin(operator, "group_member_add",
+                   {"group_id": group_id, "account_id": account_id, "role": role})
+    return result
+
+
+@router.put("/api/juris-kai/cc/groups/{group_id}/members/{account_id}")
+def cc_group_set_role(group_id: str, account_id: str, body: dict = Body(...),
+                      operator: str = Depends(require_juris_write),
+                      request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    role = body.get("role") or "member"
+    result = get_account_manager().set_member_role(
+        group_id, account_id, role, actor=operator)
+    if result.get("success"):
+        _log_admin(operator, "group_member_role",
+                   {"group_id": group_id, "account_id": account_id, "role": role})
+    return result
+
+
+@router.delete("/api/juris-kai/cc/groups/{group_id}/members/{account_id}")
+def cc_group_remove_member(group_id: str, account_id: str,
+                           operator: str = Depends(require_juris_write),
+                           request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    result = get_account_manager().remove_member(group_id, account_id,
+                                                 actor=operator)
+    if result.get("removed"):
+        _log_admin(operator, "group_member_remove",
+                   {"group_id": group_id, "account_id": account_id})
+    return result
+
+
+@router.post("/api/juris-kai/cc/groups/{group_id}/audit")
+def cc_group_audit(group_id: str, operator: str = Depends(require_juris_write),
+                   request: Request = None):
+    """Run the document audit over the group's documents and store a report."""
+    from core.juris_kai import groups as _groups
+    _rate_limit(request, operator)
+    result = _groups.audit_group_documents(group_id, requested_by=operator)
+    if result.get("success"):
+        report = result.get("report") or {}
+        _log_admin(operator, "group_document_audit", {
+            "group_id": group_id,
+            "report_id": report.get("report_id"),
+            "documents": report.get("document_count"),
+            "verified": report.get("verified_count"),
+            "flagged": report.get("flagged_count"),
+        })
+    return result
+
+
+@router.get("/api/juris-kai/cc/groups/{group_id}/reports")
+def cc_group_reports(group_id: str, _: str = Depends(require_cc_read)):
+    from core.juris_kai.accounts import get_account_manager
+    mgr = get_account_manager()
+    if not mgr.get_group(group_id):
+        raise HTTPException(status_code=404, detail="Group not found")
+    reports = mgr.list_group_reports(group_id)
+    return {"success": True, "reports": reports, "count": len(reports)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# User administration (create / deactivate / reactivate / grant / tier)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.post("/api/juris-kai/cc/accounts")
+def cc_account_create(body: dict = Body(...),
+                      operator: str = Depends(require_juris_write),
+                      request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    result = get_account_manager().create_account(
+        email=body.get("email", ""), full_name=body.get("full_name", ""),
+        tier=body.get("tier", "free_trial"), phone=body.get("phone", ""),
+        source="cc")
+    if result.get("success"):
+        _log_admin(operator, "account_create",
+                   {"account_id": result.get("account_id"),
+                    "email": body.get("email"), "tier": body.get("tier")})
+    return result
+
+
+@router.post("/api/juris-kai/cc/accounts/{account_id}/deactivate")
+def cc_account_deactivate(account_id: str, body: dict = Body(default={}),
+                          operator: str = Depends(require_juris_write),
+                          request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    reason = (body or {}).get("reason", "command_center")
+    result = get_account_manager().ban_account(account_id, reason)
+    if result.get("success"):
+        _log_admin(operator, "account_deactivate",
+                   {"account_id": account_id, "reason": reason})
+    return result
+
+
+@router.post("/api/juris-kai/cc/accounts/{account_id}/activate")
+def cc_account_activate(account_id: str,
+                        operator: str = Depends(require_juris_write),
+                        request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    result = get_account_manager().unban_account(account_id)
+    if result.get("success"):
+        _log_admin(operator, "account_activate", {"account_id": account_id})
+    return result
+
+
+@router.post("/api/juris-kai/cc/accounts/{account_id}/grant-days")
+def cc_account_grant_days(account_id: str, body: dict = Body(...),
+                          operator: str = Depends(require_juris_write),
+                          request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    days = body.get("days", 1)
+    reason = body.get("reason", "command_center")
+    result = get_account_manager().grant_free_days(account_id, days, reason)
+    if result.get("success"):
+        _log_admin(operator, "account_grant_days",
+                   {"account_id": account_id, "days": days, "reason": reason})
+    return result
+
+
+@router.post("/api/juris-kai/cc/accounts/{account_id}/subscription")
+def cc_account_set_tier(account_id: str, body: dict = Body(...),
+                        operator: str = Depends(require_juris_write),
+                        request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    tier = body.get("tier", "")
+    mgr = get_account_manager()
+    if not mgr.get_account(account_id):
+        raise HTTPException(status_code=404, detail="Account not found")
+    ok = mgr.set_subscription(account_id, tier)
+    if not ok:
+        return {"success": False, "error": f"unknown tier: {tier}"}
+    _log_admin(operator, "account_set_tier",
+               {"account_id": account_id, "tier": tier})
+    return {"success": True, "account_id": account_id, "tier": tier,
+            "subscription": mgr.get_active_subscription(account_id)}

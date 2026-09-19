@@ -32,7 +32,14 @@ from core.payments import store as _store
 
 logger = logging.getLogger(__name__)
 
+USER_AGENT = "KaiOrchestrator/1.0 (+https://kai.local)"
+
 VALIDATE_RE = re.compile(r"^[A-Za-z0-9.\-=]+$")
+
+# Paystack plan intervals (https://paystack.com/docs/api/plan/).
+VALID_PLAN_INTERVALS = {
+    "hourly", "daily", "weekly", "monthly", "quarterly", "biannually", "annually",
+}
 
 # Currencies Paystack supports for initialize/verify. GHS is the Kai default.
 SUPPORTED_CURRENCIES = {
@@ -127,6 +134,11 @@ class PaystackProvider:
             "Authorization": f"Bearer {secret}",
             "Content-Type": "application/json",
             "Cache-Control": "no-cache",
+            # Paystack's edge rejects a bare urllib/client User-Agent with HTTP
+            # 403; a normal identifier is required for the plan/subscription
+            # endpoints to be reachable at all.
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json",
         }
         url = f"{self._base_url}{path}"
         try:
@@ -168,6 +180,7 @@ class PaystackProvider:
         channels: Optional[List[str]] = None,
         callback_url: Optional[str] = None,
         metadata: Optional[Any] = None,
+        plan: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a Paystack transaction and return its checkout URL."""
         if isinstance(amount, bool) or not isinstance(amount, int):
@@ -201,6 +214,9 @@ class PaystackProvider:
             body["channels"] = [c.lower() for c in channels]
         if callback_url:
             body["callback_url"] = callback_url
+        if plan:
+            # Attaching a plan makes Paystack create a Subscription on success.
+            body["plan"] = str(plan)
         if metadata:
             body["metadata"] = metadata if isinstance(metadata, str) else json.dumps(metadata)
 
@@ -286,6 +302,118 @@ class PaystackProvider:
             "amount": amount,
             "raw": payload,
         }
+
+    # ── plans ───────────────────────────────────────────────────────────
+    #
+    # A Paystack Plan is a reusable subscription definition. Attaching its code
+    # to a transaction makes Paystack create a real Subscription on success.
+    # Docs: https://paystack.com/docs/api/plan/
+
+    def _data(self, payload: dict, status_code: int, op: str) -> dict:
+        if not payload.get("status"):
+            raise PaystackError(
+                payload.get("message") or f"Paystack {op} failed",
+                status_code=status_code,
+                payload=payload,
+            )
+        return payload.get("data") or {}
+
+    def create_plan(
+        self,
+        name: str,
+        amount: int,
+        interval: str = "monthly",
+        currency: str = "GHS",
+        description: str = "",
+        send_invoices: bool = True,
+        send_sms: bool = False,
+    ) -> Dict[str, Any]:
+        """Create a Paystack plan and return its ``plan_code``."""
+        if not (name or "").strip():
+            raise ValueError("plan name is required")
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
+            raise ValueError("plan amount must be a positive integer (minor unit)")
+        interval = (interval or "").lower()
+        if interval not in VALID_PLAN_INTERVALS:
+            raise ValueError(f"invalid plan interval {interval!r}")
+        currency = (currency or "GHS").upper()
+        if currency not in SUPPORTED_CURRENCIES:
+            raise ValueError(f"unsupported currency {currency!r}")
+        body: Dict[str, Any] = {
+            "name": name.strip(),
+            "amount": amount,
+            "interval": interval,
+            "currency": currency,
+            "send_invoices": bool(send_invoices),
+            "send_sms": bool(send_sms),
+        }
+        if description:
+            body["description"] = description
+        payload, status_code = self._request("POST", "/plan", json_body=body)
+        return self._data(payload, status_code, "plan.create")
+
+    def list_plans(self, per_page: int = 100, page: int = 1) -> List[Dict[str, Any]]:
+        """Return all plans on the account (paginated, first page by default)."""
+        per_page = max(1, min(int(per_page or 100), 100))
+        payload, status_code = self._request(
+            "GET", f"/plan?perPage={per_page}&page={max(1, int(page or 1))}"
+        )
+        data = self._data(payload, status_code, "plan.list")
+        return data if isinstance(data, list) else []
+
+    def fetch_plan(self, code: str) -> Dict[str, Any]:
+        """Fetch one plan by ``plan_code`` (or numeric id)."""
+        payload, status_code = self._request(
+            "GET", f"/plan/{quote(str(code), safe='')}"
+        )
+        return self._data(payload, status_code, "plan.fetch")
+
+    def update_plan(self, code: str, **fields: Any) -> Dict[str, Any]:
+        """Update a plan (name, amount, interval, description)."""
+        allowed = {"name", "amount", "interval", "description", "send_invoices", "send_sms"}
+        body = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if "interval" in body:
+            body["interval"] = str(body["interval"]).lower()
+            if body["interval"] not in VALID_PLAN_INTERVALS:
+                raise ValueError(f"invalid plan interval {body['interval']!r}")
+        if "amount" in body and (isinstance(body["amount"], bool)
+                                 or not isinstance(body["amount"], int)
+                                 or body["amount"] <= 0):
+            raise ValueError("plan amount must be a positive integer (minor unit)")
+        if not body:
+            raise ValueError("no updatable plan fields supplied")
+        payload, status_code = self._request(
+            "PUT", f"/plan/{quote(str(code), safe='')}", json_body=body
+        )
+        return self._data(payload, status_code, "plan.update")
+
+    # ── subscriptions ───────────────────────────────────────────────────
+
+    def list_subscriptions(self, per_page: int = 100, page: int = 1) -> List[Dict[str, Any]]:
+        """Return subscriptions on the account (paginated)."""
+        per_page = max(1, min(int(per_page or 100), 100))
+        payload, status_code = self._request(
+            "GET", f"/subscription?perPage={per_page}&page={max(1, int(page or 1))}"
+        )
+        data = self._data(payload, status_code, "subscription.list")
+        return data if isinstance(data, list) else []
+
+    def fetch_subscription(self, code: str) -> Dict[str, Any]:
+        """Fetch one subscription by ``subscription_code``."""
+        payload, status_code = self._request(
+            "GET", f"/subscription/{quote(str(code), safe='')}"
+        )
+        return self._data(payload, status_code, "subscription.fetch")
+
+    def disable_subscription(self, code: str, email_token: str) -> Dict[str, Any]:
+        """Cancel a subscription (requires the customer's ``email_token``)."""
+        if not code or not email_token:
+            raise ValueError("subscription code and email_token are required")
+        body = {"code": str(code), "token": str(email_token)}
+        payload, status_code = self._request(
+            "POST", "/subscription/disable", json_body=body
+        )
+        return self._data(payload, status_code, "subscription.disable")
 
     # ── webhook ─────────────────────────────────────────────────────────
 

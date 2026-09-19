@@ -89,6 +89,18 @@ def create_paystack_checkout(
     reference = PaystackProvider.generate_reference(REFERENCE_PREFIX)
     amount_minor = PaystackProvider.to_minor_units(price)
     prov = provider or get_paystack_provider()
+
+    # Attach the Paystack Plan so a successful payment creates a real
+    # Subscription (and the tier renews) instead of a one-off transaction.
+    plan_code = None
+    try:
+        from core.juris_kai import plans as _plans
+        plan_code = _plans.plan_code_for_tier(tier, mode=prov.mode)
+    except Exception:  # pricing/plan map must never block a checkout
+        plan_code = None
+    if plan_code:
+        metadata["plan_code"] = plan_code
+
     result = prov.initialize(
         amount=amount_minor,
         currency=CURRENCY,
@@ -97,6 +109,7 @@ def create_paystack_checkout(
         channels=list(CHANNELS),
         callback_url=callback_url,
         metadata=metadata,
+        plan=plan_code,
     )
     logger.info("juris paystack: initialized %s for account %s (mode=%s)",
                 tier, account.get("account_id"), result.get("mode"))
@@ -109,6 +122,7 @@ def create_paystack_checkout(
         "amount_minor": amount_minor,
         "currency": CURRENCY,
         "email": email,
+        "plan_code": plan_code,
         "reference": result.get("reference", reference),
         "authorization_url": result.get("authorization_url", ""),
         "access_code": result.get("access_code", ""),
@@ -278,6 +292,16 @@ def handle_webhook(raw_body: Any, signature: Optional[str],
 
     activation = ({"activated": False, "reason": "no_reference"} if not reference
                   else activate_reference(reference, status=status, data=data))
+
+    subscription = None
+    try:
+        from core.juris_kai import subscriptions as _subscriptions
+        if event_name in _subscriptions.SUBSCRIPTION_EVENTS:
+            subscription = _subscriptions.handle_subscription_event(
+                event_name, data, mode=getattr(prov, "mode", ""))
+    except Exception:  # subscription sync must never break the webhook ack
+        logger.warning("juris paystack: subscription sync failed", exc_info=True)
+
     return {
         "success": True,
         "event": event_name,
@@ -285,4 +309,5 @@ def handle_webhook(raw_body: Any, signature: Optional[str],
         "status": status,
         "duplicate": duplicate,
         "activation": activation,
+        "subscription": subscription,
     }

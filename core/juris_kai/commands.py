@@ -345,5 +345,140 @@ def handle_progress(update: Dict[str, Any], account: Dict[str, Any]) -> str:
     return f"*Topics studied*:\n" + "\n".join(f"• {t}" for t in topics_studied)
 
 
+# ---- Legal groups (Telegram) ----
+
+def handle_group(args: str, account: Dict[str, Any], is_admin: bool = False) -> str:
+    """Create/join/leave groups; list a user's groups; admin member management.
+
+    ``/group``                    list your groups
+    ``/group create <name>``      create a new group (you become owner)
+    ``/group join <invite_code>`` join a group
+    ``/group leave <group_id>``   leave a group
+    ``/group members <group_id>`` list a group's members
+    ``/group audit <group_id>``   audit the group's documents
+    admin-only:
+    ``/group archive <group_id>``
+    ``/group add <group_id> <account_id> [role]``
+    ``/group remove <group_id> <account_id>``
+    ``/group role <group_id> <account_id> <role>``
+    """
+    from core.juris_kai import groups as group_api
+
+    parts = (args or "").strip().split()
+    action = parts[0].lower() if parts else "list"
+    rest = parts[1:]
+    account_id = account.get("account_id", "")
+
+    if action in ("", "list"):
+        items = group_api.groups_for_account(account_id)
+        if not items:
+            return ("You are not in any legal groups yet.\n"
+                    "Create one with /group create <name>, or join with "
+                    "/group join <invite_code>.")
+        lines = ["👥 *Your legal groups*"]
+        for g in items:
+            lines.append(f"• *{g['name']}* (`{g['group_id']}`) — "
+                         f"{g.get('member_count', 0)} member(s), "
+                         f"role lookup in /group members")
+        return "\n".join(lines)
+
+    if action == "create":
+        name = " ".join(rest).strip()
+        if not name:
+            return "Usage: /group create <name>"
+        res = group_api.create_group(name, account_id, kind="user",
+                                     actor=account_id)
+        if not res.get("success"):
+            return f"⚠️ {res.get('error', 'could not create group')}"
+        g = res["group"]
+        return (f"✅ Created *{g['name']}*\n"
+                f"Group ID: `{g['group_id']}`\n"
+                f"Invite code: `{g['invite_code']}`\n"
+                "Share the invite code so others can /group join it.")
+
+    if action == "join":
+        if not rest:
+            return "Usage: /group join <invite_code>"
+        res = group_api.join_group(rest[0], account_id, actor=account_id)
+        if not res.get("success"):
+            return f"⚠️ {res.get('error', 'could not join group')}"
+        g = res.get("group") or {}
+        if res.get("added"):
+            return f"✅ Joined *{g.get('name', rest[0])}*."
+        return f"You are already a member of *{g.get('name', rest[0])}*."
+
+    if action == "leave":
+        if not rest:
+            return "Usage: /group leave <group_id>"
+        res = group_api.leave_group(rest[0], account_id, actor=account_id)
+        if not res.get("success"):
+            return f"⚠️ {res.get('error', 'could not leave group')}"
+        return "✅ Left the group." if res.get("removed") else "You were not a member."
+
+    if action == "members":
+        if not rest:
+            return "Usage: /group members <group_id>"
+        group = group_api.find_group(rest[0])
+        if not group:
+            return "⚠️ Group not found."
+        members = get_account_manager().list_members(group["group_id"])
+        lines = [f"👥 *{group['name']}* — {len(members)} member(s)"]
+        for m in members:
+            lines.append(f"• {m.get('full_name') or m['account_id']} "
+                         f"(`{m['account_id']}`) — {m['role']}")
+        return "\n".join(lines)
+
+    if action == "audit":
+        if not rest:
+            return "Usage: /group audit <group_id>"
+        group = group_api.find_group(rest[0])
+        if not group:
+            return "⚠️ Group not found."
+        members = get_account_manager().list_members(group["group_id"])
+        roles = {m["account_id"]: m["role"] for m in members}
+        if not is_admin and roles.get(account_id) not in ("owner", "admin"):
+            return "⚠️ Only a group owner or admin can request a document audit."
+        res = group_api.audit_group_documents(group["group_id"],
+                                              requested_by=account_id)
+        if not res.get("success"):
+            return f"⚠️ {res.get('error', 'audit failed')}"
+        r = res.get("report") or {}
+        return (f"📋 *Audit report* for {group['name']}\n"
+                f"Documents: {r.get('document_count', 0)}\n"
+                f"Verified: {r.get('verified_count', 0)} · "
+                f"Flagged: {r.get('flagged_count', 0)}\n"
+                f"Report ID: `{r.get('report_id')}`")
+
+    # ---- admin-only management ----
+    if not is_admin:
+        return ("Unknown group action. Try /group, /group create <name>, "
+                "/group join <code>, /group leave <group_id>, "
+                "/group members <group_id>, /group audit <group_id>.")
+
+    if action == "archive" and rest:
+        res = get_account_manager().archive_group(rest[0], actor=account_id)
+        return "✅ Archived." if res.get("success") else f"⚠️ {res.get('error')}"
+
+    if action in ("add", "remove", "role") and len(rest) >= 2:
+        mgr = get_account_manager()
+        gid, target = rest[0], rest[1]
+        if action == "add":
+            role = rest[2] if len(rest) > 2 else "member"
+            res = mgr.add_member(gid, target, role=role, actor=account_id)
+            return ("✅ Added." if res.get("added")
+                    else f"⚠️ {res.get('error') or 'already a member'}")
+        if action == "remove":
+            res = mgr.remove_member(gid, target, actor=account_id)
+            return "✅ Removed." if res.get("removed") else "⚠️ Not a member."
+        role = rest[2] if len(rest) > 2 else "member"
+        res = mgr.set_member_role(gid, target, role, actor=account_id)
+        return "✅ Role updated." if res.get("success") else f"⚠️ {res.get('error')}"
+
+    return ("Usage: /group add <group_id> <account_id> [role] | "
+            "/group remove <group_id> <account_id> | "
+            "/group role <group_id> <account_id> <role> | "
+            "/group archive <group_id>")
+
+
 # This module must NEVER import:
 #   core.build_manager, core.approval, core.deployment_manager

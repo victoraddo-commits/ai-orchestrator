@@ -192,6 +192,70 @@ def _init_schema(conn: sqlite3.Connection):
             FOREIGN KEY (inviter_account_id) REFERENCES juris_accounts(account_id)
         );
 
+        -- Paystack subscription state (kept in sync from webhooks).
+        CREATE TABLE IF NOT EXISTS juris_subscriptions (
+            subscription_code TEXT PRIMARY KEY,
+            account_id TEXT,
+            tier TEXT DEFAULT '',
+            plan_code TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'active',
+            email_token TEXT DEFAULT '',
+            customer_email TEXT DEFAULT '',
+            amount_minor INTEGER DEFAULT 0,
+            currency TEXT DEFAULT 'GHS',
+            next_payment_date TEXT,
+            expires_at TEXT,
+            raw TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Legal groups (admin- and user-created).
+        CREATE TABLE IF NOT EXISTS legal_groups (
+            group_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            invite_code TEXT UNIQUE,
+            created_by TEXT DEFAULT '',
+            created_by_kind TEXT DEFAULT 'user',  -- user | admin
+            status TEXT NOT NULL DEFAULT 'active', -- active | archived
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS legal_group_members (
+            group_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'member',   -- owner | admin | member
+            added_by TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (group_id, account_id)
+        );
+
+        -- Every group mutation: actor, action, JSON details.
+        CREATE TABLE IF NOT EXISTS legal_group_audit (
+            audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id TEXT DEFAULT '',
+            actor TEXT DEFAULT '',
+            action TEXT NOT NULL,
+            details TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        -- Stored "audit the group's documents" reports.
+        CREATE TABLE IF NOT EXISTS legal_group_reports (
+            report_id TEXT PRIMARY KEY,
+            group_id TEXT NOT NULL,
+            requested_by TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'completed',
+            document_count INTEGER DEFAULT 0,
+            verified_count INTEGER DEFAULT 0,
+            flagged_count INTEGER DEFAULT 0,
+            summary TEXT DEFAULT '',
+            findings TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_juris_telegram
             ON juris_accounts(telegram_id);
         CREATE INDEX IF NOT EXISTS idx_juris_payments_account
@@ -210,6 +274,18 @@ def _init_schema(conn: sqlite3.Connection):
             ON juris_referrals(inviter_account_id);
         CREATE INDEX IF NOT EXISTS idx_juris_referrals_code
             ON juris_referrals(invite_code);
+        CREATE INDEX IF NOT EXISTS idx_juris_subscriptions_account
+            ON juris_subscriptions(account_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_subscriptions_status
+            ON juris_subscriptions(status);
+        CREATE INDEX IF NOT EXISTS idx_legal_groups_status
+            ON legal_groups(status);
+        CREATE INDEX IF NOT EXISTS idx_legal_group_members_account
+            ON legal_group_members(account_id);
+        CREATE INDEX IF NOT EXISTS idx_legal_group_audit_group
+            ON legal_group_audit(group_id);
+        CREATE INDEX IF NOT EXISTS idx_legal_group_reports_group
+            ON legal_group_reports(group_id);
     """)
     # Add token-tracking columns to existing usage_log tables (WI-14).
     # Safe to run on every init — ignores duplicates.
@@ -922,6 +998,378 @@ class AccountManager:
             "per_page": per_page,
             "total_pages": max(1, ((total["c"] if total else 0) + per_page - 1) // per_page),
         }
+
+    # ---- User administration (CC / admin-created accounts) ----
+
+    def create_account(self, email: str = "", full_name: str = "",
+                       tier: str = "free_trial", phone: str = "",
+                       source: str = "cc") -> Dict[str, Any]:
+        """Create an account directly, without a Telegram identity."""
+        email = (email or "").strip()
+        full_name = (full_name or "").strip()
+        if "@" not in email:
+            return {"success": False, "error": "a valid email is required"}
+        if tier not in SUBSCRIPTION_TIERS:
+            return {"success": False, "error": f"unknown tier: {tier}"}
+        if self.find_by_email(email):
+            return {"success": False,
+                    "error": "an account with that email already exists"}
+        account_id = str(uuid.uuid4())[:12]
+        telegram_id = f"{source}-{uuid.uuid4().hex[:10]}"
+        now = datetime.now(timezone.utc)
+        tier_info = SUBSCRIPTION_TIERS.get(tier, SUBSCRIPTION_TIERS["free_trial"])
+        end = now + timedelta(days=int(tier_info.get("duration_days") or 0))
+        self.db.execute(
+            """INSERT INTO juris_accounts
+               (account_id, telegram_id, full_name, email, phone,
+                subscription_tier, subscription_start, subscription_end,
+                created_at, updated_at, is_active)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+            (account_id, telegram_id, full_name, email, phone, tier,
+             now.isoformat(), end.isoformat(), now.isoformat(), now.isoformat()),
+        )
+        self.db.commit()
+        self.log_security_event(telegram_id, "admin_action",
+                                f"account_created tier={tier} email={email}")
+        logger.info("juris account created via %s: %s (%s)", source, account_id, tier)
+        acct = self.get_account(account_id) or {}
+        acct["success"] = True
+        return acct
+
+    def find_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        email = (email or "").strip().lower()
+        if not email:
+            return None
+        row = self.db.execute(
+            "SELECT * FROM juris_accounts WHERE lower(email) = ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (email,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def reactivate(self, account_id: str) -> bool:
+        """Reactivate a deactivated account (alias of unban_account)."""
+        return bool(self.unban_account(account_id).get("success"))
+
+    # ---- Paystack subscription state ----
+
+    def upsert_subscription(self, subscription_code: str, **fields) -> Dict[str, Any]:
+        """Insert or update a subscription row by ``subscription_code``."""
+        code = str(subscription_code or "").strip()
+        if not code:
+            return {}
+        allowed = {"account_id", "tier", "plan_code", "status", "email_token",
+                   "customer_email", "amount_minor", "currency",
+                   "next_payment_date", "expires_at", "raw"}
+        data = {k: v for k, v in fields.items() if k in allowed}
+        raw = data.pop("raw", None)
+        raw_json = raw if isinstance(raw, str) else json.dumps(raw or {})
+        if self.get_subscription(code) is None:
+            cols = ["subscription_code"] + list(data.keys()) + ["raw"]
+            vals = [code] + list(data.values()) + [raw_json]
+            placeholders = ", ".join(["?"] * len(cols))
+            self.db.execute(
+                f"INSERT INTO juris_subscriptions ({', '.join(cols)}) "
+                f"VALUES ({placeholders})",
+                vals,
+            )
+        else:
+            sets = ", ".join(f"{k} = ?" for k in data)
+            self.db.execute(
+                f"UPDATE juris_subscriptions SET "
+                f"{sets + ', ' if sets else ''}raw = ?, "
+                "updated_at = datetime('now') WHERE subscription_code = ?",
+                list(data.values()) + [raw_json, code],
+            )
+        self.db.commit()
+        return self.get_subscription(code) or {}
+
+    def get_subscription(self, subscription_code: str) -> Optional[Dict[str, Any]]:
+        row = self.db.execute(
+            "SELECT * FROM juris_subscriptions WHERE subscription_code = ?",
+            (str(subscription_code),),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_subscriptions(self, limit: int = 100,
+                           account_id: str = "") -> List[Dict[str, Any]]:
+        if account_id:
+            rows = self.db.execute(
+                "SELECT * FROM juris_subscriptions WHERE account_id = ? "
+                "ORDER BY updated_at DESC LIMIT ?",
+                (account_id, limit),
+            ).fetchall()
+        else:
+            rows = self.db.execute(
+                "SELECT * FROM juris_subscriptions ORDER BY updated_at DESC "
+                "LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def subscription_counts(self) -> Dict[str, Any]:
+        total = self.db.execute(
+            "SELECT COUNT(*) c FROM juris_subscriptions").fetchone()
+        rows = self.db.execute(
+            "SELECT status, COUNT(*) c FROM juris_subscriptions GROUP BY status"
+        ).fetchall()
+        by_status = {r["status"]: r["c"] for r in rows}
+        tier_rows = self.db.execute(
+            "SELECT tier, COUNT(*) c FROM juris_subscriptions GROUP BY tier"
+        ).fetchall()
+        by_tier = {r["tier"]: r["c"] for r in tier_rows}
+        active = int(by_status.get("active", 0) + by_status.get("non-renewing", 0))
+        return {"total": total["c"] if total else 0, "by_status": by_status,
+                "by_tier": by_tier, "active": active}
+
+    def expire_subscription(self, account_id: str) -> bool:
+        """Lapse an account's paid access (payment failure / cancellation)."""
+        if not self.get_account(account_id):
+            return False
+        self.db.execute(
+            "UPDATE juris_accounts SET subscription_end = ?, "
+            "updated_at = datetime('now') WHERE account_id = ?",
+            (datetime.now(timezone.utc).isoformat(), account_id),
+        )
+        self.db.commit()
+        return True
+
+    # ---- Legal groups ----
+
+    def create_group(self, name: str, created_by: str = "",
+                     created_by_kind: str = "user", description: str = "",
+                     actor: str = "") -> Dict[str, Any]:
+        name = (name or "").strip()
+        if len(name) < 2:
+            return {"success": False,
+                    "error": "group name must be at least 2 characters"}
+        group_id = str(uuid.uuid4())[:12]
+        invite_code = "GRP-" + secrets.token_hex(4).upper()
+        self.db.execute(
+            """INSERT INTO legal_groups
+               (group_id, name, description, invite_code, created_by,
+                created_by_kind)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (group_id, name, description or "", invite_code,
+             str(created_by or ""), created_by_kind or "user"),
+        )
+        if created_by:
+            self.add_member(group_id, created_by, role="owner",
+                            actor=actor or created_by)
+        self.db.commit()
+        self.log_group_audit(group_id, actor or created_by, "create",
+                             {"name": name, "kind": created_by_kind})
+        return {"success": True, "group": self.get_group(group_id)}
+
+    def get_group(self, group_id_or_code: str) -> Optional[Dict[str, Any]]:
+        key = str(group_id_or_code or "")
+        if not key:
+            return None
+        row = self.db.execute(
+            "SELECT * FROM legal_groups WHERE group_id = ? OR invite_code = ?",
+            (key, key.upper()),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def list_groups(self, include_archived: bool = False,
+                    account_id: str = "") -> List[Dict[str, Any]]:
+        conds: List[str] = []
+        params: List[Any] = []
+        if not include_archived:
+            conds.append("g.status = 'active'")
+        if account_id:
+            ids = [r["group_id"] for r in self.db.execute(
+                "SELECT group_id FROM legal_group_members WHERE account_id = ?",
+                (account_id,),
+            ).fetchall()]
+            if not ids:
+                return []
+            conds.append(f"g.group_id IN ({', '.join(['?'] * len(ids))})")
+            params.extend(ids)
+        where = ("WHERE " + " AND ".join(conds)) if conds else ""
+        rows = self.db.execute(
+            f"""SELECT g.*, (SELECT COUNT(*) FROM legal_group_members m
+                             WHERE m.group_id = g.group_id) AS member_count
+                FROM legal_groups g {where}
+                ORDER BY g.created_at DESC""",
+            params,
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def rename_group(self, group_id: str, name: str,
+                     actor: str = "") -> Dict[str, Any]:
+        name = (name or "").strip()
+        if len(name) < 2:
+            return {"success": False,
+                    "error": "group name must be at least 2 characters"}
+        group = self.get_group(group_id)
+        if not group:
+            return {"success": False, "error": "group not found"}
+        self.db.execute(
+            "UPDATE legal_groups SET name = ?, updated_at = datetime('now') "
+            "WHERE group_id = ?",
+            (name, group["group_id"]),
+        )
+        self.db.commit()
+        self.log_group_audit(group["group_id"], actor, "rename", {"name": name})
+        return {"success": True, "group": self.get_group(group["group_id"])}
+
+    def archive_group(self, group_id: str, actor: str = "") -> Dict[str, Any]:
+        group = self.get_group(group_id)
+        if not group:
+            return {"success": False, "error": "group not found"}
+        self.db.execute(
+            "UPDATE legal_groups SET status = 'archived', "
+            "updated_at = datetime('now') WHERE group_id = ?",
+            (group["group_id"],),
+        )
+        self.db.commit()
+        self.log_group_audit(group["group_id"], actor, "archive", {})
+        return {"success": True, "group": self.get_group(group["group_id"])}
+
+    def list_members(self, group_id: str) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            """SELECT m.*, a.full_name, a.email, a.subscription_tier,
+                      a.is_active
+               FROM legal_group_members m
+               LEFT JOIN juris_accounts a ON a.account_id = m.account_id
+               WHERE m.group_id = ?
+               ORDER BY CASE m.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1
+                                    ELSE 2 END, m.created_at""",
+            (str(group_id),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def add_member(self, group_id: str, account_id: str, role: str = "member",
+                   actor: str = "") -> Dict[str, Any]:
+        group = self.get_group(group_id)
+        if not group:
+            return {"success": False, "error": "group not found"}
+        if not self.get_account(account_id):
+            return {"success": False, "error": "account not found"}
+        if role not in ("owner", "admin", "member"):
+            return {"success": False, "error": f"invalid role: {role}"}
+        cur = self.db.execute(
+            """INSERT OR IGNORE INTO legal_group_members
+               (group_id, account_id, role, added_by) VALUES (?, ?, ?, ?)""",
+            (group["group_id"], account_id, role, str(actor or "")),
+        )
+        self.db.commit()
+        added = cur.rowcount > 0
+        if added:
+            self.log_group_audit(group["group_id"], actor, "member_add",
+                                 {"account_id": account_id, "role": role})
+        return {"success": True, "added": added, "group_id": group["group_id"],
+                "account_id": account_id, "role": role}
+
+    def remove_member(self, group_id: str, account_id: str,
+                      actor: str = "") -> Dict[str, Any]:
+        group = self.get_group(group_id)
+        if not group:
+            return {"success": False, "error": "group not found"}
+        cur = self.db.execute(
+            "DELETE FROM legal_group_members WHERE group_id = ? AND account_id = ?",
+            (group["group_id"], account_id),
+        )
+        self.db.commit()
+        removed = cur.rowcount > 0
+        if removed:
+            self.log_group_audit(group["group_id"], actor, "member_remove",
+                                 {"account_id": account_id})
+        return {"success": True, "removed": removed, "account_id": account_id}
+
+    def set_member_role(self, group_id: str, account_id: str, role: str,
+                        actor: str = "") -> Dict[str, Any]:
+        if role not in ("owner", "admin", "member"):
+            return {"success": False, "error": f"invalid role: {role}"}
+        cur = self.db.execute(
+            "UPDATE legal_group_members SET role = ? "
+            "WHERE group_id = ? AND account_id = ?",
+            (role, str(group_id), account_id),
+        )
+        self.db.commit()
+        if cur.rowcount == 0:
+            return {"success": False, "error": "member not found"}
+        self.log_group_audit(str(group_id), actor, "member_role",
+                             {"account_id": account_id, "role": role})
+        return {"success": True, "account_id": account_id, "role": role}
+
+    def bulk_add_members(self, group_id: str, account_ids: List[str],
+                         role: str = "member",
+                         actor: str = "") -> Dict[str, Any]:
+        added = 0
+        errors: List[Dict[str, str]] = []
+        for aid in account_ids:
+            res = self.add_member(group_id, str(aid), role=role, actor=actor)
+            if res.get("added"):
+                added += 1
+            elif not res.get("success"):
+                errors.append({"account_id": str(aid),
+                               "error": res.get("error", "failed")})
+        return {"success": not errors, "added": added, "errors": errors}
+
+    def log_group_audit(self, group_id: str, actor: str, action: str,
+                        details: Optional[Dict[str, Any]] = None) -> bool:
+        try:
+            self.db.execute(
+                "INSERT INTO legal_group_audit (group_id, actor, action, details) "
+                "VALUES (?, ?, ?, ?)",
+                (str(group_id or ""), str(actor or ""), str(action),
+                 json.dumps(details or {})),
+            )
+            self.db.commit()
+        except Exception:
+            pass  # auditing must never break the action
+        return True
+
+    def get_group_audit_log(self, group_id: str,
+                            limit: int = 100) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            "SELECT * FROM legal_group_audit WHERE group_id = ? "
+            "ORDER BY audit_id DESC LIMIT ?",
+            (str(group_id), limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def save_group_report(self, group_id: str, *, requested_by: str = "",
+                          documents: Optional[List[Dict[str, Any]]] = None,
+                          findings: Optional[Dict[str, Any]] = None,
+                          summary: str = "", status: str = "completed",
+                          verified_count: int = 0,
+                          flagged_count: int = 0) -> Dict[str, Any]:
+        report_id = "RPT-" + uuid.uuid4().hex[:12].upper()
+        docs = documents or []
+        self.db.execute(
+            """INSERT INTO legal_group_reports
+               (report_id, group_id, requested_by, status, document_count,
+                verified_count, flagged_count, summary, findings)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (report_id, str(group_id), str(requested_by or ""), status,
+             len(docs), int(verified_count), int(flagged_count), summary,
+             json.dumps(findings or {})),
+        )
+        self.db.commit()
+        return {"report_id": report_id, "group_id": str(group_id),
+                "documents": docs, "summary": summary, "status": status,
+                "verified_count": verified_count, "flagged_count": flagged_count,
+                "document_count": len(docs)}
+
+    def list_group_reports(self, group_id: str,
+                           limit: int = 20) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            "SELECT * FROM legal_group_reports WHERE group_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (str(group_id), limit),
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["findings"] = json.loads(d.get("findings") or "{}")
+            except (TypeError, ValueError):
+                d["findings"] = {}
+            out.append(d)
+        return out
 
 
 # Module-level convenience

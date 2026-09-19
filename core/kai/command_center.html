@@ -1044,6 +1044,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <div class="sidebar-section-label">Management</div>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
+      <a class="nav-item" href="#payments" data-hash="payments"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M6 15h4"/></svg></span><span class="label">Pricing &amp; Payments</span></a>
       <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-4 12.7V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.3A7 7 0 0 0 12 2z"/><line x1="10" y1="21" x2="14" y2="21"/></svg></span><span class="label">Arbitra</span></a>
       <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
       <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
@@ -1184,6 +1185,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
       <!-- LEGAL -->
       <section class="panel" id="panel-legal"><div id="legal-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-payments"><div id="payments-content"><span class="loading">loading…</span></div></section>
 
       <!-- AI WORKFORCE -->
       <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading…</span></div></section>
@@ -1420,6 +1422,7 @@ const SK = 'kai_command_session_v3';
 window.MODEL_PAGES = {};   // slug -> {id, title}
 const PANEL_TITLES = {
   home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', arbitra:'Arbitra', bet:'KAI Bet',
+  payments:'Pricing & Payments',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
   'kai-chat':'Kai Chat', devices:'Devices', talent:'Talent', android:'Android', docs:'Documents', hubtel:'Hubtel',
@@ -1673,7 +1676,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory};
   if(fns[name])fns[name]();
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
@@ -2113,7 +2116,7 @@ async function doJurisKaiSearch(){
         active=($('jk-active-only')||{}).checked?'&active_only=true':'',
         el=$('jk-users-result');if(!el)return;
   el.innerHTML='<span class="loading">searching…</span>';
-  try{const d=await api('/api/juris-kai/accounts?q='+encodeURIComponent(q)+'&tier='+tier+active);
+  try{const d=await api('/api/juris-kai/cc/accounts?q='+encodeURIComponent(q)+'&tier='+tier+active);
     if(!d.accounts||!d.accounts.length){el.innerHTML='<p class="empty">No accounts found</p>';return;}
     let h=`<div style="font-size:0.63rem;color:var(--fg-muted);margin-bottom:8px;font-family:var(--font-mono)">${d.total} account(s) &middot; page ${d.page}/${d.total_pages}</div>`;
     h+='<div style="max-height:550px;overflow-y:auto">';
@@ -2150,23 +2153,23 @@ async function doJurisKaiSearch(){
 async function doJurisKaiGrantDaysDropdown(accountId){
   const sel=document.getElementById('gd-'+accountId);if(!sel||!sel.value){toast('Select a number of days first','err');return;}
   const days=parseInt(sel.value);
-  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:days,reason:'command_center_admin'})});toast('Granted '+days+' days');sel.value='';doJurisKaiSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:days,reason:'command_center_admin'})});toast('Granted '+days+' days');sel.value='';doJurisKaiSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function doJurisKaiChangeTierDropdown(accountId){
   const sel=document.getElementById('ct-'+accountId);if(!sel||!sel.value){toast('Select a tier first','err');return;}
   const tier=sel.value;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier:tier})});toast('Tier changed to '+tier.replace(/_/g,' '));sel.value='';doJurisKaiSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier:tier})});toast('Tier changed to '+tier.replace(/_/g,' '));sel.value='';doJurisKaiSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function doJurisKaiBan(accountId,name){
   confirmAction('Ban User',`Are you sure you want to ban ${name}?`,async()=>{
-    try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doJurisKaiSearch();}
+    try{await api('/api/juris-kai/cc/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doJurisKaiSearch();}
     catch(e){toast('Error: '+e.message,'err');}
   });
 }
 async function doJurisKaiUnban(accountId){
-  try{await api('/api/juris-kai/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doJurisKaiSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doJurisKaiSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function doJurisKaiGenCode(accountId){
@@ -2264,8 +2267,14 @@ async function loadLegal(){
         <div id="lb-results" style="margin-top:10px;max-height:420px;overflow:auto"><span class="field-hint">Pick a view — all shown live from the legal brain.</span></div>
       </div>`;}
     catch(e){html+=`<div class="card" style="margin-bottom:12px"><h3>legal-brain</h3><span class="error-text">${esc(e.message)}</span></div>`;}
+    // Legal Groups — create/manage groups, members and document audits.
+    html+=`<div class="card" style="margin-bottom:12px" id="legal-groups-card">
+      <h3>legal groups — Members &amp; Document Audit <span class="badge info" id="legal-groups-count">…</span></h3>
+      <div id="legal-groups"><span class="loading">loading…</span></div>
+    </div>`;
     html+='</div>';el.innerHTML=html;
-    if(typeof jurisMount==='function'&&document.getElementById('juris-tabs'))jurisMount();}
+    if(typeof jurisMount==='function'&&document.getElementById('juris-tabs'))jurisMount();
+    loadLegalGroups();}
   catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 
@@ -2469,8 +2478,23 @@ async function jurisAccounts(c){
     +'<button class="btn btn-sm btn-accent" onclick="jurisAccountsSearch()">Search</button>'
     +'<button class="btn btn-sm" onclick="jurisAccountUsage()">Recent usage</button>'
     +'<button class="btn btn-sm" onclick="jurisAccountPayments()">Payments</button></div>'
+    +'<div class="action-row" style="margin-bottom:10px;flex-wrap:wrap">'
+    +'<input id="jka-new-email" class="search-input" placeholder="new user email" style="max-width:200px">'
+    +'<input id="jka-new-name" class="search-input" placeholder="full name" style="max-width:180px">'
+    +'<select id="jka-new-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono)"><option value="free_trial">Free Trial</option><option value="monthly_basic">Basic</option><option value="monthly_pro">Pro</option><option value="annual_pro">Annual Pro</option></select>'
+    +'<button class="btn btn-sm btn-accent" onclick="jurisAccountCreate()">Create user</button>'
+    +'<span class="field-hint">Admin-created user (email/name/tier) · audited</span></div>'
     +'<div id="jka-result"></div><div id="jka-detail"></div>';
   jurisAccountsSearch();
+}
+async function jurisAccountCreate(){
+  const email=($('jka-new-email')||{}).value||'',name=($('jka-new-name')||{}).value||'',tier=($('jka-new-tier')||{}).value||'free_trial';
+  if(!email){toast('Enter an email','err');return;}
+  try{
+    const d=await api('/api/juris-kai/cc/accounts',{method:'POST',body:JSON.stringify({email:email,full_name:name,tier:tier})});
+    if(d.success){toast('User created: '+(d.account_id||''));($('jka-new-email')).value='';($('jka-new-name')).value='';jurisAccountsSearch();}
+    else toast('Error: '+(d.error||'failed'),'err');
+  }catch(e){toast('Error: '+e.message,'err');}
 }
 async function jurisAccountsSearch(){
   const q=($('jka-q')||{}).value||'',tier=($('jka-tier')||{}).value||'',active=($('jka-active')||{}).checked;
@@ -2507,21 +2531,21 @@ async function jurisAccountsSearch(){
 async function jurisAccountGrant(id){
   const sel=$('jka-gd-'+id);if(!sel||!sel.value){toast('Select days first','err');return;}
   const days=parseInt(sel.value,10);
-  try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/grant-days',{method:'POST',body:JSON.stringify({days:days,reason:'command_center'})});toast('Granted '+days+'d');jurisAccountsSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+encodeURIComponent(id)+'/grant-days',{method:'POST',body:JSON.stringify({days:days,reason:'command_center'})});toast('Granted '+days+'d');jurisAccountsSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function jurisAccountTier(id){
   const sel=$('jka-ct-'+id);if(!sel||!sel.value){toast('Select a tier first','err');return;}
-  try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/subscription',{method:'POST',body:JSON.stringify({tier:sel.value})});toast('Tier → '+sel.value.replace(/_/g,' '));jurisAccountsSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+encodeURIComponent(id)+'/subscription',{method:'POST',body:JSON.stringify({tier:sel.value})});toast('Tier → '+sel.value.replace(/_/g,' '));jurisAccountsSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 function jurisAccountBan(id,name){
   confirmAction('Ban User','Ban '+(name||id)+'?',async()=>{
-    try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/deactivate',{method:'POST',body:JSON.stringify({reason:'command_center'})});toast('User banned');jurisAccountsSearch();}
+    try{await api('/api/juris-kai/cc/accounts/'+encodeURIComponent(id)+'/deactivate',{method:'POST',body:JSON.stringify({reason:'command_center'})});toast('User banned');jurisAccountsSearch();}
     catch(e){toast('Error: '+e.message,'err');}});
 }
 async function jurisAccountUnban(id){
-  try{await api('/api/juris-kai/accounts/'+encodeURIComponent(id)+'/activate',{method:'POST'});toast('User unbanned');jurisAccountsSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+encodeURIComponent(id)+'/activate',{method:'POST'});toast('User unbanned');jurisAccountsSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function jurisAccountInvite(id){
@@ -2875,6 +2899,263 @@ async function _jurisCheckout(tier,provider){
   }catch(e){if(msg)msg.textContent='';if(el)el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: PRICING & PAYMENTS (Paystack plans, subscriptions, checkout)
+// ═══════════════════════════════════════════════════════════════════
+let PAY_TIER_DATA = {};
+function _payMetric(l,v,c){return '<div class="metric"><span class="val"'+(c?' style="color:'+c+'"':'')+'>'+esc(v==null?'—':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';}
+async function loadPayments(){
+  const c=$('payments-content');if(!c)return;
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const [p,pr,tx]=await Promise.all([
+      api('/api/juris-kai/cc/plans'),
+      api('/api/juris-kai/cc/pricing'),
+      apiSoft('/api/juris-kai/cc/payments?limit=10')
+    ]);
+    PAY_TIER_DATA = pr.tiers || {};
+    const prov=p.provider||{},subs=p.subscriptions||{},tiers=p.tiers||[];
+    const mode=prov.mode||'—';
+    let h='<div class="juris-grid">'
+      +_payMetric('Provider mode',String(mode).toUpperCase(),mode==='live'?'var(--accent)':'var(--warn)')
+      +_payMetric('Live allowed',prov.live_allowed?'yes':'no',prov.live_allowed?'var(--destructive)':'var(--accent)')
+      +_payMetric('Secret key',prov.secret_key_present?'set':'missing',prov.secret_key_present?'var(--accent)':'var(--destructive)')
+      +_payMetric('Public key',prov.public_key_present?'set':'missing',prov.public_key_present?'var(--accent)':'var(--warn)')
+      +_payMetric('Active subscriptions',subs.active||0,'var(--info)')
+      +_payMetric('Total subscriptions',subs.total||0)
+      +'</div>';
+    h+='<div class="action-row" style="margin-top:10px;flex-wrap:wrap">'
+      +'<button class="btn btn-sm btn-accent" onclick="paymentsSyncPlans()">Create / sync plans</button>'
+      +'<button class="btn btn-sm" onclick="loadPayments()">Refresh</button>'
+      +'<button class="btn btn-sm" onclick="paymentsFetchRemote()">Check Paystack subscriptions</button>'
+      +'<span id="pay-props-msg" class="field-hint"></span></div>'
+      +'<div id="pay-remote" style="margin-top:8px"></div>';
+    h+='<div class="juris-sub">Tier → Paystack plan</div>'
+      +'<div class="table-wrap"><table><thead><tr><th>Tier</th><th>Name</th><th>Price GHS</th><th>Interval</th><th>Plan code</th><th>Status</th></tr></thead><tbody>';
+    if(!tiers.length)h+='<tr><td colspan="6" class="empty">no tiers</td></tr>';
+    for(const t of tiers){
+      h+='<tr><td><code>'+esc(t.tier)+'</code></td><td>'+esc(t.name)+'</td><td>'+esc(t.price_ghs)+'</td><td>'+esc(t.interval)+'</td>'
+        +'<td>'+(t.plan_code?'<code>'+esc(t.plan_code)+'</code>'+(t.plan_mode?' <span class="badge info">'+esc(t.plan_mode)+'</span>':''):'<span class="field-hint">not synced</span>')+'</td>'
+        +'<td><span class="badge '+(t.synced?'ok':'warn')+'">'+(t.synced?'synced':'local only')+'</span></td></tr>';
+    }
+    h+='</tbody></table></div>';
+    if(Object.keys(subs.by_status||{}).length){
+      h+='<div class="field-hint" style="margin-top:6px">By status: '+Object.entries(subs.by_status).map(function(e){
+        return '<span class="badge info" style="margin:1px 2px">'+esc(e[0])+': '+esc(e[1])+'</span>';}).join(' ')+'</div>';
+    }
+    h+='<div class="juris-sub">Pricing editor</div>'+_payPricingEditor(tiers,pr.per_document_page_rate_ghs);
+    h+='<div class="juris-sub">Test checkout (Paystack)</div>'
+      +'<div class="action-row" style="flex-wrap:wrap;align-items:flex-end">'
+      +'<input id="pay-acct" class="search-input" placeholder="account_id" style="max-width:220px">'
+      +'<input id="pay-email" class="search-input" placeholder="email (optional)" style="max-width:200px">'
+      +'<select id="pay-tier" style="background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:5px 8px;font-size:0.68rem;font-family:var(--font-mono)">'
+      +tiers.map(function(t){return '<option value="'+attr(t.tier)+'">'+esc(t.name)+'</option>';}).join('')+'</select>'
+      +'<button class="btn btn-sm btn-accent" onclick="paymentsCheckout()">Initialize</button>'
+      +'<span id="pay-ck-msg" class="field-hint"></span></div>'
+      +'<div id="pay-ck-result" style="margin-top:8px"></div>';
+    h+='<div class="juris-sub">Recent transactions</div>';
+    const pays=(tx&&(tx.payments||tx.transactions))||[];
+    if(!pays.length)h+='<p class="empty">No recent transactions</p>';
+    else h+='<div class="table-wrap"><table><thead><tr><th>Account</th><th>Amount GHS</th><th>Tier</th><th>Status</th><th>Date</th></tr></thead><tbody>'
+      +pays.map(function(x){return '<tr><td>'+esc(x.account_id||'—')+'</td><td>'+esc(x.amount_ghs!=null?x.amount_ghs:'—')+'</td><td>'+esc(x.subscription_tier||'—')+'</td><td>'+esc(x.hubtel_status||'—')+'</td><td>'+esc(String(x.created_at||'').slice(0,19))+'</td></tr>';}).join('')
+      +'</tbody></table></div>';
+    c.innerHTML=h;
+  }catch(e){c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function _payPricingEditor(tiers,rate){
+  let h='<div class="action-row" style="align-items:flex-end;flex-wrap:wrap">'
+    +'<label class="field-hint" style="display:flex;flex-direction:column;gap:2px">Per-document page rate (GHS)'
+    +'<input id="pay-rate" type="number" min="0" step="0.01" value="'+attr(rate)+'" style="max-width:110px;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 6px;font-size:0.68rem;font-family:var(--font-mono)"></label>'
+    +'<button class="btn btn-sm btn-accent" onclick="paymentsSavePricing()">Save pricing</button>'
+    +'<span class="field-hint">Write-gated · requires juris.admin</span></div>'
+    +'<div class="juris-grid" style="align-items:start">';
+  for(const t of tiers){
+    h+='<div class="card" data-ptier="'+attr(t.tier)+'" style="margin:0">'
+      +'<div class="spread" style="margin-bottom:6px"><strong>'+esc(t.tier)+'</strong><span class="badge info">'+esc(t.name)+'</span></div>'
+      +'<div class="juris-form">'
+      +'<label>Name</label><input type="text" data-f="name" value="'+attr(t.name)+'">'
+      +'<label>Price (GHS)</label><input type="number" min="0" step="0.01" data-f="price_ghs" value="'+attr(t.price_ghs)+'">'
+      +'<label>Duration (days)</label><input type="number" min="1" step="1" data-f="duration_days" value="'+attr(t.duration_days)+'">'
+      +'</div></div>';
+  }
+  return h+'</div>';
+}
+async function paymentsSavePricing(){
+  const tiers={};
+  document.querySelectorAll('#payments-content .card[data-ptier]').forEach(function(card){
+    const key=card.dataset.ptier, base=Object.assign({},PAY_TIER_DATA[key]||{});
+    const g=function(f){const el=card.querySelector('[data-f="'+f+'"]');return el?el.value:'';};
+    base.name=g('name');
+    base.price_ghs=parseFloat(g('price_ghs'))||0;
+    base.duration_days=parseInt(g('duration_days'),10)||0;
+    if(!base.features)base.features=[];
+    if(base.max_documents_per_month==null)base.max_documents_per_month=0;
+    if(base.max_queries_per_day==null)base.max_queries_per_day=0;
+    tiers[key]=base;
+  });
+  const rate=parseFloat(($('pay-rate')||{}).value)||0;
+  try{
+    const d=await api('/api/juris-kai/cc/pricing',{method:'PUT',body:JSON.stringify({tiers:tiers,per_document_page_rate_ghs:rate})});
+    if(d.success){toast('Pricing saved');loadPayments();}
+    else toast('Error: '+(((d.validation_errors||[]).join('; '))||d.error||'failed'),'err');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+async function paymentsSyncPlans(){
+  const msg=$('pay-props-msg');if(msg)msg.textContent='syncing…';
+  try{
+    const d=await api('/api/juris-kai/cc/plans/sync',{method:'POST'});
+    if(msg)msg.textContent='';
+    if(d.success||d.created||d.updated){toast('Plans synced: '+d.created+' new, '+d.updated+' updated, '+d.unchanged+' unchanged');loadPayments();}
+    else toast('Sync failed: '+((d.errors&&d.errors.length)?d.errors[0].error:(d.error||'unknown')),'err');
+  }catch(e){if(msg)msg.textContent='';toast('Error: '+e.message,'err');}
+}
+async function paymentsFetchRemote(){
+  const el=$('pay-remote');if(el)el.innerHTML='<span class="loading">querying Paystack…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/plans?remote=1');
+    const rr=d.remote_subscriptions||{};
+    if(rr.error){el.innerHTML='<span class="error-text">'+esc(rr.error)+'</span>';return;}
+    const items=rr.items||[];
+    let h='<div class="field-hint">Paystack reports '+esc(rr.count||0)+' subscription(s)</div>';
+    if(items.length)h+='<div class="table-wrap"><table><thead><tr><th>Code</th><th>Status</th><th>Customer</th><th>Plan</th><th>Next payment</th></tr></thead><tbody>'
+      +items.map(function(s){return '<tr><td><code>'+esc(s.subscription_code||'—')+'</code></td><td>'+esc(s.status||'—')+'</td><td>'+esc(s.customer||'—')+'</td><td>'+esc(s.plan||'—')+'</td><td>'+esc(s.next_payment_date||'—')+'</td></tr>';}).join('')+'</tbody></table></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function paymentsCheckout(){
+  const acct=($('pay-acct')||{}).value||'', email=($('pay-email')||{}).value||'',
+        tier=($('pay-tier')||{}).value||'', msg=$('pay-ck-msg'), el=$('pay-ck-result');
+  if(!acct){toast('Enter an account_id first','err');return;}
+  if(msg)msg.textContent='initializing…';if(el)el.innerHTML='';
+  try{
+    const d=await api('/api/juris-kai/cc/checkout',{method:'POST',body:JSON.stringify({account_id:acct,tier:tier,email:email||undefined})});
+    if(msg)msg.textContent='';
+    const ck=d.checkout||{};
+    if(!d.success){el.innerHTML='<span class="error-text">'+esc(d.error||ck.error||'checkout failed')+'</span>';return;}
+    const url=ck.authorization_url||'';
+    el.innerHTML='<div class="field-hint">mode: '+esc(ck.mode||'—')+' · ref: <code>'+esc(ck.reference||'—')+'</code> · plan: '+esc(ck.plan_code||'none')+' · GH₵'+esc(ck.price_ghs)+'</div>'
+      +(url?'<div style="margin-top:6px;overflow-wrap:anywhere"><a href="'+attr(url)+'" target="_blank" rel="noopener noreferrer">'+esc(url)+'</a></div>':'<span class="field-hint">no authorization URL returned</span>')
+      +(ck.reference?'<div style="margin-top:6px"><button class="btn btn-xs" onclick="paymentsVerify(\''+attr(ck.reference)+'\')">Verify reference</button> <span id="pay-verify-msg" class="field-hint"></span></div>':'');
+  }catch(e){if(msg)msg.textContent='';el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function paymentsVerify(ref){
+  const msg=$('pay-verify-msg');if(msg)msg.textContent='verifying…';
+  try{
+    const d=await api('/api/juris-kai/cc/checkout/verify/'+encodeURIComponent(ref),{method:'POST'});
+    if(msg)msg.textContent=d.success?('verified: '+((d.verified||{}).status||'?')+' · activated: '+((d.activation||{}).activated)):('error: '+(d.error||''));
+    if(d.success&&(d.activation||{}).activated)loadPayments();
+  }catch(e){if(msg)msg.textContent='error: '+e.message;}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LEGAL GROUPS (Legal tab): groups, members, document audits
+// ═══════════════════════════════════════════════════════════════════
+async function loadLegalGroups(){
+  const el=$('legal-groups'); if(!el) return;
+  el.innerHTML='<span class="loading">loading groups…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/groups?include_archived=true');
+    const groups=d.groups||[];
+    const cnt=$('legal-groups-count'); if(cnt)cnt.textContent=groups.length+' group(s)';
+    let h='<div class="action-row" style="flex-wrap:wrap;margin-bottom:8px">'
+      +'<input id="lg-name" class="search-input" placeholder="New group name" style="max-width:200px">'
+      +'<input id="lg-owner" class="search-input" placeholder="owner account_id (optional)" style="max-width:220px">'
+      +'<button class="btn btn-sm btn-accent" onclick="lgCreate()">Create group</button>'
+      +'<button class="btn btn-sm" onclick="loadLegalGroups()">Refresh</button></div>';
+    if(!groups.length){el.innerHTML=h+'<p class="empty">No groups yet</p>';return;}
+    h+='<div class="table-wrap"><table><thead><tr><th>Name</th><th>Group ID</th><th>Invite</th><th>Members</th><th>Status</th><th>Actions</th></tr></thead><tbody>';
+    for(const g of groups){
+      h+='<tr><td>'+esc(g.name)+'</td><td><code>'+esc(g.group_id)+'</code></td><td><code>'+esc(g.invite_code||'—')+'</code></td><td>'+esc(g.member_count||0)+'</td>'
+        +'<td><span class="badge '+(g.status==='active'?'ok':'warn')+'">'+esc(g.status)+'</span></td>'
+        +'<td><div class="action-row">'
+        +'<button class="btn btn-xs btn-accent" data-g="'+attr(g.group_id)+'" onclick="lgOpen(this.dataset.g)">Manage</button>'
+        +'<button class="btn btn-xs" data-g="'+attr(g.group_id)+'" data-n="'+attr(g.name)+'" onclick="lgRename(this.dataset.g,this.dataset.n)">Rename</button>'
+        +(g.status==='active'?'<button class="btn btn-xs btn-warn" data-g="'+attr(g.group_id)+'" onclick="lgArchive(this.dataset.g)">Archive</button>':'')
+        +'</div></td></tr>';
+    }
+    h+='</tbody></table></div><div id="lg-detail" style="margin-top:10px"></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function lgCreate(){
+  const name=($('lg-name')||{}).value||'', owner=($('lg-owner')||{}).value||'';
+  if(!name){toast('Enter a group name','err');return;}
+  try{const d=await api('/api/juris-kai/cc/groups',{method:'POST',body:JSON.stringify({name:name,account_id:owner||undefined})});
+    if(d.success){toast('Group created');loadLegalGroups();} else toast('Error: '+(d.error||'failed'),'err');
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+async function lgOpen(gid){
+  const el=$('lg-detail'); if(!el)return;
+  el.innerHTML='<span class="loading">loading group…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid));
+    const g=d.group||{},members=d.members||[],reports=d.reports||[];
+    let h='<div class="juris-sub">'+esc(g.name)+' — members ('+members.length+')</div>'
+      +'<div class="table-wrap"><table><thead><tr><th>Account</th><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead><tbody>';
+    for(const m of members){
+      h+='<tr><td><code>'+esc(m.account_id)+'</code></td><td>'+esc(m.full_name||'—')+'</td><td>'+esc(m.email||'—')+'</td>'
+        +'<td><select data-mr="'+attr(m.account_id)+'" style="padding:2px 4px;font-size:0.62rem">'
+        +['owner','admin','member'].map(function(r){return '<option value="'+r+'"'+(m.role===r?' selected':'')+'>'+r+'</option>';}).join('')+'</select></td>'
+        +'<td><div class="action-row"><button class="btn btn-xs" data-a="'+attr(m.account_id)+'" onclick="lgSetRole(\''+attr(gid)+'\',this.dataset.a)">Set role</button>'
+        +'<button class="btn btn-xs btn-warn" data-a="'+attr(m.account_id)+'" onclick="lgRemoveMember(\''+attr(gid)+'\',this.dataset.a)">Remove</button></div></td></tr>';
+    }
+    h+='</tbody></table></div>';
+    h+='<div class="action-row" style="flex-wrap:wrap;margin-top:8px">'
+      +'<input id="lg-user" class="search-input" placeholder="search users by name/email" style="max-width:240px">'
+      +'<button class="btn btn-sm" onclick="lgSearchUsers()">Search</button>'
+      +'<input id="lg-add-acct" class="search-input" placeholder="account_id" style="max-width:180px">'
+      +'<select id="lg-add-role" style="padding:4px 6px;font-size:0.64rem"><option value="member">member</option><option value="admin">admin</option><option value="owner">owner</option></select>'
+      +'<button class="btn btn-sm btn-accent" onclick="lgAddMember(\''+attr(gid)+'\')">Add</button>'
+      +'<button class="btn btn-sm" onclick="lgAudit(\''+attr(gid)+'\')">Ask Kai to audit documents</button></div>'
+      +'<div id="lg-user-results" style="margin-top:6px"></div>';
+    h+='<div class="juris-sub">Audit reports ('+reports.length+')</div>';
+    if(!reports.length)h+='<p class="empty">No audit reports yet</p>';
+    else for(const r of reports){
+      h+='<div class="card" style="margin:0 0 6px 0"><div class="spread"><strong>'+esc(r.report_id)+'</strong><span class="badge info">'+esc(String(r.created_at||'').slice(0,19))+'</span></div>'
+        +'<div class="field-hint">'+esc(r.summary||'')+' · verified '+esc(r.verified_count||0)+' · flagged '+esc(r.flagged_count||0)+'</div></div>';
+    }
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function lgRename(gid,name){const nn=prompt('Rename group',name||'');if(!nn)return;
+  try{const d=await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid),{method:'PATCH',body:JSON.stringify({name:nn})});
+    if(d.success){toast('Renamed');loadLegalGroups();}else toast('Error: '+(d.error||'failed'),'err');}catch(e){toast('Error: '+e.message,'err');}}
+function lgArchive(gid){confirmAction('Archive group','Archive this group? Members lose access.',async function(){
+  try{await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid),{method:'PATCH',body:JSON.stringify({status:'archived'})});toast('Archived');loadLegalGroups();}catch(e){toast('Error: '+e.message,'err');}});}
+async function lgAddMember(gid){
+  const acct=($('lg-add-acct')||{}).value||'',role=($('lg-add-role')||{}).value||'member';
+  if(!acct){toast('Enter an account_id','err');return;}
+  try{const d=await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid)+'/members',{method:'POST',body:JSON.stringify({account_id:acct,role:role})});
+    if(d.success){toast(d.added?'Member added':'Already a member');lgOpen(gid);}else toast('Error: '+(d.error||'could not add'),'err');}catch(e){toast('Error: '+e.message,'err');}
+}
+async function lgSetRole(gid,acct){
+  const sel=document.querySelector('[data-mr="'+acct+'"]');const role=sel?sel.value:'member';
+  try{const d=await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid)+'/members/'+encodeURIComponent(acct),{method:'PUT',body:JSON.stringify({role:role})});
+    if(d.success){toast('Role updated');}else toast('Error: '+(d.error||'failed'),'err');}catch(e){toast('Error: '+e.message,'err');}
+}
+async function lgRemoveMember(gid,acct){
+  try{await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid)+'/members/'+encodeURIComponent(acct),{method:'DELETE'});toast('Member removed');lgOpen(gid);}catch(e){toast('Error: '+e.message,'err');}
+}
+async function lgSearchUsers(){
+  const q=($('lg-user')||{}).value||'',el=$('lg-user-results');if(!el)return;
+  el.innerHTML='<span class="loading">searching…</span>';
+  try{const d=await api('/api/juris-kai/cc/users/search?q='+encodeURIComponent(q));
+    const users=d.users||[];
+    if(!users.length){el.innerHTML='<p class="empty">No users</p>';return;}
+    el.innerHTML='<div class="field-hint">Click a user to fill the account_id, then Add.</div><div class="action-row" style="flex-wrap:wrap">'
+      +users.slice(0,20).map(function(u){return '<button class="btn btn-xs" data-a="'+attr(u.account_id)+'" onclick="document.getElementById(\'lg-add-acct\').value=this.dataset.a">'+esc(u.full_name||u.email||u.account_id)+'</button>';}).join('')+'</div>';
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function lgAudit(gid){
+  toast('Running document audit…');
+  try{const d=await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid)+'/audit',{method:'POST'});
+    if(!d.success){toast('Audit failed: '+(d.error||'unknown'),'err');return;}
+    const r=d.report||{};
+    toast('Audit done: '+r.document_count+' doc(s), '+r.verified_count+' verified, '+r.flagged_count+' flagged');
+    lgOpen(gid);
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+
 function _lbHead(c){const el=$('lb-results');if(el)el.innerHTML='<span class="loading">loading…</span>';return el;}
 function _lbTable(cols,rows){
   let h='<div class="table-wrap"><table><thead><tr>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>';
@@ -2944,7 +3225,7 @@ async function doLegalSearch(){
   const q=($('legal-search')||{}).value||'',tier=($('legal-tier')||{}).value||'';
   const el=$('legal-user-results');if(!el)return;
   el.innerHTML='<span class="loading">searching…</span>';
-  try{const d=await api('/api/juris-kai/accounts?q='+encodeURIComponent(q)+'&tier='+tier);
+  try{const d=await api('/api/juris-kai/cc/accounts?q='+encodeURIComponent(q)+'&tier='+tier);
     if(!d.accounts||!d.accounts.length){el.innerHTML='<p class="empty">No accounts found</p>';return;}
     let h=`<div style="font-size:0.63rem;color:var(--fg-muted);margin-bottom:8px;font-family:var(--font-mono)">${d.total} account(s)</div><div style="max-height:550px;overflow-y:auto">`;
     for(const a of d.accounts){
@@ -2984,23 +3265,23 @@ async function generateReferralCode(){
 async function doLegalGrantDaysDropdown(accountId){
   const sel=document.getElementById('lgd-'+accountId);if(!sel||!sel.value){toast('Select a number of days','err');return;}
   const days=parseInt(sel.value);
-  try{await api('/api/juris-kai/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:days})});toast('Granted '+days+' days');sel.value='';doLegalSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+accountId+'/grant-days',{method:'POST',body:JSON.stringify({days:days})});toast('Granted '+days+' days');sel.value='';doLegalSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function doLegalChangeTierDropdown(accountId){
   const sel=document.getElementById('lct-'+accountId);if(!sel||!sel.value){toast('Select a tier','err');return;}
   const tier=sel.value;
-  try{await api('/api/juris-kai/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier})});toast('Tier → '+tier.replace(/_/g,' '));sel.value='';doLegalSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+accountId+'/subscription',{method:'POST',body:JSON.stringify({tier})});toast('Tier → '+tier.replace(/_/g,' '));sel.value='';doLegalSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 async function doLegalBan(accountId,name){
   confirmAction('Ban User',`Are you sure you want to ban ${name}?`,async()=>{
-    try{await api('/api/juris-kai/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doLegalSearch();}
+    try{await api('/api/juris-kai/cc/accounts/'+accountId+'/deactivate',{method:'POST',body:JSON.stringify({reason:'admin_ban'})});toast('User banned');doLegalSearch();}
     catch(e){toast('Error: '+e.message,'err');}
   });
 }
 async function doLegalUnban(accountId){
-  try{await api('/api/juris-kai/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doLegalSearch();}
+  try{await api('/api/juris-kai/cc/accounts/'+accountId+'/activate',{method:'POST'});toast('User unbanned');doLegalSearch();}
   catch(e){toast('Error: '+e.message,'err');}
 }
 

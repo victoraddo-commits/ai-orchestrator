@@ -14,6 +14,7 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 | `home` | Home | loadHome | /api/status, /api/summary |
 | `modules` | Modules | loadModules | /kai/modules |
 | `legal` | Legal | loadLegal | /kai/legal-brain |
+| `payments` | Pricing & Payments | loadPayments | /api/juris-kai/cc/plans, /cc/pricing, /cc/payments |
 | `ai-workforce` | Workforce | loadWorkforce | /kai/workforce* |
 | `money` | Money | loadMoney | /kai/money* |
 | `talent` | Talent | loadTalent | /kai/talent* |
@@ -218,3 +219,37 @@ clearing the operator session and bouncing the CC to login. Added `apiSoft()`
 (no session-clearing side effect) for that decorative read. Also fixed a tab
 race: a slow initial `jurisOverview` fetch could overwrite the newly selected
 tab; each async view now carries a per-switch token and drops stale renders.
+
+## Payments + Legal Groups additions (2026-09-19)
+
+New top-level **`payments`** panel ("Pricing & Payments") — deliberately NOT
+buried in Legal: provider status (mode, key presence), tier→plan mapping with a
+**Create / sync plans** button, the pricing editor, a test checkout, local
+subscription counts and recent transactions. The same Pricing view remains in
+Legal → Juris (`jurisPricing`).
+
+Legal tab gains a **legal groups** card (`loadLegalGroups`) for admin- and
+user-created groups: create/rename/archive, member add/remove/role, user
+search + bulk add, and **"Ask Kai to audit documents"** (group-scoped audit that
+stores a report). User administration gains a **Create user** form in the Juris
+Accounts sub-tab.
+
+### Endpoints added (all auth-gated, `X-Kai-User`/`X-Kai-User-Id` accepted)
+
+| Method | Path | Gate |
+|---|---|---|
+| GET | `/api/juris-kai/cc/plans` | `require_cc_read` |
+| POST | `/api/juris-kai/cc/plans/sync` | `require_juris_write` + rate limit + audit |
+| GET/POST | `/api/juris-kai/cc/groups` | read / write |
+| GET/PATCH | `/api/juris-kai/cc/groups/{group_id}` | read / write |
+| POST | `/api/juris-kai/cc/groups/{group_id}/members` | `require_juris_write` |
+| POST | `/api/juris-kai/cc/groups/{group_id}/members/bulk` | `require_juris_write` |
+| PUT/DELETE | `/api/juris-kai/cc/groups/{group_id}/members/{account_id}` | `require_juris_write` |
+| POST | `/api/juris-kai/cc/groups/{group_id}/audit` | `require_juris_write` + audit |
+| GET | `/api/juris-kai/cc/groups/{group_id}/reports` | `require_cc_read` |
+| GET | `/api/juris-kai/cc/users/search` | `require_cc_read` |
+| POST | `/api/juris-kai/cc/accounts` | `require_juris_write` + audit |
+| POST | `/api/juris-kai/cc/accounts/{id}/deactivate\|activate\|grant-days\|subscription` | `require_juris_write` + audit |
+
+Guarded by `scripts/cc_contract_check.py` (endpoint contract) so a panel can
+never call a missing route.

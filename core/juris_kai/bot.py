@@ -1398,6 +1398,7 @@ def _handle_legacy_command(text: str, chat_id: int, account: dict, admin: bool) 
             handle_help, handle_account, handle_subscribe,
             handle_learn, handle_case, handle_research,
             handle_argument, handle_flashcards, handle_progress,
+            handle_group,
         )
 
         cmd_map = {
@@ -1410,6 +1411,7 @@ def _handle_legacy_command(text: str, chat_id: int, account: dict, admin: bool) 
             "argument": lambda: handle_argument(args, {}, account),
             "flashcards": lambda: handle_flashcards(args, {}, account),
             "progress": lambda: handle_progress({}, account),
+            "group": lambda: handle_group(args, account, admin),
         }
 
         if command in cmd_map:

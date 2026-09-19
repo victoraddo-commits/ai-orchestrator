@@ -1,0 +1,20 @@
+{
+  "name": "enterprise",
+  "version": "1.0.0",
+  "description": "Enterprise oversight dashboard \u2014 providers, usage, approvals, roadmap and builds in one view",
+  "endpoints": [
+    "/enterprise/dashboard"
+  ],
+  "capabilities": [
+    "oversight",
+    "provider-health",
+    "usage"
+  ],
+  "dependencies": [],
+  "cc": {
+    "tab": "enterprise",
+    "title": "Enterprise",
+    "status": "live",
+    "health": "/enterprise/dashboard"
+  }
+}

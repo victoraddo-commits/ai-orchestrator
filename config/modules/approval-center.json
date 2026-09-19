@@ -1,13 +1,40 @@
 {
   "name": "approval-center",
   "version": "1.0.0",
-  "description": "Human approval gate for infrastructure actions and application builds — all remediation, deployment, and architecture decisions flow through here",
-  "endpoints": ["/approvals", "/builds/{build_id}/approve-architecture", "/builds/{build_id}/approve-deploy"],
-  "capabilities": ["approval-management", "human-gate", "security-review"],
+  "description": "Human approval gate for infrastructure actions and application builds \u2014 all remediation, deployment, and architecture decisions flow through here",
+  "endpoints": [
+    "/approvals",
+    "/builds/{build_id}/approve-architecture",
+    "/builds/{build_id}/approve-deploy"
+  ],
+  "capabilities": [
+    "approval-management",
+    "human-gate",
+    "security-review"
+  ],
   "dependencies": [],
   "settings_schema": {
-    "auto_approve_safe_actions": {"type": "boolean", "default": false, "label": "Auto-approve safe actions"},
-    "approval_timeout_hours": {"type": "number", "default": 72, "label": "Approval timeout (hours)", "min": 1, "max": 720}
+    "auto_approve_safe_actions": {
+      "type": "boolean",
+      "default": false,
+      "label": "Auto-approve safe actions"
+    },
+    "approval_timeout_hours": {
+      "type": "number",
+      "default": 72,
+      "label": "Approval timeout (hours)",
+      "min": 1,
+      "max": 720
+    }
   },
-  "ops_actions": ["approve_all_safe", "reject_all_stale"]
+  "ops_actions": [
+    "approve_all_safe",
+    "reject_all_stale"
+  ],
+  "cc": {
+    "tab": "approvals",
+    "title": "Approvals",
+    "status": "live",
+    "health": "/approvals"
+  }
 }

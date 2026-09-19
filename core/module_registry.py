@@ -21,7 +21,7 @@ DEFAULT_MODULES_DIR = os.path.join(
 )
 
 _REQUIRED_FIELDS = frozenset(["name", "version", "description"])
-_OPTIONAL_FIELDS = frozenset(["endpoints", "capabilities", "dependencies"])
+_OPTIONAL_FIELDS = frozenset(["endpoints", "capabilities", "dependencies", "cc"])
 
 
 class ModuleRegistry:
@@ -82,6 +82,9 @@ class ModuleRegistry:
                 )
                 continue
 
+            cc = descriptor.get("cc")
+            if not isinstance(cc, dict):
+                cc = {}
             module = {
                 "name": name.strip(),
                 "version": str(version),
@@ -89,6 +92,7 @@ class ModuleRegistry:
                 "endpoints": descriptor.get("endpoints", []),
                 "capabilities": descriptor.get("capabilities", []),
                 "dependencies": descriptor.get("dependencies", []),
+                "cc": cc,
                 "source_file": entry.name,
             }
             loaded[name] = module
@@ -102,8 +106,27 @@ class ModuleRegistry:
             self.load_modules()
         return dict(self._modules)
 
+    def get_cc_modules(self):
+        """Modules that declare a ``cc`` block and therefore own a CC tab."""
+        out = []
+        for name, module in self.get_registered_modules().items():
+            cc = module.get("cc") or {}
+            tab = cc.get("tab")
+            if not tab:
+                continue
+            out.append({
+                "name": name,
+                "tab": tab,
+                "title": cc.get("title") or name,
+                "status": cc.get("status", "live"),
+                "health": cc.get("health"),
+                "description": module.get("description", ""),
+            })
+        return out
+
     def register_module(self, name, version, description,
-                        endpoints=None, capabilities=None, dependencies=None):
+                        endpoints=None, capabilities=None, dependencies=None,
+                        cc=None):
         module = {
             "name": name,
             "version": version,
@@ -111,6 +134,7 @@ class ModuleRegistry:
             "endpoints": endpoints or [],
             "capabilities": capabilities or [],
             "dependencies": dependencies or [],
+            "cc": cc or {},
         }
         self._modules[name] = module
         return module
@@ -127,11 +151,17 @@ def get_registered_modules():
     return _module_registry.get_registered_modules()
 
 
+def get_cc_modules():
+    return _module_registry.get_cc_modules()
+
+
 def register_module(name, version, description,
-                    endpoints=None, capabilities=None, dependencies=None):
+                    endpoints=None, capabilities=None, dependencies=None,
+                    cc=None):
     return _module_registry.register_module(
         name, version, description,
         endpoints=endpoints, capabilities=capabilities, dependencies=dependencies,
+        cc=cc,
     )
 
 

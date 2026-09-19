@@ -1,0 +1,22 @@
+{
+  "name": "knowledge-fabric",
+  "version": "1.0.0",
+  "description": "Permission-aware Knowledge Fabric \u2014 primary/secondary document stores, spaces and audit",
+  "endpoints": [
+    "/knowledge/documents",
+    "/knowledge/spaces",
+    "/knowledge/search",
+    "/knowledge/query"
+  ],
+  "capabilities": [
+    "knowledge-storage",
+    "permissioned-search"
+  ],
+  "dependencies": [],
+  "cc": {
+    "tab": "knowledge",
+    "title": "Knowledge",
+    "status": "live",
+    "health": "/knowledge/documents"
+  }
+}

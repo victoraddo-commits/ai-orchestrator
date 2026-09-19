@@ -1,0 +1,21 @@
+{
+  "name": "learning",
+  "version": "1.0.0",
+  "description": "Learning loop \u2014 action outcomes, build-template success rates and aggregated lessons",
+  "endpoints": [
+    "/learning",
+    "/learning/builds",
+    "/learning/lessons"
+  ],
+  "capabilities": [
+    "learning-loop",
+    "build-learnings"
+  ],
+  "dependencies": [],
+  "cc": {
+    "tab": "learning",
+    "title": "Learning",
+    "status": "live",
+    "health": "/learning"
+  }
+}

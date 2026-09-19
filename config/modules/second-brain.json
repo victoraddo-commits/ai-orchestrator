@@ -1,0 +1,22 @@
+{
+  "name": "second-brain",
+  "version": "1.0.0",
+  "description": "Kai Second Brain memory stores \u2014 operational, project, cognitive, conversational and legal-supplemental records",
+  "endpoints": [
+    "/api/second-brain/summary",
+    "/kai/brain/query",
+    "/kai/brain/stores"
+  ],
+  "capabilities": [
+    "memory-stores",
+    "recall",
+    "merge-policies"
+  ],
+  "dependencies": [],
+  "cc": {
+    "tab": "secondbrain",
+    "title": "2nd Brain",
+    "status": "live",
+    "health": "/api/second-brain/summary"
+  }
+}

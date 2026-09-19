@@ -1,0 +1,19 @@
+{
+  "name": "notifications",
+  "version": "1.0.0",
+  "description": "Operator notification feed \u2014 health, legal-source and system events with severity",
+  "endpoints": [
+    "/kai/notifications"
+  ],
+  "capabilities": [
+    "notifications",
+    "severity-routing"
+  ],
+  "dependencies": [],
+  "cc": {
+    "tab": "notifications",
+    "title": "Notify",
+    "status": "live",
+    "health": "/kai/notifications"
+  }
+}

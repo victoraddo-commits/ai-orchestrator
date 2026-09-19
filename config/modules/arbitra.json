@@ -1,0 +1,14 @@
+{
+  "name": "arbitra",
+  "version": "1.0.0",
+  "description": "Arbitra economic OS — opportunity, venture, thesis and portfolio control plane",
+  "endpoints": ["/cc/arbitra/arbitra/overview", "/cc/arbitra/arbitra/opportunities"],
+  "capabilities": ["economic-os", "opportunities", "ventures", "portfolio"],
+  "dependencies": [],
+  "cc": {
+    "tab": "arbitra",
+    "title": "Arbitra",
+    "status": "live",
+    "health": "/cc/arbitra/arbitra/overview"
+  }
+}

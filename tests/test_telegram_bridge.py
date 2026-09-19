@@ -1,6 +1,7 @@
 import json
 
 import pytest
+import requests
 
 import core.telegram_bridge as tb
 
@@ -688,6 +689,86 @@ def test_poll_updates_raises_on_get_updates_failure(monkeypatch):
 
     with pytest.raises(RuntimeError, match="getUpdates"):
         tb.poll_updates(token="test-token", chat_id="612786480")
+
+
+def _http_error_resp(status, body, message="request failed"):
+    class FakeResp:
+        status_code = status
+        text = body
+
+        def json(self):
+            return json.loads(body)
+
+        def raise_for_status(self):
+            raise requests.exceptions.HTTPError(message, response=self)
+
+    return FakeResp()
+
+
+def test_poll_updates_409_raises_conflict_with_real_cause(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+    tb.reset_offset()
+
+    body = json.dumps({
+        "ok": False,
+        "error_code": 409,
+        "description": "Conflict: terminated by other getUpdates request; "
+                       "make sure that only one bot instance is running",
+    })
+    monkeypatch.setattr(
+        tb.requests, "get",
+        lambda url, params=None, timeout=None: _http_error_resp(409, body),
+    )
+
+    with pytest.raises(tb.TelegramConflictError) as exc:
+        tb.poll_updates(token="test-token", chat_id="612786480")
+
+    message = str(exc.value)
+    assert "409" in message
+    assert "duplicate getUpdates consumer" in message
+    assert "terminated by other getUpdates request" in message
+
+
+def test_poll_updates_error_includes_status_and_body(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", "test-token")
+    tb.reset_offset()
+
+    body = json.dumps({"ok": False, "description": "Internal Server Error"})
+    monkeypatch.setattr(
+        tb.requests, "get",
+        lambda url, params=None, timeout=None: _http_error_resp(500, body),
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        tb.poll_updates(token="test-token", chat_id="612786480")
+
+    message = str(exc.value)
+    assert "getUpdates" in message
+    assert "HTTP 500" in message
+    assert "Internal Server Error" in message
+
+
+def test_poll_updates_error_redacts_bot_token(monkeypatch):
+    token = "123456789:AABBCCDDEEFFGGHHIIJJKKLLMMNNOOPPQQR"
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", token)
+    tb.reset_offset()
+
+    message_with_token = (
+        f"500 Server Error for url: https://api.telegram.org/bot{token}/getUpdates"
+    )
+    monkeypatch.setattr(
+        tb.requests, "get",
+        lambda url, params=None, timeout=None: _http_error_resp(
+            500, "{}", message=message_with_token
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc:
+        tb.poll_updates(token=token, chat_id="612786480")
+
+    assert token not in str(exc.value)
+    assert "<redacted-token>" in str(exc.value)
+
 
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ import time
 from core.logger import info
 from core.telegram_bridge import (
     poll_updates,
+    TelegramConflictError,
     route_inbound_reply,
     route_callback_query,
     answer_callback_query,
@@ -41,6 +42,11 @@ POLL_TIMEOUT = 25
 # a real message never waits this long, since a successful long-poll call
 # returns (with or without messages) well under this window.
 ERROR_BACKOFF_SECONDS = 5
+
+# HTTP 409 means a second consumer is polling this bot token (Telegram allows
+# only one getUpdates listener at a time). That will not clear on a 5s retry,
+# so back off far longer instead of hammering ~11 requests/min against it.
+CONFLICT_BACKOFF_SECONDS = 60
 
 
 def _safe_send(text):
@@ -122,8 +128,14 @@ def run_forever():
     while True:
         try:
             poll_once()
+        except TelegramConflictError as error:
+            info(
+                "telegram_poller: duplicate getUpdates consumer for this bot "
+                f"token (409) -- backing off {CONFLICT_BACKOFF_SECONDS}s: {error}"
+            )
+            time.sleep(CONFLICT_BACKOFF_SECONDS)
         except Exception as error:
-            info(f"telegram_poller: poll failed: {type(error).__name__}")
+            info(f"telegram_poller: poll failed: {type(error).__name__}: {error}")
             time.sleep(ERROR_BACKOFF_SECONDS)
 
 

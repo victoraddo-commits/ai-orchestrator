@@ -107,3 +107,30 @@ def test_run_forever_backs_off_and_keeps_going_after_a_poll_failure(monkeypatch)
         pass
 
     assert calls["count"] == 2
+
+
+def test_run_forever_uses_longer_backoff_on_409_conflict(monkeypatch):
+    calls = {"count": 0}
+    logged = []
+
+    def fake_poll_once():
+        calls["count"] += 1
+        raise poller.TelegramConflictError("duplicate getUpdates consumer")
+
+    def fake_sleep(seconds):
+        logged.append(seconds)
+        if calls["count"] >= 2:
+            raise SystemExit
+
+    monkeypatch.setattr(poller, "poll_once", fake_poll_once)
+    monkeypatch.setattr(poller.time, "sleep", fake_sleep)
+
+    try:
+        poller.run_forever()
+    except SystemExit:
+        pass
+
+    assert calls["count"] == 2
+    assert set(logged) == {poller.CONFLICT_BACKOFF_SECONDS}
+    assert poller.CONFLICT_BACKOFF_SECONDS > poller.ERROR_BACKOFF_SECONDS
+

@@ -25,6 +25,7 @@ on every operation.
 
 import json
 import os
+import re
 from pathlib import Path
 
 import requests
@@ -285,6 +286,52 @@ def send_approval_keyboard(chat_id, build_id, approval_type, token=None):
 # Inbound: poll /getUpdates for new messages since the last offset
 # ---------------------------------------------------------------------------
 
+# Telegram bot tokens look like "<bot_id>:<secret>". Never log one. No leading
+# \b: in the API URL the id is preceded by "bot" (a word char), so a boundary
+# assertion would miss exactly the strings we most need to redact.
+_TOKEN_RE = re.compile(r"\d{5,}:[A-Za-z0-9_-]{20,}")
+
+
+def _redact(text) -> str:
+    """Strip anything token-shaped from text before it reaches a log."""
+    if not text:
+        return ""
+    return _TOKEN_RE.sub("<redacted-token>", str(text))
+
+
+class TelegramConflictError(RuntimeError):
+    """A second getUpdates consumer holds this bot token (Telegram HTTP 409)."""
+
+
+def _describe_http_error(error) -> str:
+    """Truthful one-line description of a failed getUpdates request.
+
+    The old code logged only ``type(error).__name__`` ("RuntimeError"), which
+    hid the real cause for thousands of lines. Include the exception repr, the
+    HTTP status + (redacted) response body, and any chained ``__cause__``.
+    """
+    response = getattr(error, "response", None)
+    status = getattr(response, "status_code", None) if response is not None else None
+    body = _redact(getattr(response, "text", "") or "") if response is not None else ""
+
+    detail = f"{type(error).__name__}: {_redact(error)}"
+    if status is not None:
+        detail += f" (HTTP {status})"
+    if body:
+        detail += f" body={body[:400]}"
+    cause = getattr(error, "__cause__", None)
+    if cause is not None:
+        detail += f" cause={type(cause).__name__}: {_redact(cause)}"
+    return detail
+
+
+def _is_conflict(error, detail: str) -> bool:
+    response = getattr(error, "response", None)
+    if getattr(response, "status_code", None) == 409:
+        return True
+    return "conflict" in detail.lower()
+
+
 _last_update_id = None
 
 
@@ -350,13 +397,23 @@ def poll_updates(token=None, chat_id=None, poll_timeout=0):
         response.raise_for_status()
         body = response.json()
     except Exception as error:
-        raise RuntimeError(
-            f"Telegram getUpdates failed: {type(error).__name__}"
-        ) from error
+        detail = _describe_http_error(error)
+        if _is_conflict(error, detail):
+            raise TelegramConflictError(
+                "Telegram getUpdates conflict (409) -- duplicate getUpdates "
+                f"consumer for this bot token: {detail}"
+            ) from error
+        raise RuntimeError(f"Telegram getUpdates failed: {detail}") from error
 
     if not body.get("ok"):
+        description = _redact(body.get("description", "unknown"))
+        if body.get("error_code") == 409 or "conflict" in str(description).lower():
+            raise TelegramConflictError(
+                "Telegram getUpdates conflict (409) -- duplicate getUpdates "
+                f"consumer for this bot token: {description}"
+            )
         raise RuntimeError(
-            f"Telegram getUpdates returned not ok: {body.get('description', 'unknown')}"
+            f"Telegram getUpdates returned not ok: {description}"
         )
 
     messages = []

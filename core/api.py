@@ -350,6 +350,81 @@ def _kai_brain_auth():
     return _require_write_capability("kai.brain.read")
 
 
+def _cc_read_dep(
+    authorization: str | None = Header(default=None),
+    x_kai_session: str | None = Header(default=None),
+    x_kai_user: str | None = Header(default=None),
+    x_kai_user_id: str | None = Header(default=None),
+) -> str:
+    """Read gate for Command Center panels: bridge token, a valid session, or
+    the auth-proxy identity headers. Mirrors core.juris_kai.cc_routes so every
+    CC surface authenticates the same way."""
+    from core.bridge_auth import _load_api_token, BRIDGE_OPERATOR
+    if authorization and hmac.compare_digest(
+            authorization.encode(), f"Bearer {_load_api_token()}".encode()):
+        return BRIDGE_OPERATOR
+    if x_kai_session and authz._resolve_session(x_kai_session):
+        return x_kai_session
+    if x_kai_user and x_kai_user_id:
+        return f"auth-proxy:{x_kai_user_id}"
+    raise HTTPException(status_code=401, detail="Missing or invalid credentials")
+
+
+def _second_brain_store_stats() -> dict:
+    """Per-store record counts, merge policy and freshness from manifests."""
+    from core.second_brain.registry import STORE_MERGE_POLICIES
+
+    stores_root = Path(__file__).parent / "second_brain" / "stores"
+    result = {}
+    for store_name in STORE_MERGE_POLICIES:
+        manifest_path = stores_root / store_name / "manifest.json"
+        manifest = {}
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text())
+            except Exception:
+                pass
+        result[store_name] = {
+            "merge_policy": STORE_MERGE_POLICIES[store_name].value,
+            "record_count": manifest.get("record_count", 0),
+            "updated_at": manifest.get("updated_at") or manifest.get("last_updated"),
+        }
+    return result
+
+
+@app.get("/api/second-brain/summary")
+def second_brain_summary(operator: str = Depends(_cc_read_dep)):
+    """Compact Second Brain overview for the Command Center panel.
+
+    Aggregates the store manifests (counts/policies) with the most recent
+    operational records — no raw JSON dump, a shape the UI can table directly.
+    """
+    from core.second_brain.router import SecondBrainRouter
+    from core.second_brain.types import MemoryType
+
+    stores = _second_brain_store_stats()
+    total = sum(int(s.get("record_count") or 0) for s in stores.values())
+    recent: list[dict] = []
+    error = None
+    try:
+        result = SecondBrainRouter().query({
+            "memory_types": [MemoryType.OPERATIONAL],
+            "require_confirmation": False,
+            "limit": 10,
+        })
+        recent = result.get("records", [])
+    except Exception as exc:  # noqa: BLE001 - panel must still render stores
+        error = str(exc)
+    return {
+        "total_records": total,
+        "store_count": len(stores),
+        "stores": stores,
+        "recent": recent,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "error": error,
+    }
+
+
 @app.get("/kai/brain/query")
 def query_second_brain(
     entity: str | None = None,
@@ -407,26 +482,11 @@ def list_second_brain_stores(
     operator: str = _kai_brain_auth(),
 ):
     """Return store names, record counts, and merge policies."""
-    from core.second_brain.registry import STORE_MERGE_POLICIES
-    from pathlib import Path
-
-    stores_root = Path(__file__).parent / "second_brain" / "stores"
-    result = {}
-    for store_name in STORE_MERGE_POLICIES:
-        manifest_path = stores_root / store_name / "manifest.json"
-        records_path = stores_root / store_name / "records.jsonl"
-        import json
-        manifest = {}
-        if manifest_path.exists():
-            try:
-                manifest = json.loads(manifest_path.read_text())
-            except Exception:
-                pass
-        result[store_name] = {
-            "merge_policy": STORE_MERGE_POLICIES[store_name].value,
-            "record_count": manifest.get("record_count", 0),
-        }
-    return result
+    stores = _second_brain_store_stats()
+    return {
+        name: {"merge_policy": s["merge_policy"], "record_count": s["record_count"]}
+        for name, s in stores.items()
+    }
 
 
 @app.get("/kai/tools/world")

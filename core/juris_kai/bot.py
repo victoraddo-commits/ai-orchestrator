@@ -402,19 +402,37 @@ def _send_placeholder(chat_id) -> int | None:
     return None
 
 
+# Telegram rejects an edit that changes nothing with this phrase. It is a
+# benign no-op (the text is already on screen), NOT a failure -- treating it
+# as one made _finalize_stream resend the whole answer and double-post it.
+_BENIGN_EDIT_MARKERS = ("message is not modified",)
+
+
+def _edit_is_benign_noop(resp: dict) -> bool:
+    """True when an edit failed only because the message already matched."""
+    if not resp or resp.get("ok"):
+        return False
+    desc = str(resp.get("description", "")).lower()
+    return any(marker in desc for marker in _BENIGN_EDIT_MARKERS)
+
+
 def _finalize_stream(chat_id, message_id, text, reply_markup=None) -> None:
     """Final edit of a streamed message; keeps the reply keyboard.
 
     Legal answers routinely contain characters that break Telegram Markdown,
     so a failed Markdown edit is retried as plain text rather than lost.
+
+    A "message is not modified" response is success, not failure: the
+    placeholder already shows this exact text, so resending would duplicate
+    the answer in the chat.
     """
     final = text if len(text) <= STREAM_MAX_MESSAGE else text[:STREAM_MAX_MESSAGE]
     resp = _edit_message_text(chat_id, message_id, final,
                               reply_markup=reply_markup, parse_mode="Markdown")
-    if not resp.get("ok"):
+    if not resp.get("ok") and not _edit_is_benign_noop(resp):
         resp = _edit_message_text(chat_id, message_id, final,
                                   reply_markup=reply_markup, parse_mode=None)
-    if not resp.get("ok"):
+    if not resp.get("ok") and not _edit_is_benign_noop(resp):
         send_message(chat_id, final, reply_markup=reply_markup, parse_mode=None)
     if len(text) > STREAM_MAX_MESSAGE:
         send_message(chat_id, text[STREAM_MAX_MESSAGE:], parse_mode=None)
@@ -1480,6 +1498,35 @@ def handle_callback(callback_query: dict) -> dict | None:
 # Polling loop
 # ---------------------------------------------------------------------------
 
+_OFFSET_FILE_DEFAULT = "/project/ai-orchestrator/memory/juris-kai-telegram-offset"
+
+
+def _offset_file() -> Path:
+    return Path(os.environ.get("JURIS_KAI_TELEGRAM_OFFSET_FILE", _OFFSET_FILE_DEFAULT))
+
+
+def _load_offset() -> int | None:
+    """Return the last confirmed getUpdates offset (update_id + 1), or None.
+
+    Persisted across restarts so a crash/restart does not reprocess (and
+    re-run side effects for) the last update Telegram already delivered.
+    """
+    try:
+        raw = _offset_file().read_text().strip()
+        return int(raw) if raw else None
+    except Exception:
+        return None
+
+
+def _save_offset(offset: int) -> None:
+    try:
+        path = _offset_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(offset))
+    except Exception:
+        pass
+
+
 def poll_updates(offset: int | None = None) -> int | None:
     """Fetch and process new messages from Telegram. Returns next offset."""
     params: dict = {"timeout": POLL_TIMEOUT, "allowed_updates": ["message", "callback_query"]}
@@ -1516,6 +1563,7 @@ def poll_updates(offset: int | None = None) -> int | None:
             except Exception as e:
                 logger.error(f"Callback error: {e}")
             offset = update_id + 1
+            _save_offset(offset)
             continue
 
         # Handle regular messages
@@ -1527,6 +1575,7 @@ def poll_updates(offset: int | None = None) -> int | None:
 
             if not text:
                 offset = update_id + 1
+                _save_offset(offset)
                 continue
 
             # Send typing indicator
@@ -1547,6 +1596,7 @@ def poll_updates(offset: int | None = None) -> int | None:
                 _send_guarded(chat_id, result)
 
         offset = update_id + 1
+        _save_offset(offset)
 
     return offset
 
@@ -1580,7 +1630,7 @@ def run_forever():
     HEALTH_FILE = Path("/project/ai-orchestrator/memory/juris-kai-health")
     HEALTH_FILE.touch()
 
-    offset = None
+    offset = _load_offset()
     while True:
         try:
             offset = poll_updates(offset)

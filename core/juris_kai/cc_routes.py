@@ -29,6 +29,8 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 import core.authz as authz
+from core.payments.keys import PaymentConfigError
+from core.payments.paystack import PaystackError
 
 logger = logging.getLogger("juris_kai.cc_routes")
 
@@ -552,6 +554,145 @@ def cc_test_query(body: dict = Body(...),
         "context_chunks": len(docs),
         "context_chars": len(context),
     }
+
+
+# ── pricing (editable tiers) ──────────────────────────────────────────────
+
+@router.get("/api/juris-kai/cc/pricing")
+def cc_pricing_get(_: str = Depends(require_cc_read)):
+    """Return the effective tiers + per-document page rate (read-gated)."""
+    from core.juris_kai import pricing as _pricing
+
+    doc = _pricing.load_pricing()
+    return {
+        "success": True,
+        "tiers": doc.get("tiers") or {},
+        "per_document_page_rate_ghs": doc.get("per_document_page_rate_ghs"),
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+        "defaults": {
+            "tiers": _pricing.DEFAULT_TIERS,
+            "per_document_page_rate_ghs": _pricing.DEFAULT_PER_DOCUMENT_PAGE_RATE_GHS,
+        },
+    }
+
+
+@router.put("/api/juris-kai/cc/pricing")
+def cc_pricing_put(body: dict = Body(...),
+                   operator: str = Depends(require_juris_write),
+                   request: Request = None):
+    """Validate + persist an edited pricing document (write-gated, audited)."""
+    from core.juris_kai import pricing as _pricing
+
+    _rate_limit(request, operator)
+    tiers = body.get("tiers")
+    rate = body.get("per_document_page_rate_ghs")
+    errors = []
+    if tiers is None:
+        errors.append("tiers is required")
+    if rate is None:
+        errors.append("per_document_page_rate_ghs is required")
+    if not errors:
+        errors = _pricing.validate_pricing(tiers, rate)
+    if errors:
+        return {"success": False, "validation_errors": errors}
+    try:
+        doc = _pricing.save_pricing(tiers, rate, updated_by=operator)
+    except _pricing.PricingValidationError as exc:
+        return {"success": False, "validation_errors": exc.errors}
+    except OSError as exc:
+        return {"success": False, "error": f"could not persist pricing: {exc}"}
+
+    _log_admin(operator, "pricing_update", {
+        "tiers": sorted(doc.get("tiers", {}).keys()),
+        "per_document_page_rate_ghs": doc.get("per_document_page_rate_ghs"),
+    })
+    return {
+        "success": True,
+        "tiers": doc.get("tiers"),
+        "per_document_page_rate_ghs": doc.get("per_document_page_rate_ghs"),
+        "updated_at": doc.get("updated_at"),
+        "updated_by": doc.get("updated_by"),
+    }
+
+
+# ── checkout (Paystack / Hubtel) + activation ─────────────────────────────
+
+@router.post("/api/juris-kai/cc/checkout")
+def cc_checkout(body: dict = Body(...),
+                operator: str = Depends(require_juris_write),
+                request: Request = None):
+    """Initialize a subscription checkout for an account + tier."""
+    from core.juris_kai import paystack_checkout as checkout
+    from core.juris_kai.accounts import get_account_manager
+
+    _rate_limit(request, operator)
+    account_id = str(body.get("account_id") or "").strip()
+    tier = str(body.get("tier") or "").strip()
+    if not account_id or not tier:
+        return {"success": False, "error": "account_id and tier are required"}
+
+    account = get_account_manager().get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    try:
+        result = checkout.create_checkout(
+            account, tier, email=body.get("email"),
+            callback_url=body.get("callback_url"),
+            provider=body.get("provider"))
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
+    except PaymentConfigError as exc:
+        return {"success": False, "error": f"payments not configured: {exc}"}
+    except PaystackError as exc:
+        logger.warning("juris checkout failed: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+    _log_admin(operator, "checkout_initialize", {
+        "account_id": account_id, "tier": tier,
+        "provider": result.get("provider"), "mode": result.get("mode"),
+    })
+    return {"success": bool(result.get("success")), "checkout": result,
+            **({"error": result["error"]} if result.get("error") else {})}
+
+
+@router.post("/api/juris-kai/cc/checkout/verify/{reference}")
+def cc_checkout_verify(reference: str,
+                       operator: str = Depends(require_juris_write),
+                       request: Request = None):
+    """Verify a reference with Paystack then activate the tier (idempotent)."""
+    from core.juris_kai import paystack_checkout as checkout
+
+    _rate_limit(request, operator)
+    try:
+        verified = checkout.get_paystack_provider().verify(reference)
+    except PaymentConfigError as exc:
+        return {"success": False, "error": f"payments not configured: {exc}"}
+    except PaystackError as exc:
+        return {"success": False, "error": str(exc)}
+
+    activation = checkout.activate_reference(reference, status=verified.get("status"))
+    _log_admin(operator, "checkout_verify",
+               {"reference": reference, "activated": activation.get("activated")})
+    return {"success": True, "verified": verified, "activation": activation}
+
+
+@router.post("/api/juris-kai/paystack/webhook")
+@router.post("/api/juris-kai/cc/paystack/webhook")
+async def juris_paystack_webhook(request: Request):
+    """Receive a Paystack event. Authenticated solely by the HMAC signature."""
+    from core.juris_kai import paystack_checkout as checkout
+
+    signature = request.headers.get("x-paystack-signature")
+    raw_body = await request.body()
+    try:
+        result = checkout.handle_webhook(raw_body, signature)
+    except PaymentConfigError as exc:
+        raise HTTPException(status_code=503, detail=f"payments not configured: {exc}")
+    except PaystackError as exc:
+        logger.warning("juris paystack webhook rejected: %s", exc)
+        raise HTTPException(status_code=401, detail=str(exc))
+    return {"status": "ok", **result}
 
 
 # ── streaming test query (SSE, local-only) ────────────────────────────────

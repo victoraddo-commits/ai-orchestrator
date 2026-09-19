@@ -2187,7 +2187,7 @@ async function loadLegal(){
 const JURIS_TABS=[
   {n:'overview',l:'Overview'},{n:'corpus',l:'Corpus'},{n:'ingest',l:'Ingest'},
   {n:'accounts',l:'Accounts'},{n:'referrals',l:'Referrals'},{n:'bot',l:'Bot'},
-  {n:'model',l:'Model'},{n:'cache',l:'Cache'}
+  {n:'model',l:'Model'},{n:'pricing',l:'Plans & Pricing'},{n:'cache',l:'Cache'}
 ];
 let JURIS_ACTIVE='overview';
 
@@ -2210,7 +2210,7 @@ function jurisSwitch(tab){
   document.querySelectorAll('#juris-tabs .jtab').forEach(b=>b.classList.toggle('active',b.dataset.jtab===tab));
   const c=$('juris-tab-content');if(!c)return;
   c.dataset.jtab=tab;
-  const views={overview:jurisOverview,corpus:jurisCorpus,ingest:jurisIngest,accounts:jurisAccounts,referrals:jurisReferrals,bot:jurisBot,model:jurisModel,cache:jurisCache};
+  const views={overview:jurisOverview,corpus:jurisCorpus,ingest:jurisIngest,accounts:jurisAccounts,referrals:jurisReferrals,bot:jurisBot,model:jurisModel,pricing:jurisPricing,cache:jurisCache};
   (views[tab]||jurisOverview)(c,tab);
 }
 
@@ -2694,6 +2694,95 @@ function jurisCacheClear(){
       if(d.success){if(msg)msg.textContent='cleared '+(d.cleared||0)+' entries';toast('Caches cleared');setTimeout(()=>jurisSwitch('cache'),500);}
       else{if(msg)msg.textContent='error: '+(d.error||'failed');toast('Clear failed','err');}}
     catch(e){if(msg)msg.textContent='error: '+e.message;toast('Error: '+e.message,'err');}});
+}
+
+// ── Plans & Pricing (editable) + test checkout ────────────────────
+async function jurisPricing(c,tab){
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/pricing');
+    if(_jurisStale(tab))return;
+    const tiers=d.tiers||{};
+    let h='<div class="action-row" style="align-items:flex-end;flex-wrap:wrap">'
+      +'<label class="field-hint" style="display:flex;flex-direction:column;gap:2px">Per-document page rate (GHS)'
+      +'<input id="jp-rate" type="number" min="0" step="0.01" value="'+attr(d.per_document_page_rate_ghs)+'" style="max-width:110px;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);padding:4px 6px;font-size:0.68rem;font-family:var(--font-mono)"></label>'
+      +'<button class="btn btn-sm btn-accent" onclick="jurisPricingSaveAll()">Save all</button>'
+      +'<span class="field-hint">Write-gated · requires juris.admin</span></div>';
+    if(d.updated_at)h+='<div class="field-hint">last updated '+esc(String(d.updated_at).slice(0,19))+(d.updated_by?' by '+esc(d.updated_by):'')+'</div>';
+    h+='<div class="juris-grid" style="align-items:start">';
+    for(const key of Object.keys(tiers)){
+      const t=tiers[key]||{},f=(t.features||[]).join(', ');
+      h+='<div class="card" data-tier="'+attr(key)+'" style="margin:0">'
+        +'<div class="spread" style="margin-bottom:6px"><strong>'+esc(key)+'</strong><span class="badge info">'+esc(t.name||'')+'</span></div>'
+        +'<div class="juris-form">'
+        +'<label>Name</label><input type="text" data-f="name" value="'+attr(t.name||'')+'">'
+        +'<label>Price (GHS)</label><input type="number" min="0" step="0.01" data-f="price_ghs" value="'+attr(t.price_ghs)+'">'
+        +'<label>Duration (days)</label><input type="number" min="1" step="1" data-f="duration_days" value="'+attr(t.duration_days)+'">'
+        +'<label>Documents / month</label><input type="number" min="0" step="1" data-f="max_documents_per_month" value="'+attr(t.max_documents_per_month)+'">'
+        +'<label>Queries / day</label><input type="number" min="0" step="1" data-f="max_queries_per_day" value="'+attr(t.max_queries_per_day)+'">'
+        +'<label>Features (comma separated)</label><textarea data-f="features" style="min-height:64px">'+esc(f)+'</textarea>'
+        +'</div>'
+        +'<div class="action-row" style="margin-top:8px">'
+        +'<button class="btn btn-xs btn-accent" data-tier="'+attr(key)+'" onclick="jurisPricingSave(this.dataset.tier)">Save</button>'
+        +'<button class="btn btn-xs" data-tier="'+attr(key)+'" onclick="jurisBuy(this.dataset.tier)">Buy</button>'
+        +'<button class="btn btn-xs" data-tier="'+attr(key)+'" onclick="jurisTestCheckout(this.dataset.tier)">Test checkout</button>'
+        +'</div></div>';
+    }
+    h+='</div>';
+    h+='<div class="juris-sub">Test checkout (Paystack)</div>'
+      +'<div class="action-row" style="flex-wrap:wrap">'
+      +'<input id="jp-account" class="search-input" placeholder="account_id" style="max-width:240px">'
+      +'<input id="jp-email" class="search-input" placeholder="email (optional)" style="max-width:220px">'
+      +'<span id="jp-checkout-msg" class="field-hint"></span></div>'
+      +'<div id="jp-checkout-result" style="margin-top:8px"></div>';
+    c.innerHTML=h;
+  }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function _jurisPricingCollect(){
+  const out={};
+  document.querySelectorAll('#juris-tab-content .card[data-tier]').forEach(function(card){
+    const g=function(f){const el=card.querySelector('[data-f="'+f+'"]');return el?el.value:'';};
+    out[card.dataset.tier]={
+      name:g('name'),
+      price_ghs:parseFloat(g('price_ghs'))||0,
+      duration_days:parseInt(g('duration_days'),10)||0,
+      max_documents_per_month:parseInt(g('max_documents_per_month'),10)||0,
+      max_queries_per_day:parseInt(g('max_queries_per_day'),10)||0,
+      features:g('features').split(',').map(function(s){return s.trim();}).filter(function(s){return s.length;})
+    };
+  });
+  return out;
+}
+async function jurisPricingSaveAll(){
+  const tiers=_jurisPricingCollect();
+  const rate=parseFloat(($('jp-rate')||{}).value)||0;
+  try{
+    const d=await api('/api/juris-kai/cc/pricing',{method:'PUT',body:JSON.stringify({tiers:tiers,per_document_page_rate_ghs:rate})});
+    if(d.success){toast('Pricing saved');jurisSwitch('pricing');}
+    else{toast('Error: '+(((d.validation_errors||[]).join('; '))||d.error||'failed'),'err');}
+  }catch(e){toast('Error: '+e.message,'err');}
+}
+function jurisPricingSave(tier){jurisPricingSaveAll();}
+async function jurisTestCheckout(tier){return _jurisCheckout(tier,'paystack');}
+async function jurisBuy(tier){return _jurisCheckout(tier,undefined);}
+async function _jurisCheckout(tier,provider){
+  const acct=($('jp-account')||{}).value||'';
+  const email=($('jp-email')||{}).value||'';
+  const el=$('jp-checkout-result'),msg=$('jp-checkout-msg');
+  if(!acct){toast('Enter an account_id first','err');return;}
+  if(msg)msg.textContent='initializing…';
+  if(el)el.innerHTML='';
+  const payload={account_id:acct,tier:tier,email:email||undefined};
+  if(provider)payload.provider=provider;
+  try{
+    const d=await api('/api/juris-kai/cc/checkout',{method:'POST',body:JSON.stringify(payload)});
+    if(msg)msg.textContent='';
+    const ck=d.checkout||{};
+    if(!d.success){if(el)el.innerHTML='<span class="error-text">'+esc(d.error||ck.error||'checkout failed')+'</span>';return;}
+    const url=ck.authorization_url||'';
+    if(el)el.innerHTML='<div class="field-hint">provider: '+esc(ck.provider||'paystack')+' · mode: '+esc(ck.mode||'—')+' · ref: <code>'+esc(ck.reference||'—')+'</code> · GH₵'+esc(ck.price_ghs)+'</div>'
+      +(url?'<div style="margin-top:6px;overflow-wrap:anywhere"><a href="'+attr(url)+'" target="_blank" rel="noopener noreferrer">'+esc(url)+'</a></div>':'<span class="field-hint">no authorization URL returned (test/simulated provider)</span>');
+  }catch(e){if(msg)msg.textContent='';if(el)el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
 async function lbView(path){

@@ -19,58 +19,51 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 import logging
 
+from core.juris_kai import pricing as _pricing
+
 logger = logging.getLogger("juris_kai.accounts")
 
 # Database location
 DB_DIR = os.environ.get("JURIS_KAI_DB_DIR", str(Path(__file__).parent.parent.parent / "memory"))
 DB_PATH = os.path.join(DB_DIR, "juris_kai_accounts.db")
 
-# Subscription tiers
-SUBSCRIPTION_TIERS = {
-    "free_trial": {
-        "name": "Free Trial",
-        "duration_days": 7,
-        "price_ghs": 0,
-        "max_documents_per_month": 3,
-        "max_queries_per_day": 20,
-        "features": ["basic_legal_qa", "case_lookup"],
-    },
-    "monthly_basic": {
-        "name": "Basic Monthly",
-        "duration_days": 30,
-        "price_ghs": 50,
-        "max_documents_per_month": 15,
-        "max_queries_per_day": 100,
-        "features": ["basic_legal_qa", "case_lookup", "document_analysis", "legal_research"],
-    },
-    "monthly_pro": {
-        "name": "Professional Monthly",
-        "duration_days": 30,
-        "price_ghs": 150,
-        "max_documents_per_month": 50,
-        "max_queries_per_day": 500,
-        "features": [
-            "basic_legal_qa", "case_lookup", "document_analysis",
-            "legal_research", "argument_construction", "flashcards",
-            "priority_responses", "export_reports",
-        ],
-    },
-    "annual_pro": {
-        "name": "Professional Annual",
-        "duration_days": 365,
-        "price_ghs": 1500,
-        "max_documents_per_month": 50,
-        "max_queries_per_day": 500,
-        "features": [
-            "basic_legal_qa", "case_lookup", "document_analysis",
-            "legal_research", "argument_construction", "flashcards",
-            "priority_responses", "export_reports", "api_access",
-        ],
-    },
+# Subscription tiers — loaded from the editable pricing store. The module-level
+# dict is mutated IN PLACE by apply_pricing() so every existing
+# `from ...accounts import SUBSCRIPTION_TIERS` reference sees operator edits
+# without a redeploy. Defaults live in core/juris_kai/pricing.py.
+SUBSCRIPTION_TIERS: Dict[str, Dict[str, Any]] = {
+    key: dict(value) for key, value in _pricing.DEFAULT_TIERS.items()
 }
 
 # Per-document billing rate (GHS per page)
-PER_DOCUMENT_PAGE_RATE_GHS = 2.0
+PER_DOCUMENT_PAGE_RATE_GHS = _pricing.DEFAULT_PER_DOCUMENT_PAGE_RATE_GHS
+
+
+def apply_pricing(pricing_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Apply a pricing document (or reload it from disk) to the live values."""
+    data = pricing_data if pricing_data is not None else _pricing.load_pricing()
+    tiers = data.get("tiers") or {}
+    SUBSCRIPTION_TIERS.clear()
+    for key, tier in tiers.items():
+        SUBSCRIPTION_TIERS[str(key)] = dict(tier)
+    global PER_DOCUMENT_PAGE_RATE_GHS
+    PER_DOCUMENT_PAGE_RATE_GHS = float(
+        data.get("per_document_page_rate_ghs",
+                 _pricing.DEFAULT_PER_DOCUMENT_PAGE_RATE_GHS))
+    logger.info("juris pricing applied: %d tier(s), page rate GHS %s",
+                len(SUBSCRIPTION_TIERS), PER_DOCUMENT_PAGE_RATE_GHS)
+    return data
+
+
+def get_pricing() -> Dict[str, Any]:
+    """Return the effective pricing (live tiers + per-document page rate)."""
+    return {
+        "tiers": {key: dict(value) for key, value in SUBSCRIPTION_TIERS.items()},
+        "per_document_page_rate_ghs": PER_DOCUMENT_PAGE_RATE_GHS,
+    }
+
+
+apply_pricing()
 
 DISCLAIMER_TEXT = (
     "⚖️ *Welcome to Juris Kai!*\n\n"
@@ -135,6 +128,15 @@ def _init_schema(conn: sqlite3.Connection):
             FOREIGN KEY (account_id) REFERENCES juris_accounts(account_id)
         );
 
+        CREATE TABLE IF NOT EXISTS juris_checkout_activations (
+            reference TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            tier TEXT NOT NULL,
+            provider TEXT DEFAULT 'paystack',
+            amount_minor INTEGER DEFAULT 0,
+            activated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE IF NOT EXISTS juris_document_analyses (
             analysis_id TEXT PRIMARY KEY,
             account_id TEXT NOT NULL,
@@ -196,6 +198,8 @@ def _init_schema(conn: sqlite3.Connection):
             ON juris_payments(account_id);
         CREATE INDEX IF NOT EXISTS idx_juris_docs_account
             ON juris_document_analyses(account_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_checkout_account
+            ON juris_checkout_activations(account_id);
         CREATE INDEX IF NOT EXISTS idx_juris_usage_account
             ON juris_usage_log(account_id);
         CREATE INDEX IF NOT EXISTS idx_juris_security_telegram
@@ -367,6 +371,46 @@ class AccountManager:
         self.db.commit()
         logger.info(f"Account {account_id} subscription updated to {tier}")
         return True
+
+    # ---- Checkout activation (Paystack) ----
+
+    def mark_checkout_activation(self, reference: str, account_id: str, tier: str,
+                                  provider: str = "paystack",
+                                  amount_minor: int = 0) -> bool:
+        """Record a checkout reference as activated. Returns False if it was
+        already used (idempotency guard for duplicate webhooks)."""
+        cur = self.db.execute(
+            """INSERT OR IGNORE INTO juris_checkout_activations
+               (reference, account_id, tier, provider, amount_minor)
+               VALUES (?, ?, ?, ?, ?)""",
+            (str(reference), account_id, tier, provider, int(amount_minor or 0)),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def get_checkout_activation(self, reference: str) -> Optional[Dict[str, Any]]:
+        """Look up a previously recorded checkout activation."""
+        row = self.db.execute(
+            "SELECT * FROM juris_checkout_activations WHERE reference = ?",
+            (str(reference),),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def record_checkout_payment(self, reference: str, account_id: str,
+                                 amount_ghs: float, tier: str,
+                                 provider: str = "paystack",
+                                 status: str = "completed") -> bool:
+        """Record a completed subscription payment for the admin ledger."""
+        cur = self.db.execute(
+            """INSERT OR IGNORE INTO juris_payments
+               (payment_id, account_id, amount_ghs, payment_type,
+                hubtel_transaction_id, hubtel_status, subscription_tier, completed_at)
+               VALUES (?, ?, ?, 'subscription', ?, ?, ?, datetime('now'))""",
+            (str(reference), account_id, float(amount_ghs or 0),
+             f"{provider}:{reference}", status, tier),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
 
     # ---- Usage limits & quota ----
 

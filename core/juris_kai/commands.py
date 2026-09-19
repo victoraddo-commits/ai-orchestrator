@@ -32,7 +32,7 @@ def handle_command(text: str, update: Dict[str, Any], account: Dict[str, Any]) -
         elif command == "account":
             return handle_account(account)
         elif command == "subscribe":
-            return handle_subscribe(account)
+            return handle_subscribe(account, args)
         elif command == "learn":
             return handle_learn(args, update, account)
         elif command == "case":
@@ -94,30 +94,74 @@ def handle_account(account: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def handle_subscribe(account: Dict[str, Any]) -> str:
-    """Show available subscription plans."""
+def handle_subscribe(account: Dict[str, Any], args: str = "") -> str:
+    """Show subscription plans, or start a checkout for a named tier.
+
+    ``/subscribe``                 -> list plans (unchanged legacy behaviour)
+    ``/subscribe <tier> [email]``  -> initialize a Paystack (or Hubtel) checkout
+    """
     mgr = get_account_manager()
     sub = mgr.get_active_subscription(account["account_id"])
+
+    tier_arg = (args or "").strip().split(" ", 1)
+    tier_key = tier_arg[0].strip().lower() if tier_arg and tier_arg[0].strip() else ""
+    email_arg = tier_arg[1].strip() if len(tier_arg) > 1 else ""
+
+    if tier_key:
+        return _start_checkout(account, tier_key, email_arg)
 
     lines = ["📦 *Subscription Plans*\n"]
     current_tier = sub["tier"] if sub else "free_trial"
 
-    for tier_key, tier in SUBSCRIPTION_TIERS.items():
-        marker = " ✅ (current)" if tier_key == current_tier else ""
+    for key, tier in SUBSCRIPTION_TIERS.items():
+        marker = " ✅ (current)" if key == current_tier else ""
+        period = ("/year" if "annual" in key
+                  else "/month" if "monthly" in key else "")
         lines.append(
             f"*{tier['name']}*{marker}\n"
-            f"  💰 GH₵{tier['price_ghs']}"
-            f"{'/month' if 'monthly' in tier_key else '/year' if 'annual' in tier_key else ''}\n"
+            f"  💰 GH₵{tier['price_ghs']}{period}\n"
             f"  📄 {tier['max_documents_per_month']} documents/month\n"
             f"  🔍 {tier['max_queries_per_day']} queries/day\n"
         )
 
     lines.append(
         "\nTo upgrade, use:\n"
-        "  /subscribe \\<plan_name\\> \\<phone_number\\>\n"
-        "Example: /subscribe monthly_basic 0244123456"
+        "  /subscribe \\<tier\\> \\[email\\]\n"
+        "Example: /subscribe monthly_basic you@example.com"
     )
     return "\n".join(lines)
+
+
+def _start_checkout(account: Dict[str, Any], tier_key: str, email: str) -> str:
+    """Initialize a subscription checkout using the configured provider."""
+    if tier_key not in SUBSCRIPTION_TIERS:
+        return (f"Unknown plan: {tier_key}\n"
+                "Use /subscribe to see available plans.")
+    tier = SUBSCRIPTION_TIERS[tier_key]
+    if float(tier.get("price_ghs") or 0) <= 0:
+        return f"{tier['name']} is free — no payment needed. Use /subscribe for other plans."
+
+    try:
+        from core.juris_kai import paystack_checkout as checkout
+        result = checkout.create_checkout(account, tier_key, email=email or None)
+    except ValueError as exc:
+        return f"⚠️ {exc}"
+    except Exception:
+        return "Payment is temporarily unavailable. Please try again later."
+
+    if not result.get("success"):
+        return f"⚠️ Checkout failed: {result.get('error') or 'unknown error'}"
+
+    url = result.get("authorization_url") or ""
+    if not url:
+        ref = result.get("reference", "")
+        return (f"📦 {tier['name']} checkout created ({result.get('provider')}).\n"
+                f"Reference: {ref}\nComplete payment on your phone to activate.")
+    return (
+        f"💳 *{tier['name']}* — GH₵{tier['price_ghs']}\n"
+        f"Complete your payment here:\n{url}\n"
+        f"Reference: {result.get('reference', '')}"
+    )
 
 
 def handle_profile(args: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
@@ -255,10 +299,12 @@ def handle_document(args: str, update: Dict[str, Any], account: Dict[str, Any]) 
     mgr = get_account_manager()
 
     if not args.strip():
+        from core.juris_kai import accounts as _accounts
+        rate = _accounts.PER_DOCUMENT_PAGE_RATE_GHS
         return (
             "📄 *Document Analysis*\n\n"
             "Send me a legal document (PDF or text) for AI analysis.\n\n"
-            f"💰 Cost: GH₵2.00 per page\n"
+            f"💰 Cost: GH₵{rate:.2f} per page\n"
             "Features: summary, key legal principles, citation extraction.\n\n"
             "To upload, simply send the document file in this chat."
         )

@@ -136,7 +136,8 @@ HELP_TEXT = (
     "/help — Show this help\n"
     "/start — Welcome message\n"
     "/account — Your account status\n"
-    "/subscribe — View subscription plans\n\n"
+    "/subscribe — View subscription plans\n"
+    "/subscribe <tier> [email] — Buy a plan (Paystack checkout)\n\n"
     "_Not a substitute for professional legal advice._"
 )
 
@@ -1402,7 +1403,7 @@ def _handle_legacy_command(text: str, chat_id: int, account: dict, admin: bool) 
         cmd_map = {
             "help": lambda: handle_help(),
             "account": lambda: handle_account(account),
-            "subscribe": lambda: handle_subscribe(account),
+            "subscribe": lambda: handle_subscribe(account, args),
             "learn": lambda: handle_learn(args, {}, account),
             "case": lambda: handle_case(args, {}, account),
             "research": lambda: handle_research(args, {}, account),

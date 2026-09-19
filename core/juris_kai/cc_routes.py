@@ -17,13 +17,16 @@ legal_brain_client, ai_router) — no duplicated business logic.
 from __future__ import annotations
 
 import hmac
+import json
 import logging
+import os
 import subprocess
 import time
 from collections import defaultdict
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 import core.authz as authz
 
@@ -36,6 +39,7 @@ _BOT_HEALTH_CANDIDATES = (
     Path("/opt/ai-orchestrator/memory/juris-kai-health"),
 )
 _BOT_SERVICE = "juris-kai.service"
+_STREAM_TIMEOUT_S = float(os.environ.get("JURIS_KAI_CC_STREAM_TIMEOUT", "300"))
 
 
 # ── auth dependencies ─────────────────────────────────────────────────────
@@ -548,3 +552,90 @@ def cc_test_query(body: dict = Body(...),
         "context_chunks": len(docs),
         "context_chars": len(context),
     }
+
+
+# ── streaming test query (SSE, local-only) ────────────────────────────────
+
+def _sse(event: str, data: dict) -> str:
+    """Format one Server-Sent Event frame."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.post("/api/juris-kai/cc/test-query-stream")
+def cc_test_query_stream(body: dict = Body(...),
+                         operator: str = Depends(require_juris_write),
+                         request: Request = None):
+    """Stream a local-only answer as SSE so the browser paints TTFT fast.
+
+    Events:
+      * ``token`` — ``{"text": "..."}`` for each incremental chunk
+      * ``error`` — ``{"error": "..."}`` if the local stream fails
+      * ``done``  — ``{"model","ttft_ms","total_ms","chars"}`` (always last)
+
+    Uses the same ``require_juris_write`` gate and rate limit as the blocking
+    ``/cc/test-query`` endpoint; the Command Center keeps that endpoint as a
+    fallback when streaming is unavailable.
+    """
+    _rate_limit(request, operator)
+    query = (body.get("query") or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    task_type = body.get("task_type") or "juris_research"
+
+    from core.juris_kai.prompt import build_prompt
+    from core.juris_kai import streaming as jstream
+    from core.juris_kai.legal_context import (
+        query_knowledge_base, build_context_preamble)
+
+    prompt_type = (task_type.replace("juris_", "legal_", 1)
+                   if task_type.startswith("juris_") else "legal_research")
+    docs = query_knowledge_base(query)
+    context = build_context_preamble(docs)
+    prompt = build_prompt(prompt_type, query) + context
+
+    def event_stream():
+        started = time.time()
+        ttft_ms = None
+        chars = 0
+        model = jstream.DEFAULT_MODEL
+        gen = None
+        try:
+            gen = jstream.stream_chat(prompt, task_type=task_type,
+                                      timeout=_STREAM_TIMEOUT_S)
+            for piece in gen:
+                if not piece:
+                    continue
+                if ttft_ms is None:
+                    ttft_ms = round((time.time() - started) * 1000, 1)
+                chars += len(piece)
+                yield _sse("token", {"text": piece})
+                if time.time() - started > _STREAM_TIMEOUT_S:
+                    yield _sse("error", {"error": "stream timeout"})
+                    break
+        except Exception as exc:  # transport/parse failure → report, don't 500
+            yield _sse("error", {"error": str(exc)})
+        finally:
+            # Promptly close the upstream Ollama response on client disconnect.
+            if gen is not None:
+                close = getattr(gen, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
+        yield _sse("done", {
+            "model": model,
+            "ttft_ms": ttft_ms,
+            "total_ms": round((time.time() - started) * 1000, 1),
+            "chars": chars,
+        })
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

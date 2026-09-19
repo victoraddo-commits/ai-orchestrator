@@ -2574,20 +2574,99 @@ async function jurisModel(c,tab){
     c.innerHTML=h;
   }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
+// Streaming test query: POST + fetch ReadableStream (EventSource can't send
+// the X-Kai-Session header). Falls back to the blocking /cc/test-query.
+function _jmBadges(model,ttft,total,chars){
+  return '<span class="badge ok">'+esc(model||'local')+'</span>'
+    +'<span class="badge info">'+(total!=null?esc(total)+' ms':'…')+'</span>'
+    +'<span class="badge warn">ttft '+(ttft!=null?esc(ttft)+' ms':'…')+'</span>'
+    +'<span class="badge">'+esc(chars||0)+' chars</span>';
+}
+function _sseParse(frame){
+  let event='message',data=null;
+  for(const line of (frame||'').split('\n')){
+    if(line.indexOf('event:')===0)event=line.slice(6).trim();
+    else if(line.indexOf('data:')===0){
+      try{data=JSON.parse(line.slice(5).trim());}catch(e){data=null;}
+    }
+  }
+  return {event:event,data:data};
+}
+async function jurisTestQueryStream(q,task,el){
+  const ans=$('jm-answer'),meta=$('jm-meta');
+  if(!ans)return false;
+  const h={'Content-Type':'application/json'};
+  if(S.token)h['X-Kai-Session']=S.token;
+  const t0=performance.now();
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),180000);
+  let resp;
+  try{
+    resp=await fetch('/api/juris-kai/cc/test-query-stream',{method:'POST',headers:h,
+      body:JSON.stringify({query:q,task_type:task}),signal:ctrl.signal});
+  }catch(e){clearTimeout(timer);return false;}
+  if(resp.status===401){clearTimeout(timer);clearToken();showLogin();toast('Session expired','err');return true;}
+  if(!resp.ok||!resp.body){clearTimeout(timer);return false;}
+  const reader=resp.body.getReader(),dec=new TextDecoder();
+  let buf='',text='',ttft=null,model=null,total=null,chars=0,gotToken=false,failed=false;
+  try{
+    for(;;){
+      const rd=await reader.read();
+      if(rd.done){buf+=dec.decode();break;}
+      buf+=dec.decode(rd.value,{stream:true});
+      const frames=buf.split('\n\n');buf=frames.pop();
+      for(const frame of frames){
+        const ev=_sseParse(frame);
+        if(ev.event==='token'){
+          const piece=(ev.data&&ev.data.text)||'';
+          if(ttft===null)ttft=Math.round(performance.now()-t0);
+          gotToken=true;text+=piece;chars=text.length;
+          ans.textContent=text;ans.scrollTop=ans.scrollHeight;
+          if(meta)meta.innerHTML=_jmBadges(model,ttft,total,chars);
+        }else if(ev.event==='done'){
+          const d=ev.data||{};
+          if(d.model)model=d.model;
+          if(d.ttft_ms!=null)ttft=d.ttft_ms;
+          if(d.total_ms!=null)total=d.total_ms;
+          if(d.chars!=null)chars=d.chars;
+        }else if(ev.event==='error'){
+          failed=true;
+          const msg=(ev.data&&ev.data.error)||'stream error';
+          text+=(text?'\n\n':'')+'\u26a0 '+msg;ans.textContent=text;
+        }
+      }
+    }
+  }catch(e){
+    if(!gotToken){clearTimeout(timer);return false;}
+    failed=true;text+=(text?'\n\n':'')+'\u26a0 '+(e.message||e);ans.textContent=text;
+  }finally{clearTimeout(timer);}
+  ans.setAttribute('aria-busy','false');
+  if(meta)meta.innerHTML=_jmBadges(model,ttft,total,chars)
+    +(failed?' <span class="badge bad">stream error</span>':'');
+  return gotToken;
+}
+async function jurisTestQueryFallback(q,task,el){
+  const meta=$('jm-meta');
+  if(meta)meta.innerHTML='<span class="badge">stream unavailable — running blocking query…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/test-query',{method:'POST',
+      body:JSON.stringify({query:q,task_type:task,stream:false})});
+    if(!d.success){if(el)el.innerHTML='<span class="error-text">'+esc(d.error||'query failed')+'</span>';return;}
+    if(el)el.innerHTML='<div class="action-row" style="margin-bottom:6px;flex-wrap:wrap"><span class="badge ok">'+esc(d.model||'local')+'</span>'
+      +'<span class="badge info">'+esc(d.latency_ms!=null?d.latency_ms+' ms':'—')+'</span>'
+      +'<span class="badge">'+esc(d.context_chunks||0)+' chunks</span></div>'
+      +'<div class="juris-answer">'+esc(d.text||'')+'</div>';
+  }catch(e){if(el)el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
 async function jurisTestQuery(){
   const q=($('jm-q')||{}).value||'',task=($('jm-task')||{}).value||'juris_research';
   const el=$('jm-result');if(!el)return;
   if(!q.trim()){toast('Enter a query first','err');return;}
-  el.innerHTML='<span class="loading">generating… (local model)</span>';
-  try{
-    const d=await api('/api/juris-kai/cc/test-query',{method:'POST',body:JSON.stringify({query:q,task_type:task,stream:true})});
-    if(!d.success){el.innerHTML='<span class="error-text">'+esc(d.error||'query failed')+'</span>';return;}
-    el.innerHTML='<div class="action-row" style="margin-bottom:6px"><span class="badge ok">'+esc(d.model||'local')+'</span>'
-      +'<span class="badge info">'+esc(d.latency_ms!=null?d.latency_ms+' ms':'—')+'</span>'
-      +(d.ttft_ms!=null?'<span class="badge warn">ttft '+esc(d.ttft_ms)+' ms</span>':'')
-      +'<span class="badge">'+esc(d.context_chunks||0)+' chunks</span></div>'
-      +'<div class="juris-answer">'+esc(d.text||'')+'</div>';
-  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+  // Fixed shell so streaming never shifts the layout; the box scrolls.
+  el.innerHTML='<div class="action-row" id="jm-meta" style="margin-bottom:6px;flex-wrap:wrap"><span class="badge info">streaming…</span></div>'
+    +'<div class="juris-answer" id="jm-answer" role="log" aria-live="polite" aria-busy="true"></div>';
+  const streamed=await jurisTestQueryStream(q,task,el);
+  if(!streamed)await jurisTestQueryFallback(q,task,el);
 }
 
 // ── Cache stats + clear ───────────────────────────────────────────

@@ -239,11 +239,27 @@ class TestTestQuery:
 
 # ── Part B: cc-prefixed aliases, service control, cache clear ─────────────
 
+IDENTITY = {"X-Kai-User": "owner@kai", "X-Kai-User-Id": "owner"}
+
+
 class TestCcReadAuth:
     def test_read_session_without_capability_is_401(self, client, monkeypatch):
         monkeypatch.setattr("core.authz.check_capability", lambda *a, **k: False)
         r = client.get("/api/juris-kai/cc/cache",
                        headers={"X-Kai-Session": "viewer-token"})
+        assert r.status_code == 401
+
+    def test_read_allows_auth_proxy_identity(self, client, monkeypatch):
+        """The CC browser reaches the API through the auth proxy, which injects
+        X-Kai-User/X-Kai-User-Id. Reads must honour that identity like every
+        other CC router (cc_modules / cc_extra_routes)."""
+        monkeypatch.setattr(cc_routes, "_cache_stats", lambda: {"generation": {}})
+        r = client.get("/api/juris-kai/cc/cache", headers=IDENTITY)
+        assert r.status_code == 200
+
+    def test_read_identity_needs_both_headers(self, client):
+        r = client.get("/api/juris-kai/cc/cache",
+                       headers={"X-Kai-User": "owner@kai"})
         assert r.status_code == 401
 
 
@@ -319,3 +335,11 @@ class TestCcCache:
         r = client.post("/api/juris-kai/cc/cache/clear",
                         headers={"X-Kai-Session": "viewer-token"})
         assert r.status_code == 403
+
+    def test_clear_allows_auth_proxy_identity(self, client, monkeypatch):
+        monkeypatch.setattr("core.juris_kai.cache.clear_caches",
+                            lambda: {"cleared": 2})
+        monkeypatch.setattr(cc_routes, "_log_admin", lambda *a, **k: None)
+        r = client.post("/api/juris-kai/cc/cache/clear", headers=IDENTITY)
+        assert r.status_code == 200
+        assert r.json()["success"] is True

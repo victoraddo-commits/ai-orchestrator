@@ -42,6 +42,8 @@ class ModuleRegistry:
         for entry in sorted(config_path.iterdir()):
             if not entry.is_file() or entry.suffix != ".json":
                 continue
+            if entry.name == "cc_tabs.json":
+                continue  # CC tab metadata, not a module descriptor
 
             try:
                 raw = entry.read_text()
@@ -124,6 +126,22 @@ class ModuleRegistry:
             })
         return out
 
+    def get_retired_cc_tabs(self):
+        """Tabs whose module was removed from the server entirely.
+
+        A module that is deleted has no descriptor to read, so retirement is
+        declared explicitly in ``config/modules/cc_tabs.json`` as
+        ``{"retired_tabs": ["tab", ...]}``. The CC hides these so a stale tab
+        can never render.
+        """
+        path = Path(self._config_dir) / "cc_tabs.json"
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return []
+        tabs = data.get("retired_tabs", []) if isinstance(data, dict) else []
+        return [str(t) for t in tabs if isinstance(t, str)]
+
     def register_module(self, name, version, description,
                         endpoints=None, capabilities=None, dependencies=None,
                         cc=None):
@@ -153,6 +171,10 @@ def get_registered_modules():
 
 def get_cc_modules():
     return _module_registry.get_cc_modules()
+
+
+def get_retired_cc_tabs():
+    return _module_registry.get_retired_cc_tabs()
 
 
 def register_module(name, version, description,

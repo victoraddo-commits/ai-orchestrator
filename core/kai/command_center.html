@@ -1912,8 +1912,13 @@ async function applyModuleGating(mods){
   if(hidden.some(h=>h.tab===cur)){ location.hash='#home'; navigateTo('#home'); }
 }
 async function loadModuleRegistry(){
-  try{ S.ccModules=(await api('/api/cc/modules')).modules||[]; }
+  let reg;
+  try{ reg=await api('/api/cc/modules'); }
   catch(e){ S.ccModules=[]; return; }
+  S.ccModules=reg.modules||[];
+  // Retired tabs: modules removed from the server have no descriptor, so the
+  // registry names them explicitly — drop the dead tabs.
+  for(const tab of (reg.retired_tabs||[])) hideCcTab(tab);
   await applyModuleGating(S.ccModules);
 }
 

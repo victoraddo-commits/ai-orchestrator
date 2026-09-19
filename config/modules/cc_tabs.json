@@ -1,0 +1,4 @@
+{
+  "_comment": "CC tab metadata (not a module descriptor). retired_tabs names tabs whose module was removed from the server so the Command Center hides them instead of rendering a dead panel.",
+  "retired_tabs": []
+}

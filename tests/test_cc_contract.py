@@ -79,6 +79,26 @@ def test_registry_exposes_cc_tabs(client):
         assert m["tab"], f"module {m['name']} has no tab"
         assert m["status"] in ("live", "hidden", "retired")
         assert "title" in m
+    assert "retired_tabs" in body
+    assert isinstance(body["retired_tabs"], list)
+
+
+def test_registry_skips_cc_tabs_metadata_file(tmp_path):
+    """cc_tabs.json is tab metadata, not a module descriptor."""
+    from core.module_registry import ModuleRegistry
+    (tmp_path / "cc_tabs.json").write_text('{"retired_tabs": ["ghost"]}')
+    (tmp_path / "mod.json").write_text(
+        '{"name": "mod", "version": "1.0", "description": "x"}')
+    reg = ModuleRegistry(config_dir=str(tmp_path))
+    modules = reg.load_modules()
+    assert list(modules) == ["mod"]
+    assert reg.get_retired_cc_tabs() == ["ghost"]
+
+
+def test_registry_retired_tabs_empty_by_default(tmp_path):
+    from core.module_registry import ModuleRegistry
+    reg = ModuleRegistry(config_dir=str(tmp_path))
+    assert reg.get_retired_cc_tabs() == []
 
 
 def test_arbitra_registered_with_health(client):

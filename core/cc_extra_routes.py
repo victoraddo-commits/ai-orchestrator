@@ -797,9 +797,11 @@ def cc_modules():
 
     ``status`` is the lifecycle flag (``live|hidden|retired``); ``health`` is the
     backing endpoint the CC probes at render time before showing the tab.
+    ``retired_tabs`` names tabs whose module no longer exists on the server, so
+    the CC can drop them instead of rendering a dead panel.
     """
-    from core.module_registry import get_cc_modules
-    return {"modules": get_cc_modules()}
+    from core.module_registry import get_cc_modules, get_retired_cc_tabs
+    return {"modules": get_cc_modules(), "retired_tabs": get_retired_cc_tabs()}
 
 
 # ── Legal Brain (Knowledge Engine) real sub-views ───────────────────────────

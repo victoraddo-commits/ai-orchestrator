@@ -24,6 +24,24 @@ def test_get_all_quota_snapshots_covers_every_recorded_provider():
     assert set(snapshots) == {"groq", "qwen4_text"}
 
 
+def test_prune_stale_snapshots_removes_unregistered_providers():
+    provider_health.record_quota_snapshot("ghost", status="error", detail="stale")
+    provider_health.record_quota_snapshot("kai_coder", status="ok", percent_remaining=50)
+
+    removed = provider_health.prune_stale_snapshots({"kai_coder"})
+
+    assert removed == ["ghost"]
+    assert provider_health.get_quota_snapshot("ghost") is None
+    assert provider_health.get_quota_snapshot("kai_coder")["status"] == "ok"
+
+
+def test_prune_stale_snapshots_is_a_noop_when_all_registered():
+    provider_health.record_quota_snapshot("kai_coder", status="ok")
+
+    assert provider_health.prune_stale_snapshots({"kai_coder"}) == []
+    assert provider_health.get_quota_snapshot("kai_coder")["status"] == "ok"
+
+
 def test_capture_from_groq_headers_computes_percent_from_tokens():
     headers = {
         "x-ratelimit-remaining-tokens": "11962",

@@ -46,6 +46,36 @@ def reset_state():
     cb.reset_all_breakers()
 
 
+@pytest.fixture(autouse=True)
+def no_real_telegram(monkeypatch):
+    """Never hit the real Telegram API from monitor background threads —
+    unavailable providers would otherwise block the loop on network timeouts
+    and starve the lifecycle/summary tests."""
+    monkeypatch.setattr(
+        "core.provider_health_monitor.send_telegram_alert", lambda *a, **k: None
+    )
+
+
+@pytest.fixture(autouse=True)
+def fast_provider_list(monkeypatch):
+    """Replace real local-provider availability probes (Ollama/llama.cpp TCP
+    probes with multi-second timeouts) with a deterministic one-provider
+    registry, so monitor lifecycle tests are fast and offline."""
+    monkeypatch.setattr(
+        "core.provider_health_monitor.ai_provider.list_providers",
+        lambda: {
+            "test_provider": {
+                "kind": "cloud",
+                "description": "test",
+                "available": True,
+                "enabled": True,
+                "capabilities": ["text_task"],
+                "cost_tier": "free",
+            }
+        },
+    )
+
+
 class TestMonitorLifecycle:
     """Test monitor start/stop and lifecycle."""
 
@@ -233,6 +263,40 @@ class TestHealthStorage:
         assert snapshot['percent_remaining'] == 90.0
 
 
+class TestDeprecatedProviders:
+    """Deprecated local providers whose model isn't installed are disabled,
+    never error/degraded -- they must not generate failure alerts."""
+
+    def test_deprecated_providers_report_disabled(self):
+        from core.provider_health_monitor import ProviderHealthMonitor, DEPRECATED_PROVIDERS
+
+        monitor = ProviderHealthMonitor()
+        provider_info = {'kind': 'local', 'available': False, 'enabled': True}
+
+        for name in DEPRECATED_PROVIDERS:
+            status = monitor._check_provider(name, provider_info)
+            assert status['health'] == 'disabled'
+            assert 'reason' in status
+
+    def test_check_all_providers_prunes_unregistered_snapshots(self, monkeypatch):
+        import core.ai.provider_health as ph
+        from core.provider_health_monitor import ProviderHealthMonitor
+
+        ph.record_quota_snapshot("ghost_provider", status="error", detail="stale")
+        ph.record_quota_snapshot("kai_coder", status="ok", detail="live")
+
+        monkeypatch.setattr(
+            "core.provider_health_monitor.ai_provider.list_providers",
+            lambda: {"kai_coder": {"kind": "local", "available": True, "enabled": True}},
+        )
+        monkeypatch.setattr("core.provider_health_monitor.send_telegram_alert", lambda *a, **k: None)
+
+        ProviderHealthMonitor().check_all_providers()
+
+        assert ph.get_quota_snapshot("ghost_provider") is None
+        assert ph.get_quota_snapshot("kai_coder") is not None
+
+
 class TestTelegramAlerts:
     """Test Telegram alert generation."""
 
@@ -311,15 +375,21 @@ class TestAPIIntegration:
 
         monitor = ProviderHealthMonitor()
         monitor.start()
-        time.sleep(0.2)  # Let it run briefly
 
-        state = load("provider_health_monitor_state.json")
+        deadline = time.time() + 5
+        state = None
+        while time.time() < deadline:
+            state = load("provider_health_monitor_state.json")
+            if state:
+                break
+            time.sleep(0.1)
+
+        monitor.stop()
+
         assert state is not None
         assert state['running'] == True
         assert 'check_count' in state
         assert 'last_check' in state
-
-        monitor.stop()
 
     def test_check_all_providers_integration(self):
         """check_all_providers handles real provider list."""
@@ -362,20 +432,22 @@ class TestEndToEnd:
 
         monitor.stop()
 
-    def test_summary_logging(self):
+    def test_summary_logging(self, monkeypatch):
         """Monitor logs summary every N checks."""
+        import core.provider_health_monitor as phm
         from core.provider_health_monitor import ProviderHealthMonitor
-        import logging
+
+        monkeypatch.setattr(phm, "SUMMARY_EVERY_N", 2)
 
         # Capture log output
         with patch.object(ProviderHealthMonitor, '_log_summary') as mock_log:
             monitor = ProviderHealthMonitor(check_interval=0.05)  # Very fast
             monitor.start()
 
-            # Wait for ~20+ checks (SUMMARY_EVERY_N = 20)
-            time.sleep(1.2)
+            deadline = time.time() + 5
+            while time.time() < deadline and not mock_log.called:
+                time.sleep(0.1)
 
             monitor.stop()
 
-            # Should have logged at least once
             assert mock_log.called

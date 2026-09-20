@@ -89,6 +89,27 @@ def get_all_quota_snapshots():
     return {name: _apply_quota_exceeded_expiry(snapshot) for name, snapshot in _load_state().items()}
 
 
+def prune_stale_snapshots(active_providers):
+    """Drop snapshots for providers that are no longer registered.
+
+    Keeps the heartbeat honest: a deregistered or renamed provider must not
+    linger as error/degraded forever. Returns the list of removed names.
+    """
+
+    active = set(active_providers or ())
+
+    state = _load_state()
+
+    removed = sorted(name for name in state.keys() if name not in active)
+
+    if removed:
+        for name in removed:
+            state.pop(name, None)
+        _save_state(state)
+
+    return removed
+
+
 def clear_quota_exceeded(provider):
     # Called from delegate()'s (and the advisory code review's) success
     # path -- a real success is stronger, more immediate evidence than the

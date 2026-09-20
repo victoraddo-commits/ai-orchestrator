@@ -25,11 +25,18 @@ import core.ai.provider_health as provider_health
 import core.ai.circuit_breaker as circuit_breaker
 from core.memory import save, load
 from core.logger import info
+from core.telegram_bridge import send_telegram_alert
 
 logger = logging.getLogger(__name__)
 
 # Monitoring interval — check all providers every 30 seconds
 CHECK_INTERVAL = 30  # seconds
+
+# Providers whose declared model is not installed on the model fabric (VM 104
+# only serves qwen3-coder:kai). They are kept registered so old chain
+# references still resolve, but are reported `disabled` — never `error` or
+# `degraded`, which falsely imply a transient failure worth alerting on.
+DEPRECATED_PROVIDERS = ("llama3", "local_brain_fast", "local_coder")
 
 # Memory file for health monitor state
 HEALTH_MONITOR_STATE_FILE = "provider_health_monitor_state.json"
@@ -136,13 +143,20 @@ class ProviderHealthMonitor:
         """Check all providers and update health snapshots."""
         providers = ai_provider.list_providers()
 
+        # Drop snapshots for providers that are no longer registered so the
+        # heartbeat can't report a deregistered provider as error/degraded
+        # forever (stale provider_quota.json entries).
+        provider_health.prune_stale_snapshots(providers.keys())
+
         for name, provider_info in providers.items():
             try:
                 status = self._check_provider(name, provider_info)
                 self._store_health(name, status)
 
-                # Detect failures and notify
-                if status['health'] != 'ok':
+                # Detect failures and notify. 'disabled' is an intentional
+                # state (deprecated provider being phased out, or operator-
+                # disabled), not a failure — never alert on it.
+                if status['health'] not in ('ok', 'disabled'):
                     self._notify_failure(name, status)
             except Exception as exc:
                 logger.error(f"ProviderHealthMonitor: failed to check {name}: {exc}")
@@ -172,19 +186,22 @@ class ProviderHealthMonitor:
         }
 
         # Check if provider is available (credentials configured)
-        # Skip credential check for Ollama-based providers (they don't need API keys)
-        # Also skip deprecated providers that are being phased out
-        provider_type = provider_info.get('type', '')
-        is_ollama = provider_type == 'ollama' or name.startswith('local')
-        is_deprecated = name in ['llama3', 'local_brain_fast', 'local_coder']
+        # Skip credential check for local providers (Ollama on localhost:11434 —
+        # they don't need API keys; available_fn() already reports reachability).
+        # The registry stores this as `kind` ("local"/"cloud"), NOT `type`.
+        # Also skip deprecated providers that are being phased out.
+        kind = provider_info.get('kind', '')
+        is_local = kind == 'local' or name.startswith('local')
+        is_deprecated = name in DEPRECATED_PROVIDERS
 
         if is_deprecated:
-            # Deprecated provider - mark as disabled, don't alert
+            # Declared model isn't installed (VM 104 serves only
+            # qwen3-coder:kai). Intentional, honest `disabled` — not an error.
             status['health'] = 'disabled'
-            status['reason'] = 'Deprecated provider (being phased out)'
+            status['reason'] = 'Deprecated local provider — referenced model not installed'
             return status
 
-        if not is_ollama and not provider_info.get('available', False):
+        if not is_local and not provider_info.get('available', False):
             status['health'] = 'unavailable'
             status['reason'] = 'No credentials configured'
             return status
@@ -244,8 +261,6 @@ class ProviderHealthMonitor:
             return  # Skip alert, too soon since last one
 
         try:
-            from core.telegram_bridge import send_telegram_alert
-
             message = f"⚠️ PROVIDER HEALTH ALERT\n\n"
             message += f"Provider: {provider}\n"
             message += f"Status: {status['health']}\n"

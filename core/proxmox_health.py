@@ -1,7 +1,90 @@
+from datetime import datetime, timezone
+
 from core.memory import load
 
 
-def analyze_proxmox_cluster():
+# A backup is "recent" if the newest evidence of one is within this window.
+# Real jobs run daily (PVE-B vzdump schedule); 48h absorbs a single missed
+# night or a long-running job without turning a healthy fleet into an alert.
+BACKUP_FRESHNESS_SECONDS = 48 * 60 * 60
+
+# Interfaces that are known to be intentionally unused on PVE-B: declared
+# `iface nicN inet manual` in /etc/network/interfaces, not bridged/bonded and
+# not wired to any VM or container (verified 2026-09-20 via `ip -br link`,
+# `bridge-ports` and pct/qm configs). Alerting on them as "inactive" only
+# ever produced a recurring, un-actionable incident. Unknown inactive
+# interfaces (a real NIC that dropped) are still reported.
+KNOWN_UNUSED_INTERFACES = ("nic1", "nic2", "nic3")
+
+
+def _now_epoch(now=None):
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return now.timestamp()
+
+
+def _task_starttime(task):
+    try:
+        return float(task.get("starttime") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _newest_backup_evidence(proxmox):
+    """Return (starttime_or_ctime, status) for the strongest backup signal.
+
+    Sources, in priority order (all are independent of the scrolling task
+    window):
+
+    - ``tasks`` — any vzdump in the (small) default recent window;
+    - ``backup_tasks`` — the vzdump-filtered task query (may hold tasks the
+      default window rolled past);
+    - ``backup_content`` — the backup storage listing (``ctime`` is when the
+      file was written; proves a backup artifact exists right now).
+
+    Returns ``(0.0, None)`` when nothing indicates a backup at all.
+    """
+    candidates = []
+
+    for task in proxmox.get("tasks", {}).get("data", []) or []:
+        if task.get("type") == "vzdump":
+            candidates.append((_task_starttime(task), task.get("status")))
+
+    for task in proxmox.get("backup_tasks", {}).get("data", []) or []:
+        if task.get("type") in (None, "vzdump"):
+            candidates.append((_task_starttime(task), task.get("status")))
+
+    for item in proxmox.get("backup_content", {}).get("data", []) or []:
+        volid = str(item.get("volid") or item.get("path") or "")
+        if "vzdump" not in volid:
+            continue
+        try:
+            ctime = float(item.get("ctime") or 0)
+        except (TypeError, ValueError):
+            ctime = 0.0
+        candidates.append((ctime, "OK"))
+
+    if not candidates:
+        return 0.0, None
+
+    return max(candidates, key=lambda c: c[0])
+
+
+def filter_actionable_inactive_interfaces(interfaces, known_unused=KNOWN_UNUSED_INTERFACES):
+    """Inactive-but-present interface names worth reporting, sorted for a
+    stable dedup key. Known-spare interfaces are excluded."""
+    allowed = set(known_unused)
+    return sorted(
+        n.get("iface")
+        for n in interfaces
+        if n.get("exists") == 1
+        and not n.get("active")
+        and n.get("iface") not in allowed
+    )
+
+
+def analyze_proxmox_cluster(now=None):
 
     findings = []
 
@@ -185,20 +268,20 @@ def analyze_proxmox_cluster():
             })
 
 
-    tasks = proxmox.get("tasks", {}).get("data", [])
-
-    backup_tasks = sorted(
-        (t for t in tasks if t.get("type") == "vzdump"),
-        key=lambda t: t.get("starttime", 0),
-        reverse=True
-    )
+    # Backup health is judged from the strongest *durable* evidence, not from
+    # the 50-entry recent task window (which is all push_file and made this
+    # check false-alarm "no backup history" 1,453 times while daily vzdump
+    # jobs ran fine). See _newest_backup_evidence for the signal sources.
+    backup_at, backup_status = _newest_backup_evidence(proxmox)
+    backup_age = _now_epoch(now) - backup_at if backup_at else None
 
     node_uptime = node.get("uptime", 0)
 
-    if not backup_tasks:
-        # Nodes up < 1 day won't have a weekly vzdump run yet — skip.
+    if backup_at == 0:
+        # Nothing anywhere says a backup ever ran. A node up for <1 day gets
+        # the benefit of the doubt (its first job has not come due yet).
         if node_uptime < 86400:
-            pass  # no backup history is expected for a recently-booted node
+            pass
         else:
             findings.append({
                 "severity": "warning",
@@ -208,14 +291,22 @@ def analyze_proxmox_cluster():
                 "recommendation": "Verify backup jobs are configured and running"
             })
 
-    elif backup_tasks[0].get("status") != "OK":
+    elif backup_age is not None and backup_age > BACKUP_FRESHNESS_SECONDS:
+        findings.append({
+            "severity": "warning",
+            "service": "proxmox-backup",
+            "issue": f"No recent backup (vzdump) in the last {BACKUP_FRESHNESS_SECONDS // 3600}h",
+            "risk_score": 50,
+            "recommendation": "Verify backup jobs are configured and running"
+        })
 
+    elif backup_status and backup_status != "OK":
         health_score -= 20
 
         findings.append({
             "severity": "critical",
             "service": "proxmox-backup",
-            "issue": f"Most recent backup did not complete successfully: {backup_tasks[0].get('status')}",
+            "issue": f"Most recent backup did not complete successfully: {backup_status}",
             "risk_score": 85,
             "recommendation": "Investigate and re-run the failed backup job"
         })
@@ -226,11 +317,8 @@ def analyze_proxmox_cluster():
     # Sort so the dedup key is stable: the API returns interfaces in
     # nondeterministic order, so an unsorted list minted a brand-new incident
     # on every scan (6 duplicate proxmox-network incidents on 2026-09-20).
-    down_interfaces = sorted(
-        n.get("iface")
-        for n in network
-        if n.get("exists") == 1 and not n.get("active")
-    )
+    # Known-spare interfaces are excluded -- see KNOWN_UNUSED_INTERFACES.
+    down_interfaces = filter_actionable_inactive_interfaces(network)
 
     if down_interfaces:
 

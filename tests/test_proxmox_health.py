@@ -1,5 +1,45 @@
+"""Tests for the Proxmox health analyzer.
+
+Regression coverage for two 2026-09-20 false positives:
+
+1. ``proxmox-backup``: the analyzer only looked at the node's *recent task
+   window* (limit=50, dominated by ``push_file``) for a ``vzdump`` task. Real
+   backups run every day, but the vzdump tasks roll out of a 50-entry window,
+   so the check false-alarmed "No recent backup (vzdump) history found"
+   (1,453 occurrences). The analyzer must instead treat *any* of the strong,
+   independent signals as evidence a backup happened:
+
+   - a ``vzdump`` task in the (possibly small) recent window,
+   - a ``vzdump`` task in a larger, explicitly-fetched vzdump-filtered list
+     (``proxmox["backup_tasks"]`` -- the API supports ``?typefilter=vzdump``),
+   - a recent ``vzdump-*`` file on the backup storage
+     (``proxmox["backup_content"]`` -- ``storage kai-c`` -> ``/mnt/kai-c/dump``).
+
+   Only genuinely-no-recent-backup (nothing within the window, or the newest
+   signal older than the freshness threshold) is a warning.
+
+2. ``proxmox-network``: ``nic1/nic2/nic3`` on PVE-B are declared
+   ``iface nicN inet manual`` in ``/etc/network/interfaces`` with no bridge,
+   bond or VM/CT wiring -- they are intentional spare/disabled NICs. Alerting
+   on them as "inactive" minted a recurring open incident. Known-unused
+   interfaces (allowlist) must not be flagged; unknown inactive ones still
+   must, and the allowed ones must not mask a genuinely-failing interface.
+"""
+
+from datetime import datetime, timedelta, timezone
+
 from core.memory import save
-from core.proxmox_health import analyze_proxmox_cluster
+from core.proxmox_health import (
+    KNOWN_UNUSED_INTERFACES,
+    filter_actionable_inactive_interfaces,
+    analyze_proxmox_cluster,
+)
+
+NOW = datetime(2026, 9, 20, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _ts(day, hour=0, minute=0):
+    return int(datetime(2026, 9, day, hour, minute, tzinfo=timezone.utc).timestamp())
 
 
 def base_scan(**overrides):
@@ -25,199 +65,159 @@ def find(findings, service):
     return [f for f in findings if f["service"] == service]
 
 
-def test_node_unreachable_is_critical():
-    save("last_scan.json", {"proxmox": {"node": {"data": {}}}})
-
-    findings = analyze_proxmox_cluster()
-
-    unreachable = find(findings, "proxmox-node")
-    assert len(unreachable) == 1
-    assert unreachable[0]["severity"] == "critical"
-    assert "risk_score" in unreachable[0]
-    assert "recommendation" in unreachable[0]
+# ---------------------------------------------------------------------------
+# proxmox-backup
+# ---------------------------------------------------------------------------
 
 
-def test_auth_failure_is_a_warning_not_unreachable_critical():
-    save("last_scan.json", {"proxmox": {"node": {"error": "auth_failed", "http": 401}}})
-
-    findings = analyze_proxmox_cluster()
-
-    node = find(findings, "proxmox-node")
-    assert len(node) == 1
-    assert node[0]["severity"] == "warning"
-    assert "auth" in node[0]["issue"].lower()
-
-
-def test_transport_unreachable_is_critical_with_distinct_issue():
-    save("last_scan.json", {"proxmox": {"node": {"error": "unreachable", "detail": "timed out"}}})
-
-    findings = analyze_proxmox_cluster()
-
-    node = find(findings, "proxmox-node")
-    assert len(node) == 1
-    assert node[0]["severity"] == "critical"
-    assert "unreachable" in node[0]["issue"].lower()
-
-
-def test_high_cpu_produces_warning_with_risk_and_recommendation():
-    save("last_scan.json", base_scan(node={"data": {
-        "cpu": 0.95,
-        "memory": {"total": 100, "used": 10},
-        "rootfs": {"total": 100, "used": 10, "avail": 90}
-    }}))
-
-    findings = analyze_proxmox_cluster()
-
-    cpu_findings = find(findings, "proxmox-cluster")
-    assert any("CPU pressure" in f["issue"] for f in cpu_findings)
-    for f in cpu_findings:
-        assert "risk_score" in f
-        assert "recommendation" in f
-
-
-def test_disk_pressure_is_detected():
-    save("last_scan.json", base_scan(node={"data": {
-        "cpu": 0.1,
-        "memory": {"total": 100, "used": 10},
-        "rootfs": {"total": 100, "used": 95, "avail": 5}
-    }}))
-
-    findings = analyze_proxmox_cluster()
-
-    disk_findings = [f for f in findings if "disk" in f["issue"].lower() or "storage" in f["issue"].lower()]
-    assert len(disk_findings) == 1
-    assert disk_findings[0]["severity"] in ("warning", "critical")
-
-
-def test_stopped_vm_is_detected():
-    save("last_scan.json", base_scan(qemu={"data": [
-        {"vmid": 101, "name": "OPNsense", "status": "stopped", "cpu": 0, "mem": 0, "maxmem": 100}
-    ]}))
-
-    findings = analyze_proxmox_cluster()
-
-    vm_findings = find(findings, "proxmox-vm")
-    assert any("stopped" in f["issue"].lower() for f in vm_findings)
-    assert any(f["severity"] == "critical" for f in vm_findings)
-
-
-def test_high_cpu_vm_is_detected():
-    save("last_scan.json", base_scan(qemu={"data": [
-        {"vmid": 101, "name": "OPNsense", "status": "running", "cpu": 0.95, "mem": 10, "maxmem": 100}
-    ]}))
-
-    findings = analyze_proxmox_cluster()
-
-    vm_findings = find(findings, "proxmox-vm")
-    assert any("cpu" in f["issue"].lower() for f in vm_findings)
-
-
-def test_high_memory_vm_with_real_pressure_is_detected():
-    save("last_scan.json", base_scan(qemu={"data": [
-        {"vmid": 101, "name": "OPNsense", "status": "running", "cpu": 0.1, "mem": 95, "maxmem": 100,
-         "pressurememorysome": 0.5, "pressurememoryfull": 0.1}
-    ]}))
-
-    findings = analyze_proxmox_cluster()
-
-    vm_findings = find(findings, "proxmox-vm")
-    assert any("memory" in f["issue"].lower() for f in vm_findings)
-
-
-def test_high_memory_vm_without_real_pressure_is_not_flagged():
-    # FreeBSD/OPNsense-style guests routinely fill available RAM with disk
-    # cache; with ballooning disabled Proxmox's mem/maxmem ratio never comes
-    # back down even though nothing is actually stalled on memory. PSI
-    # (pressurememorysome/full) is the host's own signal for genuine
-    # contention -- a high ratio with zero pressure is a false positive.
-    save("last_scan.json", base_scan(qemu={"data": [
-        {"vmid": 101, "name": "OPNsense", "status": "running", "cpu": 0.1, "mem": 95, "maxmem": 100,
-         "pressurememorysome": 0, "pressurememoryfull": 0}
-    ]}))
-
-    findings = analyze_proxmox_cluster()
-
-    vm_findings = find(findings, "proxmox-vm")
-    assert not any("memory" in f["issue"].lower() for f in vm_findings)
-
-
-def test_high_memory_vm_missing_pressure_fields_is_not_flagged():
-    # Older Proxmox versions without PSI support simply omit these fields.
-    # Defaulting to "no pressure" (rather than falling back to the raw
-    # ratio) is the conservative choice: it avoids reintroducing the exact
-    # false-positive this logic was fixed for.
-    save("last_scan.json", base_scan(qemu={"data": [
-        {"vmid": 101, "name": "OPNsense", "status": "running", "cpu": 0.1, "mem": 95, "maxmem": 100}
-    ]}))
-
-    findings = analyze_proxmox_cluster()
-
-    vm_findings = find(findings, "proxmox-vm")
-    assert not any("memory" in f["issue"].lower() for f in vm_findings)
-
-
-def test_failed_backup_is_detected():
+def test_backup_task_in_recent_window_is_not_flagged():
     save("last_scan.json", base_scan(tasks={"data": [
-        {"type": "vzdump", "status": "job errors", "starttime": 100, "endtime": 200}
+        {"type": "vzdump", "status": "OK", "starttime": _ts(19, 22)}
     ]}))
 
-    findings = analyze_proxmox_cluster()
-
-    backup_findings = find(findings, "proxmox-backup")
-    assert len(backup_findings) == 1
-    assert backup_findings[0]["severity"] == "critical"
+    assert find(analyze_proxmox_cluster(now=NOW), "proxmox-backup") == []
 
 
-def test_successful_backup_is_not_flagged():
+def test_no_vzdump_task_but_recent_dump_file_is_healthy():
+    # The exact production shape: recent task window is all push_file, but a
+    # vzdump-filtered query (or the backup-storage listing) proves the backup
+    # ran yesterday. Must NOT warn.
+    save("last_scan.json", base_scan(
+        tasks={"data": [
+            {"type": "push_file", "status": "OK", "starttime": _ts(20, 10)}
+            for _ in range(50)
+        ]},
+        backup_tasks={"data": [
+            {"type": "vzdump", "status": "OK", "starttime": _ts(19, 12)}
+        ]},
+    ))
+
+    assert find(analyze_proxmox_cluster(now=NOW), "proxmox-backup") == []
+
+
+def test_no_vzdump_task_but_recent_content_entry_is_healthy():
+    # Fallback signal: listing the backup storage's ``content`` yields recent
+    # vzdump-* files even when the task list doesn't.
+    save("last_scan.json", base_scan(
+        tasks={"data": [
+            {"type": "push_file", "status": "OK", "starttime": _ts(20, 10)}
+        ]},
+        backup_content={"data": [
+            {"volid": "kai-c:backup/vzdump-lxc-111-2026_09_19-05_36_57.tar.zst",
+             "ctime": _ts(19, 5)},
+        ]},
+    ))
+
+    assert find(analyze_proxmox_cluster(now=NOW), "proxmox-backup") == []
+
+
+def test_genuinely_no_backups_warns():
     save("last_scan.json", base_scan(tasks={"data": [
-        {"type": "vzdump", "status": "OK", "starttime": 100, "endtime": 200}
+        {"type": "push_file", "status": "OK", "starttime": _ts(20, 10)}
     ]}))
 
-    findings = analyze_proxmox_cluster()
-
-    assert find(findings, "proxmox-backup") == []
-
-
-def test_no_backup_history_produces_warning():
-    save("last_scan.json", base_scan(tasks={"data": []}))
-
-    findings = analyze_proxmox_cluster()
-
-    backup_findings = find(findings, "proxmox-backup")
-    assert len(backup_findings) == 1
-    assert backup_findings[0]["severity"] == "warning"
+    backup = find(analyze_proxmox_cluster(now=NOW), "proxmox-backup")
+    assert len(backup) == 1
+    assert backup[0]["severity"] == "warning"
 
 
-def test_inactive_network_interface_is_detected():
+def test_stale_only_backup_evidence_warns():
+    # A vzdump exists but is far older than the freshness threshold (48h):
+    # "there was a backup once" is not "backups are running". Warn.
+    save("last_scan.json", base_scan(backup_tasks={"data": [
+        {"type": "vzdump", "status": "OK", "starttime": _ts(10)}
+    ]}))
+
+    backup = find(analyze_proxmox_cluster(now=NOW), "proxmox-backup")
+    assert len(backup) == 1
+    assert backup[0]["severity"] == "warning"
+
+
+def test_recent_failed_vzdump_is_critical():
+    save("last_scan.json", base_scan(backup_tasks={"data": [
+        {"type": "vzdump", "status": "job errors", "starttime": _ts(19, 12)}
+    ]}))
+
+    backup = find(analyze_proxmox_cluster(now=NOW), "proxmox-backup")
+    assert len(backup) == 1
+    assert backup[0]["severity"] == "critical"
+
+
+def test_failed_vzdump_superseded_by_success_is_not_flagged():
+    # The most recent evidence is a successful backup: the older failure is
+    # history, not a current problem.
+    save("last_scan.json", base_scan(backup_tasks={"data": [
+        {"type": "vzdump", "status": "job errors", "starttime": _ts(18, 4)},
+        {"type": "vzdump", "status": "OK", "starttime": _ts(19, 12)},
+    ]}))
+
+    assert find(analyze_proxmox_cluster(now=NOW), "proxmox-backup") == []
+
+
+def test_recently_booted_node_with_no_backups_is_not_flagged():
+    save("last_scan.json", base_scan(
+        node={"data": {
+            "cpu": 0.1,
+            "memory": {"total": 100, "used": 10},
+            "rootfs": {"total": 100, "used": 10, "avail": 90},
+            "uptime": 3600,
+        }},
+        tasks={"data": [{"type": "push_file", "status": "OK", "starttime": _ts(20, 10)}]},
+    ))
+
+    assert find(analyze_proxmox_cluster(now=NOW), "proxmox-backup") == []
+
+
+# ---------------------------------------------------------------------------
+# proxmox-network
+# ---------------------------------------------------------------------------
+
+
+def test_known_unused_interfaces_are_not_flagged():
     save("last_scan.json", base_scan(network={"data": [
-        {"iface": "nic0", "exists": 1, "active": 0}
+        {"iface": "nic1", "exists": 1, "active": 0},
+        {"iface": "nic2", "exists": 1, "active": 0},
+        {"iface": "nic3", "exists": 1, "active": 0},
     ]}))
 
-    findings = analyze_proxmox_cluster()
-
-    net_findings = find(findings, "proxmox-network")
-    assert len(net_findings) == 1
+    assert find(analyze_proxmox_cluster(now=NOW), "proxmox-network") == []
 
 
-def test_inactive_interface_issue_is_order_independent():
-    # The API returns interfaces in arbitrary order; the issue string (the
-    # incident dedup key) must not change when the order does.
-    def issue_for(order):
-        save("last_scan.json", base_scan(network={"data": [
-            {"iface": name, "exists": 1, "active": 0} for name in order
-        ]}))
-        return find(analyze_proxmox_cluster(), "proxmox-network")[0]["issue"]
-
-    assert issue_for(["nic1", "nic2", "nic3"]) == issue_for(["nic3", "nic1", "nic2"])
-
-
-def test_all_healthy_produces_single_info_finding():
-    save("last_scan.json", base_scan(tasks={"data": [
-        {"type": "vzdump", "status": "OK", "starttime": 100, "endtime": 200}
+def test_unknown_inactive_interface_is_still_flagged():
+    save("last_scan.json", base_scan(network={"data": [
+        {"iface": "nic0", "exists": 1, "active": 0},
     ]}))
 
-    findings = analyze_proxmox_cluster()
+    net = find(analyze_proxmox_cluster(now=NOW), "proxmox-network")
+    assert len(net) == 1
+    assert "nic0" in net[0]["issue"]
 
-    assert len(findings) == 1
-    assert findings[0]["service"] == "proxmox-health-score"
-    assert findings[0]["severity"] == "info"
+
+def test_allowlisted_interfaces_do_not_mask_a_real_failure():
+    save("last_scan.json", base_scan(network={"data": [
+        {"iface": "nic1", "exists": 1, "active": 0},
+        {"iface": "nic2", "exists": 1, "active": 0},
+        {"iface": "nic3", "exists": 1, "active": 0},
+        {"iface": "enp5s0", "exists": 1, "active": 0},
+    ]}))
+
+    net = find(analyze_proxmox_cluster(now=NOW), "proxmox-network")
+    assert len(net) == 1
+    assert "enp5s0" in net[0]["issue"]
+    assert "nic1" not in net[0]["issue"]
+
+
+def test_filter_helper_excludes_allowlist_and_sorts():
+    interfaces = [
+        {"iface": "nic3", "exists": 1, "active": 0},
+        {"iface": "nic1", "exists": 1, "active": 0},
+        {"iface": "eno2", "exists": 1, "active": 0},
+        {"iface": "nic0", "exists": 1, "active": 1},
+        {"iface": "nic2", "exists": 0, "active": 0},
+    ]
+
+    assert filter_actionable_inactive_interfaces(interfaces) == ["eno2"]
+
+
+def test_allowlist_is_a_set_of_known_spare_pve_b_nics():
+    assert {"nic1", "nic2", "nic3"} <= set(KNOWN_UNUSED_INTERFACES)

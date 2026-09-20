@@ -88,9 +88,31 @@ def get_qemu(node=None, host=None, token_id=None, token_secret=None):
     return api_request(f"/nodes/{node}/qemu", host, token_id, token_secret)
 
 
-def get_tasks(node=None, host=None, token_id=None, token_secret=None, limit=50):
+def get_tasks(node=None, host=None, token_id=None, token_secret=None, limit=50, typefilter=None):
     node = node or os.getenv("PROXMOX_NODE", "pve")
-    return api_request(f"/nodes/{node}/tasks?limit={limit}", host, token_id, token_secret)
+    query = f"limit={limit}"
+    # Server-side filtering (e.g. typefilter=vzdump) is supported by the PVE
+    # task API. The unfiltered recent window is dominated by high-frequency
+    # tasks (push_file), so vzdump jobs scroll out of it entirely -- filtering
+    # server-side is the only reliable way to ask "did a backup run?".
+    if typefilter:
+        query += f"&typefilter={typefilter}"
+    return api_request(f"/nodes/{node}/tasks?{query}", host, token_id, token_secret)
+
+
+def get_backup_content(storage=None, node=None, host=None, token_id=None, token_secret=None):
+    """List backups on a backup-capable storage (``?content=backup``).
+
+    The returned ``ctime`` is when the backup file was written -- an
+    independent, durable signal that a backup exists, used as a fallback
+    when the node task history has scrolled past the vzdump jobs.
+    """
+    node = node or os.getenv("PROXMOX_NODE", "pve")
+    storage = storage or os.getenv("PROXMOX_BACKUP_STORAGE", "kai-c")
+    return api_request(
+        f"/nodes/{node}/storage/{storage}/content?content=backup",
+        host, token_id, token_secret
+    )
 
 
 def get_network(node=None, host=None, token_id=None, token_secret=None):
@@ -109,8 +131,13 @@ def status():
     }
 
 
+# A vzdump job that has been running for longer than this is not evidence of
+# a *completed* backup -- treat it as still-in-progress and don't count it.
+VZDUMP_QUERY_LIMIT = 200
+
+
 def status_b():
-    """Proxmox B status via direct LAN (192.168.1.109:8006).
+    """Proxmox B status via direct LAN (192.168.1.110:8006).
 
     Uses PROXMOX_B_TOKEN_ID + PROXMOX_B_TOKEN_SECRET (or falls back to
     PROXMOX_B_TOKEN env var) for authentication.
@@ -126,7 +153,19 @@ def status_b():
         "lxc": get_lxc(host=endpoint, token_id=token_id, token_secret=token_secret),
         "qemu": get_qemu(host=endpoint, token_id=token_id, token_secret=token_secret),
         "tasks": get_tasks(host=endpoint, token_id=token_id, token_secret=token_secret),
-        "network": get_network(host=endpoint, token_id=token_id, token_secret=token_secret)
+        "network": get_network(host=endpoint, token_id=token_id, token_secret=token_secret),
+        # Backup-specific signals (2026-09-20): the unfiltered recent task
+        # window is dominated by push_file and misses vzdump jobs entirely.
+        # Query the filtered task list AND the backup storage directly so the
+        # health check can prove "backups are running" instead of guessing
+        # from a window that scrolls.
+        "backup_tasks": get_tasks(
+            host=endpoint, token_id=token_id, token_secret=token_secret,
+            limit=VZDUMP_QUERY_LIMIT, typefilter="vzdump",
+        ),
+        "backup_content": get_backup_content(
+            host=endpoint, token_id=token_id, token_secret=token_secret,
+        ),
     }
 
 

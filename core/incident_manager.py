@@ -19,6 +19,25 @@ INCIDENT_ARCHIVE_FILE = "incidents_archive.json"
 # One-shot cleanup resolves these in bulk; the fix means no new ones appear.
 STALE_REMINDER_ISSUE_PREFIX = "Stale-approval/failure reminder could not be sent"
 
+# Severities that describe a *fact*, not a problem. "New node discovered: X"
+# / "peer came online" are observations; capturing them is useful for the
+# audit trail, but leaving them open made the incident feed show 4 "open"
+# network items that needed no action. An info incident is therefore recorded
+# and immediately auto-resolved (never silently dropped).
+AUTO_RESOLVE_SEVERITIES = ("info",)
+
+# Issue fragment for the informational discovery/online events that were
+# minted before auto-resolve existed (2026-09-20 backlog cleanup).
+INFO_NETWORK_EVENT_PREFIXES = (
+    "New node discovered:",
+    "Tailscale peer",
+)
+
+
+def _is_informational_network_event(issue):
+    issue = str(issue or "")
+    return any(prefix in issue for prefix in INFO_NETWORK_EVENT_PREFIXES)
+
 
 def _parse_timestamp(value):
     try:
@@ -150,7 +169,19 @@ def _record_recurrence(incident, severity, detail, now_iso, reopened=False):
     return incident
 
 
-def create_incident(service, issue, severity="info", detail=None, cooldown_seconds=0, now=None):
+def _mark_resolved(incident, note, now_iso):
+    incident["status"] = "resolved"
+    incident["updated"] = now_iso
+    incident["resolved_at"] = now_iso
+    incident["resolution"] = note
+    incident.setdefault("history", []).append(
+        {"status": "resolved", "timestamp": now_iso, "note": note}
+    )
+    return incident
+
+
+def create_incident(service, issue, severity="info", detail=None, cooldown_seconds=0,
+                    now=None):
     """Create or update an incident.
 
     The dedup key is (service, issue) -- callers MUST keep the issue string
@@ -159,6 +190,10 @@ def create_incident(service, issue, severity="info", detail=None, cooldown_secon
 
     With cooldown_seconds > 0, a resolved/closed incident for the same key
     touched within the window is reused and reopened rather than duplicated.
+
+    ``severity="info"`` records an informational *observation* (node
+    discovered, peer online) and auto-resolves it on the way in, so it never
+    sits in the open feed needing an action it does not have.
     """
 
     now = now or datetime.now()
@@ -167,6 +202,14 @@ def create_incident(service, issue, severity="info", detail=None, cooldown_secon
     incidents = load_incidents()
 
     existing = find_open_duplicate(incidents, service, issue)
+
+    # Auto-resolved info incidents are, by definition, never open -- so
+    # without a recurrence window every "New node discovered: X" scan would
+    # mint a fresh resolved record. Reuse/update the recent one instead.
+    if existing is None and severity in AUTO_RESOLVE_SEVERITIES:
+        existing = find_recent_duplicate(
+            incidents, service, issue, RECURRENCE_WINDOW_SECONDS, now=now
+        )
 
     if existing is None and cooldown_seconds:
         existing = find_recent_duplicate(
@@ -177,7 +220,21 @@ def create_incident(service, issue, severity="info", detail=None, cooldown_secon
 
         reopened = existing.get("status") in ("closed", "resolved")
 
-        _record_recurrence(existing, severity, detail, now_iso, reopened=reopened)
+        auto_resolve = severity in AUTO_RESOLVE_SEVERITIES
+
+        _record_recurrence(
+            existing, severity, detail, now_iso,
+            reopened=reopened and not auto_resolve,
+        )
+
+        if auto_resolve:
+            _mark_resolved(
+                existing,
+                "Auto-resolved: informational event (observed, no action needed)",
+                now_iso,
+            )
+            if existing["history"]:
+                existing["history"][-1]["note"] = "recurrence"
 
         save_incidents(incidents)
 
@@ -201,6 +258,13 @@ def create_incident(service, issue, severity="info", detail=None, cooldown_secon
         incident["detail"] = detail
 
     incidents.append(incident)
+
+    if severity in AUTO_RESOLVE_SEVERITIES:
+        _mark_resolved(
+            incident,
+            "Auto-resolved: informational event (observed, no action needed)",
+            now_iso,
+        )
 
     save_incidents(incidents)
 
@@ -282,6 +346,74 @@ def prune_incidents(resolved_older_than_days=30, now=None):
     }
 
 
+def resolve_incidents(service, issue, note, now=None):
+    """Resolve the open incident(s) for an exact (service, issue) key.
+
+    Used to close out false-positive/obsolete incidents once the underlying
+    cause is fixed and evidenced. Returns the number resolved. Runs under the
+    memory lock so it is safe alongside the live scheduler.
+    """
+
+    now_iso = (now or datetime.now()).isoformat()
+    result = {"count": 0}
+
+    def mutate(incidents):
+
+        if not isinstance(incidents, list):
+            return incidents
+
+        for incident in incidents:
+
+            if (
+                incident.get("status") not in ("resolved", "closed")
+                and incident.get("service") == service
+                and incident.get("issue") == issue
+            ):
+                _mark_resolved(incident, note, now_iso)
+                result["count"] += 1
+
+        return incidents
+
+    update("incidents.json", mutate)
+
+    return result["count"]
+
+
+def resolve_informational_network_incidents(note, now=None):
+    """One-shot backlog cleanup: resolve open, informational network
+    discovery/online incidents minted before auto-resolve existed.
+
+    Matches only service=="network", severity=="info", and the known
+    discovery/online issue shapes -- a genuinely-failing network incident
+    (offline peer, unreachable subnet) is left untouched. Returns the count.
+    """
+
+    now_iso = (now or datetime.now()).isoformat()
+    result = {"count": 0}
+
+    def mutate(incidents):
+
+        if not isinstance(incidents, list):
+            return incidents
+
+        for incident in incidents:
+
+            if (
+                incident.get("status") not in ("resolved", "closed")
+                and incident.get("service") == "network"
+                and incident.get("severity") == "info"
+                and _is_informational_network_event(incident.get("issue"))
+            ):
+                _mark_resolved(incident, note, now_iso)
+                result["count"] += 1
+
+        return incidents
+
+    update("incidents.json", mutate)
+
+    return result["count"]
+
+
 def resolve_stale_reminder_incidents(note, now=None):
     """One-shot migration: resolve every open legacy reminder-failure incident.
 
@@ -306,13 +438,7 @@ def resolve_stale_reminder_incidents(note, now=None):
                 and incident.get("service") == "telegram"
                 and str(incident.get("issue", "")).startswith(STALE_REMINDER_ISSUE_PREFIX)
             ):
-                incident["status"] = "resolved"
-                incident["updated"] = now_iso
-                incident["resolved_at"] = now_iso
-                incident["resolution"] = note
-                incident.setdefault("history", []).append(
-                    {"status": "resolved", "timestamp": now_iso, "note": note}
-                )
+                _mark_resolved(incident, note, now_iso)
                 result["count"] += 1
 
         return incidents

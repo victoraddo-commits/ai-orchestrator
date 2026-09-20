@@ -6,6 +6,7 @@ from core.incident_manager import (
     load_incidents,
     save_incidents,
     prune_incidents,
+    resolve_incidents,
     resolve_stale_reminder_incidents,
     transition_incident,
     mark_investigating,
@@ -60,10 +61,16 @@ def test_repeated_identical_finding_deduplicates_instead_of_appending():
     assert len(matching) == 1
     assert matching[0]["occurrences"] == 3
 
+# NOTE: the two tests above originally used severity="info" with
+# "proxmox-health-score"/"Healthy" merely as an arbitrary dedup key; since
+# 2026-09-20 "info" auto-resolves, they use "warning" to exercise the plain
+# dedup path. tests/test_health.py covers the real analyzer (which now emits
+# only the info health-score finding, filtered before incident creation).
+
 
 def test_repeated_finding_appends_recurrence_to_history():
-    create_incident("proxmox-health-score", "Healthy", "info")
-    incident = create_incident("proxmox-health-score", "Healthy", "info")
+    create_incident("proxmox-health-score", "Healthy", "warning")
+    incident = create_incident("proxmox-health-score", "Healthy", "warning")
 
     assert len(incident["history"]) == 2
     assert incident["history"][-1]["note"] == "recurrence"
@@ -79,7 +86,7 @@ def test_different_issue_on_same_service_creates_separate_incident():
 
 
 def test_resolved_incident_does_not_absorb_new_occurrence():
-    first = create_incident("proxmox-health-score", "Healthy", "info")
+    first = create_incident("proxmox-health-score", "Healthy", "warning")
 
     mark_investigating(first["id"])
     mark_approved(first["id"])
@@ -90,7 +97,7 @@ def test_resolved_incident_does_not_absorb_new_occurrence():
     assert result["status"] == "success"
     assert result["incident"]["status"] == "resolved"
 
-    second = create_incident("proxmox-health-score", "Healthy", "info")
+    second = create_incident("proxmox-health-score", "Healthy", "warning")
 
     assert second["id"] != first["id"]
     assert second["occurrences"] == 1
@@ -177,7 +184,7 @@ def test_variable_detail_does_not_mint_new_incidents():
 def test_cooldown_reopens_resolved_incident_instead_of_minting_a_new_one():
     t0 = datetime(2026, 9, 20, 9, 0, 0)
 
-    first = create_incident("telegram", STABLE_ISSUE, cooldown_seconds=WINDOW, now=t0)
+    first = create_incident("telegram", STABLE_ISSUE, severity="warning", cooldown_seconds=WINDOW, now=t0)
     mark_investigating(first["id"])
     mark_approved(first["id"])
     mark_executing(first["id"])
@@ -199,7 +206,7 @@ def test_cooldown_reopens_resolved_incident_instead_of_minting_a_new_one():
 def test_cooldown_expiry_allows_a_fresh_incident():
     t0 = datetime(2026, 9, 20, 9, 0, 0)
 
-    first = create_incident("telegram", STABLE_ISSUE, cooldown_seconds=WINDOW, now=t0)
+    first = create_incident("telegram", STABLE_ISSUE, severity="warning", cooldown_seconds=WINDOW, now=t0)
     mark_investigating(first["id"])
     mark_approved(first["id"])
     mark_executing(first["id"])
@@ -207,7 +214,7 @@ def test_cooldown_expiry_allows_a_fresh_incident():
     mark_resolved(first["id"])
 
     second = create_incident(
-        "telegram", STABLE_ISSUE, cooldown_seconds=WINDOW,
+        "telegram", STABLE_ISSUE, severity="warning", cooldown_seconds=WINDOW,
         now=t0 + timedelta(hours=7),
     )
 
@@ -262,6 +269,99 @@ def test_prune_collapses_duplicate_open_incidents():
     assert remaining[0]["id"] == "dup00002"
     assert remaining[0]["occurrences"] == 3
     assert summary["collapsed_duplicates"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Informational discovery events are recorded for audit but never left open.
+# ---------------------------------------------------------------------------
+
+
+def _resolved_info_events(incidents):
+    return [i for i in incidents if i.get("status") == "resolved"]
+
+
+def test_info_incident_is_recorded_but_auto_resolved():
+    # "New node discovered: X" / "peer came online" are facts, not problems.
+    # They should be captured (audit trail) but not clutter the open feed.
+    incident = create_incident("network", "New node discovered: pve", "info")
+
+    assert incident["status"] == "resolved"
+    assert incident["resolution"]
+    assert incident["resolved_at"]
+    assert any(h["status"] == "resolved" for h in incident["history"])
+    assert load_incidents()  # still persisted, not dropped
+
+
+def test_info_incident_records_come_online_event_resolved():
+    incident = create_incident("network", "Tailscale peer pve came online", "info")
+
+    assert incident["status"] == "resolved"
+
+
+def test_info_incident_reopen_is_resolved_again_by_recurrence():
+    first = create_incident("network", "New node discovered: pve", "info")
+    again = create_incident("network", "New node discovered: pve", "info")
+
+    assert again["id"] == first["id"]
+    assert again["status"] == "resolved"
+    assert again["occurrences"] == 2
+
+
+def test_warning_incident_stays_open():
+    incident = create_incident("proxmox-backup", "No recent backup", "warning")
+
+    assert incident["status"] == "open"
+
+
+def test_critical_incident_stays_open():
+    incident = create_incident("proxmox-node", "unreachable", "critical")
+
+    assert incident["status"] == "open"
+
+
+# ---------------------------------------------------------------------------
+# resolve_incidents -- bulk, evidence-bearing resolution by service+issue
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_incidents_marks_matching_open_incident_resolved():
+    create_incident("proxmox-backup", "No recent backup (vzdump) history found", "warning")
+
+    resolved = resolve_incidents(
+        "proxmox-backup",
+        "No recent backup (vzdump) history found",
+        note="fixed: backup evidence now sourced from vzdump task/content",
+    )
+
+    assert resolved == 1
+    incident = load_incidents()[0]
+    assert incident["status"] == "resolved"
+    assert incident["resolution"].startswith("fixed:")
+    assert incident["resolved_at"]
+
+
+def test_resolve_incidents_ignores_already_resolved():
+    create_incident("network", "gone", "info")  # auto-resolved
+
+    assert resolve_incidents("network", "gone", note="n/a") == 0
+
+
+def test_resolve_incidents_returns_zero_when_no_match():
+    assert resolve_incidents("nope", "nothing", note="n/a") == 0
+
+
+def test_resolve_incidents_matches_one_of_several_open_incidents():
+    create_incident("network", "Tailscale peer pve went offline", "critical")
+    create_incident("network", "New node discovered: pve", "info")
+
+    resolved = resolve_incidents(
+        "network", "Tailscale peer pve went offline", note="informational discovery"
+    )
+
+    assert resolved == 1
+    by_issue = {i["issue"]: i["status"] for i in load_incidents()}
+    assert by_issue["Tailscale peer pve went offline"] == "resolved"
+    assert by_issue["New node discovered: pve"] == "resolved"  # info auto-resolved
 
 
 def test_resolve_stale_reminder_incidents_resolves_only_the_legacy_flood():

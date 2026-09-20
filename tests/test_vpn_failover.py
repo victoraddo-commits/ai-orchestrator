@@ -1,247 +1,108 @@
 """Tests for VPN failover module (TK-176d6efe).
 
-Covers: tunnel health checks, WG state detection, recovery event generation,
-and Proxmox monitor fallback/retry logic.
+The module was rewritten from a WireGuard-based design to a direct LAN TCP
+probe (commit 046c994) but its tests still referenced the removed WG API.
+This suite covers the real LAN contract plus the 2026-09-20 hardening:
+correct PVE-B address (192.168.1.110, not the dead .109), a
+DISABLE_VPN_MONITORING short-circuit, and a bounded/fast recovery so a
+scheduler cycle can never stall.
 """
 
+import time
+
 import pytest
-from unittest.mock import patch, MagicMock
+
+from core import vpn_failover as vf
+
+
+class TestConfig:
+    """Probe configuration."""
+
+    def test_default_probe_host_is_proxmox_b(self, monkeypatch):
+        monkeypatch.delenv("VPN_FAILOVER_PROBE_HOST", raising=False)
+        assert vf.DEFAULT_PROBE_HOST == "192.168.1.110"
+        assert vf._probe_host() == "192.168.1.110"
+
+    def test_probe_host_env_overrides_default(self, monkeypatch):
+        monkeypatch.setenv("VPN_FAILOVER_PROBE_HOST", "10.9.9.9")
+        assert vf._probe_host() == "10.9.9.9"
+
+    def test_probe_is_fast_and_bounded(self):
+        # A dead host must not tie up the scheduler for tens of seconds.
+        assert vf.PROBE_TIMEOUT <= 3
+        assert vf.MAX_RECOVERY_ATTEMPTS <= 3
 
 
 class TestTunnelHealth:
-    """VPN tunnel health evaluation."""
+    """Health evaluation."""
 
-    def test_health_reports_ok_when_proxmox_reachable(self, monkeypatch):
-        from core.vpn_failover import check_tunnel_health
-
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_interface_exists",
-            lambda: False,
-        )
-
-        health = check_tunnel_health()
+    def test_health_reports_reachable(self, monkeypatch):
+        monkeypatch.setattr(vf, "_proxmox_b_is_reachable", lambda **kw: True)
+        health = vf.check_tunnel_health()
         assert health["ok"] is True
-        assert health["proxmox_reachable"] is True
-        assert health["recovery_needed"] is False
-
-    def test_health_detects_unreachable_proxmox(self, monkeypatch):
-        from core.vpn_failover import check_tunnel_health
-
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: False,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_interface_exists",
-            lambda: False,
-        )
-
-        health = check_tunnel_health()
-        assert health["ok"] is False
-        assert health["proxmox_reachable"] is False
-        assert health["recovery_needed"] is False  # no local WG to recover
-
-    def test_health_recovery_needed_when_wg_down_but_configured(self, monkeypatch):
-        from core.vpn_failover import check_tunnel_health
-
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: False,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_interface_exists",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_is_up",
-            lambda: False,
-        )
-
-        health = check_tunnel_health()
-        assert health["ok"] is False
-        assert health["recovery_needed"] is True
-        assert health["interface"] is not None
-
-    def test_health_has_timestamp(self):
-        from core.vpn_failover import check_tunnel_health
-
-        monkeypatch = pytest.MonkeyPatch()
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_interface_exists",
-            lambda: False,
-        )
-
-        health = check_tunnel_health()
+        assert health["reachable"] is True
+        assert health["host"] == vf._probe_host()
         assert "checked_at" in health
-        monkeypatch.undo()
 
-
-class TestWGDetection:
-    """WireGuard interface detection."""
-
-    def test_wg_interface_exists_returns_true(self, monkeypatch):
-        from core.vpn_failover import _wg_interface_exists
-
-        def fake_run(args, **kwargs):
-            m = MagicMock()
-            m.returncode = 0
-            return m
-
-        monkeypatch.setattr("subprocess.run", fake_run)
-        assert _wg_interface_exists() is True
-
-    def test_wg_interface_exists_returns_false(self, monkeypatch):
-        from core.vpn_failover import _wg_interface_exists
-
-        def fake_run(args, **kwargs):
-            m = MagicMock()
-            m.returncode = 1
-            return m
-
-        monkeypatch.setattr("subprocess.run", fake_run)
-        assert _wg_interface_exists() is False
-
-    def test_wg_is_up_with_recent_handshake(self, monkeypatch):
-        from core.vpn_failover import _wg_is_up
-        import time
-
-        now = int(time.time())
-        # Handshake 60 seconds ago — still fresh
-        output = f"peer1\t{now - 60}"
-
-        def fake_run(args, **kwargs):
-            m = MagicMock()
-            m.returncode = 0
-            m.stdout = output
-            return m
-
-        monkeypatch.setattr("subprocess.run", fake_run)
-        assert _wg_is_up() is True
-
-    def test_wg_is_up_with_stale_handshake(self, monkeypatch):
-        from core.vpn_failover import _wg_is_up
-        import time
-
-        now = int(time.time())
-        # Handshake 10 minutes ago — stale
-        output = f"peer1\t{now - 600}"
-
-        def fake_run(args, **kwargs):
-            m = MagicMock()
-            m.returncode = 0
-            m.stdout = output
-            return m
-
-        monkeypatch.setattr("subprocess.run", fake_run)
-        assert _wg_is_up() is False
-
-    def test_wg_is_up_with_no_output(self, monkeypatch):
-        from core.vpn_failover import _wg_is_up
-
-        def fake_run(args, **kwargs):
-            m = MagicMock()
-            m.returncode = 1
-            m.stdout = ""
-            return m
-
-        monkeypatch.setattr("subprocess.run", fake_run)
-        assert _wg_is_up() is False
+    def test_health_reports_unreachable(self, monkeypatch):
+        monkeypatch.setattr(vf, "_proxmox_b_is_reachable", lambda **kw: False)
+        health = vf.check_tunnel_health()
+        assert health["ok"] is False
+        assert health["reachable"] is False
 
 
 class TestRecovery:
-    """VPN recovery attempt logic."""
+    """Recovery is non-blocking when disabled and bounded otherwise."""
 
-    def test_no_recovery_when_proxmox_reachable(self, monkeypatch):
-        from core.vpn_failover import attempt_recovery
+    def test_disabled_monitoring_does_no_probes(self, monkeypatch):
+        monkeypatch.setenv("DISABLE_VPN_MONITORING", "true")
 
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: True,
-        )
+        def boom(**kwargs):
+            raise AssertionError("probe must not run when monitoring is disabled")
 
-        events = attempt_recovery()
-        assert len(events) == 0
+        monkeypatch.setattr(vf, "_proxmox_b_is_reachable", boom)
+        assert vf.attempt_recovery() == []
 
-    def test_alerts_when_no_local_wg_and_unreachable(self, monkeypatch):
-        from core.vpn_failover import attempt_recovery
+    def test_disabled_monitoring_returns_immediately(self, monkeypatch):
+        monkeypatch.setenv("DISABLE_VPN_MONITORING", "true")
+        start = time.monotonic()
+        assert vf.attempt_recovery() == []
+        assert time.monotonic() - start < 0.5
 
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: False,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_interface_exists",
-            lambda: False,
-        )
+    def test_reachable_host_needs_no_recovery(self, monkeypatch):
+        monkeypatch.delenv("DISABLE_VPN_MONITORING", raising=False)
+        monkeypatch.setattr(vf, "_proxmox_b_is_reachable", lambda **kw: True)
+        assert vf.attempt_recovery() == []
 
-        events = attempt_recovery()
-        assert len(events) == 1
-        assert events[0]["type"] == "vpn_down"
-        assert events[0]["severity"] == "warning"
+    def test_unreachable_host_is_bounded_and_fast(self, monkeypatch):
+        monkeypatch.delenv("DISABLE_VPN_MONITORING", raising=False)
+        monkeypatch.setattr(vf, "RETRY_DELAY", 0)
+        calls = []
 
-    def test_attempts_recovery_when_wg_configured(self, monkeypatch):
-        from core.vpn_failover import attempt_recovery
+        def probe(**kwargs):
+            calls.append(kwargs)
+            return False
 
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: False,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_interface_exists",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_is_up",
-            lambda: False,
-        )
-        # Mock wg-quick restart to succeed
-        monkeypatch.setattr(
-            "core.vpn_failover._restart_wg_interface",
-            lambda: True,
-        )
+        monkeypatch.setattr(vf, "_proxmox_b_is_reachable", probe)
 
-        events = attempt_recovery()
-        assert len(events) == 2  # restart event + recovered event
-        assert events[0]["type"] == "wg_restart"
-        assert events[0]["success"] is True
-        assert events[1]["type"] == "vpn_recovered"
+        start = time.monotonic()
+        events = vf.attempt_recovery()
+        elapsed = time.monotonic() - start
 
-    def test_recovery_failure_escalates_to_critical(self, monkeypatch):
-        from core.vpn_failover import attempt_recovery, MAX_RECOVERY_ATTEMPTS
+        # one health probe + MAX_RECOVERY_ATTEMPTS retries, never more
+        assert len(calls) == vf.MAX_RECOVERY_ATTEMPTS + 1
+        assert elapsed < 1.0
+        assert events and events[-1]["type"] == "vpn_down"
 
-        monkeypatch.setattr(
-            "core.vpn_failover._proxmox_b_is_reachable",
-            lambda: False,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_interface_exists",
-            lambda: True,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._wg_is_up",
-            lambda: False,
-        )
-        monkeypatch.setattr(
-            "core.vpn_failover._restart_wg_interface",
-            lambda: False,
-        )
-        # Don't sleep during tests
-        monkeypatch.setattr("time.sleep", lambda s: None)
+    def test_recovers_on_later_attempt(self, monkeypatch):
+        monkeypatch.delenv("DISABLE_VPN_MONITORING", raising=False)
+        monkeypatch.setattr(vf, "RETRY_DELAY", 0)
+        results = iter([False, False, True])  # health, attempt 1, attempt 2
+        monkeypatch.setattr(vf, "_proxmox_b_is_reachable", lambda **kw: next(results))
 
-        events = attempt_recovery()
-        # MAX_RECOVERY_ATTEMPTS restart events + 1 final failure event
-        assert len(events) == MAX_RECOVERY_ATTEMPTS + 1
-        final = events[-1]
-        assert final["type"] == "vpn_recovery_failed"
-        assert final["severity"] == "critical"
+        events = vf.attempt_recovery()
+        assert events[-1]["type"] == "vpn_recovered"
+        assert events[-1]["attempt"] == 2
 
 
 class TestProxmoxMonitorFailover:
@@ -353,18 +214,3 @@ class TestProxmoxMonitorFailover:
         assert h["fallback_host"] == "192.168.99.200"
         assert h["reachable"] is False
         monkeypatch.undo()
-
-
-class TestConfigTemplate:
-    """WireGuard config template generation."""
-
-    def test_template_contains_expected_placeholders(self):
-        from core.vpn_failover import generate_config_template
-
-        tmpl = generate_config_template("wg-test", "10.8.0.3/32", "10.8.0.102:51820")
-        assert "wg-test" in tmpl
-        assert "10.8.0.3/32" in tmpl
-        assert "10.8.0.102:51820" in tmpl
-        assert "PrivateKey" in tmpl
-        assert "PublicKey" in tmpl
-        assert "PersistentKeepalive = 25" in tmpl

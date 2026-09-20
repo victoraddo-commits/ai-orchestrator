@@ -1,6 +1,27 @@
+import pytest
+
 from core.orchestrator_cycle import run_cycle
 from core import build_manager
 from core import roadmap_manager
+
+
+@pytest.fixture(autouse=True)
+def isolate_external_probes(monkeypatch):
+    # Production sets DISABLE_VPN_MONITORING=true (/etc/ai-orchestrator.env).
+    # A cycle must never block on a VPN probe -- historically it stalled here
+    # retrying the dead 192.168.1.109 for tens of seconds.
+    monkeypatch.setenv("DISABLE_VPN_MONITORING", "true")
+
+    # The scanner makes live Proxmox API calls (Proxmox A via the
+    # localhost:8008 tunnel, Proxmox B over LAN). Those add ~60s of network
+    # timeouts when a tunnel is down, which is orthogonal to what this test
+    # checks (cycle orchestration), so stub them out.
+    import core.scanner as scanner
+    monkeypatch.setattr(scanner, "proxmox_status", lambda: {})
+    monkeypatch.setattr(scanner, "status_b", lambda: {})
+
+    import core.proxmox_monitor as proxmox_monitor
+    monkeypatch.setattr(proxmox_monitor, "_api_get", lambda node, path: None)
 
 
 def test_run_cycle_completes_without_error_and_has_expected_shape():

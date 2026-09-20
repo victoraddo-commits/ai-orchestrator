@@ -6,6 +6,7 @@ from core.incident_manager import (
     load_incidents,
     save_incidents,
     prune_incidents,
+    resolve_stale_reminder_incidents,
     transition_incident,
     mark_investigating,
     mark_approved,
@@ -14,6 +15,7 @@ from core.incident_manager import (
     mark_resolved,
     mark_closed,
     INCIDENT_ARCHIVE_FILE,
+    STALE_REMINDER_ISSUE_PREFIX,
 )
 from core.memory import load
 from core.lifecycle import InvalidTransition
@@ -260,3 +262,30 @@ def test_prune_collapses_duplicate_open_incidents():
     assert remaining[0]["id"] == "dup00002"
     assert remaining[0]["occurrences"] == 3
     assert summary["collapsed_duplicates"] == 2
+
+
+def test_resolve_stale_reminder_incidents_resolves_only_the_legacy_flood():
+    now = datetime(2026, 9, 20, 12, 0, 0)
+    save_incidents([
+        {
+            "id": "flood001", "trace_id": "flood001", "status": "open",
+            "created": now.isoformat(), "updated": now.isoformat(),
+            "service": "telegram",
+            "issue": f"{STALE_REMINDER_ISSUE_PREFIX} (RuntimeError): ❌ Phase AI-5 986h",
+            "severity": "warning", "occurrences": 1, "history": [],
+        },
+        {
+            "id": "stable01", "trace_id": "stable01", "status": "open",
+            "created": now.isoformat(), "updated": now.isoformat(),
+            "service": "telegram", "issue": "Telegram reminder delivery failing",
+            "severity": "warning", "occurrences": 1, "history": [],
+        },
+    ])
+
+    resolved = resolve_stale_reminder_incidents("flood cleanup", now=now)
+
+    assert resolved == 1
+    by_id = {i["id"]: i for i in load_incidents()}
+    assert by_id["flood001"]["status"] == "resolved"
+    assert by_id["flood001"]["resolution"] == "flood cleanup"
+    assert by_id["stable01"]["status"] == "open"

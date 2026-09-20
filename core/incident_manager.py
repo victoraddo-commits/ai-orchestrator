@@ -1,4 +1,4 @@
-from core.memory import load, save
+from core.memory import load, save, update
 from core.lifecycle import new_object, transition
 from datetime import datetime, timedelta
 
@@ -14,6 +14,10 @@ RECURRENCE_WINDOW_SECONDS = 6 * 60 * 60
 # Bounded retention: resolved/closed incidents older than this many days are
 # moved (not deleted) to INCIDENT_ARCHIVE_FILE by prune_incidents().
 INCIDENT_ARCHIVE_FILE = "incidents_archive.json"
+
+# Legacy, non-dedupable issue prefix minted by the pre-2026-09-20 watchdog.
+# One-shot cleanup resolves these in bulk; the fix means no new ones appear.
+STALE_REMINDER_ISSUE_PREFIX = "Stale-approval/failure reminder could not be sent"
 
 
 def _parse_timestamp(value):
@@ -265,6 +269,46 @@ def prune_incidents(resolved_older_than_days=30, now=None):
         "remaining": len(closed_now) + len(final_open),
         "archive_size": len(archive),
     }
+
+
+def resolve_stale_reminder_incidents(note, now=None):
+    """One-shot migration: resolve every open legacy reminder-failure incident.
+
+    Matches only the pre-fix issue prefix so the new, dedupable stable issue
+    (which should stay open while delivery is genuinely broken) is untouched.
+    Returns the number resolved. Runs under the memory_manager lock so it is
+    safe alongside the live scheduler.
+    """
+
+    now_iso = (now or datetime.now()).isoformat()
+    result = {"count": 0}
+
+    def mutate(incidents):
+
+        if not isinstance(incidents, list):
+            return incidents
+
+        for incident in incidents:
+
+            if (
+                incident.get("status") not in ("resolved", "closed")
+                and incident.get("service") == "telegram"
+                and str(incident.get("issue", "")).startswith(STALE_REMINDER_ISSUE_PREFIX)
+            ):
+                incident["status"] = "resolved"
+                incident["updated"] = now_iso
+                incident["resolved_at"] = now_iso
+                incident["resolution"] = note
+                incident.setdefault("history", []).append(
+                    {"status": "resolved", "timestamp": now_iso, "note": note}
+                )
+                result["count"] += 1
+
+        return incidents
+
+    update("incidents.json", mutate)
+
+    return result["count"]
 
 
 def transition_incident(incident_id, new_status, note=None):

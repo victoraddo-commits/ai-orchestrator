@@ -377,7 +377,7 @@ def kai_icon(icon: str):
 
 
 # -- WebAuthn ceremony proxy (27A) — forwards to the vault host ------------
-_VAULT_URL = os.environ.get("VAULT_URL", "http://192.168.1.107:8120")
+_VAULT_URL = os.environ.get("VAULT_URL", "https://192.168.1.107:8443")
 
 
 def _vault_token() -> str:
@@ -390,6 +390,15 @@ def _vault_token() -> str:
     return ""
 
 
+def _vault_ssl_context(url: str):
+    """TLS context for the vault machine plane (CA bundle / scoped internal)."""
+    try:
+        from core.ai.kai_vault_client import ssl_context_for
+        return ssl_context_for(url)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _vault_call(path: str, method: str = "GET", body=None):
     import json as _json
     import urllib.error
@@ -399,7 +408,8 @@ def _vault_call(path: str, method: str = "GET", body=None):
         _VAULT_URL + path, data=data, method=method,
         headers={"Authorization": "Bearer " + _vault_token(), "content-type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=8) as r:
+        with urllib.request.urlopen(
+                req, timeout=8, context=_vault_ssl_context(_VAULT_URL)) as r:
             return _json.load(r)
     except urllib.error.HTTPError as e:
         try:
@@ -704,17 +714,18 @@ def vault_metadata():
                     break
             except OSError:
                 continue
-        base = os.environ.get("VAULT_URL", "http://192.168.1.107:8120")
+        base = os.environ.get("VAULT_URL", "https://192.168.1.107:8443")
         try:
             import urllib.request
-            with urllib.request.urlopen(f"{base}/health", timeout=2) as r:
+            context = _vault_ssl_context(base)
+            with urllib.request.urlopen(f"{base}/health", timeout=2, context=context) as r:
                 seeded = _json.load(r).get("seeded_paths", 0)
             paths = []
             if token:
                 req = urllib.request.Request(
                     f"{base}/api/v1/machine/paths",
                     headers={"Authorization": f"Bearer {token}"})
-                with urllib.request.urlopen(req, timeout=2) as r:
+                with urllib.request.urlopen(req, timeout=2, context=context) as r:
                     paths = _json.load(r).get("paths", [])
             return True, seeded, paths
         except Exception:  # noqa: BLE001

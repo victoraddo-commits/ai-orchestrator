@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import ssl
 from typing import Optional
 from urllib.parse import urlsplit
 
@@ -74,6 +75,21 @@ def _verify_for(url: str):
             "internal host %s", host)
         return False
     return True
+
+
+def ssl_context_for(url: str) -> Optional[ssl.SSLContext]:
+    """Return an SSLContext matching _verify_for for urllib-based callers.
+
+    None for plain http so callers can pass ``context=None`` unchanged.
+    """
+    if urlsplit(url).scheme != "https":
+        return None
+    verify = _verify_for(url)
+    if verify is False:
+        return ssl._create_unverified_context()
+    if isinstance(verify, str):
+        return ssl.create_default_context(cafile=verify)
+    return ssl.create_default_context()
 
 
 def _slug(provider: str) -> str:

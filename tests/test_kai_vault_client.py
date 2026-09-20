@@ -152,3 +152,29 @@ def test_fetch_secret_passes_tls_verify(monkeypatch):
     monkeypatch.setattr(kvc.requests, "post", fake_post)
     kvc.fetch_secret("p", "tok")
     assert "verify" in seen
+
+
+def test_ssl_context_none_for_http():
+    assert kvc.ssl_context_for("http://192.168.1.107:8120/health") is None
+
+
+def test_ssl_context_insecure_only_for_known_internal_host(monkeypatch):
+    import ssl
+    monkeypatch.setenv("VAULT_CA_BUNDLE", "/nonexistent/vault.crt")
+    known = kvc.ssl_context_for("https://192.168.1.107:8443/x")
+    assert known.verify_mode == ssl.CERT_NONE
+    other = kvc.ssl_context_for("https://evil.example.com/x")
+    assert other.verify_mode == ssl.CERT_REQUIRED
+    assert other.check_hostname is True
+
+
+def test_ssl_context_verified_with_ca_bundle(monkeypatch):
+    import os
+    import ssl
+    ca = "/etc/kai/tls/vault-mp.crt"
+    if not os.path.exists(ca):
+        pytest.skip("no internal CA bundle on this host")
+    monkeypatch.setenv("VAULT_CA_BUNDLE", ca)
+    ctx = kvc.ssl_context_for("https://192.168.1.107:8443/x")
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True

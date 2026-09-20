@@ -199,6 +199,18 @@ def test_inactive_network_interface_is_detected():
     assert len(net_findings) == 1
 
 
+def test_inactive_interface_issue_is_order_independent():
+    # The API returns interfaces in arbitrary order; the issue string (the
+    # incident dedup key) must not change when the order does.
+    def issue_for(order):
+        save("last_scan.json", base_scan(network={"data": [
+            {"iface": name, "exists": 1, "active": 0} for name in order
+        ]}))
+        return find(analyze_proxmox_cluster(), "proxmox-network")[0]["issue"]
+
+    assert issue_for(["nic1", "nic2", "nic3"]) == issue_for(["nic3", "nic1", "nic2"])
+
+
 def test_all_healthy_produces_single_info_finding():
     save("last_scan.json", base_scan(tasks={"data": [
         {"type": "vzdump", "status": "OK", "starttime": 100, "endtime": 200}

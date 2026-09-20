@@ -223,11 +223,14 @@ def analyze_proxmox_cluster():
 
     network = proxmox.get("network", {}).get("data", [])
 
-    down_interfaces = [
+    # Sort so the dedup key is stable: the API returns interfaces in
+    # nondeterministic order, so an unsorted list minted a brand-new incident
+    # on every scan (6 duplicate proxmox-network incidents on 2026-09-20).
+    down_interfaces = sorted(
         n.get("iface")
         for n in network
         if n.get("exists") == 1 and not n.get("active")
-    ]
+    )
 
     if down_interfaces:
 

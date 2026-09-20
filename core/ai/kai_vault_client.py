@@ -13,18 +13,67 @@ from __future__ import annotations
 import logging
 import os
 from typing import Optional
+from urllib.parse import urlsplit
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-# Direct to kai-vault on Proxmox B CT107 via LAN (192.168.1.117:8120).
-# Restored 2026-08-23 after boot-race route issue; before that fix this
-# default was an SSH tunnel endpoint (127.0.0.1:18120).
-VAULT_URL = os.environ.get("VAULT_URL", "http://192.168.1.117:8120")
+# Direct to kai-vault on Proxmox B CT107, reachable over TLS at
+# https://192.168.1.107:8443. The previous default (192.168.1.117:8120)
+# pointed at a host that does not exist, which spammed
+# "kai-vault unreachable" every scheduler cycle.
+DEFAULT_VAULT_URL = "https://192.168.1.107:8443"
+
+# Internal CA for the vault's self-signed machine-plane certificate. The
+# ai-orchestrator-api unit already drops this in via VAULT_CA_BUNDLE.
+DEFAULT_VAULT_CA_BUNDLE = "/etc/kai/tls/vault-mp.crt"
+
+# Hosts allowed to use the explicit "insecure internal" TLS fallback when no
+# CA bundle is configured. Deliberately scoped to known internal hosts only —
+# this is never a global verification disable.
+_INSECURE_INTERNAL_HOSTS = frozenset({"192.168.1.107"})
+
 VAULT_TOKEN_FILE = os.environ.get(
     "VAULT_TOKEN_FILE", "/root/.credentials/ai-orchestrator-vault-token")
 VAULT_TIMEOUT = float(os.environ.get("VAULT_TIMEOUT", "5"))
+
+
+def vault_url() -> str:
+    """Base URL for kai-vault: VAULT_URL env wins, else the working default."""
+    return (os.environ.get("VAULT_URL") or DEFAULT_VAULT_URL).rstrip("/")
+
+
+# Backwards-compatible import-time snapshot. Prefer vault_url() for new code
+# so a VAULT_URL set after import is still honoured.
+VAULT_URL = vault_url()
+
+
+def _ca_bundle() -> Optional[str]:
+    """Return the configured CA bundle path if it exists on disk, else None."""
+    configured = os.environ.get("VAULT_CA_BUNDLE", DEFAULT_VAULT_CA_BUNDLE)
+    if configured and os.path.exists(configured):
+        return configured
+    return None
+
+
+def _verify_for(url: str):
+    """TLS verification setting for *url*.
+
+    Prefer the internal CA bundle. When it is missing, fall back to an
+    explicit insecure mode scoped to the known internal vault host only;
+    any other host keeps full certificate verification.
+    """
+    ca = _ca_bundle()
+    if ca:
+        return ca
+    host = urlsplit(url).hostname or ""
+    if host in _INSECURE_INTERNAL_HOSTS:
+        logger.warning(
+            "kai-vault: CA bundle unavailable; using insecure TLS for known "
+            "internal host %s", host)
+        return False
+    return True
 
 
 def _slug(provider: str) -> str:
@@ -48,13 +97,15 @@ def load_token() -> Optional[str]:
 
 def fetch_secret(path: str, token: str) -> Optional[str]:
     """Reveal one secret. None on ANY failure. Value never logged."""
+    url = f"{vault_url()}/api/v1/machine/secret"
     try:
         response = requests.post(
-            f"{VAULT_URL}/api/v1/machine/secret",
+            url,
             headers={"Authorization": f"Bearer {token}"},
             json={"path": path, "operation": "reveal",
                   "reason": "orchestrator credential resolution"},
             timeout=VAULT_TIMEOUT,
+            verify=_verify_for(url),
         )
         if response.status_code == 200:
             return response.json().get("value")

@@ -37,6 +37,11 @@ def _incident_timestamp(incident):
     return _naive(_parse_timestamp(incident.get("updated") or incident.get("created")))
 
 
+def _incident_created_at(incident):
+    """Cooldown anchor: when the problem first appeared, not last touched."""
+    return _naive(_parse_timestamp(incident.get("created")))
+
+
 # Network alert types
 NETWORK_PEER_OFFLINE = "NETWORK_PEER_OFFLINE"
 NETWORK_PEER_ONLINE = "NETWORK_PEER_ONLINE"
@@ -103,7 +108,7 @@ def find_recent_duplicate(incidents, service, issue, window_seconds, now=None):
         if incident.get("service") != service or incident.get("issue") != issue:
             continue
 
-        touched_at = _incident_timestamp(incident)
+        touched_at = _incident_created_at(incident)
 
         if touched_at is None:
             continue
@@ -185,6 +190,12 @@ def create_incident(service, issue, severity="info", detail=None, cooldown_secon
         severity=severity,
         occurrences=1
     )
+
+    # Honor the injected clock so cooldown math is deterministic/testable.
+    incident["created"] = now_iso
+    incident["updated"] = now_iso
+    if incident.get("history"):
+        incident["history"][-1]["timestamp"] = now_iso
 
     if detail is not None:
         incident["detail"] = detail

@@ -37,7 +37,7 @@ RESOLUTION_NOTE = (
     "cooldown). No operator action required."
 )
 
-RETENTION_DAYS = 30
+RETENTION_DAYS = 7
 
 
 def _counts(incidents):

@@ -45,9 +45,32 @@ def api_request(path, host=None, token_id=None, token_secret=None):
 
     try:
         r = requests.get(url, headers=headers, verify=_get_verify(), timeout=10)
-        return r.json()
     except Exception as e:
-        return {"error": str(e)}
+        # Transport-level failure: DNS, refused connection, TLS, timeout.
+        return {"error": "unreachable", "detail": str(e)}
+
+    # Non-2xx responses (401/403 expired-or-missing token, 500, ...) usually
+    # carry a non-JSON body. Calling r.json() on them used to raise
+    # "Expecting value: line 1 column 1" which callers misread as the node
+    # being unreachable. Report the real shape honestly instead.
+    if r.status_code in (401, 403):
+        return {"error": "auth_failed", "http": r.status_code}
+
+    if not (200 <= r.status_code < 300):
+        return {
+            "error": "http_error",
+            "http": r.status_code,
+            "detail": (r.text or "")[:200],
+        }
+
+    try:
+        return r.json()
+    except ValueError:
+        return {
+            "error": "invalid_json",
+            "http": r.status_code,
+            "detail": (r.text or "")[:200],
+        }
 
 
 def get_node_status(node=None, host=None, token_id=None, token_secret=None):
@@ -95,7 +118,7 @@ def status_b():
     token_id = os.getenv("PROXMOX_B_TOKEN_ID", "")
     token_secret = os.getenv("PROXMOX_B_TOKEN_SECRET", os.getenv("PROXMOX_B_TOKEN", ""))
     # Direct LAN — no SSH tunnel needed
-    host = os.getenv("PROXMOX_B_HOST", "192.168.1.109")
+    host = os.getenv("PROXMOX_B_HOST", "192.168.1.110")
     port = os.getenv("PROXMOX_B_PORT", "8006")
     endpoint = f"{host}:{port}"
     return {

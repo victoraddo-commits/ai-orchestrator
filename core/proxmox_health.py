@@ -9,17 +9,45 @@ def analyze_proxmox_cluster():
 
     proxmox = state.get("proxmox", {})
 
-    node = proxmox.get("node", {}).get("data", {})
+    node_entry = proxmox.get("node", {})
+    if not isinstance(node_entry, dict):
+        node_entry = {}
+    node = node_entry.get("data", {})
 
     if not node:
 
-        findings.append({
-            "severity": "critical",
-            "service": "proxmox-node",
-            "issue": "Proxmox node unreachable or returned no status data",
-            "risk_score": 90,
-            "recommendation": "Check Proxmox API connectivity and credentials"
-        })
+        error = node_entry.get("error")
+
+        if error == "auth_failed":
+            # A 401/403 from Proxmox is a configuration problem, not a dead
+            # node. Alerting it as "unreachable" critical (as r.json()'s
+            # "Expecting value" once did) is a false-negative that also hides
+            # the real fix (rotate/repair the API token).
+            findings.append({
+                "severity": "warning",
+                "service": "proxmox-node",
+                "issue": "Proxmox API authentication failed",
+                "risk_score": 40,
+                "recommendation": "Verify the Proxmox API token is valid and has permissions"
+            })
+
+        elif error == "invalid_json":
+            findings.append({
+                "severity": "critical",
+                "service": "proxmox-node",
+                "issue": "Proxmox node returned an unreadable (non-JSON) response",
+                "risk_score": 85,
+                "recommendation": "Check the Proxmox API endpoint/proxy in front of it"
+            })
+
+        else:
+            findings.append({
+                "severity": "critical",
+                "service": "proxmox-node",
+                "issue": "Proxmox node unreachable or returned no status data",
+                "risk_score": 90,
+                "recommendation": "Check Proxmox API connectivity and credentials"
+            })
 
         return findings
 

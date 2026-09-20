@@ -8,7 +8,8 @@ def base_scan(**overrides):
             "node": {"data": {
                 "cpu": 0.10,
                 "memory": {"total": 100, "used": 10},
-                "rootfs": {"total": 100, "used": 10, "avail": 90}
+                "rootfs": {"total": 100, "used": 10, "avail": 90},
+                "uptime": 200000
             }},
             "lxc": {"data": []},
             "qemu": {"data": []},
@@ -34,6 +35,28 @@ def test_node_unreachable_is_critical():
     assert unreachable[0]["severity"] == "critical"
     assert "risk_score" in unreachable[0]
     assert "recommendation" in unreachable[0]
+
+
+def test_auth_failure_is_a_warning_not_unreachable_critical():
+    save("last_scan.json", {"proxmox": {"node": {"error": "auth_failed", "http": 401}}})
+
+    findings = analyze_proxmox_cluster()
+
+    node = find(findings, "proxmox-node")
+    assert len(node) == 1
+    assert node[0]["severity"] == "warning"
+    assert "auth" in node[0]["issue"].lower()
+
+
+def test_transport_unreachable_is_critical_with_distinct_issue():
+    save("last_scan.json", {"proxmox": {"node": {"error": "unreachable", "detail": "timed out"}}})
+
+    findings = analyze_proxmox_cluster()
+
+    node = find(findings, "proxmox-node")
+    assert len(node) == 1
+    assert node[0]["severity"] == "critical"
+    assert "unreachable" in node[0]["issue"].lower()
 
 
 def test_high_cpu_produces_warning_with_risk_and_recommendation():

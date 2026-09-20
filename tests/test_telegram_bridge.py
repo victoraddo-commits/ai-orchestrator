@@ -569,6 +569,61 @@ def test_send_message_raises_on_api_failure(monkeypatch):
         tb.send_message("test", token="test-token", chat_id="612786480")
 
 
+def test_send_message_truncates_oversized_text(monkeypatch):
+    """Telegram rejects >4096-char messages with HTTP 400 "message is too
+    long" -- root cause of the recurring "Telegram reminder delivery failing"
+    incident (the AI-5 stale-failure reminder embeds a 5,800-char provider
+    error chain). The payload must be capped, with a visible ellipsis.
+    """
+    posted = {}
+
+    def fake_post(url, json=None, timeout=None):
+        posted["json"] = json
+        return _SEND_OK
+
+    monkeypatch.setattr(tb.requests, "post", fake_post)
+
+    tb.send_message("x" * 6000, token="test-token", chat_id="123")
+
+    assert len(posted["json"]["text"]) <= tb.TELEGRAM_MAX_MESSAGE_CHARS
+    assert posted["json"]["text"].endswith("…")
+
+
+def test_send_message_leaves_normal_text_untouched(monkeypatch):
+    posted = {}
+
+    def fake_post(url, json=None, timeout=None):
+        posted["json"] = json
+        return _SEND_OK
+
+    monkeypatch.setattr(tb.requests, "post", fake_post)
+
+    tb.send_message("short reminder", token="test-token", chat_id="123")
+
+    assert posted["json"]["text"] == "short reminder"
+
+
+def test_send_message_adapts_limit_for_unicode(monkeypatch):
+    """Telegram counts UTF-16 code units, so a message built from
+    astral-plane characters (emoji) must be capped tighter than the plain
+    character limit, or it still trips the 400.
+    """
+
+    posted = {}
+
+    def fake_post(url, json=None, timeout=None):
+        posted["json"] = json
+        return _SEND_OK
+
+    monkeypatch.setattr(tb.requests, "post", fake_post)
+
+    tb.send_message("\U0001f4a5" * 3000, token="test-token", chat_id="123")
+
+    # Each emoji is one Python char but two UTF-16 code units.
+    assert len(posted["json"]["text"].encode("utf-16-le")) // 2 <= 4096
+    assert posted["json"]["text"].endswith("…")
+
+
 # ---------------------------------------------------------------------------
 # Inbound polling (mocked HTTP)
 # ---------------------------------------------------------------------------

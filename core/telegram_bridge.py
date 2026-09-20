@@ -148,13 +148,50 @@ def _download_file(file_id, token=None):
 # ---------------------------------------------------------------------------
 
 
+# Telegram's hard cap is 4096 UTF-16 code units per message; a longer body is
+# rejected with HTTP 400 "Bad Request: message is too long". Root-caused
+# live 2026-09-20: the stale-failure reminder embeds a phase's full
+# failure_reason, which for AI-5 was a 5,800-char provider error chain -- so
+# every reminder cycle failed to deliver and (via the fallback in
+# approval_watchdog) created the "Telegram reminder delivery failing"
+# incident. Truncate rather than let delivery fail.
+TELEGRAM_MAX_MESSAGE_CHARS = 4096
+_TRUNCATION_SUFFIX = "…"
+
+
+def _truncate_for_telegram(text, limit=TELEGRAM_MAX_MESSAGE_CHARS):
+    """Clamp ``text`` to Telegram's per-message limit.
+
+    Telegram counts UTF-16 code units, so astral-plane characters (emoji)
+    cost 2 each -- budget in UTF-16 units, not Python characters, or a
+    message of emoji still trips the 400.
+    """
+    if text is None:
+        return ""
+    if len(text.encode("utf-16-le")) // 2 <= limit:
+        return text
+
+    budget = limit - len(_TRUNCATION_SUFFIX)
+    out = []
+    used = 0
+
+    for ch in text:
+        cost = len(ch.encode("utf-16-le")) // 2
+        if used + cost > budget:
+            break
+        out.append(ch)
+        used += cost
+
+    return "".join(out) + _TRUNCATION_SUFFIX
+
+
 def send_message(text, token=None, chat_id=None, reply_markup=None):
     if token is None:
         token = _load_token()
     if chat_id is None:
         chat_id = ALLOWED_CHAT_ID
 
-    payload = {"chat_id": chat_id, "text": text}
+    payload = {"chat_id": chat_id, "text": _truncate_for_telegram(text)}
     if reply_markup:
         payload["reply_markup"] = reply_markup
 

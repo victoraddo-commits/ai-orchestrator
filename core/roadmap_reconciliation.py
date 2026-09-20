@@ -79,6 +79,18 @@ def compute_reconciliation(phases: list, builds: list) -> dict:
             # only the false "completed" bookkeeping is reconciled here.
             continue
 
+        # A phase whose stale build link has been explicitly cleared AND the
+        # verification evidence recorded (build_id_reconciliation note) has
+        # already been adjudicated by a human -- do not re-propose it. This
+        # must not weaken the strong signal below: a phase that still carries
+        # an explicit build_id is always reconciled.
+        if (
+            not phase.get("build_id")
+            and phase.get("build_id_reconciliation")
+            and phase.get("stale_build_id")
+        ):
+            continue
+
         phase_id = phase.get("id")
         build_id = phase.get("build_id")
 

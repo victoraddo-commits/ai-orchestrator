@@ -170,13 +170,47 @@ def test_send_failure_falls_back_to_an_incident_and_does_not_mark_as_reminded():
     assert reminded == []
     incidents = load_incidents()
     assert len(incidents) == 1
-    assert "telegram" in incidents[0]["service"]
-    assert "17A" in incidents[0]["issue"]
+    assert incidents[0]["service"] == "telegram"
+    assert incidents[0]["issue"] == "Telegram reminder delivery failing"
+    assert "17A" in incidents[0]["detail"]
 
     # Not marked as reminded -- a working send later should still succeed.
     sent = []
     reminded_after_recovery = check_stale_approvals(now=now, send_message=sent.append)
     assert reminded_after_recovery == ["b1"]
+
+
+def test_three_failed_sends_with_different_bodies_make_one_incident():
+    """The 1,025-incident flood root cause: the reminder body (with its
+    per-cycle duration) must not be the dedup key."""
+
+    from core.incident_manager import load_incidents
+
+    now = datetime.now()
+    failed_at = now - timedelta(seconds=STALE_THRESHOLD_SECONDS + 60)
+    save_builds([{
+        "id": "build-1", "name": "AI-5", "status": "FAILED",
+        "failure_reason": "provider unavailable",
+        "history": [{"status": "FAILED", "timestamp": failed_at.isoformat()}],
+    }])
+    _write_roadmap(roadmap_engine.ROADMAP_PATH, [
+        {"id": "AI-5", "status": "failed", "dependencies": [], "priority": 1,
+         "build_id": "build-1", "name": "Cost Tracking Dashboard"},
+    ])
+
+    def failing_send(text):
+        raise RuntimeError("Telegram token expired")
+
+    for minute in range(3):
+        check_stale_failures(now=now + timedelta(minutes=minute), send_message=failing_send)
+
+    telegram = [i for i in load_incidents() if i["service"] == "telegram"]
+
+    assert len(telegram) == 1
+    assert telegram[0]["issue"] == "Telegram reminder delivery failing"
+    assert telegram[0]["occurrences"] == 3
+    assert "AI-5" not in telegram[0]["issue"]
+    assert "Telegram token expired" in telegram[0]["detail"]
 
 
 def test_no_reminder_for_a_failed_phase_with_no_matching_build():

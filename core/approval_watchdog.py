@@ -16,6 +16,7 @@ Telegram send failure here would itself fail silently (see
 _send_with_incident_fallback).
 """
 
+import threading
 from datetime import datetime
 
 from core.build_manager import load_builds, get_build
@@ -26,6 +27,20 @@ from core.incident_manager import create_incident
 
 STATE_FILE = "stale_approval_reminders.json"
 FAILURE_STATE_FILE = "stale_failure_reminders.json"
+
+# Root-caused 2026-09-20: the fallback below used to embed the whole reminder
+# body -- including a per-cycle duration like "failed and unaddressed for
+# 986h" -- in the incident *issue* text. create_incident() dedupes on the
+# exact issue string, so every cycle minted a NEW incident: 1,025 open
+# telegram incidents at ~21/hour, forever. The issue text is now a fixed,
+# dedupable string and all variable detail goes into `detail` instead.
+TELEGRAM_DELIVERY_INCIDENT_ISSUE = "Telegram reminder delivery failing"
+REMINDER_INCIDENT_COOLDOWN_SECONDS = 6 * 60 * 60
+
+# Re-entrancy guard: never create an incident FROM a reminder whose own
+# delivery is itself the subject of an incident -- that is how a failed send
+# could otherwise feed back into another incident forever.
+_INCIDENT_CREATION_GUARD = threading.local()
 
 # A human gate this fresh doesn't need a nag yet -- give a normal review
 # pass time to happen first.
@@ -67,22 +82,43 @@ def _format_duration(seconds):
     return f"{minutes}m"
 
 
-def _send_with_incident_fallback(send_message, text):
+def _send_with_incident_fallback(send_message, text, now=None):
     """Send text; on failure, record a visible incident instead of just a
     log line, so a broken Telegram channel doesn't make this watchdog's own
     failures as silent as the problem it exists to catch. Returns whether
     the send actually succeeded -- callers must not mark something as
-    "reminded" on a failed send, so it gets retried next cycle."""
+    "reminded" on a failed send, so it gets retried next cycle.
+
+    The incident issue is a FIXED string (see TELEGRAM_DELIVERY_INCIDENT_ISSUE)
+    so repeated failures dedupe into one record; the variable reminder body
+    and error type live in `detail`. The incident is also throttled to one
+    record per REMINDER_INCIDENT_COOLDOWN_SECONDS and the call is guarded
+    against re-entrancy so it can never create an incident from a reminder
+    that is itself about an incident.
+    """
 
     try:
         send_message(text)
         return True
     except Exception as error:
-        create_incident(
-            "telegram",
-            f"Stale-approval/failure reminder could not be sent ({type(error).__name__}): {text}",
-            severity="warning",
-        )
+
+        if getattr(_INCIDENT_CREATION_GUARD, "active", False):
+            return False
+
+        _INCIDENT_CREATION_GUARD.active = True
+
+        try:
+            create_incident(
+                "telegram",
+                TELEGRAM_DELIVERY_INCIDENT_ISSUE,
+                severity="warning",
+                detail=f"{type(error).__name__}: {error} -- reminder: {text}",
+                cooldown_seconds=REMINDER_INCIDENT_COOLDOWN_SECONDS,
+                now=now,
+            )
+        finally:
+            _INCIDENT_CREATION_GUARD.active = False
+
         return False
 
 
@@ -142,6 +178,7 @@ def check_stale_approvals(now=None, send_message=None):
                 f"⏳ Build {build.get('name', build_id)} has been waiting "
                 f"{_format_duration(elapsed)} for {waiting_on} -- nothing else "
                 f"on the roadmap can proceed behind this until it's reviewed.",
+                now=now,
             )
 
             if not sent:
@@ -210,6 +247,7 @@ def check_stale_failures(now=None, send_message=None):
                 f"and unaddressed for {_format_duration(elapsed)} -- {reason}. "
                 f"It will not retry itself; needs a human decision (fix and requeue, "
                 f"or leave failed).",
+                now=now,
             )
 
             if not sent:

@@ -1,6 +1,36 @@
 from core.memory import load, save
 from core.lifecycle import new_object, transition
-from datetime import datetime
+from datetime import datetime, timedelta
+
+
+# A resolved/closed incident is reused (and reopened) instead of a brand-new
+# record being minted when the same (service, issue) recurs within this
+# window. Root-caused 2026-09-20: the Telegram watchdog embedded a variable
+# duration in the issue text, so every failed reminder cycle created a new
+# incident (1,025 of them) -- but even with a stable issue, an incident that
+# gets auto-resolved between failures would otherwise be re-minted forever.
+RECURRENCE_WINDOW_SECONDS = 6 * 60 * 60
+
+# Bounded retention: resolved/closed incidents older than this many days are
+# moved (not deleted) to INCIDENT_ARCHIVE_FILE by prune_incidents().
+INCIDENT_ARCHIVE_FILE = "incidents_archive.json"
+
+
+def _parse_timestamp(value):
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _naive(value):
+    if value is not None and value.tzinfo is not None:
+        return value.astimezone().replace(tzinfo=None)
+    return value
+
+
+def _incident_timestamp(incident):
+    return _naive(_parse_timestamp(incident.get("updated") or incident.get("created")))
 
 
 # Network alert types
@@ -54,23 +84,91 @@ def find_open_duplicate(incidents, service, issue):
     return None
 
 
-def create_incident(service, issue, severity="info"):
+def find_recent_duplicate(incidents, service, issue, window_seconds, now=None):
+    """Most recent incident for (service, issue) touched within the window,
+    regardless of status. Lets a recurrence collapse onto an incident that was
+    auto-resolved in between instead of minting a new record every cycle."""
+
+    now = now or datetime.now()
+
+    newest = None
+    newest_at = None
+
+    for incident in incidents:
+
+        if incident.get("service") != service or incident.get("issue") != issue:
+            continue
+
+        touched_at = _incident_timestamp(incident)
+
+        if touched_at is None:
+            continue
+
+        if newest_at is None or touched_at > newest_at:
+            newest = incident
+            newest_at = touched_at
+
+    if newest is None or newest_at is None:
+        return None
+
+    if (now - newest_at).total_seconds() > window_seconds:
+        return None
+
+    return newest
+
+
+def _record_recurrence(incident, severity, detail, now_iso, reopened=False):
+
+    incident["occurrences"] = incident.get("occurrences", 1) + 1
+    incident["severity"] = severity
+    incident["updated"] = now_iso
+
+    if detail is not None:
+        incident["detail"] = detail
+
+    note = "recurrence"
+
+    if reopened:
+        incident["status"] = "open"
+        incident.pop("resolved_at", None)
+        incident.pop("resolution", None)
+        note = "recurrence (reopened within cooldown)"
+
+    incident.setdefault("history", []).append(
+        {"status": incident.get("status", "open"), "timestamp": now_iso, "note": note}
+    )
+
+    return incident
+
+
+def create_incident(service, issue, severity="info", detail=None, cooldown_seconds=0, now=None):
+    """Create or update an incident.
+
+    The dedup key is (service, issue) -- callers MUST keep the issue string
+    stable and pass any variable context (durations, raw errors, reminder
+    bodies) via `detail`, otherwise every recurrence mints a new incident.
+
+    With cooldown_seconds > 0, a resolved/closed incident for the same key
+    touched within the window is reused and reopened rather than duplicated.
+    """
+
+    now = now or datetime.now()
+    now_iso = now.isoformat()
 
     incidents = load_incidents()
 
     existing = find_open_duplicate(incidents, service, issue)
 
+    if existing is None and cooldown_seconds:
+        existing = find_recent_duplicate(
+            incidents, service, issue, cooldown_seconds, now=now
+        )
+
     if existing:
 
-        existing["occurrences"] = existing.get("occurrences", 1) + 1
-        existing["severity"] = severity
-        existing.setdefault("status", "open")
+        reopened = existing.get("status") in ("closed", "resolved")
 
-        now = datetime.now().isoformat()
-        existing["updated"] = now
-        existing.setdefault("history", []).append(
-            {"status": existing["status"], "timestamp": now, "note": "recurrence"}
-        )
+        _record_recurrence(existing, severity, detail, now_iso, reopened=reopened)
 
         save_incidents(incidents)
 
@@ -84,11 +182,89 @@ def create_incident(service, issue, severity="info"):
         occurrences=1
     )
 
+    if detail is not None:
+        incident["detail"] = detail
+
     incidents.append(incident)
 
     save_incidents(incidents)
 
     return incident
+
+
+def prune_incidents(resolved_older_than_days=30, now=None):
+    """Bounded, non-destructive retention for incidents.json.
+
+    - Resolved/closed incidents older than the cutoff are moved to
+      incidents_archive.json (never deleted).
+    - Duplicate OPEN incidents sharing a (service, issue) key are collapsed
+      into the most recently touched one; the extras are archived and their
+      occurrence counts folded into the keeper.
+
+    Returns a summary dict. The archive file is the safety net, so this is
+    safe to run repeatedly.
+    """
+
+    now = _naive(now or datetime.now())
+    cutoff = now - timedelta(days=resolved_older_than_days)
+
+    incidents = load_incidents()
+
+    archive = load(INCIDENT_ARCHIVE_FILE)
+    if not isinstance(archive, list):
+        archive = []
+
+    kept = []
+    archived_resolved = 0
+
+    for incident in incidents:
+
+        if (
+            incident.get("status") in ("resolved", "closed")
+            and _incident_timestamp(incident) is not None
+            and _incident_timestamp(incident) < cutoff
+        ):
+            archive.append(incident)
+            archived_resolved += 1
+        else:
+            kept.append(incident)
+
+    closed_now = [i for i in kept if i.get("status") in ("resolved", "closed")]
+    open_now = [i for i in kept if i.get("status") not in ("resolved", "closed")]
+
+    groups = {}
+
+    for incident in open_now:
+        groups.setdefault((incident.get("service"), incident.get("issue")), []).append(incident)
+
+    collapsed_duplicates = 0
+    final_open = []
+
+    for group in groups.values():
+
+        if len(group) == 1:
+            final_open.append(group[0])
+            continue
+
+        group.sort(key=lambda i: _incident_timestamp(i) or datetime.min, reverse=True)
+        keeper = group[0]
+        keeper["occurrences"] = sum(i.get("occurrences", 1) or 1 for i in group)
+
+        for extra in group[1:]:
+            archive.append(extra)
+            collapsed_duplicates += 1
+
+        final_open.append(keeper)
+
+    save_incidents(closed_now + final_open)
+    save(INCIDENT_ARCHIVE_FILE, archive)
+
+    return {
+        "archived_resolved": archived_resolved,
+        "collapsed_duplicates": collapsed_duplicates,
+        "remaining": len(closed_now) + len(final_open),
+        "archive_size": len(archive),
+    }
 
 
 def transition_incident(incident_id, new_status, note=None):

@@ -16,7 +16,7 @@ def client():
 
 
 def _boom(*args, **kwargs):
-    raise RuntimeError("factory ssh failed: Permission denied, please try again.")
+    raise RuntimeError("factory GET /health: HTTP 503 unavailable")
 
 
 # ── world model endpoint ────────────────────────────────────────────────────
@@ -64,18 +64,18 @@ def test_factory_host_is_ct109_ip():
 def test_factory_status_degrades_instead_of_raising(monkeypatch):
     import core.kai_tools.builtin as builtin
 
-    monkeypatch.setattr(builtin, "_factory_ssh", _boom)
+    monkeypatch.setattr(builtin, "_factory_request", _boom)
     monkeypatch.setattr(builtin, "_factory_status_cache", {"ts": 0.0, "data": None})
 
     out = builtin.factory_status()
     assert out["available"] is False
-    assert "Permission denied" in out["error"]
+    assert "503" in out["error"]
 
 
 def test_factory_reports_degrades_instead_of_raising(monkeypatch):
     import core.kai_tools.builtin as builtin
 
-    monkeypatch.setattr(builtin, "_factory_ssh", _boom)
+    monkeypatch.setattr(builtin, "_factory_request", _boom)
     out = builtin.factory_reports(limit=3)
     assert out["available"] is False
     assert out["reports"] == []
@@ -84,7 +84,7 @@ def test_factory_reports_degrades_instead_of_raising(monkeypatch):
 def test_factory_status_route_is_200_not_500(client, monkeypatch):
     import core.kai_tools.builtin as builtin
 
-    monkeypatch.setattr(builtin, "_factory_ssh", _boom)
+    monkeypatch.setattr(builtin, "_factory_request", _boom)
     monkeypatch.setattr(builtin, "_factory_status_cache", {"ts": 0.0, "data": None})
 
     r = client.get("/kai/tools/factory/status")
@@ -95,7 +95,7 @@ def test_factory_status_route_is_200_not_500(client, monkeypatch):
 def test_factory_reports_route_is_200_not_500(client, monkeypatch):
     import core.kai_tools.builtin as builtin
 
-    monkeypatch.setattr(builtin, "_factory_ssh", _boom)
+    monkeypatch.setattr(builtin, "_factory_request", _boom)
     r = client.get("/kai/tools/factory/reports?limit=2")
     assert r.status_code == 200
     assert r.json()["available"] is False

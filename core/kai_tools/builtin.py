@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 
 from core.kai_tools.registry import SAFE, CONTROLLED, HIGH_RISK, ToolSpec, tool
 
@@ -815,26 +816,74 @@ def voice_stream(audio_b64: str) -> dict:
 
 
 
-# --- kai.factory.* : Android App Factory observability ---------------------------
+# --- kai.factory.* : Android App Factory (HTTP API on CT109) ---------------------
 
-# CT109 (kai-android-factory) net0 is 192.168.1.120 (verified 2026-09-21);
-# .119 was a stale constant and is the root cause of the factory 500s.
+# CT109 (kai-android-factory) net0 is 192.168.1.120 (verified 2026-09-21) and it
+# serves a dependency-free HTTP API on :4000 (/opt/android-factory/app.py). The
+# tools used to shell out to `ssh root@192.168.1.120`, but CT109 has no
+# authorized key for the orchestrator host, so every call failed (surfaced as
+# 500s before the guard). They now call the HTTP API: GETs are unauthenticated,
+# writes require the X-Factory-Token admin header (token file, never logged).
 FACTORY_HOST = "192.168.1.120"
+FACTORY_BASE_URL = f"http://{FACTORY_HOST}:4000"
+FACTORY_TOKEN_FILE = "/etc/kai/android_factory_token"
+FACTORY_TIMEOUT_S = 15.0
+_FACTORY_ID_RE = re.compile(r"^[0-9a-f]{6,}$")
 
-def _factory_ssh(cmd: str, timeout: int = 25) -> str:
-    import subprocess
-    r = subprocess.run(["ssh", "-o", "ConnectTimeout=8", "-o", "StrictHostKeyChecking=no",
-                        f"root@{FACTORY_HOST}", cmd], capture_output=True, text=True, timeout=timeout)
-    if r.returncode != 0:
-        raise RuntimeError(f"factory ssh failed: {r.stderr.strip()[:200]}")
-    return r.stdout
+
+def _factory_token() -> str:
+    """Read the admin token. Never logged, never returned in any payload."""
+    try:
+        with open(FACTORY_TOKEN_FILE) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _factory_request(method: str, path: str, payload: dict | None = None, *,
+                     admin: bool = False, timeout_s: float = FACTORY_TIMEOUT_S) -> dict:
+    """Call the CT109 factory HTTP API.
+
+    Raises RuntimeError with an honest message on transport/HTTP failure so the
+    callers can degrade to ``{available: false}`` instead of a 500. The admin
+    token is sent only in the X-Factory-Token header and never echoed back.
+    """
+    import urllib.error
+    import urllib.request
+    url = f"{FACTORY_BASE_URL}{path}"
+    headers = {"Accept": "application/json"}
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode()
+        headers["Content-Type"] = "application/json"
+    if admin:
+        token = _factory_token()
+        if not token:
+            raise RuntimeError(f"factory admin token missing ({FACTORY_TOKEN_FILE})")
+        headers["X-Factory-Token"] = token
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            raw = resp.read().decode()
+        return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode()[:200]
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError(
+            f"factory {method} {path}: HTTP {e.code} {detail}".strip()) from None
+    except Exception as e:  # noqa: BLE001 — transport errors become honest failures
+        raise RuntimeError(f"factory {method} {path}: {type(e).__name__}: {e}") from None
 
 
 _factory_status_cache = {"ts": 0.0, "data": None}
 
+
 @tool(ToolSpec(
     id="kai.factory.status", name="Factory status",
-    description="Android App Factory health: disk, emulator state, projects, latest artifacts.",
+    description="Android App Factory health: service, toolchain, project count (live HTTP API).",
     risk=SAFE, timeout_s=40.0, tags=["factory"]))
 def factory_status() -> dict:
     import time
@@ -842,58 +891,102 @@ def factory_status() -> dict:
     if now - _factory_status_cache["ts"] < 60 and _factory_status_cache["data"]:
         return _factory_status_cache["data"]
     try:
-        disk = _factory_ssh("df -h / | tail -1 | awk '{print $5}'").strip()
-        mem = _factory_ssh("free -h | awk '/Mem:/{print $3\"/\"$2}'").strip()
-        emu = "running" if _factory_ssh("ps aux | grep -c [e]mulator").strip() != "0" else "stopped"
-        projects = _factory_ssh("ls /opt/factory/projects | tr '\n' ' '").strip()
-        latest = _factory_ssh("ls -t /opt/factory/artifacts/kai-ultimate 2>/dev/null | head -1").strip()
+        health = _factory_request("GET", "/health")
+        toolchain = _factory_request("GET", "/api/toolchain")
+        listing = _factory_request("GET", "/api/projects")
     except Exception as e:  # noqa: BLE001 — an unreachable factory is a degraded
         # state, not a server error. Return 200 with available:false (the route
         # used to 500 on the raw RuntimeError).
-        return {"available": False, "host": FACTORY_HOST,
+        return {"available": False, "host": FACTORY_HOST, "base_url": FACTORY_BASE_URL,
                 "error": f"{type(e).__name__}: {e}"}
-    data = {"available": True, "host": FACTORY_HOST, "disk_used": disk, "memory": mem,
-            "emulator": emu, "projects": projects, "latest_artifact": latest}
+    projects = listing.get("projects") or []
+    data = {
+        "available": True,
+        "host": FACTORY_HOST,
+        "base_url": FACTORY_BASE_URL,
+        "service": health.get("service"),
+        "ok": bool(health.get("ok")),
+        "toolchain_ready": bool(health.get("toolchain_ready", toolchain.get("ready"))),
+        "toolchain": {k: toolchain.get(k) for k in ("java", "gradle", "android_sdk", "ready")},
+        "project_count": int(listing.get("count", len(projects)) or 0),
+        "projects": [{"id": p.get("id"), "name": p.get("name"), "package": p.get("package"),
+                      "template": p.get("template"), "created_at": p.get("created_at")}
+                     for p in projects[:20]],
+    }
     _factory_status_cache["ts"] = now
     _factory_status_cache["data"] = data
     return data
 
 
+def _resolve_factory_project(project: str) -> str:
+    """Accept a project id or a human name; resolve names via the API."""
+    if _FACTORY_ID_RE.match(project):
+        return project
+    listing = _factory_request("GET", "/api/projects")
+    for p in listing.get("projects") or []:
+        if project in (p.get("name"), p.get("id")):
+            return p["id"]
+    raise RuntimeError(f"factory project '{project}' not found")
+
+
 @tool(ToolSpec(
     id="kai.factory.build", name="Factory build",
-    description="Run the full factory pipeline (build/test/scan/emulator/AAB) on a project.",
+    description="Build a factory project over the HTTP API (Gradle when a toolchain is present).",
     risk=CONTROLLED, timeout_s=900.0, tags=["factory"],
-    inputs={"project": "str"}))
+    inputs={"project": "str (project id or name)"}))
 def factory_build(project: str) -> dict:
     try:
-        out = _factory_ssh(f"/opt/factory/pipeline-v2.sh /opt/factory/projects/{project} 2>&1", timeout=840)
+        pid = _resolve_factory_project(project)
+        out = _factory_request("POST", f"/api/projects/{pid}/build",
+                               admin=True, timeout_s=900.0)
     except Exception as e:  # noqa: BLE001 — honest failure, never a crash
         return {"ok": False, "host": FACTORY_HOST,
-                "error": f"{type(e).__name__}: {e}", "report": "", "artifacts": ""}
-    ok = "PIPELINE-PASS" in out
-    art = [l for l in out.splitlines() if l.startswith(("PIPELINE-PASS:", "PIPELINE-FAIL:"))]
-    return {"ok": ok, "report": out[-1500:], "artifacts": art[0].split(":",1)[1] if art else ""}
+                "error": f"{type(e).__name__}: {e}"}
+    return {"ok": out.get("status") == "success", "project": pid,
+            "status": out.get("status"), "detail": out}
 
 
 @tool(ToolSpec(
     id="kai.factory.reports", name="Factory reports",
-    description="Recent build reports from the factory.",
+    description="Factory projects and their recent builds (live HTTP API).",
     risk=SAFE, timeout_s=30.0, tags=["factory"]))
 def factory_reports(limit: int = 5) -> dict:
     try:
-        out = _factory_ssh(f"ls -t /opt/factory/artifacts/*/*/report.md 2>/dev/null | head -{min(limit,10)}")
+        listing = _factory_request("GET", "/api/projects")
     except Exception as e:  # noqa: BLE001 — degraded 200, not a 500
         return {"available": False, "host": FACTORY_HOST, "reports": [],
                 "error": f"{type(e).__name__}: {e}"}
+    projects = listing.get("projects") or []
     reports = []
+    for p in projects[:min(max(limit, 1), 10)]:
+        pid = p.get("id")
+        entry = {"id": pid, "name": p.get("name"), "template": p.get("template"),
+                 "created_at": p.get("created_at"), "builds": []}
+        if pid:
+            try:
+                detail = _factory_request("GET", f"/api/projects/{pid}")
+                entry["builds"] = detail.get("builds") or []
+            except Exception as e:  # noqa: BLE001 — one bad project can't hide the rest
+                entry["error"] = f"{type(e).__name__}: {e}"
+        reports.append(entry)
+    return {"available": True, "host": FACTORY_HOST,
+            "count": len(reports), "reports": reports}
+
+
+@tool(ToolSpec(
+    id="kai.factory.scaffold", name="Factory scaffold",
+    description="Scaffold a new Android project from a factory template (admin).",
+    risk=CONTROLLED, timeout_s=60.0, tags=["factory"],
+    inputs={"name": "str", "package": "str", "template": "empty|list_detail|webview"}))
+def factory_scaffold(name: str, package: str, template: str = "empty") -> dict:
     try:
-        for p in out.strip().splitlines():
-            content = _factory_ssh(f"cat {p} 2>/dev/null | head -20")
-            reports.append({"path": p, "content": content})
-    except Exception as e:  # noqa: BLE001
-        return {"available": False, "host": FACTORY_HOST, "reports": reports,
+        out = _factory_request("POST", "/api/projects",
+                               {"name": name, "package": package, "template": template},
+                               admin=True)
+    except Exception as e:  # noqa: BLE001 — honest failure, never a crash
+        return {"ok": False, "host": FACTORY_HOST,
                 "error": f"{type(e).__name__}: {e}"}
-    return {"available": True, "count": len(reports), "reports": reports}
+    return {"ok": bool(out.get("ok")), "id": out.get("id"), "path": out.get("path")}
 
 
 # --- kai.evolution.* : Self-Evolution Engine ------------------------------------

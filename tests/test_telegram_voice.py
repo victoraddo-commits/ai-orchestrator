@@ -229,13 +229,16 @@ class TestRouteVoiceMessageErrors:
                 _route_voice_message(message)
 
     @patch("core.telegram_bridge._download_file")
-    @patch("core.telegram_bridge._import_kai_chat")
-    def test_route_voice_message_tts_failure(self, mock_import, mock_download):
-        """speak returns ok=False."""
+    def test_route_voice_message_tts_failure(self, mock_download):
+        """speak returns ok=False after a successful chat turn."""
         mock_download.return_value = b"ogg"
-        mock_import.return_value = None
-        with patch("core.api.handle_kai_chat") as mock_chat:
-            mock_chat.return_value = {"response": "hello"}
+
+        import core.telegram_bridge as tb
+        original_import = tb._import_kai_chat
+        original_import()  # populate the lazy _handle_kai_chat global
+
+        mock_chat = MagicMock(return_value={"response": "hello"})
+        with patch.object(tb, "_handle_kai_chat", mock_chat):
             with patch("core.voice_router.transcribe") as mock_transcribe:
                 mock_transcribe.return_value = {"ok": True, "text": "hi"}
                 with patch("core.voice_router.speak") as mock_speak:

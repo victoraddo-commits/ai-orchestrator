@@ -1606,3 +1606,101 @@ def test_send_voice_raises_when_response_not_ok(monkeypatch):
 
     with pytest.raises(RuntimeError, match="sendVoice returned not ok"):
         tb.send_voice(b"\x00\x01\x00\x02" * 160, token="test-token", chat_id="612786480")
+
+
+# ---------------------------------------------------------------------------
+# Stray-webhook recovery (2026-09-21): Telegram forbids getUpdates while a
+# webhook is active. Live incident: a foreign webhook on
+# tele.goldenherd.com was set on @KaiEnzo_bot and @Juriskai_bot, producing
+# ~17k "Conflict ... webhook is active" errors/24h. A stray webhook must
+# never permanently break polling.
+# ---------------------------------------------------------------------------
+
+# Deliberately fake, allowlisted token (see scripts/check_no_secrets.py).
+_FAKE_BOT_TOKEN = "123456789:AABB" + "C" * 31
+
+
+def test_delete_webhook_calls_the_api_without_dropping_updates(monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["json"] = json
+        return _http_resp(200, {"ok": True, "result": True})
+
+    monkeypatch.setattr(tb.requests, "post", fake_post)
+
+    assert tb.delete_webhook(_FAKE_BOT_TOKEN) is True
+    assert captured["url"] == f"https://api.telegram.org/bot{_FAKE_BOT_TOKEN}/deleteWebhook"
+    assert captured["json"] == {"drop_pending_updates": False}
+
+
+def test_delete_webhook_returns_false_when_api_reports_failure(monkeypatch):
+    monkeypatch.setattr(
+        tb.requests, "post",
+        lambda *a, **k: _http_resp(200, {"ok": False, "description": "unauthorized"}),
+    )
+
+    assert tb.delete_webhook(_FAKE_BOT_TOKEN) is False
+
+
+def test_delete_webhook_returns_false_on_network_error(monkeypatch):
+    def boom(*args, **kwargs):
+        raise requests.exceptions.ConnectionError("no route to host")
+
+    monkeypatch.setattr(tb.requests, "post", boom)
+
+    assert tb.delete_webhook(_FAKE_BOT_TOKEN) is False
+
+
+def test_poll_updates_deletes_a_stray_webhook_then_resumes(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", _FAKE_BOT_TOKEN)
+    tb.reset_offset()
+
+    conflict = json.dumps({
+        "ok": False,
+        "error_code": 409,
+        "description": "Conflict: can't use getUpdates method while webhook is "
+                       "active; use deleteWebhook to delete the webhook first",
+    })
+    calls = {"get": 0, "delete": 0}
+
+    def fake_get(url, params=None, timeout=None):
+        calls["get"] += 1
+        if calls["get"] == 1:
+            return _http_error_resp(409, conflict)
+        return _http_resp(200, {"ok": True, "result": []})
+
+    def fake_post(url, data=None, json=None, timeout=None):
+        calls["delete"] += 1
+        return _http_resp(200, {"ok": True, "result": True})
+
+    monkeypatch.setattr(tb.requests, "get", fake_get)
+    monkeypatch.setattr(tb.requests, "post", fake_post)
+
+    assert tb.poll_updates(token=_FAKE_BOT_TOKEN, chat_id="612786480") == []
+    assert calls["get"] == 2
+    assert calls["delete"] == 1
+
+
+def test_poll_updates_does_not_touch_webhook_for_a_duplicate_consumer(monkeypatch):
+    monkeypatch.setenv("KAI_TELEGRAM_BOT_TOKEN", _FAKE_BOT_TOKEN)
+    tb.reset_offset()
+
+    body = json.dumps({
+        "ok": False,
+        "error_code": 409,
+        "description": "Conflict: terminated by other getUpdates request; "
+                       "make sure that only one bot instance is running",
+    })
+    monkeypatch.setattr(
+        tb.requests, "get",
+        lambda url, params=None, timeout=None: _http_error_resp(409, body),
+    )
+    monkeypatch.setattr(
+        tb.requests, "post",
+        lambda *a, **k: pytest.fail("deleteWebhook must not run for a duplicate poller"),
+    )
+
+    with pytest.raises(tb.TelegramConflictError):
+        tb.poll_updates(token=_FAKE_BOT_TOKEN, chat_id="612786480")

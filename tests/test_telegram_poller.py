@@ -85,6 +85,10 @@ def test_poll_once_returns_zero_when_nothing_arrived(monkeypatch):
 
 
 def test_run_forever_backs_off_and_keeps_going_after_a_poll_failure(monkeypatch):
+    # run_forever clears any stale webhook before polling; stub the network
+    # call so this test stays hermetic.
+    monkeypatch.setattr(poller, "delete_webhook", lambda: True)
+
     # SystemExit (not Exception) is the escape hatch here -- run_forever's
     # own except Exception must NOT swallow it, or this test would hang.
     calls = {"count": 0}
@@ -110,6 +114,8 @@ def test_run_forever_backs_off_and_keeps_going_after_a_poll_failure(monkeypatch)
 
 
 def test_run_forever_uses_longer_backoff_on_409_conflict(monkeypatch):
+    monkeypatch.setattr(poller, "delete_webhook", lambda: True)
+
     calls = {"count": 0}
     logged = []
 
@@ -133,4 +139,42 @@ def test_run_forever_uses_longer_backoff_on_409_conflict(monkeypatch):
     assert calls["count"] == 2
     assert set(logged) == {poller.CONFLICT_BACKOFF_SECONDS}
     assert poller.CONFLICT_BACKOFF_SECONDS > poller.ERROR_BACKOFF_SECONDS
+
+
+def test_ensure_no_webhook_calls_the_bridge(monkeypatch):
+    called = []
+    monkeypatch.setattr(poller, "delete_webhook", lambda: called.append(True) or True)
+
+    poller.ensure_no_webhook()
+
+    assert called == [True]
+
+
+def test_ensure_no_webhook_swallows_errors(monkeypatch):
+    def boom():
+        raise RuntimeError("telegram unreachable")
+
+    monkeypatch.setattr(poller, "delete_webhook", boom)
+
+    # Must not raise: a failed cleanup cannot stop the poller from starting.
+    poller.ensure_no_webhook()
+
+
+def test_run_forever_disables_webhooks_before_polling(monkeypatch):
+    order = []
+
+    monkeypatch.setattr(poller, "ensure_no_webhook", lambda: order.append("webhook"))
+
+    def fake_poll_once():
+        order.append("poll")
+        raise SystemExit
+
+    monkeypatch.setattr(poller, "poll_once", fake_poll_once)
+
+    try:
+        poller.run_forever()
+    except SystemExit:
+        pass
+
+    assert order == ["webhook", "poll"]
 

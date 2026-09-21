@@ -24,6 +24,7 @@ from core.logger import info
 from core.telegram_bridge import (
     poll_updates,
     TelegramConflictError,
+    delete_webhook,
     route_inbound_reply,
     route_callback_query,
     answer_callback_query,
@@ -118,8 +119,23 @@ def _approval_watcher_loop():
             pass  # never crash the poller
         time.sleep(30)
 
+def ensure_no_webhook():
+    """Best-effort: clear any active Telegram webhook before polling.
+
+    Telegram refuses getUpdates while a webhook is set, so a stray webhook
+    (e.g. one set on the token by a third party) would otherwise flood the
+    logs with 409 conflicts. Startup cleanup makes the poller self-healing;
+    failures are non-fatal because poll_updates also recovers on the 409.
+    """
+    try:
+        delete_webhook()
+    except Exception as error:
+        info(f"telegram_poller: webhook cleanup skipped: {type(error).__name__}")
+
+
 def run_forever():
     info("telegram_poller started")
+    ensure_no_webhook()
 
     # Start approval watcher as daemon thread
     _watcher_thread = threading.Thread(target=_approval_watcher_loop, daemon=True)

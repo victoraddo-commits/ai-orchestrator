@@ -123,6 +123,7 @@ def test_run_forever_resumes_from_persisted_offset(tmp_path, monkeypatch):
         bot, "get_account_manager", lambda: types.SimpleNamespace(db=":memory:")
     )
     monkeypatch.setattr("pathlib.Path.touch", lambda self, *a, **k: None)
+    monkeypatch.setattr(bot, "delete_webhook", lambda: True)
 
     seen = []
 
@@ -136,3 +137,91 @@ def test_run_forever_resumes_from_persisted_offset(tmp_path, monkeypatch):
         bot.run_forever()
 
     assert seen == [4242]
+
+
+# ---------------------------------------------------------------------------
+# Stray-webhook recovery (2026-09-21): a foreign webhook was set on the bot,
+# so Telegram rejected every getUpdates with HTTP 409.
+# ---------------------------------------------------------------------------
+
+
+def test_delete_webhook_calls_telegram_api(monkeypatch):
+    captured = {}
+
+    def fake_api(method, data, timeout=35):
+        captured["method"] = method
+        captured["data"] = data
+        return {"ok": True, "result": True}
+
+    monkeypatch.setattr(bot, "telegram_api", fake_api)
+
+    assert bot.delete_webhook() is True
+    assert captured["method"] == "deleteWebhook"
+    assert captured["data"] == {"drop_pending_updates": False}
+
+
+def test_poll_updates_recovers_when_a_webhook_blocks_getupdates(tmp_path, monkeypatch):
+    monkeypatch.setenv("JURIS_KAI_TELEGRAM_OFFSET_FILE", str(tmp_path / "offset"))
+    calls = []
+
+    def fake_api(method, data, timeout=35):
+        calls.append(method)
+        if method == "getUpdates" and calls.count("getUpdates") == 1:
+            return {
+                "ok": False,
+                "description": (
+                    "Conflict: can't use getUpdates method while webhook is "
+                    "active; use deleteWebhook to delete the webhook first"
+                ),
+            }
+        return {"ok": True, "result": []}
+
+    monkeypatch.setattr(bot, "telegram_api", fake_api)
+
+    assert bot.poll_updates(offset=None) is None
+    assert calls == ["getUpdates", "deleteWebhook", "getUpdates"]
+
+
+def test_poll_updates_reports_webhook_conflict_without_deleting_on_plain_409(tmp_path, monkeypatch):
+    monkeypatch.setenv("JURIS_KAI_TELEGRAM_OFFSET_FILE", str(tmp_path / "offset"))
+    monkeypatch.setattr(bot.time, "sleep", lambda seconds: None)
+    calls = []
+
+    def fake_api(method, data, timeout=35):
+        calls.append(method)
+        return {
+            "ok": False,
+            "description": "Conflict: terminated by other getUpdates request",
+        }
+
+    monkeypatch.setattr(bot, "telegram_api", fake_api)
+
+    assert bot.poll_updates(offset=None) is None
+    assert calls == ["getUpdates"]
+
+
+def test_run_forever_disables_webhook_at_startup(tmp_path, monkeypatch):
+    monkeypatch.setenv("JURIS_KAI_TELEGRAM_OFFSET_FILE", str(tmp_path / "offset"))
+    monkeypatch.setattr(bot, "_get_bot_token", lambda: "123:abc")
+    monkeypatch.setattr(bot, "_TG_BOT", None)
+    monkeypatch.setattr(
+        bot, "get_account_manager", lambda: types.SimpleNamespace(db=":memory:")
+    )
+    monkeypatch.setattr("pathlib.Path.touch", lambda self, *a, **k: None)
+
+    order = []
+
+    monkeypatch.setattr(
+        bot, "delete_webhook", lambda: order.append("webhook") or True
+    )
+
+    def fake_poll(offset):
+        order.append("poll")
+        raise SystemExit
+
+    monkeypatch.setattr(bot, "poll_updates", fake_poll)
+
+    with pytest.raises(SystemExit):
+        bot.run_forever()
+
+    assert order == ["webhook", "poll"]

@@ -193,6 +193,33 @@ def send_message(
     return results[-1] if results else {"ok": False}
 
 
+# Telegram bot tokens look like "<bot_id>:<secret>". Never log one; the token
+# appears in the getUpdates URL, so a raw network-error string would leak it.
+_TOKEN_RE = re.compile(r"\d{5,}:[A-Za-z0-9_-]{20,}")
+
+
+def _redact(text) -> str:
+    """Strip anything token-shaped from text before it reaches a log."""
+    if not text:
+        return ""
+    return _TOKEN_RE.sub("<redacted-token>", str(text))
+
+
+def delete_webhook() -> bool:
+    """Remove any active webhook so getUpdates can run.
+
+    Live 2026-09-21: an unrelated third-party webhook was set on this bot
+    token, so Telegram rejected every getUpdates with HTTP 409 and flooded the
+    logs. Clearing it at startup makes polling self-healing; the poll loop also
+    retries once on the same 409. Never raises.
+    """
+    try:
+        resp = telegram_api("deleteWebhook", {"drop_pending_updates": False})
+        return bool(resp.get("ok"))
+    except Exception:
+        return False
+
+
 def send_typing(chat_id: int | str) -> None:
     """Send typing indicator."""
     telegram_api("sendChatAction", {"chat_id": chat_id, "action": "typing"})
@@ -1537,8 +1564,15 @@ def poll_updates(offset: int | None = None) -> int | None:
         params["offset"] = offset
 
     resp = telegram_api("getUpdates", params)
+    if not resp.get("ok") and "webhook" in str(resp.get("description", "")).lower():
+        # An active webhook blocks getUpdates entirely. Delete it once and
+        # retry, so a stray webhook can never permanently break polling.
+        logger.warning("getUpdates blocked by an active webhook -- deleting it")
+        if delete_webhook():
+            resp = telegram_api("getUpdates", params)
+
     if not resp.get("ok"):
-        err = resp.get('description', '')
+        err = _redact(resp.get('description', ''))
         logger.error(f"getUpdates failed: {err}")
         # If another getUpdates listener conflicts (409), back off to avoid
         # a tight retry loop that would hammer Telegram.
@@ -1610,6 +1644,10 @@ def run_forever():
         logger.error("JURIS_KAI_BOT_TOKEN not set. Bot cannot start.")
         print("ERROR: JURIS_KAI_BOT_TOKEN environment variable is not set.")
         return
+
+    # Clear any active webhook before long-polling getUpdates (Telegram forbids
+    # both at once). Best-effort: never block startup on it.
+    delete_webhook()
 
     logger.info("Juris Kai bot starting...")
     print("⚖️ Juris Kai bot starting...")

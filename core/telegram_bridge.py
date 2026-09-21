@@ -369,6 +369,92 @@ def _is_conflict(error, detail: str) -> bool:
     return "conflict" in detail.lower()
 
 
+def _is_webhook_conflict(detail: str) -> bool:
+    """True when a 409 is caused by an active webhook, not a second poller.
+
+    Telegram's wording is "Conflict: can't use getUpdates method while webhook
+    is active; use deleteWebhook to delete the webhook first". A plain
+    duplicate-poller conflict ("terminated by other getUpdates request") does
+    not mention a webhook and must NOT trigger auto-deletion.
+    """
+    return "webhook" in detail.lower()
+
+
+def delete_webhook(token=None):
+    """Remove any active webhook so getUpdates can run.
+
+    Returns True once Telegram confirms removal, False on any error. Never
+    raises and never logs the token. ``drop_pending_updates`` is left False:
+    updates queued by a hijacked webhook are skipped via the offset rather
+    than silently force-dropped.
+    """
+    if token is None:
+        token = _load_token()
+    try:
+        response = requests.post(
+            _api_url("deleteWebhook", token),
+            json={"drop_pending_updates": False},
+            timeout=15,
+        )
+        return bool(response.json().get("ok"))
+    except Exception:
+        return False
+
+
+def _fetch_updates(token, poll_timeout, allow_webhook_recovery=True):
+    """One getUpdates request.
+
+    If Telegram reports that an active webhook blocks getUpdates, delete the
+    webhook once and retry -- a stray webhook must never permanently break
+    polling.
+    """
+    try:
+        response = requests.get(
+            _api_url("getUpdates", token),
+            params={
+                "offset": _resolve_offset(),
+                "timeout": poll_timeout,
+                "allowed_updates": json.dumps(["message", "callback_query"]),
+            },
+            # The HTTP client timeout must comfortably exceed Telegram's own
+            # server-side long-poll window, or requests aborts the
+            # connection right as a reply would have arrived.
+            timeout=poll_timeout + 15,
+        )
+        response.raise_for_status()
+        body = response.json()
+    except Exception as error:
+        detail = _describe_http_error(error)
+        if _is_conflict(error, detail):
+            if allow_webhook_recovery and _is_webhook_conflict(detail):
+                if delete_webhook(token):
+                    return _fetch_updates(
+                        token, poll_timeout, allow_webhook_recovery=False
+                    )
+            raise TelegramConflictError(
+                "Telegram getUpdates conflict (409) -- duplicate getUpdates "
+                f"consumer for this bot token: {detail}"
+            ) from error
+        raise RuntimeError(f"Telegram getUpdates failed: {detail}") from error
+
+    if not body.get("ok"):
+        description = _redact(body.get("description", "unknown"))
+        if body.get("error_code") == 409 or "conflict" in str(description).lower():
+            if allow_webhook_recovery and _is_webhook_conflict(description):
+                if delete_webhook(token):
+                    return _fetch_updates(
+                        token, poll_timeout, allow_webhook_recovery=False
+                    )
+            raise TelegramConflictError(
+                "Telegram getUpdates conflict (409) -- duplicate getUpdates "
+                f"consumer for this bot token: {description}"
+            )
+        raise RuntimeError(
+            f"Telegram getUpdates returned not ok: {description}"
+        )
+    return body
+
+
 _last_update_id = None
 
 
@@ -418,40 +504,7 @@ def poll_updates(token=None, chat_id=None, poll_timeout=0):
     if chat_id is None:
         chat_id = ALLOWED_CHAT_ID
 
-    try:
-        response = requests.get(
-            _api_url("getUpdates", token),
-            params={
-                "offset": _resolve_offset(),
-                "timeout": poll_timeout,
-                "allowed_updates": json.dumps(["message", "callback_query"]),
-            },
-            # The HTTP client timeout must comfortably exceed Telegram's own
-            # server-side long-poll window, or requests aborts the
-            # connection right as a reply would have arrived.
-            timeout=poll_timeout + 15,
-        )
-        response.raise_for_status()
-        body = response.json()
-    except Exception as error:
-        detail = _describe_http_error(error)
-        if _is_conflict(error, detail):
-            raise TelegramConflictError(
-                "Telegram getUpdates conflict (409) -- duplicate getUpdates "
-                f"consumer for this bot token: {detail}"
-            ) from error
-        raise RuntimeError(f"Telegram getUpdates failed: {detail}") from error
-
-    if not body.get("ok"):
-        description = _redact(body.get("description", "unknown"))
-        if body.get("error_code") == 409 or "conflict" in str(description).lower():
-            raise TelegramConflictError(
-                "Telegram getUpdates conflict (409) -- duplicate getUpdates "
-                f"consumer for this bot token: {description}"
-            )
-        raise RuntimeError(
-            f"Telegram getUpdates returned not ok: {description}"
-        )
+    body = _fetch_updates(token, poll_timeout)
 
     messages = []
 

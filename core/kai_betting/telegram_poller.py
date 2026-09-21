@@ -65,9 +65,24 @@ def _set_menu() -> None:
     _call("setMyCommands", {"commands": json.dumps(MENU)})
 
 
+def _delete_webhook() -> bool:
+    """Remove any active webhook so getUpdates can run.
+
+    Telegram forbids getUpdates while a webhook is active. Clearing it at
+    startup (and retrying once on the 409) makes polling self-healing instead
+    of a permanent error loop. Never raises.
+    """
+    try:
+        res = _call("deleteWebhook", {"drop_pending_updates": "false"})
+        return bool(res.get("ok"))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def run_forever() -> None:
     from core.kai_betting.telegram_bot import BettingTelegramBot
     bot = BettingTelegramBot()
+    _delete_webhook()
     _set_menu()
     offset = None
     logger.info("betsportz poller started")
@@ -77,8 +92,16 @@ def run_forever() -> None:
             params["offset"] = offset
         res = _call("getUpdates", params, timeout=40)
         if not res.get("ok"):
-            time.sleep(5)
-            continue
+            description = str(res.get("description") or res.get("error") or "")
+            if "webhook" in description.lower():
+                logger.warning(
+                    "getUpdates blocked by an active webhook -- deleting it"
+                )
+                if _delete_webhook():
+                    res = _call("getUpdates", params, timeout=40)
+            if not res.get("ok"):
+                time.sleep(5)
+                continue
         for upd in res.get("result", []):
             offset = int(upd.get("update_id", 0)) + 1
 

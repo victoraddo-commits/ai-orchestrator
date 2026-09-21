@@ -1070,6 +1070,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <a class="nav-item" href="#settings" data-hash="settings"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Settings</span></a>
       <a class="nav-item" href="#logs" data-hash="logs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span><span class="label">Logs</span></a>
       <a class="nav-item" href="#diagnostics" data-hash="diagnostics"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span class="label">Diagnostics</span></a>
+      <a class="nav-item" href="#audit" data-hash="audit"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Audit</span></a>
       <a class="nav-item" href="#kai-chat" data-hash="kai-chat"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="label">Kai Chat</span></a>
       <a class="nav-item" href="#devices" data-hash="devices"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span><span class="label">Devices</span></a>
       <a class="nav-item" href="#network" data-hash="network"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">Network</span></a>
@@ -1262,6 +1263,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <!-- DIAGNOSTICS -->
       <section class="panel" id="panel-diagnostics"><div id="diagnostics-content"><span class="loading">loading…</span></div></section>
 
+      <!-- AUDIT -->
+      <section class="panel" id="panel-audit"><div id="audit-content"><span class="loading">loading…</span></div></section>
+
       <!-- KAI CHAT (SP5 — Mobile Chat UI) -->
       <section class="panel" id="panel-kai-chat">
         <div class="chat-container" id="chat-container">
@@ -1435,7 +1439,7 @@ const PANEL_TITLES = {
   evolution:'Evolution', network:'Network', models:'Model Fabric', vault:'Vault', secondbrain:'2nd Brain',
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
   sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise',
-  diagnostics:'Diagnostics'
+  diagnostics:'Diagnostics', audit:'Audit'
 };
 
 const $=id=>document.getElementById(id);
@@ -1681,7 +1685,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit};
   if(fns[name])fns[name]();
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
@@ -1904,6 +1908,59 @@ async function loadDiagnostics() {
       +'</tbody></table></div></div>';
     el.innerHTML=html;
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+window._auditF={source:'',severity:'',actor:'',action:''};
+async function loadAudit(){
+  const el=$('audit-content'); if(!el) return;
+  const f=window._auditF||{};
+  const SRC=[['','all sources'],['build_history','build'],['approval_queue','approval'],['decisions','decision'],['incidents','incident'],['gateway_audit','gateway'],['secret_access_audit','secret'],['ai_usage_history','ai'],['remediation_history','remediation'],['verification_history','verification'],['command_bus_audit','command bus'],['execution_audit','execution']];
+  const SEV=[['','all severity'],['info','info'],['warn','warn'],['error','error']];
+  const opt=(v,l,sel)=>'<option value="'+esc(v)+'"'+(sel?' selected':'')+'>'+esc(l)+'</option>';
+  const st='background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);border-radius:6px;padding:4px 6px;font-size:0.66rem;font-family:var(--font-mono)';
+  el.innerHTML='<div class="spread" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">'
+    +'<span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">Audit trail · merged</span>'
+    +'<span style="display:flex;gap:6px;flex-wrap:wrap">'
+    +'<select id="audit-src" style="'+st+'" onchange="auditApply()">'+SRC.map(s=>opt(s[0],s[1],f.source===s[0])).join('')+'</select>'
+    +'<select id="audit-sev" style="'+st+'" onchange="auditApply()">'+SEV.map(s=>opt(s[0],s[1],f.severity===s[0])).join('')+'</select>'
+    +'<input id="audit-actor" placeholder="actor" value="'+esc(f.actor||'')+'" style="'+st+';width:110px">'
+    +'<input id="audit-action" placeholder="action prefix" value="'+esc(f.action||'')+'" style="'+st+';width:130px">'
+    +'<button class="btn btn-xs" onclick="auditApply()">Apply</button>'
+    +'<button class="btn btn-xs" onclick="auditReset()">Reset</button>'
+    +'</span></div><div id="audit-table"><span class="loading">loading…</span></div>';
+  await auditFetch();
+}
+window.auditApply=function(){
+  const g=id=>{const n=$(id);return n?n.value:'';};
+  window._auditF={source:g('audit-src'),severity:g('audit-sev'),actor:g('audit-actor'),action:g('audit-action')};
+  auditFetch();
+};
+window.auditReset=function(){window._auditF={source:'',severity:'',actor:'',action:''};loadAudit();};
+async function auditFetch(){
+  const box=$('audit-table'); if(!box) return;
+  const f=window._auditF||{};
+  const qs=new URLSearchParams(); qs.set('limit','200');
+  if(f.source)qs.set('source',f.source);
+  if(f.severity)qs.set('severity',f.severity);
+  if(f.actor)qs.set('actor',f.actor);
+  if(f.action)qs.set('action',f.action);
+  box.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/kai/audit?'+qs.toString());
+    const entries=d.entries||[];
+    if(!entries.length){box.innerHTML='<p class="empty">No matching audit entries.</p>';return;}
+    let h='<div class="field-hint" style="margin-bottom:6px">'+esc(d.returned)+' of '+esc(d.total)+' entr'+(d.total===1?'y':'ies')+'</div>';
+    h+='<div class="table-wrap"><table><thead><tr><th>When</th><th>Source</th><th>Sev</th><th>Action</th><th>Actor</th><th>Summary</th></tr></thead><tbody>';
+    entries.forEach(e=>{const sev=e.severity||'info';const cls=sev==='error'?'bad':(sev==='warn'?'warn':'ok');
+      h+='<tr><td style="font-size:0.64rem;white-space:nowrap">'+esc(String(e.timestamp||'').replace('T',' ').slice(0,19))+'</td>'
+        +'<td>'+esc(e.source||'\u2014')+'</td>'
+        +'<td><span class="badge '+cls+'">'+esc(sev)+'</span></td>'
+        +'<td style="font-size:0.66rem">'+esc(e.action||'\u2014')+'</td>'
+        +'<td>'+esc(e.actor||'\u2014')+'</td>'
+        +'<td style="font-size:0.66rem">'+esc(String(e.summary||'\u2014').slice(0,140))+'</td></tr>';});
+    h+='</tbody></table></div>';
+    box.innerHTML=h;
+  }catch(e){box.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
 // ── Status Bar ────────────────────────────────────────────────────

@@ -969,6 +969,8 @@ AUDIT_SOURCES = {
     "ai_usage_history": "ai_usage_history.json",
     "remediation_history": "remediation_history.json",
     "verification_history": "verification_history.json",
+    "command_bus_audit": "command_bus_audit.json",
+    "execution_audit": "execution_audit.json",
 }
 
 
@@ -1099,6 +1101,47 @@ def _normalize_verification(entry: dict) -> dict | None:
     }
 
 
+def _normalize_command_bus(entry: dict) -> dict | None:
+    if not entry.get("timestamp") or not entry.get("command"):
+        return None
+    return {
+        "timestamp": entry["timestamp"],
+        "source": "command_bus",
+        "action": f"command.{entry.get('status', 'unknown')}",
+        "actor": entry.get("user", "system"),
+        "summary": entry.get("command", ""),
+        "status": entry.get("status", "unknown"),
+        "detail": {k: entry.get(k) for k in ("reason", "decision", "risk", "source")
+                   if entry.get(k) is not None},
+    }
+
+
+def _normalize_execution(entry: dict) -> dict | None:
+    if not entry.get("timestamp"):
+        return None
+    return {
+        "timestamp": entry["timestamp"],
+        "source": "execution",
+        "action": f"execution.{entry.get('action', 'unknown')}",
+        "actor": "system",
+        "summary": f"{entry.get('service', '?')}: {entry.get('action', '')}",
+        "status": entry.get("result", "unknown"),
+        "detail": {"incident": entry.get("incident"), "service": entry.get("service")},
+    }
+
+
+def _audit_severity(status: str | None) -> str:
+    """Map a normalized audit status onto the CC's 3-level severity ramp."""
+    s = str(status or "").lower()
+    if s in ("error", "failed", "fail", "failure", "denied", "critical",
+             "drifted", "rolled_back", "unavailable", "circuit_open"):
+        return "error"
+    if s in ("warning", "warn", "degraded", "quota_exceeded", "pending",
+             "approval_required", "open"):
+        return "warn"
+    return "info"
+
+
 def _last_actor(history: list) -> str:
     """Extract the last human actor from a status-change history."""
     if not history:
@@ -1138,6 +1181,8 @@ _NORMALIZERS = {
     "ai_usage_history": _normalize_ai_usage,
     "remediation_history": _normalize_remediation,
     "verification_history": _normalize_verification,
+    "command_bus_audit": _normalize_command_bus,
+    "execution_audit": _normalize_execution,
 }
 
 
@@ -1147,12 +1192,13 @@ def get_audit_log(
     actor: str | None = None,
     source: str | None = None,
     action: str | None = None,
+    severity: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     limit: int = 200,
     format: str = "json",
 ):
-    """Merged chronological audit log from all Kai data sources (9 total).
+    """Merged chronological audit log from all Kai data sources (11 total).
 
     Query params:
       actor      — filter by operator/username
@@ -1191,6 +1237,7 @@ def get_audit_log(
             if entry is None:
                 continue
             entry["source_ip"] = client_ip
+            entry["severity"] = _audit_severity(entry.get("status"))
             entries.append(entry)
 
     # Filter
@@ -1198,6 +1245,8 @@ def get_audit_log(
         entries = [e for e in entries if actor.lower() in e.get("actor", "").lower()]
     if action:
         entries = [e for e in entries if e.get("action", "").startswith(action)]
+    if severity:
+        entries = [e for e in entries if e.get("severity") == severity]
     if date_from:
         entries = [e for e in entries if e.get("timestamp", "") >= date_from]
     if date_to:
@@ -1219,6 +1268,31 @@ def get_audit_log(
                         headers={"Content-Disposition": "attachment; filename=kai_audit.csv"})
 
     return {"total": total, "returned": len(entries), "entries": entries}
+
+
+@app.get("/kai/audit")
+def kai_audit_log(
+    request: Request,
+    actor: str | None = None,
+    source: str | None = None,
+    action: str | None = None,
+    severity: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    limit: int = 200,
+    format: str = "json",
+):
+    """Command Center alias of ``/audit`` — identical merged/sorted feed.
+
+    The CC historically called ``/kai/audit`` (404). Rather than duplicate the
+    aggregation, this delegates to :func:`get_audit_log` so both paths always
+    return the same shape and sources.
+    """
+    return get_audit_log(
+        request=request, actor=actor, source=source, action=action,
+        severity=severity, date_from=date_from, date_to=date_to,
+        limit=limit, format=format,
+    )
 
 
 # ── Phase 15D: SSE endpoint ──────────────────────────────────────────────

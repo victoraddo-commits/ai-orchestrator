@@ -270,3 +270,15 @@ never call a missing route.
   `provider_health.get_all_quota_snapshots()`. One failed section degrades to
   an `error` field; it never 500s the page.
 - Was `404`; now `401` without an operator and `200` with one.
+
+### Audit panel (`audit`)
+
+- Sidebar `nav-item[data-hash="audit"]`, `<section id="panel-audit">`,
+  `PANEL_TITLES.audit`, `loadPanel()` → `loadAudit()`.
+- `loadAudit()` renders a server-filtered table (source / severity / actor /
+  action) from `GET /kai/audit`, with colour-plus-label severity badges.
+- Backend: `GET /kai/audit` is now an alias of `/audit` (delegates to
+  `get_audit_log`, so the shape and sources can never drift). `AUDIT_SOURCES`
+  gained `command_bus_audit.json` (Command Bus) and `execution_audit.json`
+  (remediation runner), with normalizers and a derived `severity`
+  (info/warn/error) on every merged entry.

@@ -212,17 +212,47 @@ def rotate_secret(provider: str, new_api_key: str) -> bool:
     return True
 
 
-def delete_secret(provider: str) -> bool:
-    """Remove a provider's stored credentials. Returns True if found."""
+def _delete_local(provider: str) -> bool:
+    """Remove a provider from the local store only (no cross-store calls).
+
+    Internal primitive shared by :func:`delete_secret` and the credential
+    vault so the two cannot recurse into each other. Covers both legacy
+    plaintext entries and the AES-256-GCM ciphertext written by
+    ``credential_vault.store_credential`` — they share this backing file.
+    """
     data = _load()
     if provider not in data:
-        _log_access(provider, "delete_secret", False, "not_found")
         return False
-
     del data[provider]
     _save(data)
-    _log_access(provider, "delete_secret", True)
     return True
+
+
+def delete_secret(provider: str) -> bool:
+    """Remove a provider's credentials from every store they resolve from.
+
+    Clears, and logs, each store that can hold the key:
+
+      1. ``memory/provider_secrets.json`` — legacy plaintext entries and the
+         AES-256-GCM ``credential_vault`` ciphertext (same backing file), via
+         :func:`core.ai.credential_vault.delete_api_key`.
+      2. the kai-vault machine plane — best effort. The deployed machine
+         plane implements only reveal/set, so that copy may remain; when it
+         does it is logged and never reported as cleared.
+
+    Returns True if at least one stored copy was removed.
+    """
+    try:
+        from core.ai.credential_vault import delete_api_key
+        removed = delete_api_key(provider)
+    except ImportError:
+        removed = _delete_local(provider)
+
+    if removed:
+        _log_access(provider, "delete_secret", True, "cleared>=1_store")
+    else:
+        _log_access(provider, "delete_secret", False, "not_found")
+    return removed
 
 
 def list_secrets() -> list[dict]:

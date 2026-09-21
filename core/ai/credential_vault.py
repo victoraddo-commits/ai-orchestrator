@@ -308,6 +308,50 @@ def delete_vault_entry(provider: str) -> bool:
     return result
 
 
+def delete_api_key(provider: str) -> bool:
+    """Delete a provider credential from every store ``retrieve_api_key`` reads.
+
+    Mirrors :func:`retrieve_api_key`'s source order:
+
+      1. local store (``provider_secrets.json``) — the AES-256-GCM ciphertext
+         written by :func:`store_credential` (and any legacy plaintext entry,
+         which shares the same backing file). Removed via the non-recursive
+         ``secrets._delete_local`` primitive.
+      2. kai-vault machine plane — best effort via
+         :func:`core.ai.kai_vault_client.delete_for_provider`.
+
+    The deployed machine plane exposes only reveal/set, so a delete there can
+    return False even when a kai-vault copy exists; that is logged and the
+    copy is NOT reported as cleared. Rotation bookkeeping is always dropped.
+
+    Returns True if at least one copy was removed.
+    """
+    removed_local = _secrets_store._delete_local(provider)
+    if removed_local:
+        _info(f"credential_vault: cleared local store entry for '{provider}'")
+
+    state = _load_rotation_state()
+    if provider in state:
+        del state[provider]
+        _save_rotation_state(state)
+
+    removed_vault = False
+    try:
+        from core.ai.kai_vault_client import delete_for_provider
+        removed_vault = delete_for_provider(provider)
+    except Exception as exc:  # noqa: BLE001 - vault trouble never blocks cleanup
+        _warn(f"credential_vault: kai-vault delete failed for '{provider}': "
+              f"{type(exc).__name__}")
+
+    if removed_vault:
+        _info(f"credential_vault: cleared kai-vault machine-plane entry for "
+              f"'{provider}'")
+    elif not removed_local:
+        _warn(f"credential_vault: no copy removed for '{provider}'")
+
+    return removed_local or removed_vault
+
+
 def check_health(provider: str) -> dict:
     """Test a stored credential by calling the provider's models endpoint.
 

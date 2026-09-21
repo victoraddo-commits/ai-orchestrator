@@ -138,3 +138,54 @@ def fetch_for_provider(provider: str) -> Optional[str]:
     if not token:
         return None
     return fetch_secret(secret_path_for_provider(provider), token)
+
+
+def delete_for_provider(provider: str, token: Optional[str] = None) -> bool:
+    """Best-effort delete of a provider secret from the kai-vault machine plane.
+
+    Mirrors :func:`fetch_for_provider` — same path convention and bearer
+    token — but sends ``operation="delete"``. Values are never logged.
+
+    The machine plane as deployed (CT107) implements only reveal/set for a
+    static service subject: it ignores unknown operations and returns the
+    value for any existing path with HTTP 200. HTTP 200 is therefore NOT
+    proof of deletion; this returns True only when the response body
+    explicitly confirms it (``{"deleted": true}``). A False return means the
+    kai-vault copy must be considered intact (token cannot delete, path
+    absent, or vault unreachable).
+    """
+    token = token or load_token()
+    if not token:
+        return False
+
+    path = secret_path_for_provider(provider)
+    url = f"{vault_url()}/api/v1/machine/secret"
+    try:
+        response = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            json={"path": path, "operation": "delete",
+                  "reason": "orchestrator credential deletion"},
+            timeout=VAULT_TIMEOUT,
+            verify=_verify_for(url),
+        )
+    except requests.RequestException as error:
+        logger.warning("kai-vault delete unreachable (%s) — copy not removed",
+                       type(error).__name__)
+        return False
+
+    if response.status_code == 200:
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        if isinstance(body, dict) and body.get("deleted") is True:
+            return True
+        logger.warning(
+            "kai-vault delete NOT confirmed for %s (machine plane does not "
+            "implement deletion) — copy not removed", path)
+        return False
+
+    logger.warning("kai-vault delete: %s -> HTTP %d (copy not removed)",
+                   path, response.status_code)
+    return False

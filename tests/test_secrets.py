@@ -11,6 +11,25 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
+@pytest.fixture(autouse=True)
+def _isolate_external_stores(tmp_path, monkeypatch):
+    """Keep every test in this module off the real credential stores.
+
+    The production resolver reads the local provider_secrets.json, the
+    AES-256-GCM credential_vault, and the kai-vault machine plane. Tests
+    must never touch the live machines. The machine plane also cannot
+    delete, so it is stubbed to "no copy" here; individual tests that need
+    to assert on it re-patch these attributes.
+    """
+    import core.ai.credential_vault as vault
+    import core.ai.kai_vault_client as kvc
+
+    monkeypatch.setattr(vault, "ROTATION_STATE_PATH",
+                        tmp_path / "vault_rotation_state.json")
+    monkeypatch.setattr(kvc, "fetch_for_provider", lambda provider: None)
+    monkeypatch.setattr(kvc, "delete_for_provider", lambda provider: False)
+
+
 class TestSecretsStorage:
     """CRUD operations for provider secrets."""
 
@@ -117,6 +136,16 @@ class TestSecretsStorage:
 class TestSecretsIntegration:
     """Integration with llm_clients and AI Gateway."""
 
+    @pytest.fixture(autouse=True)
+    def _isolated_local_storage(self, tmp_path, monkeypatch):
+        """Point the local store at a throwaway file for every test here."""
+        import core.ai.secrets as secrets
+
+        monkeypatch.setattr(secrets, "STORAGE_PATH",
+                            tmp_path / "provider_secrets.json")
+        monkeypatch.setattr(secrets, "AUDIT_PATH",
+                            tmp_path / "secret_access_audit.json")
+
     def test_require_key_reads_from_secrets_store(self, monkeypatch):
         from core.ai.secrets import set_secret
         set_secret("deepseek", api_key="integration-test-key-abcdef")
@@ -135,9 +164,17 @@ class TestSecretsIntegration:
 
     def test_require_key_falls_back_to_env(self, monkeypatch):
         import core.llm_clients as llm
+        import core.ai.kai_vault_client as kvc
 
         monkeypatch.setenv("GROQ_API_KEY", "groq-from-env")
-        # Ensure no secret is stored for groq
+
+        # Explicitly isolate every store the resolver consults so this test
+        # exercises ONLY the env-fallback path:
+        #  - local provider_secrets.json  -> emptied (autouse fixture)
+        #  - AES-256-GCM credential_vault -> same local store, emptied above
+        #  - kai-vault machine plane      -> cannot delete, mocked to "absent"
+        monkeypatch.setattr(kvc, "fetch_for_provider", lambda provider: None)
+        monkeypatch.setattr(kvc, "delete_for_provider", lambda provider: False)
         from core.ai.secrets import delete_secret
         delete_secret("groq")
 
@@ -168,6 +205,54 @@ class TestSecretsIntegration:
         assert pro_key == flash_key == "unified-deepseek-key"
 
         delete_secret("deepseek")
+
+    def test_delete_secret_clears_credential_vault(self, monkeypatch):
+        """A key stored via the AES-GCM credential_vault must be removed.
+
+        set -> get returns it -> delete -> get returns None (and the
+        machine-plane copy, which cannot be deleted, is mocked absent so
+        the assertion is deterministic).
+
+        This host does not have the optional ``cryptography`` package (it is
+        not in requirements.txt), so a reversible stand-in cipher keeps the
+        key opaque at rest exactly like the real ciphertext. AES round-trips
+        themselves are covered by tests/test_credential_vault.py.
+        """
+        import core.ai.credential_vault as vault
+        import core.ai.kai_vault_client as kvc
+        import core.ai.secrets as secrets
+
+        monkeypatch.setattr(vault, "encrypt", lambda value: "enc:" + value)
+        monkeypatch.setattr(vault, "decrypt", lambda value: value.split(":", 1)[1])
+        monkeypatch.setattr(kvc, "fetch_for_provider", lambda provider: None)
+        monkeypatch.setattr(kvc, "delete_for_provider", lambda provider: False)
+
+        vault.store_credential("vault_only_provider", "vault-secret-key",
+                               api_base="https://vault.example/v1")
+        # Stored as ciphertext, not plaintext (raw store read, no logging).
+        raw = json.loads(secrets.STORAGE_PATH.read_text())
+        assert raw["vault_only_provider"]["api_key"] != "vault-secret-key"
+        assert vault.retrieve_api_key("vault_only_provider") == "vault-secret-key"
+        assert secrets.get_api_key("vault_only_provider") == "vault-secret-key"
+
+        assert secrets.delete_secret("vault_only_provider") is True
+
+        assert vault.retrieve_api_key("vault_only_provider") is None
+        assert secrets.get_api_key("vault_only_provider") is None
+        assert secrets.get_secret("vault_only_provider") is None
+
+    def test_delete_secret_attempts_kai_vault_cleanup(self, monkeypatch):
+        """delete_secret must attempt the kai-vault machine plane and treat
+        its confirmation as a removal."""
+        import core.ai.kai_vault_client as kvc
+        import core.ai.secrets as secrets
+
+        calls = []
+        monkeypatch.setattr(kvc, "delete_for_provider",
+                            lambda provider: calls.append(provider) or True)
+
+        assert secrets.delete_secret("groq") is True
+        assert calls == ["groq"]
 
 
 class TestAuditLogging:

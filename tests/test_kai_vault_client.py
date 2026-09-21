@@ -73,6 +73,51 @@ def test_secret_path_convention():
 
 
 # ---------------------------------------------------------------------------
+# Deletion (2026-09-21): the deployed machine plane implements only
+# reveal/set for a static service subject — it ignores unknown operations and
+# returns the value for any existing path with HTTP 200. delete_for_provider
+# must therefore require explicit confirmation and never treat a reveal as a
+# successful delete.
+# ---------------------------------------------------------------------------
+
+
+def test_delete_for_provider_false_without_token():
+    with mock.patch.dict(kvc.os.environ, {"VAULT_BEARER_TOKEN": ""}), \
+         mock.patch.object(kvc, "VAULT_TOKEN_FILE", "/nonexistent/vault-token"):
+        assert kvc.delete_for_provider("gpuai") is False
+
+
+def test_delete_for_provider_not_fooled_by_reveal_response(monkeypatch):
+    class R:
+        status_code = 200
+
+        def json(self):
+            return {"value": "still-here"}
+
+    monkeypatch.setattr(kvc.requests, "post", lambda *a, **k: R())
+    assert kvc.delete_for_provider("gpuai", token="tok") is False
+
+
+def test_delete_for_provider_true_only_on_explicit_confirmation(monkeypatch):
+    class R:
+        status_code = 200
+
+        def json(self):
+            return {"deleted": True}
+
+    monkeypatch.setattr(kvc.requests, "post", lambda *a, **k: R())
+    assert kvc.delete_for_provider("gpuai", token="tok") is True
+
+
+def test_delete_for_provider_false_on_http_error(monkeypatch):
+    class R:
+        status_code = 403
+
+    monkeypatch.setattr(kvc.requests, "post", lambda *a, **k: R())
+    assert kvc.delete_for_provider("gpuai", token="tok") is False
+
+
+# ---------------------------------------------------------------------------
 # Endpoint + TLS (2026-09-20): default pointed at 192.168.1.117:8120 -- a
 # host that does not exist -- so every scheduler cycle logged "kai-vault
 # unreachable". The working machine plane is CT107 over TLS :8443.

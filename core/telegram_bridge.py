@@ -60,7 +60,7 @@ def _load_token():
     Vault lookup disabled until encryption bug is fixed.
 
     Token format: <bot_id>:<secret>
-    Example: 8934555328:AAFLfgsXP9zkXK13FT_1uM8U3UHC0fTLiNo
+    Example: 123456789:REPLACE_ME_WITH_BOT_TOKEN
     """
     def _is_valid_token(token):
         """Validate Telegram bot token format."""

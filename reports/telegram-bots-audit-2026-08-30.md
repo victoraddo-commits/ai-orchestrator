@@ -113,7 +113,7 @@ getUpdates failed: Conflict: terminated by other getUpdates request
 |-------|--------|
 | `getMe` | ✅ `@DeerudeClaude_Bot` confirmed |
 | Service logs | ✅ No errors |
-| Token isolation | ✅ Dedicated token (`8783853233:AAErzPhoa1n5iYQjrm8BJacw0xQv97VUdts`) |
+| Token isolation | ✅ Dedicated token (`redacted`) |
 | State directory | `~/.claude/channels/telegram/` |
 
 **Key fact:** This bot uses a **completely separate token** from KaiEnzo_bot. There is zero conflict risk between the Claude Code plugin and any Kai bot, even if they were running on the same machine. Token isolation is the correct approach.

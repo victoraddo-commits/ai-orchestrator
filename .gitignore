@@ -44,3 +44,23 @@ key.pem
 
 # Vault OIDC client secret
 .vault_oidc_client_secret
+
+# ---------------------------------------------------------------------------
+# Secrets / credential material — never commit.
+# Guard: scripts/check_no_secrets.py (also wired as a pre-commit hook and in
+# .github/workflows/secret-scan.yml). If a real secret was ever committed,
+# rotation -- not deletion -- is the remediation.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*.env
+!.env.example
+*.token
+*.secret
+*_token.txt
+*_secret.txt
+*_tokens.json
+*_secrets.json
+*_credentials.json
+secrets.json
+credentials.json

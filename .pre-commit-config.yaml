@@ -1,0 +1,13 @@
+# Run `pre-commit install` once per clone to enable the hook.
+# The same scan runs in CI (.github/workflows/secret-scan.yml) and in pytest
+# (tests/test_no_secrets.py::test_repository_tracked_files_have_no_unallowlisted_secrets).
+repos:
+  - repo: local
+    hooks:
+      - id: check-no-secrets
+        name: check for hardcoded secrets
+        description: Fail if a Telegram token or provider key is hardcoded in a tracked file.
+        entry: python scripts/check_no_secrets.py --staged
+        language: system
+        pass_filenames: false
+        always_run: true

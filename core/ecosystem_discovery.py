@@ -16,13 +16,37 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
-SRC_ROOT = Path("/project/src")
-ORCHESTRATOR_ROOT = Path("/project/ai-orchestrator")
+# Layout is configurable so discovery also works off the master-repo host.
+# On the runner (CT111) /project is only a symlink and /project/src does not
+# exist; point KAI_SRC_ROOT at a real equivalent (e.g. /opt/ai-orchestrator)
+# if you want a populated scan there. The defaults preserve master-repo
+# behaviour.
+PROJECT_ROOT = Path(os.environ.get("KAI_PROJECT_ROOT", "/project"))
+SRC_ROOT = Path(os.environ.get("KAI_SRC_ROOT", "/project/src"))
+ORCHESTRATOR_ROOT = Path(
+    os.environ.get("KAI_ORCHESTRATOR_ROOT", "/project/ai-orchestrator"))
+
+
+def _rel_to_project(path: Path) -> str:
+    """Project-relative identifier that never raises.
+
+    Falls back to the bare file/dir name when *path* is not under
+    PROJECT_ROOT (e.g. tests scanning a temporary fixture root).
+    """
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return path.name
+
 
 # ── Module discovery ──────────────────────────────────────────────────────────
 
 def scan_src_directory(root: Path = SRC_ROOT) -> list[dict]:
-    """Scan src/ subdirectories and classify each as an entity."""
+    """Scan src/ subdirectories and classify each as an entity.
+
+    Degrades gracefully: a missing root yields an empty list, not an error,
+    so discovery runs on hosts that do not have /project/src.
+    """
     entities = []
     if not root.exists():
         return entities
@@ -126,8 +150,12 @@ def _should_scan_file(f: Path) -> bool:
     return True
 
 def _entity_from_path(f: Path) -> str:
-    """Extract entity name from a file path relative to /project."""
-    rel = f.relative_to(Path("/project"))
+    """Extract entity name from a file path relative to PROJECT_ROOT."""
+    try:
+        rel = f.relative_to(PROJECT_ROOT)
+    except ValueError:
+        # Foreign/temporary root (e.g. test fixture): use the immediate parent.
+        return f.parent.name or "unknown"
     parts = rel.parts
     # /project/ai-orchestrator/core/ai/secrets.py → "ai-orchestrator"
     # /project/src/kai-vault/... → "kai-vault"
@@ -136,6 +164,7 @@ def _entity_from_path(f: Path) -> str:
     if parts[0] in ("ai-orchestrator", "src"):
         return parts[1]
     return parts[0]
+
 
 def _detect_secret_store_in_file(f: Path) -> list[dict]:
     stores = []
@@ -148,7 +177,7 @@ def _detect_secret_store_in_file(f: Path) -> list[dict]:
 
     if f.name in JSON_SECRET_FILES or f.name.startswith(".env"):
         stores.append({
-            "id": f"file:{f.relative_to(Path('/project'))}",
+            "id": f"file:{_rel_to_project(f)}",
             "type": "secret_store",
             "format": f.suffix.lstrip("."),
             "entity": _entity_from_path(f),
@@ -159,7 +188,7 @@ def _detect_secret_store_in_file(f: Path) -> list[dict]:
     hits = sum(1 for p in SECRET_PATTERNS if p.search(content))
     if hits >= 3:
         stores.append({
-            "id": f"inline:{f.relative_to(Path('/project'))}",
+            "id": f"inline:{_rel_to_project(f)}",
             "type": "secret_store",
             "format": "inline",
             "entity": _entity_from_path(f),
@@ -198,7 +227,7 @@ def _detect_telegram_in_file(f: Path) -> list[dict]:
     hits = sum(1 for p in TELEGRAM_PATTERNS if p.search(content))
     if hits >= 2:
         bots.append({
-            "id": f"bot:{f.relative_to(Path('/project'))}",
+            "id": f"bot:{_rel_to_project(f)}",
             "platform": "telegram",
             "entity": _entity_from_path(f),
             "path": str(f),
@@ -214,8 +243,13 @@ NOTIFY_PATTERNS = [
 ]
 
 def find_notification_systems(root: Path = SRC_ROOT) -> list[dict]:
-    """Find systems that aggregate or send notifications."""
+    """Find systems that aggregate or send notifications.
+
+    Returns an empty list (never raises) when *root* does not exist.
+    """
     systems = []
+    if not root.exists():
+        return systems
     for subdir in sorted(root.iterdir()):
         if not subdir.is_dir() or subdir.name.startswith(".") or subdir.name in ("node_modules", "dist", "__pycache__"):
             continue
@@ -313,14 +347,20 @@ CAPABILITIES = [
 
 # ── Build initial graph ──────────────────────────────────────────────────────
 
-def build_initial_graph() -> dict:
-    """Run all discovery scans and build the initial ecosystem graph."""
+def build_initial_graph(root: Path = SRC_ROOT) -> dict:
+    """Run all discovery scans and build the initial ecosystem graph.
+
+    *root* defaults to ``SRC_ROOT`` (``KAI_SRC_ROOT`` or ``/project/src``). A
+    missing root is fine: scan collections come back empty while the graph
+    still exposes its required ``entities``/``capabilities``/``relationships``
+    keys.
+    """
     now = datetime.now(timezone.utc).isoformat()
     entities = {}
     capabilities = {}
     relationships = []
 
-    for entity in scan_src_directory():
+    for entity in scan_src_directory(root):
         entities[entity["id"]] = entity
 
     orch = {
@@ -330,12 +370,12 @@ def build_initial_graph() -> dict:
         "description": "Autonomous infra ops + app builder platform",
         "canonical_owner": False,
         "status": "active",
-        "path": "/project/ai-orchestrator",
+        "path": str(ORCHESTRATOR_ROOT),
     }
     entities["ai-orchestrator"] = orch
 
     secret_entities = {}
-    for store in find_secret_stores(SRC_ROOT):
+    for store in find_secret_stores(root):
         entity_id = store.get("entity", "unknown")
         if entity_id not in secret_entities:
             secret_entities[entity_id] = {
@@ -350,7 +390,7 @@ def build_initial_graph() -> dict:
     for ent in secret_entities.values():
         entities[ent["id"]] = ent
 
-    for bot in find_telegram_bots(SRC_ROOT):
+    for bot in find_telegram_bots(root):
         rel = {
             "from": bot["entity"],
             "to": "kai-vault",
@@ -359,7 +399,7 @@ def build_initial_graph() -> dict:
         }
         relationships.append(rel)
 
-    for sys in find_notification_systems():
+    for sys in find_notification_systems(root):
         if sys["id"] not in entities:
             entities[sys["id"]] = {
                 "id": sys["id"],

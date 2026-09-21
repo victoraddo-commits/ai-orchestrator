@@ -453,6 +453,33 @@ class TestMasterKey:
         with pytest.raises(RuntimeError, match="unavailable"):
             vault._get_master_key()
 
+    def test_load_from_existing_file_is_not_regenerated(self, monkeypatch, tmp_path):
+        """A pre-existing master key file must be READ, never regenerated.
+
+        Regenerating it would orphan all existing AES-GCM ciphertext, so the
+        file-first branch is a data-safety invariant worth pinning.
+        """
+        import core.ai.credential_vault as vault
+
+        monkeypatch.setattr(vault, "_MASTER_KEY", None)
+        monkeypatch.setattr(vault, "_MASTER_KEY_SOURCE", "none")
+        monkeypatch.delenv("VAULT_MASTER_KEY", raising=False)
+        monkeypatch.chdir(tmp_path)
+
+        mem = tmp_path / "memory"
+        mem.mkdir(exist_ok=True)
+        key_file = mem / "vault_master_key"
+        existing = bytes.fromhex("d" * 64)
+        key_file.write_text(existing.hex())
+        key_file.chmod(0o600)
+        before = key_file.read_text()
+
+        key = vault._load_master_key()
+
+        assert key == existing
+        assert vault._MASTER_KEY_SOURCE == "file"
+        assert key_file.read_text() == before
+
 
 # ---------------------------------------------------------------------------
 # Health check

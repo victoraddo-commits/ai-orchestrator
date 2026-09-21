@@ -1071,6 +1071,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <a class="nav-item" href="#logs" data-hash="logs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span><span class="label">Logs</span></a>
       <a class="nav-item" href="#diagnostics" data-hash="diagnostics"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span class="label">Diagnostics</span></a>
       <a class="nav-item" href="#audit" data-hash="audit"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Audit</span></a>
+      <a class="nav-item" href="#world" data-hash="world"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">World</span></a>
       <a class="nav-item" href="#kai-chat" data-hash="kai-chat"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="label">Kai Chat</span></a>
       <a class="nav-item" href="#devices" data-hash="devices"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span><span class="label">Devices</span></a>
       <a class="nav-item" href="#network" data-hash="network"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">Network</span></a>
@@ -1266,6 +1267,9 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <!-- AUDIT -->
       <section class="panel" id="panel-audit"><div id="audit-content"><span class="loading">loading…</span></div></section>
 
+      <!-- WORLD MODEL -->
+      <section class="panel" id="panel-world"><div id="world-content"><span class="loading">loading…</span></div></section>
+
       <!-- KAI CHAT (SP5 — Mobile Chat UI) -->
       <section class="panel" id="panel-kai-chat">
         <div class="chat-container" id="chat-container">
@@ -1439,7 +1443,7 @@ const PANEL_TITLES = {
   evolution:'Evolution', network:'Network', models:'Model Fabric', vault:'Vault', secondbrain:'2nd Brain',
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
   sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise',
-  diagnostics:'Diagnostics', audit:'Audit'
+  diagnostics:'Diagnostics', audit:'Audit', world:'World Model'
 };
 
 const $=id=>document.getElementById(id);
@@ -1685,7 +1689,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
   if(fns[name])fns[name]();
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
@@ -1825,6 +1829,10 @@ async function loadFactory() {
   const el=$('factory-content');
   try{
     const s=await api('/kai/tools/factory/status');
+    if(s.available===false){
+      el.innerHTML='<h3>Android App Factory</h3><p class="empty">Factory host '+esc(s.host||'unknown')+' unreachable.</p><div class="field-hint">'+esc(s.error||'no detail')+'</div><div style="margin-top:10px"><button class="btn btn-xs" onclick="loadFactory()">Retry</button></div>';
+      return;
+    }
     let html='<h3>Android App Factory</h3>';
     html+=`<div class="spread"><span>Disk</span><span class="badge ${parseInt(s.disk_used)>80?'bad':'ok'}">${esc(s.disk_used)}</span></div>`;
     html+=`<div class="spread"><span>Memory</span><span>${esc(s.memory)}</span></div>`;
@@ -1961,6 +1969,34 @@ async function auditFetch(){
     h+='</tbody></table></div>';
     box.innerHTML=h;
   }catch(e){box.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+
+async function loadWorld(){
+  const el=$('world-content'); if(!el) return; el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/kai/world');
+    const ents=d.entities||[], edges=d.edges||[], changes=d.changes||[], counts=d.counts||{};
+    const m=(l,v,c)=>'<div class="metric"><span class="val" style="color:'+(c||'var(--accent)')+'">'+esc(v==null?'\u2014':v)+'</span><span class="lbl">'+esc(l)+'</span></div>';
+    let html='<div class="spread" style="margin-bottom:10px"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">World Model · '+esc(d.updated_at||'not built yet')+'</span><button class="btn btn-xs" onclick="loadWorld()">Refresh</button></div>';
+    html+='<div class="metric-row">'+m('Entities',ents.length)+m('Edges',edges.length,'var(--info)')+m('Changes',changes.length,changes.length?'var(--warn)':'var(--accent)')+'</div>';
+    if(changes.length){
+      html+='<div class="card"><h3>Changes since previous snapshot <span class="badge warn">'+changes.length+'</span></h3><div class="table-wrap"><table><thead><tr><th>Entity</th><th>From</th><th>To</th></tr></thead><tbody>';
+      changes.slice(0,50).forEach(c=>{const to=String(c.to||'');const cls=/ok|up|healthy|running|online/.test(to)?'ok':(/down|failed|error|offline|unreachable/.test(to)?'bad':'info');
+        html+='<tr><td style="font-size:0.68rem">'+esc(c.entity||'\u2014')+'</td><td>'+esc(c.from||'\u2014')+'</td><td><span class="badge '+cls+'">'+esc(to||'\u2014')+'</span></td></tr>';});
+      html+='</tbody></table></div></div>';
+    }
+    html+='<div class="card"><h3>Entities by type</h3>'+_autoTable(counts.by_type||{})+'</div>';
+    html+='<div class="card"><h3>Entities <span class="badge info">'+ents.length+'</span></h3><div class="table-wrap"><table><thead><tr><th>Entity</th><th>Type</th><th>Label</th><th>Status</th></tr></thead><tbody>';
+    ents.slice(0,200).forEach(e=>{const st=String(e.status||'unknown');const cls=/ok|up|healthy|running|online|active/.test(st)?'ok':(/offline|down|failed|error|stopped|unreachable/.test(st)?'bad':(/degraded|warn|unknown/.test(st)?'warn':'info'));
+      html+='<tr><td style="font-size:0.66rem">'+esc(e.id)+'</td><td>'+esc(e.type||'\u2014')+'</td><td>'+esc(e.label||'\u2014')+'</td><td><span class="badge '+cls+'">'+esc(st)+'</span></td></tr>';});
+    html+='</tbody></table></div>'+(ents.length>200?'<div class="field-hint">showing first 200 of '+esc(ents.length)+'</div>':'')+'</div>';
+    if(edges.length){
+      html+='<div class="card"><h3>Dependency edges <span class="badge info">'+edges.length+'</span></h3><div class="table-wrap"><table><thead><tr><th>Source depends on</th><th>Target</th><th>Kind</th></tr></thead><tbody>';
+      edges.slice(0,120).forEach(ed=>{html+='<tr><td style="font-size:0.66rem">'+esc(ed.src||'\u2014')+'</td><td style="font-size:0.66rem">'+esc(ed.dst||'\u2014')+'</td><td>'+esc(ed.kind||'\u2014')+'</td></tr>';});
+      html+='</tbody></table></div></div>';
+    }
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
 // ── Status Bar ────────────────────────────────────────────────────

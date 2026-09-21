@@ -227,6 +227,14 @@ def _save(snap: dict) -> None:
 
 # --- queries ----------------------------------------------------------------
 
+def get_snapshot() -> dict:
+    """Return the persisted world snapshot, building one if none exists yet."""
+    snap = _load()
+    if not snap:
+        snap = build_snapshot()
+    return snap
+
+
 def get_state(entity_id: str | None = None) -> dict:
     snap = _load()
     if entity_id:

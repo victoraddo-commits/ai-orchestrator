@@ -306,3 +306,27 @@ state change only (no steady-state spam):
 
 Tests: `tests/test_infra_event_publishers.py` (7 cases incl. dedupe and
 no-publish-on-baseline).
+
+### World Model panel (`world`)
+
+- Sidebar `nav-item[data-hash="world"]`, `<section id="panel-world">`,
+  `PANEL_TITLES.world`, `loadPanel()` → `loadWorld()`.
+- `loadWorld()` renders the snapshot timestamp, entity/edge/change metric row,
+  the change list (from→to), entities-by-type, the entity table
+  (id/type/label/status) and the dependency-edge table from `GET /kai/world`.
+- Backend `core/cc_extra_routes.py::kai_world` returns the full
+  `core.world_model.get_snapshot()` (building one if absent) with entities
+  flattened to a sorted list; read-only, same access policy as
+  `/kai/tools/world`.
+
+### Factory 500 fix
+
+- Root cause: `FACTORY_HOST` was the stale `192.168.1.119`; CT109
+  (kai-android-factory) is `192.168.1.120` (net0 verified 2026-09-21), and
+  `_factory_ssh` raised an unhandled `RuntimeError` on the SSH auth failure.
+- Fix: corrected the host and made `factory_status` / `factory_reports` /
+  `factory_build` return an honest degraded payload
+  (`available: false` + `error`) so the routes are **200, not 500**. The
+  Factory panel renders the unreachable state with the error and a Retry.
+- The factory host still rejects SSH (no key authorised for CT111); the
+  endpoint is now honest about that instead of crashing.

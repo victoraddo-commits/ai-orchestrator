@@ -404,6 +404,29 @@ def api_diagnostics(_: None = Depends(_req_op)):
     }
 
 
+@cc_extra_router.get("/kai/world")
+def kai_world():
+    """Full world-model snapshot for the Command Center World panel.
+
+    Read-only, same access policy as the sibling ``/kai/tools/world``. Entities
+    are returned as a sorted list (the store keys them by id). Reuses
+    ``core.world_model`` — it does not collect or invent state itself.
+    """
+    from core import world_model
+    snap = world_model.get_snapshot()
+    entities = [{"id": eid, **(entity or {})}
+                for eid, entity in (snap.get("entities") or {}).items()]
+    entities.sort(key=lambda e: str(e.get("id", "")))
+    return {
+        "schema_version": snap.get("schema_version", 1),
+        "updated_at": snap.get("updated_at"),
+        "counts": snap.get("counts") or {},
+        "entities": entities,
+        "edges": snap.get("edges") or [],
+        "changes": snap.get("changes_since_previous") or [],
+    }
+
+
 @cc_extra_router.get("/kai/doctor")
 def kai_doctor():
     """Full system self-diagnostic (§23)."""

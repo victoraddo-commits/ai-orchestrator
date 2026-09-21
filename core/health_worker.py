@@ -51,6 +51,8 @@ class HealthWorker:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._sample_count = 0
+        # Last observed health signature — used to publish only on real change.
+        self._last_health_sig: Optional[dict] = None
 
     # -------------------------------------------------------------------
     # Lifecycle
@@ -176,6 +178,8 @@ class HealthWorker:
         record_snapshot(result)
         self._sample_count += 1
 
+        self._publish_health_change(result)
+
         # Write shared state file so the API process can see worker health
         self._write_state_file()
 
@@ -187,6 +191,27 @@ class HealthWorker:
                 f"({stats['anomalies_unacked']} unacked), "
                 f"{stats['db_size_bytes'] / 1_048_576:.1f} MB"
             )
+
+    def _publish_health_change(self, result):
+        """Emit ``infra.health.changed`` only when the sampled health differs
+        from the previous sample (dedupe: no event on steady state)."""
+        sig = _health_signature(result)
+        previous = self._last_health_sig
+        self._last_health_sig = sig
+        if previous is None or previous == sig:
+            return
+        try:
+            from core import kai_event_bus
+            kai_event_bus.publish(
+                "infra.health.changed",
+                {"hostname": sig.get("hostname"),
+                 "previous": previous,
+                 "current": sig},
+                source="health_worker",
+                severity=kai_event_bus.IMPORTANT,
+            )
+        except Exception as exc:  # noqa: BLE001 — publishing must never break the sample
+            logger.debug("HealthWorker: event publish failed: %s", exc)
 
     # -------------------------------------------------------------------
     # Anomaly notification
@@ -246,6 +271,20 @@ class HealthWorker:
             )
             conn.commit()
             info(f"HealthWorker: anomaly notification sent for {metric} (id={anom_id}, z={z_score:.1f})")
+
+
+def _health_signature(result: dict) -> dict:
+    """Compact, comparable health signature from one scanner snapshot."""
+    docker = result.get("docker") or {}
+    states: dict = {}
+    for container in (docker.get("containers") or []):
+        state = str(container.get("State") or container.get("state") or "unknown")
+        states[state] = states.get(state, 0) + 1
+    return {
+        "hostname": result.get("hostname"),
+        "docker_available": bool(docker.get("available")),
+        "container_states": states,
+    }
 
 
 # ---------------------------------------------------------------------------

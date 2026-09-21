@@ -7,6 +7,7 @@ from core.connectivity_monitor import test_site_paths
 from core.network_knowledge import load_graph
 from core.logger import info
 from core import incident_manager
+from core import kai_event_bus
 
 # Site definitions for connectivity testing
 SITE_A = {
@@ -56,12 +57,31 @@ def run_network_discovery_cycle():
         changes = detect_changes(prior, graph)
         for change in changes:
             _emit_alert(change)
+            _publish_change(change)
 
     # 5. Save
     save(graph)
 
     info(f"network_discovery: cycle complete — {len(changes) if prior else 0} changes")
     return graph
+
+
+_CRITICAL_CHANGE_TYPES = {"PEER_OFFLINE", "ROUTE_WITHDRAWN", "ROUTE_REJECTED"}
+
+
+def _publish_change(change: dict):
+    """Publish a network topology change on the event bus.
+
+    ``detect_changes`` only returns diffs against the previous graph, so this
+    is already genuine-change-only (no steady-state spam).
+    """
+    severity = (kai_event_bus.CRITICAL if change.get("type") in _CRITICAL_CHANGE_TYPES
+                else kai_event_bus.INFORMATIONAL)
+    try:
+        kai_event_bus.publish("network.node.changed", dict(change),
+                              source="network_discovery", severity=severity)
+    except Exception as e:  # noqa: BLE001 — never let telemetry break discovery
+        info(f"network_discovery: failed to publish change: {e}")
 
 
 def _emit_alert(change: dict):

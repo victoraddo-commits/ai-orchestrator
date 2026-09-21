@@ -292,3 +292,17 @@ Missions panel and the Telegram `/pause /resume /stop /redirect` commands
 (`core/mission_steering.py`) work end-to-end. `paused → stopped` was added to
 the mission state machine so a paused mission can be stopped. Operator-gated;
 unknown mission `404`, forbidden transition `409`, malformed redirect `422`.
+
+### Infra event publishers (change-only, deduped)
+
+Three workers that had **no** `kai_event_bus` publishes now emit on genuine
+state change only (no steady-state spam):
+
+| Module | Topic | Trigger / dedupe |
+|---|---|---|
+| `core/health_worker.py` | `infra.health.changed` | container-state signature differs from previous sample (signature compare) |
+| `core/network_discovery_cycle.py` | `network.node.changed` | each diff returned by `detect_changes` (already change-only) |
+| `core/provider_health_monitor.py` | `provider.health.changed` | a provider's health differs from its previous check (`_last_health` map) |
+
+Tests: `tests/test_infra_event_publishers.py` (7 cases incl. dedupe and
+no-publish-on-baseline).

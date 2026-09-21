@@ -65,6 +65,8 @@ class ProviderHealthMonitor:
         self._check_count = 0
         self._last_alert_sent = {}  # Track last alert time per provider to avoid spam
         self._alert_cooldown = 300  # Don't re-alert same provider within 5 minutes
+        # Last observed health per provider — publish only on real transitions.
+        self._last_health: Dict[str, str] = {}
 
     # -------------------------------------------------------------------
     # Lifecycle
@@ -152,6 +154,7 @@ class ProviderHealthMonitor:
             try:
                 status = self._check_provider(name, provider_info)
                 self._store_health(name, status)
+                self._publish_health_change(name, status)
 
                 # Detect failures and notify. 'disabled' is an intentional
                 # state (deprecated provider being phased out, or operator-
@@ -251,6 +254,31 @@ class ProviderHealthMonitor:
             detail=status.get('reason') or status.get('detail'),
             **{k: v for k, v in status.items() if k not in ['health', 'percent_remaining', 'reason', 'detail']}
         )
+
+    def _publish_health_change(self, provider: str, status: Dict[str, Any]):
+        """Publish ``provider.health.changed`` only when a provider's health
+        differs from the previous check (dedupe: no steady-state spam)."""
+        health = status.get("health", "unknown")
+        previous = self._last_health.get(provider)
+        self._last_health[provider] = health
+        if previous is None or previous == health:
+            return
+        try:
+            from core import kai_event_bus
+            if health in ("error", "unavailable", "circuit_open"):
+                severity = kai_event_bus.CRITICAL
+            elif health in ("quota_exceeded", "degraded"):
+                severity = kai_event_bus.IMPORTANT
+            else:
+                severity = kai_event_bus.INFORMATIONAL
+            kai_event_bus.publish(
+                "provider.health.changed",
+                {"provider": provider, "from": previous, "to": health,
+                 "detail": status.get("reason") or status.get("detail")},
+                source="provider_health_monitor", severity=severity,
+            )
+        except Exception as exc:  # noqa: BLE001 — never break monitoring
+            logger.warning("ProviderHealthMonitor: event publish failed: %s", exc)
 
     def _notify_failure(self, provider: str, status: Dict[str, Any]):
         """Send Telegram notification on provider failure."""

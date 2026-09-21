@@ -74,7 +74,7 @@ def test_telegram_mission_flow_is_audited(monkeypatch):
 
     # policy layer: the command was authorized and audited by the Command Bus
     from core.memory import load
-    audit = load("command_bus_audit") or {}
+    audit = load("command_bus_audit.json") or {}
     rows = audit.get("records") or []
     mine = [r for r in rows if r.get("command") == "/mission"]
     assert mine, rows

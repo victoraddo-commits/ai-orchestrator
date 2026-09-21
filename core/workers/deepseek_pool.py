@@ -145,7 +145,34 @@ class DeepSeekWorkerPool:
     # --- Task submission ---
 
     def submit(self, task_type: str, prompt: str, build_id: Optional[str] = None, build_name: Optional[str] = None) -> str:
-        """Enqueue a task. Returns task_id for tracking."""
+        """Enqueue a task. Returns task_id for tracking.
+
+        Build 23A: the process-wide pool (``get_pool()``) dispatches the
+        mutation through the KAI Command Bus so AgentGuard authorizes it and it
+        lands in ``command_bus_audit``. The bus handler targets the singleton,
+        so a directly-constructed pool (one the bus cannot address) enqueues
+        directly — the documented escape hatch. Either way the enqueue itself
+        is the same ``_enqueue_task`` implementation.
+        """
+        from core.workers import deepseek_pool as _dp
+        if _dp._pool is not self:
+            return self._enqueue_task(task_type, prompt, build_id, build_name)
+
+        from core.command_bus import get_bus
+        result = get_bus().dispatch(
+            "control.worker.submit",
+            params={"task_type": task_type, "prompt": prompt,
+                    "build_id": build_id, "build_name": build_name},
+            source="worker_pool", user="scheduler",
+            # Redacted details: the guard must not see the free-form prompt.
+            details=f"worker task_type={task_type} build_id={build_id or '-'}")
+        if result.get("status") != "success":
+            raise RuntimeError(result.get("message", "worker task refused by policy"))
+        return result["data"]
+
+    def _enqueue_task(self, task_type: str, prompt: str, build_id: Optional[str] = None,
+                      build_name: Optional[str] = None) -> str:
+        """Put a task on the queue. Returns its task_id (bus handler target)."""
         task_id = f"ds-{uuid.uuid4().hex[:8]}"
         task = WorkerTask(
             task_id=task_id,

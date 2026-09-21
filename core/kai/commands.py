@@ -295,11 +295,13 @@ COMMAND_PATTERNS = (
         re.compile(r"^kai,\s*(?:find\s+improvements|create\s+an?\s+improvement\s+proposal)\.?$", re.IGNORECASE),
         _handle_improvements,
         "Find improvements / create an improvement proposal.",
+        True,  # mutating: writes a proposal
     ),
     (
         re.compile(r"^kai,\s*continue\s+roadmap\.?$", re.IGNORECASE),
         _handle_continue_roadmap,
         "Advance the active roadmap.",
+        True,  # mutating: advances the roadmap
     ),
     (
         re.compile(r"^kai,\s*review\s+recent\s+failures\.?$", re.IGNORECASE),
@@ -324,22 +326,45 @@ COMMAND_PATTERNS = (
 )
 
 
-def dispatch(text):
+def dispatch(text, *, via_bus: bool = False, source: str = "voice",
+             user: str = "operator"):
+    """Match ``text`` to a command pattern and run it.
+
+    Mutating intents (marked with a truthy 4th tuple element) dispatch through
+    the KAI Command Bus when ``via_bus=True`` so AgentGuard authorizes them and
+    they land in ``command_bus_audit`` (build 23A). The bus's own handler calls
+    back here with ``via_bus=False`` to run the matched handler — that re-entry
+    is the documented escape hatch that keeps one implementation, not two.
+    """
     cleaned = (text or "").strip()
 
-    for pattern, handler, description in COMMAND_PATTERNS:
+    for entry in COMMAND_PATTERNS:
+        pattern, handler, description = entry[0], entry[1], entry[2]
+        mutating = bool(entry[3]) if len(entry) > 3 else False
         match = pattern.match(cleaned)
-        if match:
-            try:
-                import inspect
-                if inspect.signature(handler).parameters:
-                    result = handler(match)
-                else:
-                    result = handler()
-            except Exception as e:
-                return {"matched": True, "description": description, "result": None, "error": str(e)}
+        if not match:
+            continue
 
-            return {"matched": True, "description": description, "result": result, "error": None}
+        if mutating and via_bus:
+            from core.command_bus import get_bus
+            bus_result = get_bus().dispatch("control.voice.intent",
+                                            params={"text": text},
+                                            source=source, user=user)
+            if bus_result.get("status") == "success":
+                return bus_result.get("data")
+            return {"matched": True, "description": description, "result": None,
+                    "error": bus_result.get("message", "refused by policy")}
+
+        try:
+            import inspect
+            if inspect.signature(handler).parameters:
+                result = handler(match)
+            else:
+                result = handler()
+        except Exception as e:
+            return {"matched": True, "description": description, "result": None, "error": str(e)}
+
+        return {"matched": True, "description": description, "result": result, "error": None}
 
     return {"matched": False, "description": None, "result": None, "error": f"No matching command pattern for: {text!r}"}
 
@@ -359,7 +384,8 @@ COMMAND_PATTERNS += (
     (
         re.compile(r"^(?:kai,\s*)?(?:task|todo|add\s+to\s+roadmap)[:\s]+(.+)$", re.IGNORECASE | re.DOTALL),
         lambda match: _handle_add_task(str(match.group(1)).strip()),
-        "Add a task to the roadmap — 'Kai, task: description' or 'Kai, todo: description'."
+        "Add a task to the roadmap — 'Kai, task: description' or 'Kai, todo: description'.",
+        True,  # mutating: appends a phase to roadmap.json
     ),
     (
         re.compile(r"^(?:kai,\s*)?(?:show\s+open\s+tasks|pending\s+tasks|what\s+tasks\s+are\s+open)\.?$", re.IGNORECASE),
@@ -371,16 +397,19 @@ COMMAND_PATTERNS += (
         re.compile(r"^(?:kai,\s*)?remember\s+that\s+(.+)$", re.IGNORECASE | re.DOTALL),
         lambda match: _handle_remember(str(match.group(1)).strip()),
         "Remember that <fact> — store in Kai's long-term memory.",
+        True,  # mutating: writes long-term memory
     ),
     (
         re.compile(r"^(?:kai,\s*)?(?:always|never)\s+(.+)$", re.IGNORECASE | re.DOTALL),
         lambda match: _handle_always_never(str(match.group(0)).strip()),
         "Always/Never <directive> — store an operator directive.",
+        True,  # mutating: writes a directive
     ),
     (
         re.compile(r"^(?:kai,\s*)?(?:forget|remove)\s+(?:that\s+)?(.+)$", re.IGNORECASE | re.DOTALL),
         lambda match: _handle_forget(str(match.group(1)).strip()),
         "Forget <fact> — remove from long-term memory.",
+        True,  # mutating: rewrites long-term memory
     ),
     (
         re.compile(r"^(?:kai,\s*)?(?:what do you remember|recall|long-term memory)\.?$", re.IGNORECASE),

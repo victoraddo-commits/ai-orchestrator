@@ -3268,7 +3268,7 @@ def kai_command_endpoint(
     body: KaiCommandRequest,
     operator: str = Depends(_require_write_capability("kai.command")),
 ):
-    return kai_dispatch(body.text)
+    return kai_dispatch(body.text, via_bus=True, source="cc_web", user=operator)
 
 
 @app.get("/kai/identity")
@@ -3581,7 +3581,9 @@ def handle_kai_chat(text: str, operator: str) -> dict:
     _append_chat_message("user", text)
     history = _get_chat_messages()
 
-    dispatch_result = kai_dispatch(text)
+    dispatch_result = kai_dispatch(
+        text, via_bus=True,
+        source=("voice" if operator == "voice" else "chat"), user=operator)
     if dispatch_result.get("matched"):
         reply = dispatch_result
     else:
@@ -4356,18 +4358,33 @@ def api_pause_scheduler(
     body: AdminAction,
     operator: str = Depends(_require_write_capability("delegate.use")),
 ):
-    """TK-b7614289: Pause the scheduler loop. Safe — current cycle completes."""
-    _set_pause_state(True, reason=body.reason, operator="dashboard")
-    return {"ok": True, "scheduler": _get_pause_state()}
+    """TK-b7614289: Pause the scheduler loop. Safe — current cycle completes.
+
+    Dispatched through the Command Bus (build 23A) so AgentGuard authorizes it
+    and it lands in command_bus_audit.
+    """
+    from core.command_bus import get_bus
+    result = get_bus().dispatch("control.scheduler.pause",
+                                params={"reason": body.reason or ""},
+                                source="cc_web", user=operator or "operator")
+    if result.get("status") != "success":
+        code = 403 if result.get("decision") in ("deny", "require_approval") else 500
+        raise HTTPException(status_code=code, detail=result.get("message", "denied by policy"))
+    return result.get("data")
 
 
 @app.post("/api/admin/resume-scheduler")
 def api_resume_scheduler(
     operator: str = Depends(_require_write_capability("delegate.use")),
 ):
-    """TK-b7614289: Resume the scheduler loop."""
-    _set_pause_state(False)
-    return {"ok": True, "scheduler": _get_pause_state()}
+    """TK-b7614289: Resume the scheduler loop (dispatched through the bus)."""
+    from core.command_bus import get_bus
+    result = get_bus().dispatch("control.scheduler.resume", {},
+                                source="cc_web", user=operator or "operator")
+    if result.get("status") != "success":
+        code = 403 if result.get("decision") in ("deny", "require_approval") else 500
+        raise HTTPException(status_code=code, detail=result.get("message", "denied by policy"))
+    return result.get("data")
 
 
 @app.post("/api/admin/retry-build")

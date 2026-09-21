@@ -929,12 +929,8 @@ def _resolve_factory_project(project: str) -> str:
     raise RuntimeError(f"factory project '{project}' not found")
 
 
-@tool(ToolSpec(
-    id="kai.factory.build", name="Factory build",
-    description="Build a factory project over the HTTP API (Gradle when a toolchain is present).",
-    risk=CONTROLLED, timeout_s=900.0, tags=["factory"],
-    inputs={"project": "str (project id or name)"}))
-def factory_build(project: str) -> dict:
+def _factory_build_http(project: str) -> dict:
+    """Execute a factory build over the HTTP API (the bus handler's target)."""
     try:
         pid = _resolve_factory_project(project)
         out = _factory_request("POST", f"/api/projects/{pid}/build",
@@ -944,6 +940,25 @@ def factory_build(project: str) -> dict:
                 "error": f"{type(e).__name__}: {e}"}
     return {"ok": out.get("status") == "success", "project": pid,
             "status": out.get("status"), "detail": out}
+
+
+@tool(ToolSpec(
+    id="kai.factory.build", name="Factory build",
+    description="Build a factory project over the HTTP API (Gradle when a toolchain is present).",
+    risk=CONTROLLED, timeout_s=900.0, tags=["factory"],
+    inputs={"project": "str (project id or name)"}))
+def factory_build(project: str) -> dict:
+    """The Android-factory mutating action routes through the Command Bus so
+    AgentGuard authorizes it and it lands in ``command_bus_audit`` (build 23A)."""
+    from core.command_bus import get_bus
+    result = get_bus().dispatch(
+        "control.factory.build", params={"project": project},
+        source="android_factory", user="operator",
+        details=f"factory build project={project}")
+    if result.get("status") == "success":
+        return result.get("data") or {}
+    return {"ok": False, "host": FACTORY_HOST,
+            "error": result.get("message", "factory build refused")}
 
 
 @tool(ToolSpec(
@@ -973,12 +988,8 @@ def factory_reports(limit: int = 5) -> dict:
             "count": len(reports), "reports": reports}
 
 
-@tool(ToolSpec(
-    id="kai.factory.scaffold", name="Factory scaffold",
-    description="Scaffold a new Android project from a factory template (admin).",
-    risk=CONTROLLED, timeout_s=60.0, tags=["factory"],
-    inputs={"name": "str", "package": "str", "template": "empty|list_detail|webview"}))
-def factory_scaffold(name: str, package: str, template: str = "empty") -> dict:
+def _factory_scaffold_http(name: str, package: str, template: str = "empty") -> dict:
+    """Scaffold a project over the HTTP API (the bus handler's target)."""
     try:
         out = _factory_request("POST", "/api/projects",
                                {"name": name, "package": package, "template": template},
@@ -987,6 +998,25 @@ def factory_scaffold(name: str, package: str, template: str = "empty") -> dict:
         return {"ok": False, "host": FACTORY_HOST,
                 "error": f"{type(e).__name__}: {e}"}
     return {"ok": bool(out.get("ok")), "id": out.get("id"), "path": out.get("path")}
+
+
+@tool(ToolSpec(
+    id="kai.factory.scaffold", name="Factory scaffold",
+    description="Scaffold a new Android project from a factory template (admin).",
+    risk=CONTROLLED, timeout_s=60.0, tags=["factory"],
+    inputs={"name": "str", "package": "str", "template": "empty|list_detail|webview"}))
+def factory_scaffold(name: str, package: str, template: str = "empty") -> dict:
+    """Route the Android-factory scaffold through the Command Bus (build 23A)."""
+    from core.command_bus import get_bus
+    result = get_bus().dispatch(
+        "control.factory.scaffold",
+        params={"name": name, "package": package, "template": template},
+        source="android_factory", user="operator",
+        details=f"factory scaffold package={package}")
+    if result.get("status") == "success":
+        return result.get("data") or {}
+    return {"ok": False, "host": FACTORY_HOST,
+            "error": result.get("message", "factory scaffold refused")}
 
 
 # --- kai.evolution.* : Self-Evolution Engine ------------------------------------

@@ -34,6 +34,28 @@ def _req_op(request: Request) -> None:
     raise HTTPException(status_code=401, detail="operator session required")
 
 
+def _dispatch_control(command: str, params: dict, *, domain_map: dict | None = None):
+    """Dispatch a mutating control action through the Command Bus (build 23A).
+
+    Returns the handler's data on success. A policy refusal (DENY or
+    REQUIRE_APPROVAL) is surfaced as HTTP 403 — never silently bypassed.
+    Domain errors raised by the handler are mapped back to their original HTTP
+    semantics via ``domain_map``; anything else keeps the legacy
+    ``{"error": ...}`` 200 shape so existing panels keep rendering.
+    """
+    from core.command_bus import get_bus
+    result = get_bus().dispatch(command, params=params, source="cc_web", user="operator")
+    if result.get("status") == "success":
+        return result.get("data")
+    message = result.get("message", "command failed")
+    if result.get("decision") in ("deny", "require_approval"):
+        raise HTTPException(status_code=403, detail=message)
+    err = result.get("error_type")
+    if domain_map and err in domain_map:
+        raise HTTPException(status_code=domain_map[err], detail=message)
+    return {"error": err or "command_failed", "detail": message}
+
+
 _MEM = "/opt/ai-orchestrator/memory"
 
 
@@ -297,44 +319,35 @@ class _SteerBody(BaseModel):
     note: str = ""
 
 
-def _steer_response(mission_id: str, body, default_action: str = ""):
-    """Persist a steering action through the Mission Engine (roadmap 20D).
-
-    Never fakes success: an unknown mission is 404, a forbidden state-machine
-    transition is 409, and a malformed action (e.g. redirect without an
-    objective) is 422.
-    """
-    from core.lifecycle import InvalidTransition
-    from core.kai import mission_engine
-
-    action = (body.action if body else "") or default_action
-    try:
-        mission = mission_engine.steer_mission(
-            mission_id, action,
-            objective=(body.objective if body else "") or None,
-            note=(body.note if body else "") or None,
-        )
-    except LookupError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except InvalidTransition as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    return {"ok": True, "mission": mission}
+# Domain errors the Mission Engine raises, mapped back to their HTTP meaning
+# (roadmap 20D): unknown mission 404, forbidden transition 409, malformed 422.
+_MISSION_DOMAIN_STATUS = {"LookupError": 404, "InvalidTransition": 409, "ValueError": 422}
 
 
 @cc_extra_router.post("/kai/missions/{mission_id}/steer")
 def kai_mission_steer(mission_id: str, body: _SteerBody = None,
                       _: None = Depends(_req_op)):
     """Pause / resume / redirect a Mission Engine mission (operator-gated)."""
-    return _steer_response(mission_id, body)
+    return _dispatch_control(
+        "control.mission.steer",
+        {"mission_id": mission_id,
+         "action": (body.action if body else "") or "",
+         "objective": (body.objective if body else "") or None,
+         "note": (body.note if body else "") or None},
+        domain_map=_MISSION_DOMAIN_STATUS)
 
 
 @cc_extra_router.post("/kai/missions/{mission_id}/execute")
 def kai_mission_execute(mission_id: str, body: _SteerBody = None,
                         _: None = Depends(_req_op)):
     """Stop a Mission Engine mission (the steering module's /stop target)."""
-    return _steer_response(mission_id, body, default_action="stop")
+    return _dispatch_control(
+        "control.mission.stop",
+        {"mission_id": mission_id,
+         "action": (body.action if body else "") or "stop",
+         "objective": (body.objective if body else "") or None,
+         "note": (body.note if body else "") or None},
+        domain_map=_MISSION_DOMAIN_STATUS)
 
 
 def _diag_part(fn, default):
@@ -452,20 +465,15 @@ def emergency_status():
 
 @cc_extra_router.post("/api/emergency/stop")
 def emergency_stop(body: _StopBody = None, _: None = Depends(_req_op)):
-    try:
-        from core.kai_emergency import emergency_stop as _stop
-        return _stop(reason=(body.reason if body else ""))
-    except Exception as e:  # noqa: BLE001
-        return {"error": type(e).__name__}
+    """Emergency stop — dispatched through the Command Bus (AgentGuard + audit)."""
+    return _dispatch_control("control.emergency.stop",
+                             {"reason": (body.reason if body else "")})
 
 
 @cc_extra_router.post("/api/emergency/resume")
 def emergency_resume(_: None = Depends(_req_op)):
-    try:
-        from core.kai_emergency import emergency_resume as _resume
-        return _resume()
-    except Exception as e:  # noqa: BLE001
-        return {"error": type(e).__name__}
+    """Emergency resume — dispatched through the Command Bus (AgentGuard + audit)."""
+    return _dispatch_control("control.emergency.resume", {})
 
 
 # -- Architecture Guardian (§24) -------------------------------------------

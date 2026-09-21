@@ -70,11 +70,17 @@ class CommandBus:
         params: dict[str, Any] | None = None,
         source: str = "unknown",
         user: str = "anonymous",
+        details: str | None = None,
     ) -> dict[str, Any]:
         """Dispatch a command through authorization + execution.
 
         Returns `{status: "success", data: ..., risk: "...", decision: "..."}`
         on success or `{status: "error", message: ..., ...}` on refusal.
+
+        `details` overrides the string AgentGuard sees for risk classification
+        (defaults to ``str(params)[:512]``). Callers whose params carry large or
+        free-form text — a worker prompt, an operator note — pass a short
+        summary so benign text cannot trip the guard's substring heuristics.
         """
         params = params or {}
 
@@ -89,7 +95,7 @@ class CommandBus:
             user_id=user,
             action_type=entry["action_type"],
             resource=command_name,
-            details=str(params)[:512],
+            details=(str(params)[:512] if details is None else details),
             reason=None,
             metadata={"risk_hint": entry["risk_hint"].value, "params": params},
         )
@@ -137,6 +143,7 @@ class CommandBus:
             return {
                 "status": "error",
                 "message": f"execution failed: {e}",
+                "error_type": type(e).__name__,
                 "risk": verdict.risk_level.value,
                 "decision": verdict.decision.value,
             }
@@ -176,13 +183,16 @@ class CommandBus:
         if risk:
             entry["risk"] = risk
         try:
-            data = load("command_bus_audit") or {"schema_version": 1, "records": []}
+            # Canonical filename the /audit + /kai/audit aggregator merges
+            # (core.api.AUDIT_SOURCES). Writing the extension-less name silently
+            # kept bus events out of the Command Center audit feed.
+            data = load("command_bus_audit.json") or {"schema_version": 1, "records": []}
             records = data.setdefault("records", [])
             records.append(entry)
             # Cap at last 5000 to avoid unbounded growth.
             if len(records) > 5000:
                 data["records"] = records[-5000:]
-            save("command_bus_audit", data)
+            save("command_bus_audit.json", data)
         except Exception as e:
             # Never fail dispatch because the audit log couldn't write.
             logger.warning("command bus audit failed: %s", e)
@@ -198,6 +208,7 @@ def get_bus() -> CommandBus:
     if _BUS is None:
         _BUS = CommandBus()
         _register_core_commands(_BUS)
+        _register_control_commands(_BUS)
     return _BUS
 
 
@@ -228,3 +239,95 @@ def _register_core_commands(bus: CommandBus) -> None:
     # writes an audit event (Telegram §53 — authorization is not bypassed).
     for cmd in kcc.TEAM_COMMANDS:
         bus.register_handler(cmd, _wrap(cmd), ActionType.WRITE, RiskLevel.MEDIUM)
+
+
+def _register_control_commands(bus: CommandBus) -> None:
+    """Register the mutating control-plane actions of every interface (build 23A).
+
+    These are the actions the Command Center/web, voice, the Android factory and
+    the worker pool perform that change state. They all dispatch through the
+    bus so AgentGuard authorizes them and every one lands in
+    ``command_bus_audit``. Handlers import their implementation lazily so this
+    module stays import-light and framework-free.
+
+    Still direct (not routed here), and why:
+      * read-only GETs everywhere — the bus exists for actions, not reads;
+      * ``/api/docker/containers/{name}/{start,stop,restart}`` — the endpoints
+        use an async httpx client to a configured remote Docker host; bus
+        handlers are synchronous, so bridging async→sync inside the running
+        loop is unsafe and the CLI-based tool is not equivalent;
+      * tool-bus ``core.kai_tools.policy.execute`` — its own policy + audit
+        gate; the actions it triggers (factory build/scaffold) additionally
+        dispatch here. A caller that already holds the authorization (the
+        policy gate) is the one documented escape hatch: ``policy`` invokes
+        tools directly rather than re-entering the command bus.
+    """
+    write_medium = (ActionType.WRITE, RiskLevel.MEDIUM)
+
+    def _emergency_stop(params):
+        from core.kai_emergency import emergency_stop
+        return emergency_stop(operator=params.get("user") or "operator",
+                              reason=params.get("reason") or "")
+
+    def _emergency_resume(params):
+        from core.kai_emergency import emergency_resume
+        return emergency_resume(operator=params.get("user") or "operator")
+
+    def _mission_steer(params):
+        from core.kai import mission_engine
+        mission = mission_engine.steer_mission(
+            params["mission_id"], params.get("action") or "",
+            objective=params.get("objective") or None,
+            note=params.get("note") or None)
+        return {"ok": True, "mission": mission}
+
+    def _mission_stop(params):
+        from core.kai import mission_engine
+        mission = mission_engine.steer_mission(
+            params["mission_id"], params.get("action") or "stop",
+            objective=params.get("objective") or None,
+            note=params.get("note") or None)
+        return {"ok": True, "mission": mission}
+
+    def _scheduler_pause(params):
+        from core.api import _get_pause_state, _set_pause_state
+        _set_pause_state(True, reason=params.get("reason") or "", operator="command_bus")
+        return {"ok": True, "scheduler": _get_pause_state()}
+
+    def _scheduler_resume(params):
+        from core.api import _get_pause_state, _set_pause_state
+        _set_pause_state(False)
+        return {"ok": True, "scheduler": _get_pause_state()}
+
+    def _factory_build(params):
+        from core.kai_tools.builtin import _factory_build_http
+        return _factory_build_http(params["project"])
+
+    def _factory_scaffold(params):
+        from core.kai_tools.builtin import _factory_scaffold_http
+        return _factory_scaffold_http(params["name"], params["package"],
+                                      params.get("template") or "empty")
+
+    def _voice_intent(params):
+        from core.kai import commands
+        return commands.dispatch(params["text"], via_bus=False)
+
+    def _worker_submit(params):
+        from core.workers.deepseek_pool import get_pool
+        return get_pool()._enqueue_task(
+            params["task_type"], params["prompt"],
+            build_id=params.get("build_id"), build_name=params.get("build_name"))
+
+    for cmd, handler in (
+        ("control.emergency.stop", _emergency_stop),
+        ("control.emergency.resume", _emergency_resume),
+        ("control.scheduler.pause", _scheduler_pause),
+        ("control.scheduler.resume", _scheduler_resume),
+        ("control.mission.steer", _mission_steer),
+        ("control.mission.stop", _mission_stop),
+        ("control.factory.build", _factory_build),
+        ("control.factory.scaffold", _factory_scaffold),
+        ("control.voice.intent", _voice_intent),
+        ("control.worker.submit", _worker_submit),
+    ):
+        bus.register_handler(cmd, handler, *write_medium)

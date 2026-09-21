@@ -291,6 +291,73 @@ def kai_missions():
         return {"missions": [], "error": type(e).__name__}
 
 
+def _diag_part(fn, default):
+    """Run one diagnostics collector; never let a single section 500 the page."""
+    try:
+        return fn()
+    except Exception as e:  # noqa: BLE001
+        if isinstance(default, dict):
+            return {**default, "error": f"{type(e).__name__}: {e}"}
+        return default
+
+
+@cc_extra_router.get("/api/diagnostics")
+def api_diagnostics(_: None = Depends(_req_op)):
+    """Operator-gated diagnostics roll-up.
+
+    Aggregates the observability snapshot, enriched circuit breakers, the
+    unified telemetry snapshot and provider health into the single shape the
+    Command Center diagnostics panel renders. Reuses the existing collectors
+    (observability, telemetry, ``/kai/circuit-breakers``, provider_health) —
+    no new systems and no duplicated breaker-enrichment logic.
+    """
+    from datetime import datetime, timezone
+
+    from core import observability as _observability
+    from core import telemetry as _telemetry
+
+    def _objects():
+        from core.api import _load_audit_source
+        return {
+            "incident": _load_audit_source("incidents.json"),
+            "decision": _load_audit_source("decisions.json"),
+            "approval": _load_audit_source("approval_queue.json"),
+            "remediation": _load_audit_source("remediation_history.json"),
+            "verification": _load_audit_source("verification_history.json"),
+        }
+
+    def _health():
+        from core.api import health as _health_endpoint
+        return _health_endpoint()
+
+    def _breakers():
+        from core.api import circuit_breakers_list_endpoint
+        return circuit_breakers_list_endpoint().get("circuit_breakers", [])
+
+    def _providers():
+        from core.ai import provider_health
+        return provider_health.get_all_quota_snapshots() or {}
+
+    telemetry = _diag_part(_telemetry.snapshot, {})
+    observability = _diag_part(
+        lambda: _observability.snapshot(
+            objects=_diag_part(_objects, {}),
+            health=_diag_part(_health, {}),
+            metrics=telemetry,
+            traces=[],
+        ),
+        {},
+    )
+    return {
+        "schema": "diagnostics/1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "observability": observability,
+        "circuit_breakers": _diag_part(_breakers, []),
+        "telemetry": telemetry,
+        "providers": _diag_part(_providers, {}),
+    }
+
+
 @cc_extra_router.get("/kai/doctor")
 def kai_doctor():
     """Full system self-diagnostic (§23)."""

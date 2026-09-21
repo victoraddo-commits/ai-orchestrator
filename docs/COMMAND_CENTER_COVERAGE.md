@@ -253,3 +253,20 @@ Accounts sub-tab.
 
 Guarded by `scripts/cc_contract_check.py` (endpoint contract) so a panel can
 never call a missing route.
+
+## Roadmap gaps closed (2026-09-21)
+
+### Diagnostics panel (`diagnostics`)
+
+- Sidebar `nav-item[data-hash="diagnostics"]`, `<section id="panel-diagnostics">`,
+  `PANEL_TITLES.diagnostics`, `loadPanel()` → `loadDiagnostics()`.
+- Loader `loadDiagnostics()` renders metric row (health / anomalies / open
+  breakers / providers), lifecycle-object counts, circuit-breaker table,
+  provider-health table and the telemetry summary from `GET /api/diagnostics`.
+- Backend `core/cc_extra_routes.py::api_diagnostics` — operator-gated
+  (session OR bridge token OR `X-Kai-User`/`X-Kai-User-Id`). Aggregates
+  `core.observability.snapshot()`, the enriched circuit breakers (reusing
+  `circuit_breakers_list_endpoint`), `core.telemetry.snapshot()` and
+  `provider_health.get_all_quota_snapshots()`. One failed section degrades to
+  an `error` field; it never 500s the page.
+- Was `404`; now `401` without an operator and `200` with one.

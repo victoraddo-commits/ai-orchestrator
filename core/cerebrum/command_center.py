@@ -147,8 +147,15 @@ class CommandCenter:
         }
 
     def _check_roadmap(self) -> Dict[str, Any]:
-        """Check roadmap from memory/roadmap.json."""
-        roadmap_file = self.memory_dir / "roadmap.json"
+        """Check the roadmap.
+
+        Prefer the single source of truth (<repo>/roadmap.json); fall back to
+        memory/roadmap.json for backwards compatibility. memory/roadmap.json is
+        a memory-store shape (no `phases`), so reading it alone reported 0.
+        """
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        candidates = [repo_root / "roadmap.json", self.memory_dir / "roadmap.json"]
+        roadmap_file = next((c for c in candidates if c.exists()), candidates[-1])
         total_phases = comp = prog = pen = fld = 0
         available = roadmap_file.exists()
         if available:

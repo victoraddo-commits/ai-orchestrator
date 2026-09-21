@@ -282,3 +282,13 @@ never call a missing route.
   gained `command_bus_audit.json` (Command Bus) and `execution_audit.json`
   (remediation runner), with normalizers and a derived `severity`
   (info/warn/error) on every merged entry.
+
+### Mission steering routes (no new panel)
+
+`POST /kai/missions/{id}/steer` (pause/resume/redirect) and
+`POST /kai/missions/{id}/execute` (stop) now exist and persist through the
+Mission Engine (`core/kai/mission_engine.py::steer_mission`), so the existing
+Missions panel and the Telegram `/pause /resume /stop /redirect` commands
+(`core/mission_steering.py`) work end-to-end. `paused → stopped` was added to
+the mission state machine so a paused mission can be stopped. Operator-gated;
+unknown mission `404`, forbidden transition `409`, malformed redirect `422`.

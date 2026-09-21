@@ -291,6 +291,52 @@ def kai_missions():
         return {"missions": [], "error": type(e).__name__}
 
 
+class _SteerBody(BaseModel):
+    action: str = ""
+    objective: str = ""
+    note: str = ""
+
+
+def _steer_response(mission_id: str, body, default_action: str = ""):
+    """Persist a steering action through the Mission Engine (roadmap 20D).
+
+    Never fakes success: an unknown mission is 404, a forbidden state-machine
+    transition is 409, and a malformed action (e.g. redirect without an
+    objective) is 422.
+    """
+    from core.lifecycle import InvalidTransition
+    from core.kai import mission_engine
+
+    action = (body.action if body else "") or default_action
+    try:
+        mission = mission_engine.steer_mission(
+            mission_id, action,
+            objective=(body.objective if body else "") or None,
+            note=(body.note if body else "") or None,
+        )
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidTransition as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"ok": True, "mission": mission}
+
+
+@cc_extra_router.post("/kai/missions/{mission_id}/steer")
+def kai_mission_steer(mission_id: str, body: _SteerBody = None,
+                      _: None = Depends(_req_op)):
+    """Pause / resume / redirect a Mission Engine mission (operator-gated)."""
+    return _steer_response(mission_id, body)
+
+
+@cc_extra_router.post("/kai/missions/{mission_id}/execute")
+def kai_mission_execute(mission_id: str, body: _SteerBody = None,
+                        _: None = Depends(_req_op)):
+    """Stop a Mission Engine mission (the steering module's /stop target)."""
+    return _steer_response(mission_id, body, default_action="stop")
+
+
 def _diag_part(fn, default):
     """Run one diagnostics collector; never let a single section 500 the page."""
     try:

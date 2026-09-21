@@ -89,6 +89,40 @@ def _log_access(provider: str, action: str, success: bool, detail: str = "") -> 
     _save_audit(records)
 
 
+def record_object_access(object_id: str, scope: str, action: str,
+                         success: bool, detail: str = "") -> None:
+    """Append an object-scoped access audit record.
+
+    Object-access rows are metadata-only: they identify the acting teammate
+    (``object_id``) and the skill ``scope`` that acted, and are deliberately
+    marked with ``object_id`` so they can be told apart from provider
+    credential rows in the shared audit store. Values are NEVER recorded.
+    """
+    with _write_lock:
+        records = _load_audit()
+        records.append({
+            "object_id": object_id,
+            "scope": scope,
+            "action": action,
+            "success": success,
+            "detail": detail,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        _save_audit(records)
+
+
+def get_object_access_log(limit: int = 100) -> list[dict]:
+    """Return object-access audit rows, newest first.
+
+    Only rows written by :func:`record_object_access` (those carrying an
+    ``object_id``) are returned; provider credential rows are filtered out.
+    """
+    records = [r for r in _load_audit() if "object_id" in r]
+    if limit is not None:
+        records = records[-limit:]
+    return records[::-1]
+
+
 # ---------------------------------------------------------------------------
 # API: set / get / rotate / delete
 # ---------------------------------------------------------------------------

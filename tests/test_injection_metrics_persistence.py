@@ -98,6 +98,14 @@ def test_normalized_total_is_counted(tmp_path, monkeypatch):
     assert injection.get_injection_metrics()["normalized_total"] >= 1
 
 
+def test_whitespace_collapse_is_not_counted_as_evasion(tmp_path, monkeypatch):
+    monkeypatch.setenv("KAI_INJECTION_METRICS_DIR", str(tmp_path))
+    injection.reset_injection_metrics()
+    injection.guard_input(
+        "First line.\nSecond line with\nsome newlines in it.", source="unit")
+    assert injection.get_injection_metrics()["normalized_total"] == 0
+
+
 def test_endpoint_requires_auth(client):
     response = client.get("/kai/security/injection/metrics")
     assert response.status_code == 401

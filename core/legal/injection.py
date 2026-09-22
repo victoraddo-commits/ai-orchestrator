@@ -363,6 +363,15 @@ def fence_user_content(text: str) -> str:
 _DEFAULT_METRICS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "memory")
 
+# Normalization steps that represent a real encoding-evasion attempt. Plain
+# whitespace collapse is applied to almost any multi-line text and is not, by
+# itself, signal -- counting it would inflate the metric and write the metrics
+# files on nearly every benign call.
+_EVASION_NORMALIZATIONS = frozenset({
+    "nfkc", "zero_width_strip", "homoglyph_fold", "leet_fold",
+    "despace", "encoding_decode",
+})
+
 _metrics_lock = threading.Lock()
 _metrics: dict = {
     "input": {}, "output": {},
@@ -614,10 +623,13 @@ def guard_input(text: str, source: str = "unknown", count: bool = True) -> dict:
         )
         result["clean_text"] = neutralize(text)
         result["fenced_text"] = fence_user_content(result["clean_text"])
-    if count and result["normalizations"]:
-        # Count every encoding-evasion normalization performed, even when the
-        # text ultimately did not trip a marker (evasion attempts are signal).
-        _bump_normalized(len(result["normalizations"]))
+    if count:
+        evasions = [s for s in result["normalizations"]
+                    if s in _EVASION_NORMALIZATIONS]
+        if evasions:
+            # Count real encoding-evasion normalization work, even when the
+            # text ultimately did not trip a marker (evasion attempts matter).
+            _bump_normalized(len(evasions))
     return result
 
 

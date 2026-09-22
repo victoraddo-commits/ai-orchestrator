@@ -27,6 +27,9 @@ logger = logging.getLogger("juris_kai.accounts")
 DB_DIR = os.environ.get("JURIS_KAI_DB_DIR", str(Path(__file__).parent.parent.parent / "memory"))
 DB_PATH = os.path.join(DB_DIR, "juris_kai_accounts.db")
 
+# Bound on stored question/answer text so a single row cannot bloat the DB.
+QA_MAX_CHARS = 8192
+
 # Subscription tiers — loaded from the editable pricing store. The module-level
 # dict is mutated IN PLACE by apply_pricing() so every existing
 # `from ...accounts import SUBSCRIPTION_TIERS` reference sees operator edits
@@ -161,6 +164,26 @@ def _init_schema(conn: sqlite3.Connection):
             FOREIGN KEY (account_id) REFERENCES juris_accounts(account_id)
         );
 
+        -- Local-only learning loop store: the full question + answer text per
+        -- account. Never sent to any external service. Powers the FAQ/repeat
+        -- cache and weak-area mining.
+        CREATE TABLE IF NOT EXISTS juris_qa_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id TEXT NOT NULL,
+            chat_id TEXT DEFAULT '',
+            task_type TEXT DEFAULT '',
+            question TEXT DEFAULT '',
+            answer TEXT DEFAULT '',
+            model TEXT DEFAULT '',
+            latency_ms INTEGER DEFAULT 0,
+            confidence REAL,
+            question_hash TEXT DEFAULT '',
+            is_generic INTEGER DEFAULT 0,
+            cache_eligible INTEGER DEFAULT 0,
+            cache_hit INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         -- Phase 4: Security & audit tables
         CREATE TABLE IF NOT EXISTS juris_security_log (
             log_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -266,6 +289,10 @@ def _init_schema(conn: sqlite3.Connection):
             ON juris_checkout_activations(account_id);
         CREATE INDEX IF NOT EXISTS idx_juris_usage_account
             ON juris_usage_log(account_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_qa_account_created
+            ON juris_qa_log(account_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_juris_qa_hash
+            ON juris_qa_log(question_hash);
         CREATE INDEX IF NOT EXISTS idx_juris_security_telegram
             ON juris_security_log(telegram_id);
         CREATE INDEX IF NOT EXISTS idx_juris_security_event
@@ -296,6 +323,26 @@ def _init_schema(conn: sqlite3.Connection):
     ]:
         try:
             conn.execute(f"ALTER TABLE juris_usage_log ADD COLUMN {col} {coldef}")
+        except sqlite3.OperationalError:
+            pass  # column already exists
+
+    # Idempotent column adds for juris_qa_log (same pattern as usage_log):
+    # tolerates a table created by an earlier partial deploy.
+    for col, coldef in [
+        ("chat_id", "TEXT DEFAULT ''"),
+        ("task_type", "TEXT DEFAULT ''"),
+        ("question", "TEXT DEFAULT ''"),
+        ("answer", "TEXT DEFAULT ''"),
+        ("model", "TEXT DEFAULT ''"),
+        ("latency_ms", "INTEGER DEFAULT 0"),
+        ("confidence", "REAL"),
+        ("question_hash", "TEXT DEFAULT ''"),
+        ("is_generic", "INTEGER DEFAULT 0"),
+        ("cache_eligible", "INTEGER DEFAULT 0"),
+        ("cache_hit", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE juris_qa_log ADD COLUMN {col} {coldef}")
         except sqlite3.OperationalError:
             pass  # column already exists
 
@@ -597,6 +644,133 @@ class AccountManager:
         )
         self.db.commit()
         return True
+
+    # ---- Learning loop: Q&A log + FAQ / repeat cache ----
+
+    def record_qa(self, account_id: str, question: str = "", answer: str = "",
+                  *, chat_id: str = "", task_type: str = "", model: str = "",
+                  latency_ms: int = 0, confidence: Optional[float] = None,
+                  cache_hit: bool = False) -> bool:
+        """Persist a full question + answer for one account (local SQLite only).
+
+        This is the durable learning-loop record. Nothing is sent externally.
+        Text is capped at ``QA_MAX_CHARS``. On a cacheable answer the FAQ
+        cache is populated so the next identical question is served instantly.
+        """
+        from core.juris_kai import cache as _cache
+
+        q = (question or "")[:QA_MAX_CHARS]
+        a = (answer or "")[:QA_MAX_CHARS]
+        qhash = _cache.question_hash(q)
+        generic = _cache.is_generic_question(q)
+        cacheable = _cache.answer_is_cacheable(a)
+        if confidence is None:
+            confidence = _cache.answer_confidence(a)
+
+        self.db.execute(
+            """INSERT INTO juris_qa_log
+               (account_id, chat_id, task_type, question, answer, model,
+                latency_ms, confidence, question_hash, is_generic,
+                cache_eligible, cache_hit)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, str(chat_id or ""), task_type or "", q, a, model or "",
+             int(latency_ms or 0), float(confidence), qhash,
+             1 if generic else 0, 1 if cacheable else 0,
+             1 if cache_hit else 0),
+        )
+        self.db.commit()
+
+        if cacheable:
+            scope = "__generic__" if generic else account_id
+            _cache.FAQ_CACHE.set(
+                _cache.faq_key(task_type, q, scope),
+                {"answer": a, "model": model or "",
+                 "confidence": float(confidence), "cache_scope":
+                 "generic" if generic else "account"},
+            )
+        return True
+
+    def lookup_qa(self, account_id: str, task_type: str, question: str) -> Optional[Dict[str, Any]]:
+        """Return a previously-stored good answer for this question, or None.
+
+        Order: in-process FAQ cache, then the local ``juris_qa_log`` table.
+        Generic (non-personalised) questions may be shared between accounts;
+        personalised questions are scoped to ``account_id`` only.
+        """
+        from core.juris_kai import cache as _cache
+
+        q = (question or "")[:QA_MAX_CHARS]
+        norm = _cache.normalize_query(q)
+        if not norm:
+            return None
+        generic = _cache.is_generic_question(q)
+        scope = "__generic__" if generic else account_id
+        key = _cache.faq_key(task_type, q, scope)
+
+        hit = _cache.FAQ_CACHE.get(key)
+        if hit and hit.get("answer"):
+            return dict(hit)
+
+        if generic:
+            row = self.db.execute(
+                """SELECT answer, model, confidence, task_type FROM juris_qa_log
+                   WHERE question_hash = ? AND task_type = ? AND is_generic = 1
+                     AND cache_eligible = 1
+                   ORDER BY created_at DESC LIMIT 1""",
+                (_cache.question_hash(q), task_type or ""),
+            ).fetchone()
+        else:
+            row = self.db.execute(
+                """SELECT answer, model, confidence, task_type FROM juris_qa_log
+                   WHERE question_hash = ? AND task_type = ? AND account_id = ?
+                     AND is_generic = 0 AND cache_eligible = 1
+                   ORDER BY created_at DESC LIMIT 1""",
+                (_cache.question_hash(q), task_type or "", account_id),
+            ).fetchone()
+        if not row:
+            return None
+        result = {"answer": row["answer"], "model": row["model"],
+                  "confidence": row["confidence"], "task_type": row["task_type"],
+                  "cache_scope": "generic" if generic else "account"}
+        _cache.FAQ_CACHE.set(key, result)
+        return result
+
+    def forget_qa(self, account_id: str) -> Dict[str, Any]:
+        """Delete every stored Q&A row for an account (owner-requested /forget)."""
+        from core.juris_kai import cache as _cache
+
+        cur = self.db.execute(
+            "DELETE FROM juris_qa_log WHERE account_id = ?", (account_id,))
+        self.db.commit()
+        # A deleted account's answers must not survive in the in-process cache.
+        _cache.FAQ_CACHE.clear()
+        deleted = cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+        logger.info("juris_qa_log purged for account %s (%d rows)", account_id,
+                    deleted)
+        return {"success": True, "deleted": deleted}
+
+    def qa_history(self, account_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Recent Q&A records for one account (own data only)."""
+        rows = self.db.execute(
+            "SELECT * FROM juris_qa_log WHERE account_id = ? "
+            "ORDER BY id DESC LIMIT ?",
+            (account_id, int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def qa_stats(self) -> Dict[str, Any]:
+        """Aggregate Q&A stats for the admin/learning surface."""
+        total = self.db.execute("SELECT COUNT(*) c FROM juris_qa_log").fetchone()
+        cached = self.db.execute(
+            "SELECT COUNT(*) c FROM juris_qa_log WHERE cache_hit = 1").fetchone()
+        eligible = self.db.execute(
+            "SELECT COUNT(*) c FROM juris_qa_log WHERE cache_eligible = 1"
+        ).fetchone()
+        return {
+            "total": total["c"] if total else 0,
+            "cache_hits": cached["c"] if cached else 0,
+            "cache_eligible": eligible["c"] if eligible else 0,
+        }
 
     def check_document_limit(self, account_id: str) -> Dict[str, Any]:
         """Check if user can upload more documents this month."""

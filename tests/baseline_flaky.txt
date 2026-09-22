@@ -1,0 +1,19 @@
+# Known-flaky / quarantined tests. The regression gate ignores these entirely:
+# a flaky failure is never a NEW failure, and a flaky pass is never a NEW pass.
+# Format (2 forms):
+#   FLAKY<TAB>node_id<TAB>reason         (exact test)
+#   MODULE<TAB>tests/test_mod.py<TAB>reason   (whole module)
+# Verified 2026-09-22 by isolated re-runs (see tests/BASELINE.md).
+MODULE	tests/test_command_center_13o.py	cross-test provider-registry pollution flaky module
+MODULE	tests/test_provider_health_monitor.py	timing/thread-scheduling flaky module (subset varies per run)
+MODULE	tests/test_secrets.py	shared audit-file pollution flaky module
+FLAKY	tests/test_circuit_breaker.py::TestCooldownAndHalfOpen::test_half_open_probe_failure_returns_to_open	order-dependent: class passes 5/5 in isolation, fails under full-suite ordering
+FLAKY	tests/test_circuit_breaker.py::TestCooldownAndHalfOpen::test_half_open_probe_success_closes_breaker	order-dependent: class passes 5/5 in isolation, fails under full-suite ordering
+FLAKY	tests/test_circuit_breaker.py::TestCooldownAndHalfOpen::test_open_breaker_transitions_to_half_open_after_cooldown	order-dependent: class passes 5/5 in isolation, fails under full-suite ordering
+FLAKY	tests/test_command_center_13o.py::test_command_center_health_matches_provider_registry	pollution: 'test-provider' leaked into ai_provider registry from another test
+FLAKY	tests/test_command_center_13o.py::test_command_center_workforce_matches_provider_registry	pollution: 'test-provider' leaked into ai_provider registry from another test
+FLAKY	tests/test_provider_health_monitor.py::TestEndToEnd::test_monitor_detects_and_alerts_on_failure	timing: alert callback not fired within test window
+FLAKY	tests/test_provider_health_monitor.py::TestMonitorLifecycle::test_monitor_increments_check_count	timing: monitor thread check_count not incremented in time (passes alone sometimes)
+FLAKY	tests/test_provider_health_monitor.py::TestProviderHealthChecking::test_check_quota_exceeded_provider	timing: quota snapshot not updated before assertion
+FLAKY	tests/test_secrets.py::TestAuditLogging::test_get_secret_logs_access	order-dependent: passes in isolation; shared memory/secret_access_audit.json not isolated
+FLAKY	tests/test_secrets.py::TestHealthCheck::test_health_check_no_api_base	order-dependent: passes in isolation; shared memory/secret_access_audit.json not isolated

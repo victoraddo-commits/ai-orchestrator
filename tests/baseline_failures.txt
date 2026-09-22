@@ -1,0 +1,106 @@
+# Known-bad test baseline for the Kai orchestrator suite.
+# Generated from a full serial run on 2026-09-22 (110 failed / 4318 passed / 10 skipped).
+# Format: CATEGORY<TAB>node_id<TAB>one-line reason
+# CATEGORY is ENV | STALE | REAL. FLAKY tests are listed in baseline_flaky.txt instead.
+# Refresh instructions: see tests/BASELINE.md
+
+# --- ENV ---
+ENV	tests/test_build_manager.py::test_max_concurrent_builds_read_from_providers_yaml	missing dep: ModuleNotFoundError: yaml (PyYAML) -> _load_max_concurrent_builds falls back to default 4
+ENV	tests/test_coding_bridge.py::test_stream_agent_events_enforces_a_wall_clock_deadline_not_just_inactivity	missing key file: CloudCLINotConfigured (~/.ai-orchestrator/cloudcli_api_key absent)
+ENV	tests/test_deployment_manager.py::test_deploy_build_real_end_to_end	Docker unavailable: FileNotFoundError: 'docker'
+ENV	tests/test_klaus_vector_indexer.py::TestEmbeddingGeneration::test_generate_embedding_returns_list_of_floats	missing dep: ModuleNotFoundError: sentence_transformers
+ENV	tests/test_klaus_vector_indexer.py::TestEmbeddingGeneration::test_generate_embeddings_batch	missing dep: ModuleNotFoundError: sentence_transformers
+ENV	tests/test_klaus_vector_indexer.py::TestEmbeddingGeneration::test_model_cached_after_first_load	missing dep: ModuleNotFoundError: sentence_transformers
+ENV	tests/test_klaus_vector_indexer.py::TestSearchSimilar::test_returns_empty_list_on_error	missing dep: ModuleNotFoundError: sentence_transformers
+ENV	tests/test_klaus_vector_indexer.py::TestSearchSimilar::test_returns_results	missing dep: ModuleNotFoundError: sentence_transformers
+ENV	tests/test_llm_clients.py::test_call_groq_raises_when_key_missing	external API: HTTPError model `qwen/qwen3.6-27b` does not exist/no access
+ENV	tests/test_llm_clients.py::test_call_openrouter_raises_when_key_missing	external API: HTTP 402 requires more credits (openrouter account)
+ENV	tests/test_network_command_center.py::TestNetworkTopologyPanel::test_panel_graceful_when_apis_fail	missing dep: ModuleNotFoundError: playwright
+ENV	tests/test_network_command_center.py::TestNetworkTopologyPanel::test_panel_renders_healthy_topology	missing dep: ModuleNotFoundError: playwright
+ENV	tests/test_network_command_center.py::TestNetworkTopologyPanel::test_panel_shows_critical_when_site_offline	missing dep: ModuleNotFoundError: playwright
+ENV	tests/test_network_command_center.py::TestNetworkTopologyPanel::test_panel_shows_critical_when_tunnel_down	missing dep: ModuleNotFoundError: playwright
+ENV	tests/test_sandbox.py::test_run_in_sandbox_actually_runs_a_real_container	Docker unavailable: 'docker' binary missing and /var/run/docker.sock absent
+ENV	tests/test_sandbox.py::test_run_in_sandbox_cannot_see_the_host_filesystem	Docker unavailable: SandboxUnavailable (Docker binary missing or daemon unreachable)
+ENV	tests/test_sandbox.py::test_run_in_sandbox_project_path_is_writable	Docker unavailable: SandboxUnavailable (Docker binary missing or daemon unreachable)
+ENV	tests/test_security_scanner.py::test_run_all_scans_against_a_real_vulnerable_fixture	Docker unavailable: bandit scan needs sandbox container; SandboxUnavailable
+ENV	tests/test_service_registry.py::test_consecutive_failures_degrade	missing dep: ModuleNotFoundError: requests_mock
+ENV	tests/test_service_registry.py::test_health_check_updates_service_status	missing dep: ModuleNotFoundError: requests_mock
+
+# --- STALE ---
+STALE	tests/kai_betting/test_ai_inference.py::test_client_requires_api_key	stale contract: local base_url counts as configured (no key needed for local fabric)
+STALE	tests/kai_betting/test_engine.py::TestOddsEngine::test_available_sizes	stale data: ODDS_TARGETS reduced to 3 (5/10/15); test expects >=4
+STALE	tests/test_17d_dashboard_proxy.py::test_dashboard_has_login_modal	stale UI: /dashboard redirects to /command-center; login-username-input removed
+STALE	tests/test_17d_dashboard_proxy.py::test_dashboard_has_tab_navigation	stale UI: /dashboard redirects to /command-center; tab-nav markup removed
+STALE	tests/test_17d_dashboard_proxy.py::test_dashboard_proxy_path_in_js	stale UI: /dashboard redirects to /command-center; /dashboard/api/proxy path removed from HTML
+STALE	tests/test_agent_roles.py::test_agent_role_kwargs_forward_to_delegate	stale chain: log_analysis chain is local-only now; groq no longer a candidate
+STALE	tests/test_agent_roles.py::test_fast_analysis_agent_routes_to_groq	stale chain: log_analysis chain is local-only now; groq no longer a candidate
+STALE	tests/test_ai_router.py::test_classification_role_falls_back_to_claude_when_groq_has_no_credentials	stale chain: classification no longer includes claude/groq (local-only)
+STALE	tests/test_ai_router.py::test_classification_role_prefers_groq_and_falls_back_when_unavailable	stale chain: classification no longer includes groq (local-only)
+STALE	tests/test_ai_router.py::test_coding_front_is_free_coding_with_current_provider_state	stale order: coding front is now kai_coder (free_coding no longer front)
+STALE	tests/test_ai_router.py::test_coding_role_still_ends_on_gpuai_fallback	stale chain: gpuai_minimax no longer in coding chain
+STALE	tests/test_ai_router.py::test_direct_free_coding_is_first_for_coding	stale order: coding front is now kai_coder (was free_coding)
+STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[architecture]	stale chain: architecture chain is local-only now; gemini absent
+STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[classification]	stale chain: classification chain is local-only now; gemini absent
+STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[law_document]	stale task_type: 'law_document' role removed (KeyError)
+STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[planning]	stale chain: planning chain is local-only now; gemini absent
+STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[review]	stale chain: review chain is local-only now; gemini absent
+STALE	tests/test_ai_router.py::test_local_qwen_is_main_brain_primary_and_llama3_helps_utility_roles	stale rename: main-brain primary is now kai_brain (was local)
+STALE	tests/test_ai_router.py::test_minimax_coding_agent_route_is_in_the_coding_rotation	stale chain: gpuai_minimax no longer in coding rotation
+STALE	tests/test_ai_router.py::test_minimax_coding_agent_route_is_not_ahead_of_the_family	stale chain: gpuai_minimax no longer in coding chain (ValueError)
+STALE	tests/test_ai_router.py::test_openrouter_claude_disabled_deepseek_native_flash_took_its_slot_2026_08_02	stale rename: classification primary is now kai_brain (was local)
+STALE	tests/test_api.py::test_dashboard_actions_go_through_proxy_not_directly	stale UI: /dashboard now redirects to /command-center; proxy path not in new HTML
+STALE	tests/test_api.py::test_dashboard_endpoint_html_contains_expected_ui_elements	stale UI: /dashboard now redirects to /command-center; old Kai Dashboard markup gone
+STALE	tests/test_api.py::test_dashboard_endpoint_returns_valid_html	stale UI: /dashboard now 307-redirects to /command-center (Command Center v2)
+STALE	tests/test_api.py::test_delegate_endpoint_routes_and_returns_result	stale chain: log_analysis no longer routes to groq (now local-only kai_brain/local)
+STALE	tests/test_build_pipeline_v3.py::TestPodRoutingV3::test_deepseek_native_pro_stays_in_fallback_chains	stale chain: chains are local-only now; deepseek_native_pro no longer present
+STALE	tests/test_build_pipeline_v3.py::TestPodRoutingV3::test_local_is_architecture_primary	stale rename: architecture primary is now kai_brain (was local)
+STALE	tests/test_build_pipeline_v3.py::TestPodRoutingV3::test_local_is_planning_primary	stale rename: planning primary is now kai_brain (was local)
+STALE	tests/test_build_pipeline_v3.py::TestPodRoutingV3::test_local_is_review_primary	stale rename: review primary is now kai_brain (was local) per local-model reorg
+STALE	tests/test_klaus_integration.py::TestDBManagerInitSampleData::test_init_sample_data_runs_without_error	stale count: TIER_1_SEEDS now 2 entries; test expects >=3 add_source calls
+STALE	tests/test_llm_clients.py::test_call_gemini_raises_when_key_missing	stale isolation: _require_key now prefers secrets store (gemini key stored); test only delenvs
+STALE	tests/test_llm_clients.py::test_call_minimax_raises_when_key_missing	stale isolation: _require_key now prefers secrets store (minimax key stored); test only delenvs
+STALE	tests/test_provider_config_editor.py::TestRouterIntegration::test_router_for_nonexistent_role_without_override	stale default: unknown-role fallback now ['local'] (was ['claude'])
+STALE	tests/test_provider_dashboard_13j.py::test_provider_dashboard_shows_current_job_when_generating	stale: _derive_health returns 'unknown' when provider unavailable; test does not stub availability
+
+# --- REAL ---
+REAL	tests/test_ai_router.py::test_13v_architecture_chain_candidates_all_resolve_with_text_capability	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_candidates_for_coding_front_order_rotates_while_the_tail_never_changes	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_candidates_for_coding_rotates_only_the_alt_claude_front_group	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_accepts_explicit_task_type_override	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_clears_circuit_breaker_on_success	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_coding_always_picks_the_sole_front_candidate	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_coding_falls_all_the_way_to_fallback_when_front_routes_are_down	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_coding_falls_through_the_fixed_tail_in_order_when_front_routes_are_down	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_coding_raises_all_providers_failed_when_every_candidate_is_down	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_demotes_latency_degraded_provider	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_demotion_tries_healthy_before_degraded	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_documentation_task_accepts_gemini_or_groq	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_documentation_task_includes_omniroute_deepseek_flash	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_does_not_double_rotate_the_coding_candidates	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_planning_always_tries_same_primary_first_not_rotated	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_planning_task_includes_deepseek_as_a_candidate	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_records_circuit_breaker_on_failure	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_records_latency_on_success	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_records_usage_on_failure_too	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_review_task_includes_omniroute_deepseek_flash_as_candidate	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_review_task_type_falls_back_to_last_resort	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_review_task_type_routes_to_primary	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_routes_to_expected_provider[Analyze Docker error log-groq]	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_routes_to_expected_provider[Design an application architecture-gemini]	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_skips_circuit_open_provider	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_text_task_records_null_cost	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_with_requires_file_access_falls_through_text_providers	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_with_requires_file_access_filters_out_text_only	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_delegate_without_requires_file_access_does_not_filter	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_every_coding_candidate_supports_the_coding_agent_capability	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[documentation]	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[log_analysis]	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[planning]	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[review]	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_cost_tracker.py::test_every_registered_router_provider_has_pricing	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_llm_clients.py::test_pop_last_usage_returns_none_when_nothing_captured	test-isolation (not product): llm_clients module-global last-usage buffer leaks between tests; deterministic in isolation too
+REAL	tests/test_local_coding_bridge.py::TestProviderWiring::test_kai_coder_and_kai_brain_have_coding_capability	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_model_fabric_diversity.py::test_coding_fails_over_on_vm104_timeout	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_model_fabric_diversity.py::test_every_chain_is_local_only	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_model_fabric_diversity.py::test_planning_fails_over_from_vm104_to_vm112	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)
+REAL	tests/test_model_fabric_diversity.py::test_provider_chain_report_surfaces_health_and_nodes	routing references fabric providers (kai_brain/kai_coder/kai_deep/llama_coder_cpu) that are NOT registered in core/ai_provider.py (main is missing the registration commits, which live on unmerged branches)

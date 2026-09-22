@@ -49,6 +49,8 @@ def handle_command(text: str, update: Dict[str, Any], account: Dict[str, Any]) -
             return handle_document(args, update, account)
         elif command == "progress":
             return handle_progress(update, account)
+        elif command == "forget":
+            return handle_forget(account)
         else:
             return f"Unknown command: /{command}. Type /help for available commands."
 
@@ -329,6 +331,25 @@ def handle_document(args: str, update: Dict[str, Any], account: Dict[str, Any]) 
         f"  Estimated cost: GH₵{billing['cost_ghs']:.2f}\n"
         f"  Reference: {billing['analysis_id']}\n\n"
         "Your document will be analyzed shortly. I'll send the results here."
+    )
+
+
+# ---- Privacy / data deletion ----
+
+def handle_forget(account: Dict[str, Any]) -> str:
+    """Delete every stored question/answer record for this account.
+
+    The Q&A log is local-only (CT111), but the user can still ask for it to be
+    erased. This is irreversible.
+    """
+    try:
+        res = get_account_manager().forget_qa(account["account_id"])
+    except Exception:
+        return "⚠️ Could not clear your stored data right now. Please try again."
+    return (
+        f"🧹 Deleted {res.get('deleted', 0)} stored question/answer record(s) "
+        "for your account.\nYour conversation history in this chat is also "
+        "reset on your next question. Nothing was ever sent externally."
     )
 
 

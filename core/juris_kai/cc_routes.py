@@ -268,6 +268,14 @@ def _cache_stats() -> dict:
         return {"error": str(exc)}
 
 
+def _learning_report(limit: int = 1000) -> dict:
+    try:
+        from core.juris_kai import learning
+        return learning.analyze(limit=limit)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
 # ── health / routing / metrics ────────────────────────────────────────────
 
 @router.get("/api/juris-kai/health")
@@ -289,6 +297,14 @@ def cc_routing(_: str = Depends(require_cc_read)):
 @router.get("/api/juris-kai/metrics")
 def cc_metrics(limit: int = 200, _: str = Depends(require_cc_read)):
     return {"metrics": _juris_metrics(limit=limit), "cache": _cache_stats()}
+
+
+# ── learning loop (read-only weak-area mining) ────────────────────────────
+
+@router.get("/api/juris-kai/cc/learning")
+def cc_learning(limit: int = 1000, _: str = Depends(require_cc_read)):
+    """Read-only weak-area / repeat-question report over the local Q&A log."""
+    return _learning_report(limit=limit)
 
 
 # ── cache (session-readable alias; clear reuses Part A endpoint) ──────────

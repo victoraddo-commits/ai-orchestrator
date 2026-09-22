@@ -2422,7 +2422,8 @@ async function loadLegal(){
 const JURIS_TABS=[
   {n:'overview',l:'Overview'},{n:'corpus',l:'Corpus'},{n:'ingest',l:'Ingest'},
   {n:'accounts',l:'Accounts'},{n:'referrals',l:'Referrals'},{n:'bot',l:'Bot'},
-  {n:'model',l:'Model'},{n:'pricing',l:'Plans & Pricing'},{n:'cache',l:'Cache'}
+  {n:'model',l:'Model'},{n:'pricing',l:'Plans & Pricing'},{n:'cache',l:'Cache'},
+  {n:'learning',l:'Learning'}
 ];
 let JURIS_ACTIVE='overview';
 
@@ -2445,7 +2446,7 @@ function jurisSwitch(tab){
   document.querySelectorAll('#juris-tabs .jtab').forEach(b=>b.classList.toggle('active',b.dataset.jtab===tab));
   const c=$('juris-tab-content');if(!c)return;
   c.dataset.jtab=tab;
-  const views={overview:jurisOverview,corpus:jurisCorpus,ingest:jurisIngest,accounts:jurisAccounts,referrals:jurisReferrals,bot:jurisBot,model:jurisModel,pricing:jurisPricing,cache:jurisCache};
+  const views={overview:jurisOverview,corpus:jurisCorpus,ingest:jurisIngest,accounts:jurisAccounts,referrals:jurisReferrals,bot:jurisBot,model:jurisModel,pricing:jurisPricing,cache:jurisCache,learning:jurisLearning};
   (views[tab]||jurisOverview)(c,tab);
 }
 
@@ -2944,6 +2945,40 @@ function jurisCacheClear(){
       if(d.success){if(msg)msg.textContent='cleared '+(d.cleared||0)+' entries';toast('Caches cleared');setTimeout(()=>jurisSwitch('cache'),500);}
       else{if(msg)msg.textContent='error: '+(d.error||'failed');toast('Clear failed','err');}}
     catch(e){if(msg)msg.textContent='error: '+e.message;toast('Error: '+e.message,'err');}});
+}
+
+// ── Learning loop — weak-area mining & repeat questions ────────────
+async function jurisLearning(c,tab){
+  c.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const d=await api('/api/juris-kai/cc/learning');
+    if(_jurisStale(tab))return;
+    const topics=d.top_topics||[],repeats=d.repeat_questions||[],weak=d.weak_answers||[];
+    let h='<div class="juris-grid">'
+      +_jm('Q&A records',d.total_records||0)
+      +_jm('Cache hits',d.cache_hits||0,'var(--accent)')
+      +_jm('Hit rate',d.cache_hit_rate==null?'—':Math.round(d.cache_hit_rate*100)+'%','var(--accent)')
+      +_jm('Repeats',repeats.length,'var(--info)')
+      +_jm('Weak answers',d.weak_count||0,'var(--warn)')
+      +_jm('Blocked',d.blocked_answers||0,'var(--destructive)')
+      +'</div>';
+    if(d.generated_at)h+='<div class="field-hint">generated '+esc(String(d.generated_at).slice(0,19))+' · local SQLite only</div>';
+    if(!d.total_records){h+='<p class="empty">No Q&A logged yet.</p>';}
+    if(topics.length){
+      h+='<div class="juris-sub">Most-asked topics</div><div class="table-wrap"><table><thead><tr><th>Topic</th><th>Count</th></tr></thead><tbody>'
+        +topics.map(t=>'<tr><td>'+esc(t.topic)+'</td><td>'+esc(t.count)+'</td></tr>').join('')+'</tbody></table></div>';
+    }
+    if(repeats.length){
+      h+='<div class="juris-sub">Repeat questions (canned-answer candidates)</div><div class="table-wrap"><table><thead><tr><th>Question</th><th>Count</th></tr></thead><tbody>'
+        +repeats.map(r=>'<tr><td>'+esc(r.sample||r.question)+'</td><td>'+esc(r.count)+'</td></tr>').join('')+'</tbody></table></div>';
+    }
+    if(weak.length){
+      h+='<div class="juris-sub">Weak / blocked answers</div><div class="table-wrap"><table><thead><tr><th>Question</th><th>Conf</th><th>Chars</th><th>Blocked</th></tr></thead><tbody>'
+        +weak.map(w=>'<tr><td>'+esc(w.question)+'</td><td>'+esc(w.confidence)+'</td><td>'+esc(w.answer_chars)+'</td><td>'+(w.blocked?'yes':'no')+'</td></tr>').join('')+'</tbody></table></div>';
+    }
+    h+='<div class="action-row" style="margin-top:12px"><button class="btn btn-sm" onclick="jurisSwitch(\'learning\')">Refresh</button></div>';
+    c.innerHTML=h;
+  }catch(e){if(_jurisStale(tab))return;c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
 // ── Plans & Pricing (editable) + test checkout ────────────────────

@@ -114,6 +114,32 @@ Behaviour:
 - Runs pytest with `--tb=no -p no:cacheprovider`; it prints only node ids and
   counts, never tracebacks (see security note).
 
+### Clean-run evidence (2026-09-22, post-fix)
+
+`scripts/test_regression_gate.sh` on the whole suite:
+
+```
+100 failed, 4328 passed, 10 skipped
+known failures   : 95  (in baseline; ignored)
+quarantined flaky: 5 failed this run (ignored, visible)
+NEW failures     : 0
+NEW passes       : 0
+GATE: PASS — no new failures
+```
+
+The 5 quarantined failures that run were the 3 circuit-breaker tests and the 2
+command-center registry tests; `test_provider_health_monitor` and `test_secrets`
+happened to pass this time. That run-to-run variability is exactly why they are
+quarantined rather than baselined. Full summary saved at
+`tests/baseline_evidence/gate-clean-run-2026-09-22.txt`.
+
+Gate self-tests performed:
+
+- known ENV failures (`tests/test_sandbox.py`) → exit 0, "known failures: 3".
+- same subset against an empty baseline → exit 1, "NEW failures: 3".
+- flaky module (`tests/test_provider_health_monitor.py`) → exit 0, flaky failure
+  listed visibly and ignored.
+
 CI/pre-commit wiring (later): call the script from a job, e.g.
 
 ```yaml

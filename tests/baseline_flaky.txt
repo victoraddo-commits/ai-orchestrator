@@ -17,3 +17,4 @@ FLAKY	tests/test_provider_health_monitor.py::TestMonitorLifecycle::test_monitor_
 FLAKY	tests/test_provider_health_monitor.py::TestProviderHealthChecking::test_check_quota_exceeded_provider	timing: quota snapshot not updated before assertion
 FLAKY	tests/test_secrets.py::TestAuditLogging::test_get_secret_logs_access	order-dependent: passes in isolation; shared memory/secret_access_audit.json not isolated
 FLAKY	tests/test_secrets.py::TestHealthCheck::test_health_check_no_api_base	order-dependent: passes in isolation; shared memory/secret_access_audit.json not isolated
+FLAKY	tests/test_provider_config_editor.py::TestAPIEndpoints::test_get_config_returns_default_when_no_overrides	order-dependent: failed in an isolated mixed-module batch, passed in the full run

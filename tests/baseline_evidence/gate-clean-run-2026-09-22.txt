@@ -1,0 +1,22 @@
+# scripts/test_regression_gate.sh — clean full-suite run 2026-09-22
+# command: scripts/test_regression_gate.sh
+# raw run: 100 failed / 4328 passed / 10 skipped (pytest --tb=no, serial)
+
+---- gate summary ----
+passed           : 4328
+failed/errored   : 100
+skipped          : 10
+known failures   : 95  (in baseline; ignored)
+quarantined flaky: 5 failed this run (ignored, visible)
+NEW failures     : 0
+NEW passes       : 0  (baselined tests now passing)
+baseline missing : 0  (test id no longer collected)
+
+[quarantined flaky failures this run]
+  FLAKY  tests/test_circuit_breaker.py::TestCooldownAndHalfOpen::test_half_open_probe_failure_returns_to_open
+  FLAKY  tests/test_circuit_breaker.py::TestCooldownAndHalfOpen::test_half_open_probe_success_closes_breaker
+  FLAKY  tests/test_circuit_breaker.py::TestCooldownAndHalfOpen::test_open_breaker_transitions_to_half_open_after_cooldown
+  FLAKY  tests/test_command_center_13o.py::test_command_center_health_matches_provider_registry
+  FLAKY  tests/test_command_center_13o.py::test_command_center_workforce_matches_provider_registry
+
+GATE: PASS — no new failures

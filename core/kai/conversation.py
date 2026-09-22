@@ -485,7 +485,11 @@ def build_chat_prompt(messages, signals, directory=None):
     envelope = _read_chat_history(directory)
     long_term = get_long_term_context(directory)
     compressed = envelope.get("compressed", {})
-    recent = envelope["recent_messages"]
+    # Honour the messages the caller passed -- the chat entrypoint guards them
+    # before handing them over -- and fall back to the persisted envelope when
+    # none are supplied (e.g. legacy callers / prompt-preview helpers).
+    passed = [m for m in (messages or []) if isinstance(m, dict)]
+    recent = passed or envelope["recent_messages"]
 
     # Long-term context
     parts = []

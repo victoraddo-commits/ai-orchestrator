@@ -1027,15 +1027,66 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
     )
 
 
+def _guard_chat_messages(messages, guard_input):
+    """Neutralize instruction-like spans in user turns before they are prompted.
+
+    Every user turn is scanned (a multi-turn attacker can seed instructions in
+    an earlier message); only the current/last turn is counted, so a message
+    that was already neutralized when it was stored is not recounted on every
+    later turn.
+    """
+    if not messages:
+        return messages
+
+    last_user = -1
+    for i, m in enumerate(messages):
+        if isinstance(m, dict) and m.get("role") == "user":
+            last_user = i
+
+    out = []
+    for i, m in enumerate(messages):
+        if not isinstance(m, dict) or m.get("role") != "user":
+            out.append(m)
+            continue
+        content = m.get("content")
+        if not isinstance(content, str) or not content:
+            out.append(m)
+            continue
+        verdict = guard_input(content, source="ai_chat", count=(i == last_user))
+        if verdict.get("suspected"):
+            out.append({**m, "content": verdict.get("clean_text", content)})
+        else:
+            out.append(m)
+    return out
+
+
 def chat(messages, signals):
     # 17V: delegate prompt construction to the conversation memory module,
     # which injects long-term operator context, compressed history, and
     # preserved citations/directives before the recent messages.
     from core.kai.conversation import build_chat_prompt
 
+    # Centralized prompt-injection guard at the narrowest shared chat
+    # entrypoint. Every caller -- handle_kai_chat, the direct ai_chat() calls
+    # in core/api.py, and the Telegram bridge -- is covered here by
+    # construction; the per-call-site guards remain as defense in depth. The
+    # guard is optional: import/scan failures degrade to "no guard".
+    try:
+        from core.legal.injection import (
+            guard_input as _gi, guard_output as _go)
+    except Exception:  # noqa: BLE001 - guard is optional
+        _gi = _go = None
+
+    safe_messages = messages
+    if _gi is not None:
+        try:
+            safe_messages = _guard_chat_messages(messages, _gi)
+        except Exception:  # noqa: BLE001 - never block chat on the guard
+            safe_messages = messages
+
     # 27G: ground the answer in the permission-aware Knowledge Fabric.
     try:
-        last_user = next((m.get("content", "") for m in reversed(messages or [])
+        last_user = next((m.get("content", "") for m in reversed(safe_messages or [])
                           if m.get("role") == "user"), "")
         if last_user and not (signals or {}).get("knowledge_context"):
             from core.knowledge.rag import build_signals
@@ -1043,11 +1094,20 @@ def chat(messages, signals):
     except Exception:
         pass
 
-    prompt = build_chat_prompt(messages, signals)
+    prompt = build_chat_prompt(safe_messages, signals)
 
     result = delegate(prompt, task_type="planning", capability="text_task")
+    response = result["response"]
 
-    return result["response"]
+    if _go is not None:
+        try:
+            verdict = _go(response, source="ai_chat")
+            if verdict.get("tripped"):
+                response = verdict.get("text", response)
+        except Exception:  # noqa: BLE001 - never block chat on the guard
+            pass
+
+    return response
 
 
 def get_worker_details():

@@ -2422,9 +2422,9 @@ def delete_provider_endpoint(
 
 class ProviderRegisterBody(BaseModel):
     name: str
-    kind: str = "cloud"               # cloud | local | api
+    kind: str = "local"               # local only (owner directive: zero third-party providers)
     description: str = ""
-    cost_tier: str = "free_or_low_cost"  # free_or_low_cost | medium_cost | high_cost | custom
+    cost_tier: str = "free"           # free | free_or_low_cost | paid
     capabilities: list[str] = []       # e.g. ["coding_agent", "text_task", "file_access"]
 
 
@@ -2449,6 +2449,15 @@ def register_provider_endpoint(
     if existing is not None:
         raise HTTPException(
             status_code=409, detail=f"Provider '{body.name}' already exists"
+        )
+
+    # Owner directive: zero third-party providers. The registry is local-only,
+    # so refuse to create a non-local entry via the admin API.
+    if body.kind != "local":
+        raise HTTPException(
+            status_code=400,
+            detail="Only local providers may be registered "
+                   "(zero third-party providers)",
         )
 
     # Register with None callbacks — placeholder until full config

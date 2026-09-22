@@ -241,9 +241,9 @@ model).
 `scripts/test_regression_gate.sh` on the whole suite (LXC 111):
 
 ```
-118 failed, 4280 passed, 10 skipped, 7 deselected  (~38 min)
+119 failed, 4280 passed, 10 skipped, 7 deselected  (~37 min)
 known failures   : 113  (in baseline; ignored)
-quarantined flaky: 5 failed this run (ignored, visible)
+quarantined flaky: 6 failed this run (ignored, visible)
 NEW failures     : 0
 NEW passes       : 0
 baseline missing : 0
@@ -256,9 +256,13 @@ Baseline delta: **+35 STALE** `tests/test_ai_router.py` entries (they assert
 the removed cloud providers/chains — replacement coverage is the three
 local-only suites above); **−1** entry
 (`test_provider_config_editor.py::TestRouterIntegration::test_router_for_nonexistent_role_without_override`
-now passes against the `['local']` fallback); **+2 FLAKY** quarantines
+now passes against the `['local']` fallback); **+3 FLAKY** quarantines
 (pre-existing ordering/race, pass in isolation — see `baseline_flaky.txt`).
 The 24 R1-tagged entries previously reclassified STALE are unchanged.
+
+Post-gate hardening: the admin `POST /providers` rejects `kind != "local"`,
+`core/free_providers.register_free_provider` (a cloud register path) is gone,
+and `kai.vision` no longer calls Gemini directly (fails closed locally).
 
 CI/pre-commit wiring (later): call the script from a job, e.g.```yaml
 - run: scripts/test_regression_gate.sh

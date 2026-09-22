@@ -400,6 +400,18 @@ def test_providers_endpoint_lists_registered_providers():
     assert "run_coding_task" not in body["kai_brain"]
 
 
+def test_register_provider_endpoint_rejects_non_local_kind():
+    # Owner directive: zero third-party providers. The admin register API must
+    # refuse to create a cloud/third-party entry.
+    response = client.post(
+        "/providers",
+        json={"name": "definitely-cloud", "kind": "cloud"},
+        headers=auth_headers(),
+    )
+    assert response.status_code == 400
+    assert "local" in response.json()["detail"].lower()
+
+
 def test_templates_endpoint_lists_available_templates():
     response = client.get("/templates")
 

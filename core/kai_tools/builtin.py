@@ -380,32 +380,16 @@ def vision_analyze_url(url: str, question: str = "Describe this page and note an
 
 
 def _vision_ask(png_bytes: bytes, question: str) -> dict:
-    """Vision via Gemini native generateContent with inline_data (multimodal
-    part array). Falls back to a text-only description error honestly."""
-    import os as _os
-    key = _os.environ.get("GEMINI_API_KEY", "")
-    if not key:
-        try:
-            from core.ai.secrets import get_api_key
-            key = get_api_key("gemini") or ""
-        except Exception:
-            pass
-    if not key:
-        raise RuntimeError("no vision provider configured (GEMINI_API_KEY missing)")
-    import requests as _rq
-    from core.ai.secrets import get_api_key as _gak
-    model = "gemini-flash-lite-latest"
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-    body = {"contents": [{"parts": [
-        {"text": question},
-        {"inline_data": {"mime_type": "image/png",
-                         "data": base64.b64encode(png_bytes).decode()}},
-    ]}]}
-    r = _rq.post(url, params={"key": key}, json=body, timeout=90)
-    if r.status_code != 200:
-        raise RuntimeError(f"vision provider {r.status_code}: {r.text[:150]}")
-    text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-    return {"analysis": str(text)[:3000], "provider": f"gemini:{model}"}
+    """Vision analysis — local-only fabric has no vision model configured.
+
+    Previously called Gemini's native generateContent (a third-party network
+    call). Per the owner directive (zero third-party providers) this now fails
+    closed with an honest message instead of reaching an external endpoint.
+    """
+    raise RuntimeError(
+        "no local vision model configured — the model fabric is local-only "
+        "(zero third-party providers)"
+    )
 
 
 # --- kai.twin.* (P14) + kai.workers.delegate (P12) --------------------------------

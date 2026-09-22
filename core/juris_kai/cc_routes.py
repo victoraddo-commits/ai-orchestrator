@@ -67,20 +67,22 @@ def _operator_identity(authorization: str | None) -> str | None:
     return None
 
 
-def _proxy_identity(x_kai_user: str | None,
+def _proxy_identity(request: Request, x_kai_user: str | None,
                     x_kai_user_id: str | None) -> str | None:
     """The CC browser reaches the API through the auth proxy, which injects a
     verified ``X-Kai-User``/``X-Kai-User-Id`` identity pair. Every other CC
     router (``cc_modules`` / ``cc_extra_routes``) accepts it as an operator, so
     the juris CC surface must too — otherwise its panels 401 while the rest of
     the Command Center works. Both headers are required to avoid a stray one
-    being treated as identity."""
-    if x_kai_user and x_kai_user_id:
-        return f"auth-proxy:{x_kai_user_id}"
-    return None
+    being treated as identity, and the pair is honoured **only** from a trusted
+    peer (see ``core.auth.trusted_proxy``); an untrusted client cannot forge it.
+    """
+    from core.auth.trusted_proxy import proxy_identity
+    return proxy_identity(request, x_kai_user, x_kai_user_id)
 
 
 def require_cc_read(
+    request: Request,
     authorization: str | None = Header(default=None),
     x_kai_session: str | None = Header(default=None),
     x_kai_user: str | None = Header(default=None),
@@ -93,13 +95,14 @@ def require_cc_read(
     if x_kai_session and (authz.check_capability(x_kai_session, "kai.command")
                           or authz.check_capability(x_kai_session, "juris.admin")):
         return x_kai_session
-    proxy = _proxy_identity(x_kai_user, x_kai_user_id)
+    proxy = _proxy_identity(request, x_kai_user, x_kai_user_id)
     if proxy:
         return proxy
     raise HTTPException(status_code=401, detail="Missing or invalid credentials")
 
 
 def require_juris_write(
+    request: Request,
     authorization: str | None = Header(default=None),
     x_kai_session: str | None = Header(default=None),
     x_kai_user: str | None = Header(default=None),
@@ -114,7 +117,7 @@ def require_juris_write(
         if authz.check_capability(x_kai_session, "juris.admin"):
             return x_kai_session
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    proxy = _proxy_identity(x_kai_user, x_kai_user_id)
+    proxy = _proxy_identity(request, x_kai_user, x_kai_user_id)
     if proxy:
         return proxy
     raise HTTPException(status_code=401, detail="Missing or invalid credentials")

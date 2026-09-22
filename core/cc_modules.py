@@ -18,7 +18,8 @@ cc_router = APIRouter(prefix="/cc", tags=["command-center-modules"])
 
 def _require_operator(request: Request) -> None:
     """Writes through the module proxy require an operator (bridge token, valid
-    CC session, or auth-proxy identity headers)."""
+    CC session, or auth-proxy identity headers). Identity headers are honoured
+    only from a trusted peer (``core.auth.trusted_proxy``)."""
     if request.headers.get("authorization"):
         return
     tok = request.headers.get("x-kai-session", "")
@@ -29,7 +30,9 @@ def _require_operator(request: Request) -> None:
                 return
         except Exception:  # noqa: BLE001
             pass
-    if request.headers.get("x-kai-user") and request.headers.get("x-kai-user-id"):
+    from core.auth.trusted_proxy import proxy_identity
+    if proxy_identity(request, request.headers.get("x-kai-user"),
+                      request.headers.get("x-kai-user-id")):
         return
     raise HTTPException(status_code=401, detail="operator session required")
 

@@ -351,6 +351,7 @@ def _kai_brain_auth():
 
 
 def _cc_read_dep(
+    request: Request,
     authorization: str | None = Header(default=None),
     x_kai_session: str | None = Header(default=None),
     x_kai_user: str | None = Header(default=None),
@@ -358,15 +359,18 @@ def _cc_read_dep(
 ) -> str:
     """Read gate for Command Center panels: bridge token, a valid session, or
     the auth-proxy identity headers. Mirrors core.juris_kai.cc_routes so every
-    CC surface authenticates the same way."""
+    CC surface authenticates the same way. The identity headers are honoured
+    only from a trusted peer (``core.auth.trusted_proxy``)."""
     from core.bridge_auth import _load_api_token, BRIDGE_OPERATOR
     if authorization and hmac.compare_digest(
             authorization.encode(), f"Bearer {_load_api_token()}".encode()):
         return BRIDGE_OPERATOR
     if x_kai_session and authz._resolve_session(x_kai_session):
         return x_kai_session
-    if x_kai_user and x_kai_user_id:
-        return f"auth-proxy:{x_kai_user_id}"
+    from core.auth.trusted_proxy import proxy_identity
+    proxy = proxy_identity(request, x_kai_user, x_kai_user_id)
+    if proxy:
+        return proxy
     raise HTTPException(status_code=401, detail="Missing or invalid credentials")
 
 

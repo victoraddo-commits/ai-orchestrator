@@ -18,7 +18,10 @@ cc_extra_router = APIRouter(tags=["command-center-extra"])
 
 def _req_op(request: Request) -> None:
     """Require an operator: bridge token, a valid CC session, or the identity
-    headers injected by the auth proxy. Used to gate write/trigger endpoints."""
+    headers injected by the auth proxy. Used to gate write/trigger endpoints.
+
+    The identity headers are honoured only from a trusted peer
+    (``core.auth.trusted_proxy``) -- an untrusted client cannot forge them."""
     if request.headers.get("authorization"):
         return
     tok = request.headers.get("x-kai-session", "")
@@ -29,7 +32,9 @@ def _req_op(request: Request) -> None:
                 return
         except Exception:  # noqa: BLE001
             pass
-    if request.headers.get("x-kai-user") and request.headers.get("x-kai-user-id"):
+    from core.auth.trusted_proxy import proxy_identity
+    if proxy_identity(request, request.headers.get("x-kai-user"),
+                      request.headers.get("x-kai-user-id")):
         return
     raise HTTPException(status_code=401, detail="operator session required")
 

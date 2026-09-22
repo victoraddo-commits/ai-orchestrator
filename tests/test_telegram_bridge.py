@@ -1078,7 +1078,7 @@ def test_17k_real_shared_history_end_to_end(monkeypatch):
     monkeypatch.setattr(api_module, "gather_signals", lambda: {})
 
     # Stub kai_dispatch to always be unmatched so we reach the AI fallback.
-    monkeypatch.setattr(api_module, "kai_dispatch", lambda text: {"matched": False})
+    monkeypatch.setattr(api_module, "kai_dispatch", lambda text, **kwargs: {"matched": False})
 
     # Make sure the bridge uses the REAL handle_kai_chat (not a stub).
     tb_module._handle_kai_chat = None  # reset lazy cache so it re-imports

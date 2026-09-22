@@ -231,18 +231,25 @@ class TestHubtelPayments:
         assert result["amount_ghs"] == 50
         assert "hubtel_transaction_id" in result
 
-    def test_payment_client_not_configured_without_creds(self):
+    def test_payment_client_not_configured_without_creds(self, monkeypatch):
         """Client reports unconfigured when env vars are missing."""
         import core.juris_kai.payments as pmts
+
+        # Credentials now resolve from the credential vault plus HUBTEL_* env
+        # vars (the old module attribute HUBTEL_CLIENT_ID was removed). Unset
+        # both sources so is_configured() deterministically reports False.
+        monkeypatch.setattr(
+            "core.ai.credential_vault.retrieve_hubtel_credentials",
+            lambda: {"client_id": "", "client_secret": "", "merchant_number": ""},
+        )
+        monkeypatch.setenv("HUBTEL_CLIENT_ID", "")
+        monkeypatch.setenv("HUBTEL_CLIENT_SECRET", "")
+        monkeypatch.setenv("HUBTEL_MERCHANT_NUMBER", "")
         pmts._payment_client = None
-        # Temporarily unset credentials
-        old_id = pmts.HUBTEL_CLIENT_ID
-        pmts.HUBTEL_CLIENT_ID = ""
         try:
             client = pmts.get_payment_client()
             assert client.is_configured() is False
         finally:
-            pmts.HUBTEL_CLIENT_ID = old_id
             pmts._payment_client = None
 
 

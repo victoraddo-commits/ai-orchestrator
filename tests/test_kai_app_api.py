@@ -94,6 +94,15 @@ def test_terminal_endpoint_returns_credential(paired_device, isolated_memory, mo
         return real_open(path, *a, **kw)
 
     monkeypatch.setattr(builtins, "open", fake_open)
+    # The endpoint now guards os.path.exists() on the credential file, which
+    # the builtins.open stub alone does not satisfy in this environment.
+    import os as _os
+    _real_exists = _os.path.exists
+    monkeypatch.setattr(
+        _os.path,
+        "exists",
+        lambda p: True if str(p) == "/etc/default/kai-terminal-cred" else _real_exists(p),
+    )
     # Stub out the tmux/pgrep probes so the test gets the default port
     # (and we can assert exact value)
     import subprocess as _sp

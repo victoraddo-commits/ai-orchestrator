@@ -1186,7 +1186,7 @@ def test_kai_chat_persists_structured_command_result_readably(monkeypatch):
     a Python repr (True/False/None are not JSON tokens)."""
     monkeypatch.setattr(
         "core.api.kai_dispatch",
-        lambda text: {
+        lambda text, **kwargs: {
             "matched": True,
             "description": "Analyze system health and AI provider status.",
             "result": {"findings": ["docker_unavailable"], "ok": True},
@@ -1207,7 +1207,7 @@ def test_kai_chat_persists_structured_command_result_readably(monkeypatch):
 def test_kai_chat_persists_command_error_as_prose(monkeypatch):
     monkeypatch.setattr(
         "core.api.kai_dispatch",
-        lambda text: {
+        lambda text, **kwargs: {
             "matched": True,
             "description": "Advance the active roadmap.",
             "result": None,

@@ -1,0 +1,28 @@
+== Kai regression gate ==
+python : /opt/ai-orchestrator/.venv/bin/python
+target : tests/
+baseline: tests/baseline_failures.txt
+flaky  : tests/baseline_flaky.txt
+junit  : /tmp/kai-regression-gate/junit.xml
+
+pytest exit code: 1
+84 failed, 4345 passed, 10 skipped, 7 deselected, 418 warnings in 1926.36s (0:32:06)
+
+---- gate summary ----
+passed           : 4345
+failed/errored   : 84
+skipped          : 10
+known failures   : 79  (in baseline; ignored)
+quarantined flaky: 5 failed this run (ignored, visible)
+NEW failures     : 0
+NEW passes       : 0  (baselined tests now passing)
+baseline missing : 0  (test id no longer collected)
+
+[quarantined flaky failures this run]
+  FLAKY  tests/test_command_center_13o.py::test_command_center_health_matches_provider_registry
+  FLAKY  tests/test_command_center_13o.py::test_command_center_workforce_matches_provider_registry
+  FLAKY  tests/test_provider_health_monitor.py::TestEndToEnd::test_monitor_detects_and_alerts_on_failure
+  FLAKY  tests/test_provider_health_monitor.py::TestMonitorLifecycle::test_monitor_increments_check_count
+  FLAKY  tests/test_secrets.py::TestSecretsStorage::test_rotate_secret
+
+GATE: PASS — no new failures

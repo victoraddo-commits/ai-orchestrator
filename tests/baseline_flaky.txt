@@ -18,3 +18,5 @@ FLAKY	tests/test_provider_health_monitor.py::TestProviderHealthChecking::test_ch
 FLAKY	tests/test_secrets.py::TestAuditLogging::test_get_secret_logs_access	order-dependent: passes in isolation; shared memory/secret_access_audit.json not isolated
 FLAKY	tests/test_secrets.py::TestHealthCheck::test_health_check_no_api_base	order-dependent: passes in isolation; shared memory/secret_access_audit.json not isolated
 FLAKY	tests/test_provider_config_editor.py::TestAPIEndpoints::test_get_config_returns_default_when_no_overrides	order-dependent: failed in an isolated mixed-module batch, passed in the full run
+FLAKY	tests/test_roadmap_manager.py::test_single_repo_workspace_layout_is_unchanged_without_plugin	race: _copy_memory_snapshot copytree of memory/ collides with a concurrent provider_quota.json atomic-write .tmp file (pass/fail/pass over 3 module runs, 2026-09-22)
+FLAKY	tests/test_teammate_execution_guard.py::test_record_object_access_writes_only_metadata	shared secret_access_audit.json pollution: passed in full-suite gate run 1, failed in run 2, passes in isolation and module context (2026-09-22)

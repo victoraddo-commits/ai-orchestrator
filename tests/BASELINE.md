@@ -1,6 +1,12 @@
 # Test Baseline & Regression Gate
 
-Last refreshed: **2026-09-22** (LXC 111, `/opt/ai-orchestrator`, main @ `3d36fb8`).
+Baseline built: **2026-09-22** (LXC 111, `/opt/ai-orchestrator`, main @ `3d36fb8`).
+
+Updated **2026-09-22** (main @ `f064717`): **R1 fixed** — the four local
+model-fabric providers are registered. 16 R1 entries went green and were removed
+from the baseline; the remaining 24 R1-tagged entries were re-investigated and
+reclassified **REAL → STALE** (they assert the pre-`5bed38f` cloud chains, not
+the registration bug). See "R1 resolved" below.
 
 This directory records the *known-bad* state of the suite so a future run can
 fail on **new** breakage only, without pretending the existing failures do not
@@ -15,7 +21,7 @@ Full serial run (`pytest -rf`, no `-n` parallelism, ~27 min):
 110 failed, 4318 passed, 10 skipped, 7 deselected
 ```
 
-Breakdown of the 110 failures:
+Breakdown of the original 110 failures (the pre-R1 baseline):
 
 | Category | Count | Meaning | Gate treatment |
 |---|---:|---|---|
@@ -24,13 +30,21 @@ Breakdown of the 110 failures:
 | **REAL**    | 41 | genuine defect (40 = unregistered fabric providers, 1 = test isolation) | known-bad, ignored, **must be fixed** |
 | **FLAKY**   | 10 | outcome changes between runs / isolation | quarantined, ignored, visible |
 
-After the 5 trivially-stale tests fixed below, the remaining known-bad set is
-**105 failures** (20 ENV / 34 STALE / 41 REAL / 10 FLAKY). `baseline_failures.txt`
-holds the 95 non-flaky entries; `baseline_flaky.txt` holds the 10 quarantined ones.
+After the 5 trivially-stale tests fixed below, that known-bad set was
+**105 failures** (20 ENV / 34 STALE / 41 REAL / 10 FLAKY).
 
-So of the ~104–110 failures, **only 41 are real**, and **40 of those are one
-product regression** (see below). The earlier claim of "9 pre-existing
-failures" was wrong by an order of magnitude.
+**R1 is fixed** (2026-09-22, main @ `f064717`): the four fabric providers are
+registered and available, which turned **16** of the 40 R1 entries green — those
+entries are removed from `baseline_failures.txt`. The other **24** R1-tagged
+entries were re-checked with evidence and are **not** the registration bug:
+each asserts the pre-`5bed38f` *cloud* role chains (gemini/groq/deepseek/claude/
+omniroute) or the old coding-rotation state, while the live role chains are
+local-only. They are reclassified **STALE** and need the same local-only test
+sweep the unmerged branch applied.
+
+Current known-bad after the R1 fix: **20 ENV / 58 STALE / 1 REAL (R2) /
+10 FLAKY**. `baseline_failures.txt` holds 79 non-flaky entries;
+`baseline_flaky.txt` holds the 10 quarantined ones.
 
 ## Files
 
@@ -44,7 +58,7 @@ failures" was wrong by an order of magnitude.
 
 ## The REAL failures (the only ones that matter)
 
-### R1 — Model-fabric providers are routed but never registered (40 failures)
+### R1 — Model-fabric providers are routed but never registered (40 failures) — FIXED 2026-09-22
 
 `core/ai/ai_router.py` (commit `5bed38f`, §7 model diversity) routes to
 `kai_brain`, `kai_coder`, `kai_deep`, `llama_coder_cpu`, and the cost tracker
@@ -70,6 +84,42 @@ four providers from the unmerged branches (or remove them from `ROLE_PROVIDERS`
 and `provider_pricing`). Then re-run and update the baseline — these tests should
 go green.
 
+**Resolved (`f064717`):** registered all four in `core/ai_provider.py` against
+`model_registry.py` endpoints — `kai_brain`/`kai_coder`/`kai_deep` share
+`qwen3-coder:kai` on VM104 ollama (`localhost:11434`, gated on `/api/tags`),
+`llama_coder_cpu` targets the independent VM112 llama.cpp node
+(`192.168.1.242:5001`, gated on `/health`); the coding harness runs through
+`core/local_coding_bridge.py`. Zero-cost `PRICING` rows were added.
+
+The 16 R1 entries that turned green (removed from the baseline):
+
+```
+tests/test_ai_router.py::test_13v_architecture_chain_candidates_all_resolve_with_text_capability
+tests/test_ai_router.py::test_delegate_coding_raises_all_providers_failed_when_every_candidate_is_down
+tests/test_ai_router.py::test_delegate_demotes_latency_degraded_provider
+tests/test_ai_router.py::test_delegate_planning_always_tries_same_primary_first_not_rotated
+tests/test_ai_router.py::test_delegate_without_requires_file_access_does_not_filter
+tests/test_ai_router.py::test_every_coding_candidate_supports_the_coding_agent_capability
+tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[documentation]
+tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[log_analysis]
+tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[planning]
+tests/test_ai_router.py::test_every_text_role_candidate_supports_the_text_task_capability[review]
+tests/test_cost_tracker.py::test_every_registered_router_provider_has_pricing
+tests/test_local_coding_bridge.py::TestProviderWiring::test_kai_coder_and_kai_brain_have_coding_capability
+tests/test_model_fabric_diversity.py::test_coding_fails_over_on_vm104_timeout
+tests/test_model_fabric_diversity.py::test_every_chain_is_local_only
+tests/test_model_fabric_diversity.py::test_planning_fails_over_from_vm104_to_vm112
+tests/test_model_fabric_diversity.py::test_provider_chain_report_surfaces_health_and_nodes
+```
+
+The 24 entries that did **not** turn green were reclassified `REAL → STALE`
+(reason recorded per-line in `baseline_failures.txt`); they assert cloud
+providers/orderings that no longer exist on the local-only chains. A one-line
+summary of the evidence: running the four affected suites on the fixed tree
+gives **38 failed / 140 passed** (from **54 failed / 123 passed**), with the
+16 R1 passes above and **0 new failures**; the 38 residual failures are the 14
+pre-existing STALE entries plus those 24 stale cloud-chain assertions.
+
 ### R2 — `llm_clients` usage buffer leaks between tests (1 failure)
 
 `tests/test_llm_clients.py::test_pop_last_usage_returns_none_when_nothing_captured`
@@ -94,6 +144,16 @@ Re-run in isolation 2–3× on 2026-09-22:
   Quarantined module.
 - `tests/test_provider_config_editor.py::TestAPIEndpoints::test_get_config_returns_default_when_no_overrides`
   — fails in some isolation orderings, passed in the full run. Quarantined by name.
+- `tests/test_roadmap_manager.py::test_single_repo_workspace_layout_is_unchanged_without_plugin`
+  — `_create_isolated_self_clone()`'s `_copy_memory_snapshot` copytree of the real
+  `memory/` races a concurrent `provider_quota.json` atomic-write `.tmp` file
+  (pass/fail/pass over 3 module runs on 2026-09-22). Pre-existing race, surfaced
+  as a NEW failure in the full-suite gate; quarantined by name.
+- `tests/test_teammate_execution_guard.py::test_record_object_access_writes_only_metadata`
+  — shared `memory/secret_access_audit.json` pollution (same class as the
+  `test_secrets.py` quarantine): passed in full-suite gate run 1, failed in run 2,
+  passes in isolation and module context. Pre-existing, surfaced by full-suite
+  ordering; quarantined by name.
 
 ## Using the gate
 
@@ -114,7 +174,7 @@ Behaviour:
 - Runs pytest with `--tb=no -p no:cacheprovider`; it prints only node ids and
   counts, never tracebacks (see security note).
 
-### Clean-run evidence (2026-09-22, post-fix)
+### Clean-run evidence — pre-R1 baseline (2026-09-22)
 
 `scripts/test_regression_gate.sh` on the whole suite:
 
@@ -140,9 +200,31 @@ Gate self-tests performed:
 - flaky module (`tests/test_provider_health_monitor.py`) → exit 0, flaky failure
   listed visibly and ignored.
 
-CI/pre-commit wiring (later): call the script from a job, e.g.
+### R1 post-fix gate (2026-09-22, main @ `03cecf2`)
 
-```yaml
+After registering the fabric providers, reverting `local`'s coding task
+(`03cecf2`) and updating the baseline, `scripts/test_regression_gate.sh` on the
+whole suite reports:
+
+```
+84 failed, 4345 passed, 10 skipped
+known failures   : 79  (in baseline; ignored)
+quarantined flaky: 5 failed this run (ignored, visible)
+NEW failures     : 0
+NEW passes       : 0
+baseline missing : 0
+GATE: PASS — no new failures
+```
+
+Two pre-existing isolation races surfaced as NEW failures during this work
+(`test_roadmap_manager` memory-copy race, `test_teammate_execution_guard`
+audit pollution); both are now quarantined by name in `baseline_flaky.txt` with
+evidence. Neither is related to R1 (both pass in isolation and module context,
+and each passed in one full-suite run and failed in another). The full summary
+is saved at
+`tests/baseline_evidence/gate-clean-run-r1-2026-09-22.txt`.
+
+CI/pre-commit wiring (later): call the script from a job, e.g.```yaml
 - run: scripts/test_regression_gate.sh
 ```
 

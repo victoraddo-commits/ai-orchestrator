@@ -5,9 +5,8 @@ existing provider functions to deliver fast text responses for the voice
 pipeline.
 
 Circuit breaker: 2 consecutive failures trips this breaker open.
-Timeout: 3s per attempt.
-Chain: omniroute_deepseek_flash → geminix → local (qwen2.5:7b ollama)
-Free pool and paid providers are excluded explicitly.
+Chain: local (VM104 ollama) → kai_brain (VM104) → llama_coder_cpu (VM112).
+Local-only (owner directive: zero third-party providers).
 """
 
 from __future__ import annotations
@@ -20,20 +19,20 @@ from typing import Optional
 from core import ai_provider
 from core.ai import circuit_breaker
 
-# Voice-specific provider chain — free tier first, local last resort
-# Updated 2026-08-28: groq/deepseek_native/gemini need API keys; using live providers
+# Voice-specific provider chain — local-only (zero third-party providers).
 VOICE_CHAIN = [
-    "omniroute_deepseek_flash",  # DeepSeek Flash via self-hosted OmniRoute gateway
-    "geminix",                   # Gemini free tier
-    "local",                     # qwen2.5:7b via ollama (always-on local)
+    "local",             # qwen3-coder:kai via VM104 ollama (always-on local)
+    "kai_brain",         # VM104 primary brain
+    "llama_coder_cpu",   # independent VM112 CPU node
 ]
 
 # Per-provider timeouts — local ollama needs more time (120s default in llm_clients)
 _TIMEOUTS = {
     "local": 30.0,
-    "geminix": 3.0,
+    "kai_brain": 30.0,
+    "llama_coder_cpu": 30.0,
 }
-_ATTEMPT_TIMEOUT = 3.0  # default
+_ATTEMPT_TIMEOUT = 30.0  # default
 
 # 2-failure trip for voice (vs standard 3)
 _VOICE_BREAKER_THRESHOLD = 2

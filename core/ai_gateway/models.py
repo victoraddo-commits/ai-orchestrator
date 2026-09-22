@@ -28,7 +28,7 @@ class ChatCompletionRequest(BaseModel):
 
     The ``model`` field doubles as a provider key: pass ``"auto"`` to let
     the router auto-detect task_type and pick the best provider, or pass a
-    registered provider key (e.g. ``"deepseek_native_flash"``) to route directly.
+    registered local provider key (e.g. ``"kai_brain"``) to route directly.
     """
     model: str = Field(
         default="auto",

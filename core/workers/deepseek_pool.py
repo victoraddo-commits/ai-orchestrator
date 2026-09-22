@@ -1,19 +1,19 @@
-"""DeepSeek worker pool — concurrent AI worker management for Kai.
+"""Worker pool — concurrent AI worker management for Kai.
 
-Per operator directive 2026-08-09: DeepSeek is PRIMARY across all roles.
-This pool manages concurrent DeepSeek workers that execute build-phase tasks
-in parallel, with results routed to Telegram.
+(Historical name: this was the "DeepSeek pool" when DeepSeek was primary.
+Per owner directive the fabric is now 100% local — these workers execute
+build-phase tasks through ai_router's local-only routing, with results
+routed to Telegram.)
 
-Capacity: 8 default concurrent workers (~60 RPM DeepSeek soft limit / ~7.5
-calls-per-worker-per-cycle). Each worker is a lightweight coroutine that
-pulls tasks from a shared queue and executes them against DeepSeek's native
-API (text tasks) or via OmniRoute's coding gateway.
+Capacity: 8 default concurrent workers. Each worker is a lightweight
+coroutine that pulls tasks from a shared queue and executes them via
+ai_router.delegate() (local model fabric).
 
 The pool is designed to work WITHIN Kai's existing ThreadPoolExecutor (8
 build slots in config/providers.yaml) — it doesn't compete for concurrency;
 it replaces the synchronous delegate() calls within each build slot with
-parallel DeepSeek workers, so a single build's planning/architecture/review
-phases all run on DeepSeek concurrently.
+parallel workers, so a single build's planning/architecture/review phases
+run concurrently on the local fabric.
 """
 
 import threading
@@ -252,11 +252,14 @@ class DeepSeekWorkerPool:
                 self._active_count -= 1
 
     def _execute(self, task: WorkerTask) -> WorkerResult:
-        """Execute a single task against DeepSeek. Tries Pro first, then Flash."""
+        """Execute a single task against the local model fabric.
+
+        Delegates through ai_router (local-only routing); retries once so a
+        transient local node blip does not fail the task.
+        """
         start = time.time()
 
-        # Try DeepSeek Pro first (full model, best quality)
-        for attempt_provider in ("deepseek_native_pro", "deepseek_native_flash"):
+        for attempt in ("primary", "retry"):
             try:
                 result = ai_router.delegate(
                     task.prompt,
@@ -274,31 +277,30 @@ class DeepSeekWorkerPool:
                     duration_ms=duration_ms,
                 )
             except ai_router.AllProvidersFailed as e:
-                # First attempt failed — log and try fallback
-                if attempt_provider == "deepseek_native_pro":
+                # First attempt failed — log and try once more.
+                if attempt == "primary":
                     _log(
-                        f"ds-worker task {task.task_id}: Pro failed, trying Flash — "
+                        f"ds-worker task {task.task_id}: local route failed, retrying — "
                         + "; ".join(a["error"][:60] for a in (e.attempts or [])[:2])
                     )
                 else:
-                    # Both Pro and Flash exhausted
                     duration_ms = int((time.time() - start) * 1000)
                     return WorkerResult(
                         task_id=task.task_id,
                         task_type=task.task_type,
-                        provider="deepseek_native_pro",
+                        provider="local-fabric",
                         success=False,
-                        error=f"All DeepSeek providers exhausted: "
+                        error=f"Local fabric exhausted: "
                         + "; ".join(a["error"][:80] for a in (e.attempts or [])[:3]),
                         duration_ms=duration_ms,
                     )
             except Exception as e:
-                if attempt_provider == "deepseek_native_flash":
+                if attempt == "retry":
                     duration_ms = int((time.time() - start) * 1000)
                     return WorkerResult(
                         task_id=task.task_id,
                         task_type=task.task_type,
-                        provider=attempt_provider,
+                        provider="local-fabric",
                         success=False,
                         error=str(e)[:200],
                         duration_ms=duration_ms,
@@ -330,7 +332,7 @@ class DeepSeekWorkerPool:
 
         try:
             telegram_bridge.send_message(
-                f"⚠️ DeepSeek worker failed\n"
+                f"⚠️ AI worker failed (local fabric)\n"
                 f"Task: {result.task_id} ({result.task_type})\n"
                 f"Error: {result.error or 'unknown'}\n"
                 f"Duration: {result.duration_ms}ms",

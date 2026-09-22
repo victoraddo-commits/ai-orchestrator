@@ -207,7 +207,7 @@ def _handle_provider_status(name):
 
     provider = get_provider(name)
     if not provider:
-        return {"reply": f"Provider '{name}' not found. Try: deepseek_native_flash, gemini, groq, gpuai_minimax"}
+        return {"reply": f"Provider '{name}' not found. Try: kai_brain, kai_coder, kai_deep, local, llama_coder_cpu"}
 
     info = {
         "name": name,

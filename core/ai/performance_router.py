@@ -299,26 +299,14 @@ class RoutingDecision:
 
     @staticmethod
     def _model_for_provider(provider_name: str) -> str | None:
-        import core.llm_clients as llm
         import core.ai_provider as ai_provider
 
         p = ai_provider.get_provider(provider_name)
         if p is None:
             return None
 
-        model_attr_map = {
-            "gemini": "GEMINI_DEFAULT_MODEL",
-            "geminix": "GEMINI_DEFAULT_MODEL",
-            "groq": "GROQ_DEFAULT_MODEL",
-            "deepseek_native_pro": "DEEPSEEK_NATIVE_PRO_MODEL",
-            "deepseek_native_flash": "DEEPSEEK_NATIVE_FLASH_MODEL",
-            "deepseek": "DEEPSEEK_DEFAULT_MODEL",
-            # 2026-08-07: qwen4_text/qwen4_pod_b removed — RunPod pods decommissioned.
-        }
-
-        if provider_name in model_attr_map:
-            return getattr(llm, model_attr_map[provider_name], None)
-
+        # Local-only fabric: observations are keyed by the provider name
+        # (each local provider maps to one served model).
         return provider_name
 
     @staticmethod

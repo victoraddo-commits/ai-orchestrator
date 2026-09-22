@@ -1,8 +1,8 @@
-"""Phase 17T: Proactive Telegram status digest via DeepSeek-V4-Flash.
+"""Phase 17T: Proactive Telegram status digest via the local model fabric.
 
 Runs as a scheduled job (systemd timer, daily at 08:00 UTC).  Gathers system
-state, delegates to deepseek_native_flash for a concise summary, and sends
-the result to the operator's Telegram chat.
+state, delegates (local-only routing) for a concise summary, and sends the
+result to the operator's Telegram chat.
 """
 
 import json
@@ -34,7 +34,7 @@ def _gather_state():
 
 
 def _generate_summary(signals: dict) -> str:
-    """Use deepseek_native_flash to produce a concise summary."""
+    """Use the local model fabric (planning role) to produce a concise summary."""
     from core.ai.ai_router import delegate
 
     state_json = json.dumps(signals, indent=2, default=str)

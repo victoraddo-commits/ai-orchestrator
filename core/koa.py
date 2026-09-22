@@ -66,23 +66,34 @@ def get_appliance_status():
         "disk_free_gb": round(psutil.disk_usage("/").free / (1024**3), 1),
     }
 
-    # Deepseek Flash API status (native api.deepseek.com)
-    deepseek_flash = {"status": "unknown"}
+    # Local model fabric status (owner directive: zero third-party providers).
+    # Replaces the former api.deepseek.com reachability probe -- the fabric is
+    # now the two self-hosted nodes (VM104 GPU ollama, VM112 CPU llama.cpp).
+    local_fabric = {"status": "unknown", "nodes": {}}
     try:
         import requests
-        from core.ai.credential_vault import retrieve_api_key
-        api_key = retrieve_api_key("deepseek_native_flash") or os.environ.get("DEEPSEEK_NATIVE_FLASH_API_KEY", "")
-        if api_key:
-            resp = requests.get(
-                "https://api.deepseek.com/v1/models",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=5,
-            )
-            deepseek_flash["status"] = "online" if resp.status_code == 200 else f"error({resp.status_code})"
-            if resp.status_code == 200:
-                deepseek_flash["models"] = [m.get("id") for m in resp.json().get("data", [])]
+
+        ollama_up = False
+        try:
+            ollama_up = requests.get(
+                "http://localhost:11434/api/tags", timeout=3
+            ).status_code == 200
+        except Exception:
+            pass
+        local_fabric["nodes"]["vm104-gpu"] = "up" if ollama_up else "down"
+
+        cpu_up = False
+        try:
+            cpu_up = requests.get(
+                "http://192.168.1.242:5001/health", timeout=3
+            ).status_code == 200
+        except Exception:
+            pass
+        local_fabric["nodes"]["vm112-cpu"] = "up" if cpu_up else "down"
+
+        local_fabric["status"] = "online" if ollama_up else "degraded"
     except Exception:
-        deepseek_flash["status"] = "unreachable"
+        local_fabric["status"] = "unreachable"
 
     return {
         "appliance": {
@@ -93,7 +104,7 @@ def get_appliance_status():
         "resources": resources,
         "services": services,
         "docker": docker_containers,
-        "deepseek_flash": deepseek_flash,
+        "local_fabric": local_fabric,
         "proxmox": proxmox,
         "health": health,
     }

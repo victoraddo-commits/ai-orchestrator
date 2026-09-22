@@ -5,7 +5,7 @@ AWS Lambda, or any HTTP framework. The handler accepts a standard request
 dict and returns an OpenAI-compatible response dict.
 
 Dependencies: core.ai.ai_router (delegate), core.llm_clients (provider clients).
-Cold-start target: <500ms for deepseek_native_flash.
+Cold-start target: <500ms for the local model fabric.
 """
 
 import json
@@ -30,7 +30,7 @@ def handle_completion(
 
     Args:
         prompt: User prompt text.
-        model: Provider key (e.g. "deepseek_native_flash") or "auto" for routing.
+        model: Local provider key (e.g. "kai_brain") or "auto" for routing.
         max_tokens: Maximum completion tokens.
         task_type: Override task classification, or None for auto-detect.
         temperature: Sampling temperature.

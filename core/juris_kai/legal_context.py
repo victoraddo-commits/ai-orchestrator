@@ -12,7 +12,7 @@ No network calls, no shared connections.
 Architecture:
   Juris Kai Bot → legal_context.query_knowledge_base() → Legal Brain DB
                  ↓ (no shared bridge)
-            AI Provider (deepseek_native_pro)
+            AI Provider (local model fabric)
 
 Flow:
   1. User sends legal query to @Juriskai_bot

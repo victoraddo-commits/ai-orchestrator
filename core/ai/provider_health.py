@@ -1,20 +1,10 @@
 """Provider quota/credit health tracking.
 
 Deliberately honest about what each provider actually exposes rather than
-fabricating a uniform percentage for all of them (verified live against
-each provider before writing this):
-
-- Groq sends real x-ratelimit-* headers on every response -> a genuine,
-  provider-verified percentage is possible.
-- OpenAI documents the same header convention, but this account currently
-  returns insufficient_quota (0%, billing-blocked) before headers would
-  ever be attached -- captured reactively from the error instead.
-- Gemini exposes no rate-limit headers at all, success or failure; only a
-  429 error body carries any quota signal, and only reactively.
-- Claude goes through CloudCLI's bridge -- no account-credit API is
-  reachable from here at all, so its "usage" is a self-tracked request
-  count from our own usage log, explicitly labeled as such, never
-  presented as a verified remaining-credit figure.
+fabricating a uniform percentage for all of them. The fabric is local-only
+(owner directive: zero third-party providers), so a quota snapshot is
+normally just a health/error record for a self-hosted node; if a provider
+does return rate-limit headers it is still captured reactively.
 """
 
 from datetime import datetime
@@ -158,25 +148,7 @@ def capture_quota_exceeded(provider, detail):
 
 def capture_provider_error(provider, detail):
     # Deliberately not classified as "quota_exceeded" -- we can't verify the
-    # exact wording Claude Code CLI/CloudCLI uses when a subscription usage
-    # limit is hit (no documented error string to match against), so this
-    # surfaces the raw error verbatim instead of guessing what it means.
+    # exact wording an upstream uses when a usage limit is hit (no documented
+    # error string to match against), so this surfaces the raw error verbatim
+    # instead of guessing what it means.
     return record_quota_snapshot(provider, status="error", percent_remaining=None, detail=detail)
-
-
-def claude_usage_snapshot():
-    import core.ai.ai_router as ai_router
-
-    history = ai_router.get_usage_history()
-    claude_requests = [e for e in history if e.get("provider") == "claude"]
-
-    return {
-        "status": "ok" if claude_requests else "no_data",
-        "percent_remaining": None,
-        "requests_recorded": len(claude_requests),
-        "detail": (
-            "Anthropic's account credit isn't reachable through CloudCLI's bridge -- "
-            "this is a self-tracked request count from our own usage log, not a "
-            "provider-verified remaining-credit figure."
-        ),
-    }

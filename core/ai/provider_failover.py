@@ -58,33 +58,30 @@ class ProviderFailover:
             Providers are tried in order until one succeeds.
         """
         return {
-            # Coding tasks: prefer local GPU, then cloud providers
+            # Local-only fabric (owner directive: zero third-party providers).
+            # VM104 GPU primary, VM112 CPU node as the independent failover.
             'coding': [
-                'local_brain_fast',  # Local GPU (fastest, no cost)
-                'local_coder',        # Local coding-specific model
-                'local',              # Generic local model
-                'free_coding',        # Free cloud models
-                'claude',             # Paid cloud (reliable fallback)
-                'omniroute',          # Multi-provider gateway
+                'kai_coder',          # Local GPU coding specialist (VM104)
+                'kai_brain',          # Local GPU primary brain (VM104)
+                'local',              # Local text provider (VM104)
+                'llama_coder_cpu',    # Independent CPU-only node (VM112)
             ],
-            # Text tasks: prefer local for speed, cloud for quality
+            # Text tasks: local reasoning primary, CPU node failover
             'planning': [
-                'local_brain_fast',
+                'kai_brain',
                 'local',
-                'gemini',
-                'claude',
+                'llama_coder_cpu',
             ],
             'review': [
-                'local_brain_fast',
+                'kai_brain',
                 'local',
-                'gemini',
-                'claude',
+                'llama_coder_cpu',
             ],
             # Default chain for unknown task types
             'default': [
-                'local_brain_fast',
-                'claude',
-                'omniroute',
+                'kai_brain',
+                'local',
+                'llama_coder_cpu',
             ],
         }
 

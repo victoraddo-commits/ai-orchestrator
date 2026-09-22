@@ -1,24 +1,22 @@
-"""Phase 12J: multi-AI provider router.
+"""Multi-provider router — local-only model fabric.
 
-Routes a task to the best-fit provider by role, not by "wait until Claude's
-credits run out" -- Gemini/Groq are used for their designated roles from the
-first task that matches, per the AI-team model:
+Owner directive: zero third-party providers. Every role routes to local
+models served by Kai's own infrastructure (VM104 Tesla P40 ollama, VM112
+CPU llama.cpp); there is no cloud fallback. The role split is:
 
-    Claude: coding, architecture implementation, difficult debugging
-    Gemini: reviews, planning, documentation, architecture critique
-    Groq:   logs, quick analysis, simple tasks
+    kai_brain / local: planning, architecture, review, documentation
+    kai_coder:         coding, code review
+    kai_deep:          deep-reasoning escalation
+    llama_coder_cpu:   independent VM112 CPU node failover
 
-Falls back through each role's candidate list on unavailability or failure,
-ultimately landing on Claude (the one provider guaranteed capable of
-anything) if every role-specific candidate fails. Every attempt -- success
-or failure -- is recorded to memory/ai_usage_history.json.
+Falls back through each role's candidate list on unavailability or failure.
+Every attempt -- success or failure -- is recorded to
+memory/ai_usage_history.json.
 
-Phase 13J: which candidate gets tried *first* now rotates per task_type
-(memory/provider_rotation.json, see _rotate_candidates) instead of always
-starting from index 0 -- otherwise a rarely-failing primary starves every
-other candidate of real usage, leaving paid/loaded credit on providers
-like openrouter/minimax/opencode_claude untouched. Fallback-on-failure
-still walks the rest of the (rotated) list exactly as before.
+Phase 13J: which candidate gets tried *first* rotates per task_type
+(memory/provider_rotation.json, see _rotate_candidates) for non-fixed-order
+roles; fixed-order roles keep their deliberate priority ordering.
+Fallback-on-failure still walks the rest of the (rotated) list.
 """
 
 import time
@@ -1281,20 +1279,10 @@ def get_provider_dashboard():
         costs = [e["cost"] for e in attempts if isinstance(e.get("cost"), (int, float)) and not isinstance(e.get("cost"), bool)]
         durations = [e["duration_ms"] for e in attempts if e.get("duration_ms") is not None]
 
-        # Claude's "quota" isn't a provider-verified figure (see
-        # provider_health.claude_usage_snapshot's docstring) -- keep it
-        # visibly distinct from the other three's real/attempted quota data.
-        # A recorded error (e.g. a failed call, possibly a usage limit) takes
-        # priority over the self-tracked count -- that's more actionable
-        # signal than "N requests logged".
-        if name == "claude":
-            recorded_error = provider_health.get_quota_snapshot("claude")
-            quota = recorded_error if recorded_error and recorded_error.get("status") == "error" else provider_health.claude_usage_snapshot()
-        else:
-            quota = provider_health.get_quota_snapshot(name) or {
-                "percent_remaining": None,
-                "detail": "quota not yet checked -- no request has been made to this provider",
-            }
+        quota = provider_health.get_quota_snapshot(name) or {
+            "percent_remaining": None,
+            "detail": "quota not yet checked -- no request has been made to this provider",
+        }
 
         # 13J: derive a health status word from the available signals.
         success_rate = (len(successes) / len(attempts)) if attempts else None

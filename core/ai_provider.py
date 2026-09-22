@@ -616,13 +616,6 @@ def _kai_coder_run_coding_task(project_path, instruction, timeout=1200, **kwargs
     )
 
 
-def _local_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
-    """The plain "local" fallback shares the VM104 ollama coding harness."""
-    return local_coding_bridge.run_coding_task(
-        project_path, instruction, model=_KAI_MODEL, timeout=timeout
-    )
-
-
 def _llama_cpu_health(timeout=3):
     """Reachability probe for the VM112 llama.cpp server (:5001)."""
     try:
@@ -716,7 +709,6 @@ register_provider(
 
 register_provider(
     "local",
-    run_coding_task=_local_run_coding_task,
     run_text_task=_local_run_text_task,
     available_fn=_local_available,
     kind="local",

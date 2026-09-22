@@ -1082,6 +1082,8 @@ def test_every_coding_candidate_supports_the_coding_agent_capability():
     import core.ai_provider as ai_provider
 
     for name in ai_router.ROLE_PROVIDERS["coding"]:
+        if name == "local":
+            continue  # deliberate text-only tail fallback (see ROLE_PROVIDERS)
         provider = ai_provider.get_provider(name)
         assert provider is not None, name
         assert provider.get("run_coding_task") is not None, name

@@ -137,7 +137,8 @@ HELP_TEXT = (
     "/start — Welcome message\n"
     "/account — Your account status\n"
     "/subscribe — View subscription plans\n"
-    "/subscribe <tier> [email] — Buy a plan (Paystack checkout)\n\n"
+    "/subscribe <tier> [email] — Buy a plan (Paystack checkout)\n"
+    "/forget — Delete your stored questions & answers\n\n"
     "_Not a substitute for professional legal advice._"
 )
 
@@ -514,15 +515,35 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
 
 
 def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
-                    chat_id=None, reply_markup=None):
-    """Generate a legal answer: cache → stream → blocking fallback.
+                    chat_id=None, reply_markup=None, context=""):
+    """Generate a legal answer: FAQ cache → TTL cache → stream → blocking.
 
     Returns (text, model, streamed, cached). ``streamed=True`` means the text
     was already delivered to Telegram by this function and must not be sent
-    again by the caller.
+    again by the caller. ``cached=True`` means it came from the FAQ or TTL
+    cache without a model call.
+
+    The FAQ fast path is only used for standalone questions (no follow-up
+    context), so a context-dependent answer is never wrongly replayed.
     """
+    # 1) FAQ / repeat cache — a normalized repeat served instantly from the
+    #    local juris_qa_log (survives restarts) + in-process FAQ layer.
+    if not context and account_id:
+        try:
+            from core.juris_kai.accounts import get_account_manager
+            faq = get_account_manager().lookup_qa(account_id, task_type, query)
+        except Exception as exc:  # noqa: BLE001 - never break generation
+            logger.warning("juris FAQ lookup failed: %s", exc)
+            faq = None
+        if faq and faq.get("answer"):
+            logger.info("juris FAQ cache hit task=%s account=%s", task_type, account_id)
+            return faq["answer"], faq.get("model", ""), False, True
+
+    # 2) In-process generation TTL cache. Context is folded into the key so a
+    #    follow-up answered under different history is not replayed.
     corpus_ver = _cache.corpus_version()
-    key = _cache.generation_key(task_type, query, corpus_ver)
+    ctx_key = _cache.context_fingerprint(context)
+    key = _cache.generation_key(task_type, query, corpus_ver, ctx_key)
     hit = _cache.GENERATION_CACHE.get(key)
     if hit and hit.get("text"):
         return hit["text"], hit.get("model", ""), False, True
@@ -540,6 +561,34 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
         _cache.GENERATION_CACHE.set(
             key, {"text": text, "model": model, "corpus_version": corpus_ver})
     return text, model, False, False
+
+
+def _followup_context(chat_id, question: str) -> str:
+    """Bounded prior-turn context for an apparent follow-up, else ""."""
+    try:
+        from core.juris_kai.session import get_followup_context
+        return get_followup_context(chat_id, question)
+    except Exception as exc:  # noqa: BLE001 - context is best-effort
+        logger.warning("juris follow-up context failed: %s", exc)
+        return ""
+
+
+def _record_turn(account_id: str, chat_id, task_type: str, question: str,
+                 answer: str, model: str, latency_ms: int,
+                 cache_hit: bool) -> None:
+    """Persist the Q&A for the learning loop and update the session history."""
+    try:
+        get_account_manager().record_qa(
+            account_id, question=question, answer=answer, chat_id=str(chat_id),
+            task_type=task_type, model=model, latency_ms=int(latency_ms),
+            cache_hit=bool(cache_hit))
+    except Exception as exc:  # noqa: BLE001 - logging must never break a reply
+        logger.error("juris record_qa failed: %s", exc)
+    try:
+        from core.juris_kai.session import record_conversation_turn
+        record_conversation_turn(chat_id, question, answer or "")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("juris session record failed: %s", exc)
 
 
 def handle_message(update: dict) -> dict | None:
@@ -878,26 +927,32 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
     from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
 
     topic_display = label.split(" ", 1)[1] if " " in label else label
+    question = f"Ghana {topic_display}"
 
     # Query the Legal Brain knowledge base for this topic
-    legal_docs = query_knowledge_base(f"Ghana {topic_display}")
+    legal_docs = query_knowledge_base(question)
     context_preamble = build_context_preamble(legal_docs)
 
-    base_prompt = build_prompt("legal_teaching", f"Ghana {topic_display}")
+    followup_ctx = _followup_context(chat_id, question)
+    base_prompt = build_prompt("legal_teaching", question, context=followup_ctx)
     prompt = base_prompt + context_preamble
 
     # Run delegate with a hard wall-clock timeout so one slow provider
     # doesn't block the bot's entire polling loop indefinitely.
+    _t0 = time.time()
     response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, "juris_legal_teaching", f"Ghana {topic_display}",
+        prompt, "juris_legal_teaching", question,
         f"information about {topic_display}", account["account_id"],
-        chat_id=chat_id, reply_markup=learn_menu())
+        chat_id=chat_id, reply_markup=learn_menu(), context=followup_ctx)
+    _latency_ms = int((time.time() - _t0) * 1000)
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"],
                      input_tokens=_estimate_tokens(prompt),
                      output_tokens=_estimate_tokens(response_text),
                      model=model)
+    _record_turn(account["account_id"], chat_id, "juris_legal_teaching",
+                 question, response_text, model, _latency_ms, _cache_hit)
 
     return {
         "chat_id": chat_id,
@@ -912,21 +967,28 @@ def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
     from core.juris_kai.prompt import build_prompt
     from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
 
+    question = f"{query_type} in Ghana law"
     legal_docs = query_knowledge_base(f"{query_type} Ghana law")
     context_preamble = build_context_preamble(legal_docs)
 
-    base_prompt = build_prompt("legal_case_analysis", f"{query_type} in Ghana law")
+    followup_ctx = _followup_context(chat_id, question)
+    base_prompt = build_prompt("legal_case_analysis", question,
+                               context=followup_ctx)
     prompt = base_prompt + context_preamble
+    _t0 = time.time()
     response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, "juris_case_analysis", f"{query_type} in Ghana law",
+        prompt, "juris_case_analysis", question,
         query_type.lower(), account["account_id"],
-        chat_id=chat_id, reply_markup=case_law_menu())
+        chat_id=chat_id, reply_markup=case_law_menu(), context=followup_ctx)
+    _latency_ms = int((time.time() - _t0) * 1000)
 
     mgr = get_account_manager()
     mgr.record_query(account["account_id"],
                      input_tokens=_estimate_tokens(prompt),
                      output_tokens=_estimate_tokens(response_text),
                      model=model)
+    _record_turn(account["account_id"], chat_id, "juris_case_analysis",
+                 question, response_text, model, _latency_ms, _cache_hit)
 
     return {
         "chat_id": chat_id,
@@ -1288,12 +1350,15 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
 
     # Process as legal query with database context
     from core.juris_kai.prompt import build_prompt
-    base_prompt = build_prompt("legal_research", text)
+    followup_ctx = _followup_context(chat_id, text)
+    base_prompt = build_prompt("legal_research", text, context=followup_ctx)
     prompt = base_prompt + context_preamble
     reply_markup = main_menu() if not admin else admin_main_menu()
+    _t0 = time.time()
     response_text, model, streamed, _cache_hit = _generate_reply(
         prompt, "juris_research", text, text, account["account_id"],
-        chat_id=chat_id, reply_markup=reply_markup)
+        chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx)
+    _latency_ms = int((time.time() - _t0) * 1000)
 
     if not response_text or not response_text.strip():
         logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
@@ -1303,6 +1368,8 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
                      input_tokens=_estimate_tokens(prompt),
                      output_tokens=_estimate_tokens(response_text),
                      model=model)
+    _record_turn(account["account_id"], chat_id, "juris_research", text,
+                 response_text, model, _latency_ms, _cache_hit)
 
     return {
         "chat_id": chat_id,
@@ -1391,15 +1458,21 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     else:
         keyboard = main_menu()
 
-    prompt = build_prompt(prompt_type, text) + context_preamble
+    followup_ctx = _followup_context(chat_id, text)
+    prompt = build_prompt(prompt_type, text, context=followup_ctx) + context_preamble
+    _t0 = time.time()
     response_text, model, streamed, _cache_hit = _generate_reply(
         prompt, task_type, text, f"your {step.replace('_', ' ')} request",
-        account["account_id"], chat_id=chat_id, reply_markup=keyboard)
+        account["account_id"], chat_id=chat_id, reply_markup=keyboard,
+        context=followup_ctx)
+    _latency_ms = int((time.time() - _t0) * 1000)
 
     mgr.record_query(account["account_id"],
                      input_tokens=_estimate_tokens(prompt),
                      output_tokens=_estimate_tokens(response_text),
                      model=model)
+    _record_turn(account["account_id"], chat_id, task_type, text,
+                 response_text, model, _latency_ms, _cache_hit)
     del _conversation_state[state_key]
 
     return {
@@ -1425,7 +1498,7 @@ def _handle_legacy_command(text: str, chat_id: int, account: dict, admin: bool) 
             handle_help, handle_account, handle_subscribe,
             handle_learn, handle_case, handle_research,
             handle_argument, handle_flashcards, handle_progress,
-            handle_group,
+            handle_group, handle_forget,
         )
 
         cmd_map = {
@@ -1438,6 +1511,7 @@ def _handle_legacy_command(text: str, chat_id: int, account: dict, admin: bool) 
             "argument": lambda: handle_argument(args, {}, account),
             "flashcards": lambda: handle_flashcards(args, {}, account),
             "progress": lambda: handle_progress({}, account),
+            "forget": lambda: handle_forget(account),
             "group": lambda: handle_group(args, account, admin),
         }
 

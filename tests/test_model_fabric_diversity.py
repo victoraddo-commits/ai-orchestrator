@@ -129,6 +129,35 @@ def test_coding_fails_over_on_vm104_timeout(monkeypatch):
     assert result["response"] == "cpu code result"
 
 
+def test_kai_brain_failure_falls_over_across_nodes(monkeypatch):
+    """R1: a registered kai_brain (VM104) failure is recorded and the route
+    falls through to llama_coder_cpu (VM112) — two distinct physical nodes,
+    so losing the GPU does not take the chain with it."""
+    from core.model_registry import node_for
+
+    assert node_for("kai_brain") == "vm104-gpu"
+    assert node_for("llama_coder_cpu") == "vm112-cpu"
+
+    brain = ai_provider.get_provider("kai_brain")
+    assert brain is not None, "kai_brain must be registered"
+    monkeypatch.setitem(brain, "available_fn", lambda: True)
+
+    def _boom(p, timeout=60, project_path=None):
+        raise RuntimeError("VM104 ollama request timed out")
+
+    monkeypatch.setitem(brain, "run_text_task", _boom)
+    _make_available(monkeypatch, "llama_coder_cpu", "vm112 fallback")
+
+    result = ai_router.delegate("Design an application architecture",
+                                return_attempts=True)
+
+    assert result["provider"] == "llama_coder_cpu"
+    assert result["response"] == "vm112 fallback"
+    attempted = [a for a in result["attempts"] if a["provider"] == "kai_brain"]
+    assert attempted, "kai_brain's failure must be recorded in the attempt log"
+    assert attempted[0]["error_type"] == "timeout"
+
+
 def test_all_local_models_down_raises_all_providers_failed(monkeypatch):
     """With both local nodes down the fabric fails closed — it never goes cloud."""
     _make_unavailable(monkeypatch, VM104 | VM112)

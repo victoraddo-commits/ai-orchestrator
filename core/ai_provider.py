@@ -26,6 +26,7 @@ except ImportError:
 
 from core.coding_bridge import run_coding_task as _claude_run_coding_task
 import core.coding_bridge as coding_bridge
+import core.local_coding_bridge as local_coding_bridge
 import core.llm_clients as llm_clients
 import core.ai.provider_health as provider_health
 from core.memory import update
@@ -543,8 +544,179 @@ register_provider(
 )
 
 
+# ── §7 Local Model Fabric providers (restored 2026-09-22) ───────────────────
+# ai_router.ROLE_PROVIDERS routes every core role to kai_brain/kai_coder/
+# kai_deep (VM104 P40 ollama :11434) and llama_coder_cpu (VM112 llama.cpp
+# :5001), but none of them were ever registered here — the router skipped
+# each as "not registered" and every primary local route silently collapsed
+# onto "local". These registrations restore the primary local route and the
+# VM104→VM112 node failover (§7 model diversity).
+_KAI_MODEL = "qwen3-coder:kai"
+_OLLAMA_BASE_URL = "http://localhost:11434"
+_CPU_BASE_URL = os.environ.get("KAI_CPU_BASE_URL", "http://192.168.1.242:5001")
+_CPU_JUMP_HOST = os.environ.get("KAI_CPU_JUMP_HOST", "root@100.122.38.118")
+
+
+def _ollama_model_present(model=_KAI_MODEL, timeout=2):
+    """True only when ollama (:11434) is up AND currently serves ``model``."""
+    try:
+        import requests
+        r = requests.get(f"{_OLLAMA_BASE_URL}/api/tags", timeout=timeout)
+        if r.status_code != 200:
+            return False
+        return any(
+            model in (m.get("name"), m.get("model"))
+            for m in r.json().get("models", [])
+        )
+    except Exception:
+        return False
+
+
+def _kai_ollama_run_text_task(prompt, timeout=240, project_path=None, model=_KAI_MODEL):
+    """Shared chat call for the VM104 ollama fabric models."""
+    import requests
+    try:
+        r = requests.post(
+            f"{_OLLAMA_BASE_URL}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.7, "top_p": 0.9},
+            },
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        return r.json().get("response", "")
+    except Exception as e:
+        raise RuntimeError(f"local ollama ({model}) call failed: {e}")
+
+
+def _kai_brain_run_text_task(prompt, timeout=240, project_path=None):
+    return _kai_ollama_run_text_task(prompt, timeout=timeout)
+
+
+def _kai_coder_run_text_task(prompt, timeout=120, project_path=None):
+    return _kai_ollama_run_text_task(prompt, timeout=timeout)
+
+
+def _kai_deep_run_text_task(prompt, timeout=240, project_path=None):
+    return _kai_ollama_run_text_task(prompt, timeout=timeout)
+
+
+def _kai_brain_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model=_KAI_MODEL, timeout=timeout
+    )
+
+
+def _kai_coder_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model=_KAI_MODEL, timeout=timeout
+    )
+
+
+def _local_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    """The plain "local" fallback shares the VM104 ollama coding harness."""
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model=_KAI_MODEL, timeout=timeout
+    )
+
+
+def _llama_cpu_health(timeout=3):
+    """Reachability probe for the VM112 llama.cpp server (:5001)."""
+    try:
+        import requests
+        r = requests.get(f"{_CPU_BASE_URL}/health", timeout=timeout)
+        return r.status_code == 200 and "ok" in r.text
+    except Exception:
+        return _llama_cpu_health_jump()
+
+
+def _llama_cpu_health_jump():
+    """Passive SSH-jump probe for runners without direct VM112 LAN reach."""
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=8", "-o", "BatchMode=yes",
+             "-J", _CPU_JUMP_HOST, "kai@192.168.1.242",
+             "curl", "-s", "-m", "5", "http://localhost:5001/health"],
+            capture_output=True, text=True, timeout=20,
+        )
+        return r.returncode == 0 and "ok" in r.stdout
+    except Exception:
+        return False
+
+
+def _llama_cpu_run_text_task(prompt, timeout=300, project_path=None):
+    import requests
+    try:
+        r = requests.post(
+            f"{_CPU_BASE_URL}/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 2048,
+                "temperature": 0.1,
+                "top_p": 0.95,
+                "stream": False,
+            },
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        raise RuntimeError(f"llama_coder_cpu ({_CPU_BASE_URL}) call failed: {e}")
+
+
+def _llama_cpu_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
+    return local_coding_bridge.run_coding_task(
+        project_path, instruction, model="llama_coder_cpu", timeout=timeout
+    )
+
+
+register_provider(
+    "kai_brain",
+    run_coding_task=_kai_brain_run_coding_task,
+    run_text_task=_kai_brain_run_text_task,
+    available_fn=lambda: _ollama_model_present(_KAI_MODEL),
+    kind="local",
+    description="qwen3-coder:kai (Qwen3-MoE 30B) via ollama on VM104 P40 — kai.brain: primary brain + orchestrator; writes code itself via local_coding_bridge when not reviewing.",
+    cost_tier="free",
+)
+
+register_provider(
+    "kai_coder",
+    run_coding_task=_kai_coder_run_coding_task,
+    run_text_task=_kai_coder_run_text_task,
+    available_fn=lambda: _ollama_model_present(_KAI_MODEL),
+    kind="local",
+    description="qwen3-coder:kai (Qwen3-MoE 30B) via ollama on VM104 P40 — kai.coder: coding specialist. Code generation, review, refactoring, bug detection, technical documentation.",
+    cost_tier="free",
+)
+
+register_provider(
+    "kai_deep",
+    run_text_task=_kai_deep_run_text_task,
+    available_fn=lambda: _ollama_model_present(_KAI_MODEL),
+    kind="local",
+    description="qwen3-coder:kai via ollama on VM104 P40 — kai.deep: deep-reasoning escalation for difficult architecture/reasoning/investigation tasks.",
+    cost_tier="free",
+)
+
+register_provider(
+    "llama_coder_cpu",
+    run_coding_task=_llama_cpu_run_coding_task,
+    run_text_task=_llama_cpu_run_text_task,
+    available_fn=_llama_cpu_health,
+    kind="local",
+    description="Qwen2.5-Coder-7B Q4_K_M via llama.cpp server on VM112 (192.168.1.242:5001) — independent CPU-only node; the VM104-loss failover for every core role.",
+    cost_tier="free",
+)
+
+
 register_provider(
     "local",
+    run_coding_task=_local_run_coding_task,
     run_text_task=_local_run_text_task,
     available_fn=_local_available,
     kind="local",

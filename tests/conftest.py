@@ -47,16 +47,17 @@ def isolated_law_documents(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def disable_local_and_llama3_providers(monkeypatch):
-    """Disable local/llama3 providers for ALL tests by default.
+def disable_slow_local_providers(monkeypatch):
+    """Disable every local provider for ALL tests by default.
 
-    These providers have real run_text_task functions that connect to Ollama
-    on localhost and would hang every test that doesn't explicitly mock them.
-    Tests that need local/llama3 enable them explicitly in their own setup."""
+    Local providers (kai_brain, kai_coder, kai_deep, llama_coder_cpu, local,
+    llama3) have real run_text_task/run_coding_task/available_fn functions that
+    connect to the VM104 ollama / VM112 llama.cpp fabric and would hang or slow
+    every test that doesn't explicitly mock them. Tests that need a specific
+    local provider enable it explicitly in their own setup."""
     import core.ai_provider as ai_provider
-    for name in ("local", "llama3"):
-        provider = ai_provider.get_provider(name)
-        if provider is not None:
+    for name, provider in ai_provider._PROVIDERS.items():
+        if provider.get("kind") == "local":
             monkeypatch.setitem(provider, "available_fn", lambda: False)
 
 

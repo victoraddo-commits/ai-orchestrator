@@ -59,6 +59,25 @@ PRICING = {
     "local": {
         "qwen2.5:7b": {"input_per_million": 0.00, "output_per_million": 0.00},
     },
+    # §7 local model fabric (restored 2026-09-22): every core role routes to
+    # these first, so the tracker must be able to estimate them at $0 rather
+    # than reporting unknown. VM104 ollama serves qwen3-coder:kai for all
+    # three names; llama_coder_cpu is the VM112 llama.cpp CPU node.
+    "kai_brain": {
+        "qwen3-coder:kai": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    "kai_coder": {
+        "qwen3-coder:kai": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    "kai_deep": {
+        "qwen3-coder:kai": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    "llama_coder_cpu": {
+        "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf": {
+            "input_per_million": 0.00,
+            "output_per_million": 0.00,
+        },
+    },
     # 2026-08-28: free_coding routes through the local free_model_manager
     # (ollama on localhost:20100) — self-hosted, no per-token cost.
     "free_coding": {

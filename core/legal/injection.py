@@ -26,10 +26,17 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import logging
+import os
 import re
 import threading
 import unicodedata
+
+try:  # POSIX advisory file locking; absent on non-POSIX platforms.
+    import fcntl
+except ImportError:  # pragma: no cover - Linux always has fcntl
+    fcntl = None
 
 logger = logging.getLogger("security.injection")
 
@@ -346,36 +353,213 @@ def fence_user_content(text: str) -> str:
 
 # ---------------------------------------------------------------------------
 # Metrics (per source) + audit
+#
+# Counters are persisted to the audit-log directory so they survive a restart,
+# and mirrored as a Prometheus textfile. Both writes are stdlib-only: an
+# advisory ``flock`` serialises the read-modify-write and ``os.replace`` keeps
+# the writes atomic. The in-memory dict is a cache of the last persisted state.
 # ---------------------------------------------------------------------------
 
+_DEFAULT_METRICS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "memory")
+
 _metrics_lock = threading.Lock()
-_metrics: dict = {"input": {}, "output": {}, "input_total": 0, "output_total": 0}
+_metrics: dict = {
+    "input": {}, "output": {},
+    "input_total": 0, "output_total": 0, "normalized_total": 0,
+}
+
+
+def _metrics_dir() -> str:
+    return os.environ.get("KAI_INJECTION_METRICS_DIR") or _DEFAULT_METRICS_DIR
+
+
+def metrics_path() -> str:
+    """Path of the persisted JSON counters (survives restart)."""
+    return (os.environ.get("KAI_INJECTION_METRICS_PATH")
+            or os.path.join(_metrics_dir(), "injection_metrics.json"))
+
+
+def prometheus_path() -> str:
+    """Path of the Prometheus textfile (``.prom``) for a future scraper."""
+    return (os.environ.get("KAI_INJECTION_PROM_PATH")
+            or os.path.join(_metrics_dir(), "injection_metrics.prom"))
+
+
+def _empty_metrics() -> dict:
+    return {
+        "input": {}, "output": {},
+        "input_total": 0, "output_total": 0, "normalized_total": 0,
+    }
+
+
+def _coerce_metrics(raw) -> dict:
+    data = _empty_metrics()
+    if not isinstance(raw, dict):
+        return data
+    for kind in ("input", "output"):
+        bucket = raw.get(kind)
+        if isinstance(bucket, dict):
+            data[kind] = {str(k): int(v) for k, v in bucket.items()
+                          if isinstance(v, (int, float))}
+    for key in ("input_total", "output_total", "normalized_total"):
+        value = raw.get(key)
+        if isinstance(value, (int, float)):
+            data[key] = int(value)
+    return data
+
+
+def _snapshot(data: dict) -> dict:
+    return {
+        "input": dict(data.get("input", {})),
+        "output": dict(data.get("output", {})),
+        "input_total": data.get("input_total", 0),
+        "output_total": data.get("output_total", 0),
+        "normalized_total": data.get("normalized_total", 0),
+    }
+
+
+def _read_metrics_file() -> dict | None:
+    path = metrics_path()
+    try:
+        with open(path) as fh:
+            return _coerce_metrics(json.load(fh))
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, OSError):
+        return None
+
+
+def _lock(fileobj) -> None:
+    if fcntl is not None:
+        try:
+            fcntl.flock(fileobj.fileno(), fcntl.LOCK_EX)
+        except OSError:
+            pass
+
+
+def _unlock(fileobj) -> None:
+    if fcntl is not None:
+        try:
+            fcntl.flock(fileobj.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+
+
+def _atomic_write(path: str, text: str) -> None:
+    tmp = f"{path}.tmp.{os.getpid()}"
+    with open(tmp, "w") as fh:
+        fh.write(text)
+    os.replace(tmp, path)
+
+
+def _prom_escape(value: str) -> str:
+    return (str(value).replace("\\", "\\\\")
+            .replace('"', '\\"').replace("\n", "\\n"))
+
+
+def _render_prometheus(data: dict) -> str:
+    lines = [
+        "# HELP kai_injection_input_total Inbound prompt-injection detections.",
+        "# TYPE kai_injection_input_total counter",
+    ]
+    for source, count in sorted(data.get("input", {}).items()):
+        lines.append(
+            f'kai_injection_input_total{{source="{_prom_escape(source)}"}} {count}')
+    lines += [
+        "# HELP kai_injection_output_total Outbound leak/role-switch detections.",
+        "# TYPE kai_injection_output_total counter",
+    ]
+    for source, count in sorted(data.get("output", {}).items()):
+        lines.append(
+            f'kai_injection_output_total{{source="{_prom_escape(source)}"}} {count}')
+    lines += [
+        "# HELP kai_injection_normalized_total Encoding evasions normalized.",
+        "# TYPE kai_injection_normalized_total counter",
+        f'kai_injection_normalized_total {data.get("normalized_total", 0)}',
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _write_prometheus(path: str, data: dict) -> None:
+    _atomic_write(path, _render_prometheus(data))
+
+
+def _persist(data: dict) -> None:
+    """Persist counters + Prometheus textfile under an advisory lock."""
+    path = metrics_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(f"{path}.lock", "a+") as lock:
+        _lock(lock)
+        try:
+            _atomic_write(path, json.dumps(_snapshot(data), sort_keys=True))
+            _write_prometheus(prometheus_path(), data)
+        finally:
+            _unlock(lock)
+
+
+def _mutate_metrics(mutator) -> None:
+    """Atomic read-modify-write of the counters, then mirror + persist."""
+    global _metrics
+    with _metrics_lock:
+        data = _read_metrics_file()
+        if data is None:
+            data = _metrics if _metrics.get("input") or _metrics.get("output") \
+                else _empty_metrics()
+            data = _snapshot(data)
+        mutator(data)
+        _metrics = data
+        try:
+            _persist(data)
+        except Exception as exc:  # noqa: BLE001 - metrics must never break callers
+            logger.warning("failed to persist injection metrics: %s", exc)
 
 
 def _bump(kind: str, source: str) -> None:
+    def mut(data: dict) -> None:
+        data.setdefault(kind, {})
+        data[kind][source] = data[kind].get(source, 0) + 1
+        data[f"{kind}_total"] = data.get(f"{kind}_total", 0) + 1
+
+    _mutate_metrics(mut)
+
+
+def _bump_normalized(count: int) -> None:
+    if count <= 0:
+        return
+
+    def mut(data: dict) -> None:
+        data["normalized_total"] = data.get("normalized_total", 0) + count
+
+    _mutate_metrics(mut)
+
+
+def load_injection_metrics() -> dict:
+    """Load persisted counters from disk into memory (used at startup)."""
+    global _metrics
     with _metrics_lock:
-        bucket = _metrics[kind]
-        bucket[source] = bucket.get(source, 0) + 1
-        _metrics[kind + "_total"] = _metrics.get(kind + "_total", 0) + 1
+        data = _read_metrics_file()
+        _metrics = data if data is not None else _empty_metrics()
+        return _snapshot(_metrics)
 
 
 def get_injection_metrics() -> dict:
-    """Snapshot of per-source input/output detection counters."""
+    """Snapshot of per-source input/output/normalization counters (persisted)."""
+    global _metrics
     with _metrics_lock:
-        return {
-            "input": dict(_metrics["input"]),
-            "output": dict(_metrics["output"]),
-            "input_total": _metrics["input_total"],
-            "output_total": _metrics["output_total"],
-        }
+        data = _read_metrics_file()
+        if data is not None:
+            _metrics = data
+        return _snapshot(_metrics)
 
 
 def reset_injection_metrics() -> None:
+    """Zero the counters in memory, on disk and in the Prometheus textfile."""
+    global _metrics
     with _metrics_lock:
-        _metrics["input"] = {}
-        _metrics["output"] = {}
-        _metrics["input_total"] = 0
-        _metrics["output_total"] = 0
+        _metrics = _empty_metrics()
+        try:
+            _persist(_metrics)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("failed to reset injection metrics on disk: %s", exc)
 
 
 def _audit(event_type: str, source: str, details: dict) -> None:
@@ -430,6 +614,10 @@ def guard_input(text: str, source: str = "unknown", count: bool = True) -> dict:
         )
         result["clean_text"] = neutralize(text)
         result["fenced_text"] = fence_user_content(result["clean_text"])
+    if count and result["normalizations"]:
+        # Count every encoding-evasion normalization performed, even when the
+        # text ultimately did not trip a marker (evasion attempts are signal).
+        _bump_normalized(len(result["normalizations"]))
     return result
 
 
@@ -520,3 +708,14 @@ def guard_stream_prefix(text: str, source: str = "stream",
             {"markers": unique, "length": len(original)},
         )
     return {"abort": abort, "suspected": abort, "markers": unique}
+
+
+# Resume persisted counters across restarts. Files live in the audit-log
+# directory (``memory/``) by default: ``injection_metrics.json`` (counters) and
+# ``injection_metrics.prom`` (Prometheus textfile). Both paths are overridable
+# via KAI_INJECTION_METRICS_DIR / KAI_INJECTION_METRICS_PATH /
+# KAI_INJECTION_PROM_PATH.
+try:
+    load_injection_metrics()
+except Exception:  # noqa: BLE001 - metrics must never break import
+    logger.warning("could not load persisted injection metrics")

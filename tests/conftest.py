@@ -71,6 +71,14 @@ def isolated_cerebrum_feedback():
     yield
 
 
+@pytest.fixture(autouse=True)
+def isolated_injection_metrics(tmp_path, monkeypatch):
+    """Keep persisted prompt-injection counters out of the real memory/ dir."""
+    monkeypatch.setenv("KAI_INJECTION_METRICS_DIR",
+                       str(tmp_path / "injection_metrics"))
+    yield
+
+
 @pytest.fixture
 def client():
     """FastAPI TestClient for API route tests."""

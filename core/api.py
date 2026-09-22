@@ -3685,6 +3685,23 @@ def handle_kai_chat(text: str, operator: str) -> dict:
     return reply
 
 
+@app.get("/kai/security/injection/metrics")
+def injection_metrics_endpoint(
+    operator: str = Depends(_require_write_capability("juris.admin")),
+):
+    """Read-only, auth-gated snapshot of prompt-injection detection counters.
+
+    Counters are persisted under the audit-log directory
+    (``memory/injection_metrics.json``) so they survive a restart, and mirrored
+    to a Prometheus textfile (``memory/injection_metrics.prom``) for a scraper.
+    """
+    try:
+        from core.legal.injection import get_injection_metrics
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"guard unavailable: {error}")
+    return get_injection_metrics()
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Network Topology Discovery (Tasks 7-9)
 # ═══════════════════════════════════════════════════════════════════════════

@@ -32,8 +32,35 @@ DEFAULT_TTL = 3600.0  # 1 hour for generated answers
 RETRIEVAL_MAXSIZE = 1024
 RETRIEVAL_TTL = 900.0  # 15 minutes for retrieval hits
 
+# FAQ / repeat cache: answers persisted in the local ``juris_qa_log`` SQLite
+# table (CT111 only, never sent externally). The in-process layer front-runs
+# the DB so a repeat is a dict lookup; the DB layer survives restarts and is
+# the durable "learning" store.
+FAQ_MAXSIZE = 2048
+FAQ_TTL = 7 * 24 * 3600.0  # 7 days
+
+# An answer must be at least this long, and free of failure markers, before it
+# is worth reusing as a canned answer.
+ANSWER_MIN_CACHE_CHARS = 120
+_ANSWER_ERROR_MARKERS = (
+    "i couldn't generate",
+    "couldn't generate a response",
+    "query timed out",
+    "timed out",
+    "unable to",
+    "try again later",
+    "empty reply",
+    "not authorized",
+)
+
 _WS_RE = re.compile(r"\s+")
 _PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+
+# First-person markers mean the answer is about *this* user and must never be
+# shared with another account. Deliberately excludes second-person ("you",
+# "your") because generic questions ("can you explain X") are not personalised.
+_PERSONAL_RE = re.compile(
+    r"\b(i|i'm|im|me|my|mine|myself|we|we're|our|ours|us)\b", re.IGNORECASE)
 
 
 def normalize_query(text: str) -> str:
@@ -45,6 +72,78 @@ def normalize_query(text: str) -> str:
     q = (text or "").strip().lower()
     q = _PUNCT_RE.sub(" ", q)
     return _WS_RE.sub(" ", q).strip()
+
+
+def question_hash(text: str) -> str:
+    """Stable hash of the *normalized* question, for repeat detection."""
+    import hashlib
+    return hashlib.sha1(normalize_query(text).encode("utf-8")).hexdigest()
+
+
+def is_generic_question(text: str) -> bool:
+    """True when a question carries no first-person/personal marker.
+
+    Generic questions may reuse another account's good answer; personalised
+    questions are always scoped to the asking account.
+    """
+    norm = normalize_query(text)
+    if not norm:
+        return False
+    return _PERSONAL_RE.search(norm) is None
+
+
+def answer_is_cacheable(answer: str) -> bool:
+    """True when an answer is substantial enough to reuse as a canned answer."""
+    text = (answer or "").strip()
+    if len(text) < ANSWER_MIN_CACHE_CHARS:
+        return False
+    low = text.lower()
+    return not any(marker in low for marker in _ANSWER_ERROR_MARKERS)
+
+
+def answer_is_blocked(answer: str) -> bool:
+    """True when an answer contains a failure/refusal marker."""
+    low = (answer or "").strip().lower()
+    return bool(low) and any(marker in low for marker in _ANSWER_ERROR_MARKERS)
+
+
+def answer_confidence(answer: str) -> float:
+    """Cheap 0..1 confidence heuristic used for weak-area mining.
+
+    Not a model score — a deterministic proxy from length and failure markers:
+    blocked/empty answers score 0, short answers score low, well-developed
+    answers with citations score high.
+    """
+    text = (answer or "").strip()
+    if not text:
+        return 0.0
+    low = text.lower()
+    if any(marker in low for marker in _ANSWER_ERROR_MARKERS):
+        return 0.0
+    score = min(1.0, len(text) / 500.0)
+    if len(text) < 80:
+        score = min(score, 0.3)
+    if any(tok in low for tok in (" act ", "section ", "article ", " v. ",
+                                  "constitution", "held that")):
+        score = min(1.0, score + 0.15)
+    return round(score, 3)
+
+
+def context_fingerprint(context: str) -> str:
+    """Short digest of follow-up context (cache key component)."""
+    if not context:
+        return ""
+    import hashlib
+    return hashlib.sha1(context.encode("utf-8")).hexdigest()[:10]
+
+
+def faq_key(task_type: str, query: str, scope: str) -> tuple:
+    """Cache key for the FAQ layer.
+
+    ``scope`` is ``"__generic__"`` for non-personalised questions (shareable)
+    or the account id for anything personalised (never shared).
+    """
+    return ("faq", task_type or "", normalize_query(query), scope or "")
 
 
 class TTLCache:
@@ -119,6 +218,7 @@ GENERATION_CACHE = TTLCache(maxsize=DEFAULT_MAXSIZE, ttl=DEFAULT_TTL,
                             name="generation")
 RETRIEVAL_CACHE = TTLCache(maxsize=RETRIEVAL_MAXSIZE, ttl=RETRIEVAL_TTL,
                            name="retrieval")
+FAQ_CACHE = TTLCache(maxsize=FAQ_MAXSIZE, ttl=FAQ_TTL, name="faq")
 
 # Corpus version stamp: a cached, cheap fingerprint of the legal corpus so a
 # freshly-ingested document invalidates generated answers. Never blocks long —
@@ -144,8 +244,10 @@ def corpus_version(max_age: float = _CORPUS_VERSION_TTL) -> str:
     return version
 
 
-def generation_key(task_type: str, query: str, corpus_ver: str = "na") -> tuple:
-    return (task_type or "", normalize_query(query), str(corpus_ver))
+def generation_key(task_type: str, query: str, corpus_ver: str = "na",
+                   context_key: str = "") -> tuple:
+    return (task_type or "", normalize_query(query), str(corpus_ver),
+            context_key or "")
 
 
 def retrieval_key(query: str, limit: int) -> tuple:
@@ -157,13 +259,15 @@ def cache_stats() -> dict:
     return {
         "generation": GENERATION_CACHE.stats(),
         "retrieval": RETRIEVAL_CACHE.stats(),
+        "faq": FAQ_CACHE.stats(),
         "corpus_version": _corpus_version.get("value") or "na",
     }
 
 
 def clear_caches() -> dict:
-    """Empty both caches. Returns counts for the API response."""
+    """Empty all caches. Returns counts for the API response."""
     gen = GENERATION_CACHE.clear()
     ret = RETRIEVAL_CACHE.clear()
-    return {"cleared": gen + ret, "generation_cleared": gen,
-            "retrieval_cleared": ret}
+    faq = FAQ_CACHE.clear()
+    return {"cleared": gen + ret + faq, "generation_cleared": gen,
+            "retrieval_cleared": ret, "faq_cleared": faq}

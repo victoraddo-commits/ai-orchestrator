@@ -697,7 +697,49 @@ def _response_cost(response):
     return None
 
 
-def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task", return_attempts=False, requires_file_access=False, provider=None):
+def _injection_guard_fns():
+    """Optional inbound/outbound guard callables (``None`` if unavailable)."""
+    try:
+        from core.legal.injection import guard_input, guard_output
+        return guard_input, guard_output
+    except Exception:  # noqa: BLE001 - guard is optional, never block dispatch
+        return None, None
+
+
+def _guard_instruction(description, guard_input):
+    """Neutralize instruction-like spans in the delegated instruction."""
+    if guard_input is None or not isinstance(description, str) or not description:
+        return description
+    try:
+        verdict = guard_input(description, source="ai_delegate")
+    except Exception:  # noqa: BLE001 - never block dispatch on the guard
+        return description
+    if verdict.get("suspected"):
+        info(f"ai_router.delegate: neutralized instruction-like span "
+             f"markers={verdict.get('markers')}")
+        return verdict.get("clean_text", description)
+    return description
+
+
+def _guard_delegate_response(result, guard_output):
+    """Apply the output guard to a text response (coding dicts pass through)."""
+    if guard_output is None or not isinstance(result, dict):
+        return result
+    response = result.get("response")
+    if not isinstance(response, str) or not response:
+        return result
+    try:
+        verdict = guard_output(response, source="ai_delegate")
+    except Exception:  # noqa: BLE001
+        return result
+    if verdict.get("tripped"):
+        info(f"ai_router.delegate: redacted output leak "
+             f"markers={verdict.get('markers')}")
+        return {**result, "response": verdict.get("text", response)}
+    return result
+
+
+def delegate(description, task_type=None, timeout=60, project_path=None, capability="text_task", return_attempts=False, requires_file_access=False, provider=None, guard=True):
     # 13V: return_attempts=True adds an "attempts" key to the result -- the
     # structured log of every candidate that failed before the winner, each
     # {"provider", "error_type", "error"} with error_type in
@@ -708,6 +750,18 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
     # 17R: requires_file_access=True signals that this call needs a provider
     # that can read/write files (coding_agent capability); text-only
     # providers are filtered out entirely rather than deprioritized.
+
+    # Centralized prompt-injection guard at the shared provider-dispatch
+    # boundary. Every delegate() caller -- planner, teammate, workers,
+    # brain_review, agent_registry, law_tutor, cc_test_query's fallback -- is
+    # covered here by construction. ``chat()`` opts out (``guard=False``) only
+    # because it already guards its own messages + output, so nothing is
+    # scanned twice. The guard is optional: import/scan failures degrade to no
+    # guard rather than blocking dispatch.
+    _gi = _go = None
+    if guard:
+        _gi, _go = _injection_guard_fns()
+        description = _guard_instruction(description, _gi)
 
     # ── 18A-ai Phase 2: direct provider routing ──────────────────────
     # When a caller specifies a provider, skip classification, rotation,
@@ -845,7 +899,7 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         }
         if return_attempts:
             result["attempts"] = []
-        return result
+        return _guard_delegate_response(result, _go)
     # ── end 18A-ai Phase 2 provider override ─────────────────────────
 
     resolved_type = task_type or classify_task(description)
@@ -1018,7 +1072,7 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
         }
         if return_attempts:
             result["attempts"] = attempts
-        return result
+        return _guard_delegate_response(result, _go)
 
     raise AllProvidersFailed(
         f"No available provider could handle task_type={resolved_type!r}: "
@@ -1096,7 +1150,11 @@ def chat(messages, signals):
 
     prompt = build_chat_prompt(safe_messages, signals)
 
-    result = delegate(prompt, task_type="planning", capability="text_task")
+    # chat() is itself a guarded boundary (messages neutralized above, reply
+    # guarded below), so it opts out of delegate()'s guard to avoid scanning
+    # the same prompt/response twice.
+    result = delegate(prompt, task_type="planning", capability="text_task",
+                      guard=False)
     response = result["response"]
 
     if _go is not None:

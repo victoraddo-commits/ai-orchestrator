@@ -541,26 +541,15 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
     acc = ""
     last_edit = 0.0
     last_len = 0
-    aborted = False
     model = _streaming.DEFAULT_MODEL
     stream = _streaming.stream_chat(prompt, task_type=task_type)
     try:
         for piece in stream:
             acc += piece
-            # Fail-safe incremental guard: verify the accumulated prefix after
-            # EVERY chunk, before anything can be rendered. Scanning the whole
-            # prefix (rather than the latest chunk) catches a marker split
-            # across a chunk boundary. On the first suspicion we stop
-            # live-editing immediately and never render the suspicious span;
-            # the caller then falls back to the normal fully-guarded blocking
-            # path.
-            if (_guard_stream_prefix is not None
-                    and _guard_stream_prefix(
-                        acc, source="juris_kai_stream").get("abort")):
-                logger.warning(
-                    "stream aborted by injection guard (task=%s)", task_type)
-                aborted = True
-                break
+            # The incremental injection guard now lives inside the shared
+            # streaming primitive (core.juris_kai.streaming.stream_chat), which
+            # raises StreamGuardAbort before any suspicious span is yielded --
+            # so this loop only ever sees verified text.
             now = time.time()
             if (len(acc) - last_len >= STREAM_MIN_CHARS
                     and now - last_edit >= STREAM_EDIT_INTERVAL):
@@ -568,21 +557,6 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
                                    parse_mode=None)
                 last_edit = now
                 last_len = len(acc)
-        if aborted:
-            # Remove the partial, unverified text from the chat; the caller
-            # sends the guarded blocking answer as a fresh message.
-            try:
-                telegram_api("deleteMessage",
-                             {"chat_id": chat_id, "message_id": message_id})
-            except Exception:  # noqa: BLE001
-                try:
-                    _edit_message_text(
-                        chat_id, message_id,
-                        "⚠️ I couldn't safely complete that answer.",
-                        reply_markup=reply_markup, parse_mode=None)
-                except Exception:
-                    pass
-            return None, model, False
         if not acc.strip():
             _edit_message_text(chat_id, message_id,
                                "⚠️ The model returned an empty reply.",
@@ -590,6 +564,24 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
             return None, "", False
         _finalize_stream(chat_id, message_id, acc, reply_markup)
         return acc, model, True
+    except _streaming.StreamGuardAbort as exc:
+        # The primitive's incremental guard stopped before the suspicious span
+        # was rendered. Drop the partial message; the caller falls back to the
+        # fully-guarded blocking path.
+        logger.warning("stream aborted by injection guard (task=%s markers=%s)",
+                       task_type, exc.markers)
+        try:
+            telegram_api("deleteMessage",
+                         {"chat_id": chat_id, "message_id": message_id})
+        except Exception:  # noqa: BLE001
+            try:
+                _edit_message_text(
+                    chat_id, message_id,
+                    "⚠️ I couldn't safely complete that answer.",
+                    reply_markup=reply_markup, parse_mode=None)
+            except Exception:
+                pass
+        return None, model, False
     except Exception as exc:  # noqa: BLE001 - any stream failure must fall back
         logger.warning(f"Telegram streaming failed for {task_type}: {exc}")
         if acc.strip():

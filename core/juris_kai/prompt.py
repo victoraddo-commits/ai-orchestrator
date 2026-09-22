@@ -56,12 +56,19 @@ def max_tokens_for(task_type: str) -> int:
     return budget_for(task_type)
 
 
-def build_prompt(task_type: str, content: str) -> str:
-    """Build Ghana-scoped legal prompts based on task type."""
+def build_prompt(task_type: str, content: str, context: str = "") -> str:
+    """Build Ghana-scoped legal prompts based on task type.
+
+    ``context`` is optional bounded follow-up context (last few turns) so
+    anaphoric follow-ups ("and the penalty?") are answered with the prior
+    question/answer in view. It is inserted directly after the jurisdiction
+    preamble and is expected to be char-capped by the caller.
+    """
+    ctx_block = f"\n\n{context.strip()}" if (context or "").strip() else ""
 
     if task_type == "legal_teaching":
         return (
-            f"{_PREAMBLE}\n\n"
+            f"{_PREAMBLE}{ctx_block}\n\n"
             f"TASK: Explain the Ghanaian legal concept: '{content}'.\n"
             "Provide key examples and relevant Ghana legal principles. "
             "Reference specific Ghanaian statutes, cases, and constitutional provisions. "
@@ -70,7 +77,7 @@ def build_prompt(task_type: str, content: str) -> str:
 
     elif task_type == "legal_case_analysis":
         return (
-            f"{_PREAMBLE}\n\n"
+            f"{_PREAMBLE}{ctx_block}\n\n"
             f"TASK: Analyze this Ghana legal case: '{content}'.\n"
             "Discuss the key Ghana legal principles, the Ghanaian court's reasoning, "
             "and the impact on Ghanaian legal doctrine. "
@@ -80,7 +87,7 @@ def build_prompt(task_type: str, content: str) -> str:
 
     elif task_type == "legal_research":
         return (
-            f"{_PREAMBLE}\n\n"
+            f"{_PREAMBLE}{ctx_block}\n\n"
             f"TASK: Research this Ghana law topic: '{content}'.\n"
             "Provide an overview of the current legal position under Ghanaian law. "
             "Cite specific Ghanaian statutes (Acts of Parliament, LIs, CIs), "
@@ -92,7 +99,7 @@ def build_prompt(task_type: str, content: str) -> str:
 
     elif task_type == "legal_argument":
         return (
-            f"{_PREAMBLE}\n\n"
+            f"{_PREAMBLE}{ctx_block}\n\n"
             f"TASK: Construct a legal argument under Ghana law for: '{content}'.\n"
             "Use Ghanaian legal principles, Ghanaian precedents, and Ghanaian statutes. "
             "Consider counterarguments based on Ghanaian jurisprudence. "
@@ -102,7 +109,7 @@ def build_prompt(task_type: str, content: str) -> str:
 
     elif task_type == "legal_flashcards":
         return (
-            f"{_PREAMBLE}\n\n"
+            f"{_PREAMBLE}{ctx_block}\n\n"
             f"TASK: Generate flashcards for this Ghana law topic: '{content}'.\n"
             "Each flashcard must reference a specific Ghanaian legal concept, "
             "statute, case, or constitutional provision. "
@@ -112,7 +119,7 @@ def build_prompt(task_type: str, content: str) -> str:
 
     else:
         return (
-            f"{_PREAMBLE}\n\n"
+            f"{_PREAMBLE}{ctx_block}\n\n"
             f"TASK: Answer this Ghana law question: '{content}'.\n"
             "Provide a concise answer grounded in Ghanaian statutes, "
             "cases, and the 1992 Constitution. Keep under 500 words."

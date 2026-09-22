@@ -15,6 +15,7 @@ core.deployment_manager.
 
 import json
 import os
+import re
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,34 @@ logger = logging.getLogger("juris_kai.session")
 # Session storage — in memory/ directory like all other runtime state
 STORAGE_PATH = Path(__file__).parent.parent.parent / "memory" / "juris_kai_sessions.json"
 MAX_CONVERSATION_HISTORY = 20
+
+# Follow-up context bounds. Small and char-capped so prompt assembly stays
+# cheap: bloating the prompt would slow generation, defeating the purpose.
+FOLLOWUP_MAX_TURNS = 3
+FOLLOWUP_MAX_CHARS = 1500
+
 _write_lock = RLock()
+
+# A question is treated as a follow-up when it explicitly continues the
+# previous turn or is very short (anaphoric). Standalone questions keep their
+# own cache key and stay FAQ-eligible.
+_FOLLOWUP_MARKERS = (
+    "and ", "and the", "and what", "what about", "how about", "what if",
+    "then ", "also ", "so ", "why ", "why?", "really", "more", "elaborate",
+    "continue", "explain more", "go on", "tell me more",
+)
+_FOLLOWUP_RE = re.compile("|".join(re.escape(m) for m in _FOLLOWUP_MARKERS),
+                          re.IGNORECASE)
+
+
+def looks_like_followup(text: str) -> bool:
+    """Heuristic: is this question continuing the previous turn?"""
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    if len(t.split()) <= 2:
+        return True
+    return bool(_FOLLOWUP_RE.match(t))
 
 
 def _load() -> dict:
@@ -156,6 +184,63 @@ def get_conversation_context(chat_id: str | int, n: int = 5) -> str:
         role_label = "User" if msg["role"] == "user" else "Assistant"
         lines.append(f"[{role_label}]: {msg['content'][:200]}")
     return "Previous conversation:\n" + "\n".join(lines)
+
+
+def record_conversation_turn(chat_id: str | int, question: str,
+                             answer: str) -> None:
+    """Append a user/assistant pair to the rolling history in one write."""
+    session = get_user_session(chat_id)
+    history = session.get("conversation_history", [])
+    now = datetime.now(timezone.utc).isoformat()
+    for role, content in (("user", question), ("assistant", answer)):
+        history.append({
+            "role": role,
+            "content": (content or "")[:500],  # truncate for storage
+            "timestamp": now,
+        })
+    if len(history) > MAX_CONVERSATION_HISTORY:
+        history = history[-MAX_CONVERSATION_HISTORY:]
+    update_session(chat_id, conversation_history=history)
+
+
+def get_recent_turns(chat_id: str | int, turns: int = FOLLOWUP_MAX_TURNS,
+                     max_chars: int = FOLLOWUP_MAX_CHARS) -> str:
+    """Render the last ``turns`` user/assistant pairs, hard-capped by chars.
+
+    Newest messages win when the cap is reached, so the most relevant
+    (immediately prior) turn is always present.
+    """
+    session = get_user_session(chat_id)
+    history = session.get("conversation_history", [])
+    if not history:
+        return ""
+    recent = history[-(int(turns) * 2):]
+    selected: list[str] = []
+    used = 0
+    for msg in reversed(recent):
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+        role_label = "User" if msg.get("role") == "user" else "Assistant"
+        line = f"{role_label}: {content}"
+        if selected and used + len(line) > max_chars:
+            break
+        selected.append(line)
+        used += len(line)
+    if not selected:
+        return ""
+    selected.reverse()
+    return ("Recent conversation context (for follow-up questions):\n"
+            + "\n".join(selected))
+
+
+def get_followup_context(chat_id: str | int, question: str,
+                         turns: int = FOLLOWUP_MAX_TURNS,
+                         max_chars: int = FOLLOWUP_MAX_CHARS) -> str:
+    """Context string for ``question`` — empty unless it looks like a follow-up."""
+    if not looks_like_followup(question):
+        return ""
+    return get_recent_turns(chat_id, turns=turns, max_chars=max_chars)
 
 
 def set_current_menu(chat_id: str | int, menu_name: str | None) -> None:

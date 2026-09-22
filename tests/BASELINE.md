@@ -224,6 +224,42 @@ and each passed in one full-suite run and failed in another). The full summary
 is saved at
 `tests/baseline_evidence/gate-clean-run-r1-2026-09-22.txt`.
 
+### Third-party provider removal — clean gate (2026-09-22)
+
+Owner directive: **zero third-party providers**. All 16 cloud providers were
+removed from `core/ai_provider.py` (`claude`, `gemini`, `geminix`, `groq`,
+`openrouter`, `openrouter_claude`, `minimax`, `deepseek`,
+`deepseek_native_pro`, `deepseek_native_flash`, `gpuai_minimax`,
+`gpuai_gemma`, `omniroute`, `omniroute_deepseek_flash`,
+`omniroute_deepseek_coding`, `free_coding`); the local `local` provider was
+repointed from the retired `qwen2.5:7b` to the served `qwen3-coder:kai`. The
+hard invariant is guarded by `tests/test_local_only_fabric.py` (no provider
+with `kind != "local"` may be registered; every role chain resolves to a
+registered local provider; `ai_router.chat` → planning completes on a local
+model).
+
+`scripts/test_regression_gate.sh` on the whole suite (LXC 111):
+
+```
+118 failed, 4280 passed, 10 skipped, 7 deselected  (~38 min)
+known failures   : 113  (in baseline; ignored)
+quarantined flaky: 5 failed this run (ignored, visible)
+NEW failures     : 0
+NEW passes       : 0
+baseline missing : 0
+GATE: PASS — no new failures
+```
+
+Full summary: `tests/baseline_evidence/gate-clean-run-cloudremoval-2026-09-22.txt`.
+
+Baseline delta: **+35 STALE** `tests/test_ai_router.py` entries (they assert
+the removed cloud providers/chains — replacement coverage is the three
+local-only suites above); **−1** entry
+(`test_provider_config_editor.py::TestRouterIntegration::test_router_for_nonexistent_role_without_override`
+now passes against the `['local']` fallback); **+2 FLAKY** quarantines
+(pre-existing ordering/race, pass in isolation — see `baseline_flaky.txt`).
+The 24 R1-tagged entries previously reclassified STALE are unchanged.
+
 CI/pre-commit wiring (later): call the script from a job, e.g.```yaml
 - run: scripts/test_regression_gate.sh
 ```

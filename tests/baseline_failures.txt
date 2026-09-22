@@ -59,7 +59,6 @@ STALE	tests/test_build_pipeline_v3.py::TestPodRoutingV3::test_local_is_review_pr
 STALE	tests/test_klaus_integration.py::TestDBManagerInitSampleData::test_init_sample_data_runs_without_error	stale count: TIER_1_SEEDS now 2 entries; test expects >=3 add_source calls
 STALE	tests/test_llm_clients.py::test_call_gemini_raises_when_key_missing	stale isolation: _require_key now prefers secrets store (gemini key stored); test only delenvs
 STALE	tests/test_llm_clients.py::test_call_minimax_raises_when_key_missing	stale isolation: _require_key now prefers secrets store (minimax key stored); test only delenvs
-STALE	tests/test_provider_config_editor.py::TestRouterIntegration::test_router_for_nonexistent_role_without_override	stale default: unknown-role fallback now ['local'] (was ['claude'])
 STALE	tests/test_provider_dashboard_13j.py::test_provider_dashboard_shows_current_job_when_generating	stale: _derive_health returns 'unknown' when provider unavailable; test does not stub availability
 
 # --- REAL ---
@@ -88,3 +87,46 @@ STALE	tests/test_ai_router.py::test_delegate_text_task_records_null_cost	stale c
 STALE	tests/test_ai_router.py::test_delegate_with_requires_file_access_falls_through_text_providers	stale chain: role chains are local-only since 5bed38f (kai_brain/kai_coder/kai_deep/llama_coder_cpu/local); test asserts a removed cloud provider or pre-local order
 STALE	tests/test_ai_router.py::test_delegate_with_requires_file_access_filters_out_text_only	stale chain: role chains are local-only since 5bed38f (kai_brain/kai_coder/kai_deep/llama_coder_cpu/local); test asserts a removed cloud provider or pre-local order
 REAL	tests/test_llm_clients.py::test_pop_last_usage_returns_none_when_nothing_captured	test-isolation (not product): llm_clients module-global last-usage buffer leaks between tests; deterministic in isolation too
+
+# --- STALE (cloud-removal sweep, 2026-09-22) ---
+# These assert the pre-cloud-removal provider set (claude/gemini/groq/deepseek/
+# gpuai/omniroute/openrouter) or role chains built from those names. The fabric
+# is now 100% local (owner directive: zero third-party providers), so these
+# assertions are stale by construction. The local-only replacement coverage
+# lives in tests/test_local_only_fabric.py, tests/test_model_fabric_diversity.py
+# and tests/test_ai_provider.py.
+STALE	tests/test_ai_router.py::test_dashboard_includes_circuit_breaker_and_latency	stale cloud-chain: provider fixture 'groq' removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_dashboard_includes_file_access_flag	stale cloud-chain: provider fixture 'claude' removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_deepseek_native_both_are_separate_from_openrouter_deepseek	stale cloud-chain: deepseek_native providers removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_deepseek_native_flash_is_registered_as_text_task_provider	stale cloud-chain: deepseek_native_flash removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_deepseek_native_pro_is_registered_as_text_task_provider	stale cloud-chain: deepseek_native_pro removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_coding_agent_records_the_cost_reported_by_the_provider	stale cloud-chain: coding fixture uses removed cloud providers (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_does_not_notify_for_non_fallback_quota_exceeded	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_does_not_renotify_once_already_quota_exceeded	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_falls_back_when_first_choice_call_raises	stale cloud-chain: 'claude' fallback fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_falls_back_when_first_choice_unavailable	stale cloud-chain: 'claude' fallback fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_falls_through_to_gpuai_minimax_when_the_others_fail	stale cloud-chain: gpuai_minimax removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_raises_when_every_candidate_fails	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_records_a_confirmed_usage_limit_message_as_quota_exceeded	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_records_a_generic_coding_failure_as_error_not_quota_exceeded	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_records_cost_even_for_a_result_level_failure	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_records_fallback_credit_exhaustion_as_quota_exceeded_and_notifies	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_records_null_cost_when_the_response_carries_none	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_records_provider_usage_in_history_entry	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_records_usage_on_success	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_rotates_starting_candidate_across_successive_calls	stale cloud-chain: rotation fixture uses removed cloud providers (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_rotation_is_tracked_independently_per_task_type	stale cloud-chain: rotation fixture uses removed cloud providers (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_rotation_still_falls_through_to_next_candidate_on_failure	stale cloud-chain: rotation fixture uses removed cloud providers (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_skips_a_candidate_known_to_be_quota_exceeded_without_calling_it	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_still_tries_a_candidate_with_only_a_recorded_error_not_quota_exceeded	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_with_coding_agent_capability_calls_run_coding_task_not_run_text_task	stale cloud-chain: coding-agent fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_delegate_with_coding_agent_capability_falls_back_to_fallback_when_claude_fails	stale cloud-chain: 'claude' coding fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_fallback_quota_notify_failure_does_not_break_delegate	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_aggregates_cost_totals_and_average_duration	stale cloud-chain: dashboard fixture 'gpuai_minimax' removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_claude_uses_self_tracked_usage_not_quota_state	stale cloud-chain: claude_usage_snapshot removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_includes_quota_percent_when_known	stale cloud-chain: dashboard fixture 'groq' removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_shows_none_percent_when_quota_never_checked	stale cloud-chain: dashboard fixture 'gemini' removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_summarizes_last_request_per_provider	stale cloud-chain: provider fixture removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_surfaces_a_recorded_claude_error	stale cloud-chain: dashboard fixture 'claude' removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_surfaces_each_providers_cost_tier	stale cloud-chain: dashboard fixture 'gemini' removed (local-only fabric)
+STALE	tests/test_ai_router.py::test_get_provider_dashboard_total_cost_is_null_when_no_call_ever_reported_one	stale cloud-chain: dashboard fixture 'gemini' removed (local-only fabric)

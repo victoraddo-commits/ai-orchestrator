@@ -3578,6 +3578,21 @@ def handle_kai_chat(text: str, operator: str) -> dict:
     Raises KaiChatAllProvidersFailed when all AI providers are unavailable.
     Raises core.lifecycle.InvalidTransition on illegal approval state transitions.
     """
+    # Prompt-injection guard: neutralize instruction-like spans in inbound
+    # chat before the LLM sees them (covers POST /kai/chat and Telegram).
+    try:
+        from core.legal.injection import (
+            guard_input as _gi, guard_output as _go)
+    except Exception:  # noqa: BLE001 - guard is optional
+        _gi = _go = None
+    if _gi is not None:
+        try:
+            _gv = _gi(text, source="kai_chat")
+            if _gv.get("suspected"):
+                text = _gv["clean_text"]
+        except Exception:  # noqa: BLE001 - never block chat on the guard
+            pass
+
     _append_chat_message("user", text)
     history = _get_chat_messages()
 
@@ -3653,6 +3668,17 @@ def handle_kai_chat(text: str, operator: str) -> dict:
             except AllProvidersFailed as error:
                 raise KaiChatAllProvidersFailed(str(error)) from error
             reply = {"matched": False, "response": response_text}
+
+    if _go is not None:
+        try:
+            _gout = _go(_reply_content(reply), source="kai_chat")
+            if _gout.get("tripped"):
+                if reply.get("result") is not None and reply.get("response") is None:
+                    reply = {**reply, "result": _gout["text"]}
+                else:
+                    reply = {**reply, "response": _gout["text"]}
+        except Exception:  # noqa: BLE001 - never block chat on the guard
+            pass
 
     _append_chat_message("assistant", _reply_content(reply))
 

@@ -24,6 +24,7 @@ on every operation.
 """
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -33,6 +34,51 @@ from dotenv import load_dotenv
 
 import core.build_manager as _bm
 import core.memory as _memory
+
+logger = logging.getLogger("telegram_bridge")
+
+# Prompt-injection guard (inbound + outbound) for the KaiEnzo/orchestrator
+# Telegram surface. Optional: if unavailable the bridge is unchanged.
+try:
+    from core.legal.injection import (
+        guard_input as _guard_input,
+        guard_output as _guard_output,
+    )
+except Exception:  # noqa: BLE001 - guard is optional, never block the bridge
+    _guard_input = _guard_output = None
+
+
+def _guard_inbound_text(text: str, source: str = "telegram") -> str:
+    """Neutralize instruction-like spans in inbound user text before the LLM."""
+    if _guard_input is None or not text:
+        return text
+    try:
+        verdict = _guard_input(text, source=source)
+    except Exception as exc:  # noqa: BLE001 - guard must never break a reply
+        logger.warning("injection guard failed: %s", exc)
+        return text
+    if verdict.get("suspected"):
+        logger.warning(
+            "inbound injection neutralized source=%s markers=%s normalizations=%s",
+            source, verdict.get("markers"), verdict.get("normalizations"))
+        return verdict.get("clean_text", text)
+    return text
+
+
+def _guard_outbound_text(text: str, source: str = "telegram") -> str:
+    """Redact leaked secrets/system-prompt text; safe fallback if tripped."""
+    if _guard_output is None or not text:
+        return text
+    try:
+        verdict = _guard_output(text, source=source)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("output guard failed: %s", exc)
+        return text
+    if verdict.get("tripped"):
+        logger.warning("outbound leak blocked source=%s markers=%s",
+                       source, verdict.get("markers"))
+        return verdict.get("text", text)
+    return text
 
 # Imported lazily inside route_inbound_reply to avoid circular imports at
 # module load time (core.api imports core.telegram_bridge indirectly through
@@ -1028,6 +1074,7 @@ def _route_voice_message(message):
     transcribed_text = result.get("text", "").strip()
     if not transcribed_text:
         raise RuntimeError("STT returned empty text")
+    transcribed_text = _guard_inbound_text(transcribed_text, source="telegram_voice")
 
     # Route to Kai chat (same handler as text messages)
     from_info = message.get("from", {})
@@ -1049,6 +1096,7 @@ def _route_voice_message(message):
         reply_text = str(reply["error"])
     else:
         reply_text = str(reply)
+    reply_text = _guard_outbound_text(reply_text, source="telegram_voice")
 
     # Synthesize speech via voice_router (local-first, cloud fallback)
     from core.voice_router import speak
@@ -1185,6 +1233,8 @@ def route_inbound_reply(message, pending_builds=None):
         if not text:
             return {"routed": False, "reply": "Empty message."}
 
+        text = _guard_inbound_text(text, source="telegram")
+
         _import_kai_chat()
         try:
             reply = _handle_kai_chat(text, operator)
@@ -1201,6 +1251,7 @@ def route_inbound_reply(message, pending_builds=None):
             reply_text = str(reply["error"])
         else:
             reply_text = str(reply)
+        reply_text = _guard_outbound_text(reply_text, source="telegram")
 
         return {
             "routed": True,

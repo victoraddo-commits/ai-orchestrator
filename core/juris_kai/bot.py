@@ -65,6 +65,62 @@ quiz_answer_keyboard = _menus.quiz_answer_keyboard
 
 logger = logging.getLogger("juris_kai.bot")
 
+# Prompt-injection guard (inbound + outbound). Optional: if the module is
+# unavailable the bot behaves exactly as before, never fails closed on import.
+try:
+    from core.legal.injection import (
+        guard_input as _guard_input,
+        guard_output as _guard_output,
+    )
+except Exception:  # noqa: BLE001 - guard is optional, never block the bot
+    _guard_input = _guard_output = None
+
+
+def _guard_inbound_text(text: str, source: str = "juris_kai") -> str:
+    """Neutralize instruction-like spans in inbound user text before the LLM."""
+    if _guard_input is None or not text:
+        return text
+    try:
+        verdict = _guard_input(text, source=source)
+    except Exception as exc:  # noqa: BLE001 - guard must never break a reply
+        logger.warning("injection guard failed: %s", exc)
+        return text
+    if verdict.get("suspected"):
+        logger.warning(
+            "inbound injection neutralized source=%s markers=%s normalizations=%s",
+            source, verdict.get("markers"), verdict.get("normalizations"))
+        return verdict.get("clean_text", text)
+    return text
+
+
+def _juris_protected_fragments() -> list:
+    """System-prompt text that must never appear verbatim in a reply."""
+    try:
+        from core.juris_kai.prompt import (
+            _PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST,
+        )
+        return [_PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST]
+    except Exception:  # noqa: BLE001 - best effort
+        return []
+
+
+def _guard_outbound_text(text: str, source: str = "juris_kai") -> str:
+    """Redact leaked secrets/system-prompt text; safe fallback if tripped."""
+    if _guard_output is None or not text:
+        return text
+    try:
+        verdict = _guard_output(
+            text, source=source, protected=_juris_protected_fragments())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("output guard failed: %s", exc)
+        return text
+    if verdict.get("tripped"):
+        logger.warning("outbound leak blocked source=%s markers=%s",
+                       source, verdict.get("markers"))
+        return verdict.get("text", text)
+    return text
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -455,6 +511,7 @@ def _finalize_stream(chat_id, message_id, text, reply_markup=None) -> None:
     placeholder already shows this exact text, so resending would duplicate
     the answer in the chat.
     """
+    text = _guard_outbound_text(text, source="juris_kai")
     final = text if len(text) <= STREAM_MAX_MESSAGE else text[:STREAM_MAX_MESSAGE]
     resp = _edit_message_text(chat_id, message_id, final,
                               reply_markup=reply_markup, parse_mode="Markdown")
@@ -490,6 +547,12 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
             now = time.time()
             if (len(acc) - last_len >= STREAM_MIN_CHARS
                     and now - last_edit >= STREAM_EDIT_INTERVAL):
+                safe_acc = _guard_outbound_text(acc, source="juris_kai")
+                if safe_acc != acc:
+                    # Leak detected mid-stream: replace immediately with the
+                    # safe fallback and stop streaming the raw answer.
+                    _finalize_stream(chat_id, message_id, safe_acc, reply_markup)
+                    return safe_acc, model, True
                 _edit_message_text(chat_id, message_id, acc[:STREAM_MAX_MESSAGE],
                                    parse_mode=None)
                 last_edit = now
@@ -537,7 +600,8 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
             faq = None
         if faq and faq.get("answer"):
             logger.info("juris FAQ cache hit task=%s account=%s", task_type, account_id)
-            return faq["answer"], faq.get("model", ""), False, True
+            return (_guard_outbound_text(faq["answer"], source="juris_kai"),
+                    faq.get("model", ""), False, True)
 
     # 2) In-process generation TTL cache. Context is folded into the key so a
     #    follow-up answered under different history is not replayed.
@@ -546,7 +610,8 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
     key = _cache.generation_key(task_type, query, corpus_ver, ctx_key)
     hit = _cache.GENERATION_CACHE.get(key)
     if hit and hit.get("text"):
-        return hit["text"], hit.get("model", ""), False, True
+        return (_guard_outbound_text(hit["text"], source="juris_kai"),
+                hit.get("model", ""), False, True)
 
     if chat_id and _stream_enabled():
         text, model, delivered = _stream_to_telegram(
@@ -557,6 +622,7 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
             return text, model, True, False
 
     text, model = _delegate_with_timeout(prompt, task_type, fallback_label, account_id)
+    text = _guard_outbound_text(text, source="juris_kai")
     if text:
         _cache.GENERATION_CACHE.set(
             key, {"text": text, "model": model, "corpus_version": corpus_ver})
@@ -622,6 +688,11 @@ def handle_message(update: dict) -> dict | None:
 
     if not telegram_id or not message_text:
         return None
+
+    # Prompt-injection guard: scan EVERY inbound message before it can reach
+    # the LLM. A message carrying instruction-like spans is never a menu item,
+    # so neutralizing the spans in place still routes it to free text.
+    message_text = _guard_inbound_text(message_text, source="juris_kai")
 
     # KAI Telegram Module authorization (directive §20-§22): this bot may only
     # act within its registered capabilities — deny-by-default. Juris is

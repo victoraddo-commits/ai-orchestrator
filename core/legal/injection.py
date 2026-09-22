@@ -16,6 +16,7 @@ Layout:
                             whitespace collapse + bounded base64/hex decode.
   * ``guard_input()``    -- scan + neutralize + fence + log + per-source metric.
   * ``guard_output()``   -- scan a model reply; redact + safe fallback + metric.
+  * ``guard_stream_prefix()`` -- incremental guard for partially-streamed replies.
 
 This file is deployed verbatim to the Legal Brain (CT 100) at
 ``/opt/kai-legal-brain/core/legal/injection.py``. The two copies MUST be kept
@@ -477,3 +478,45 @@ def guard_output(text: str, source: str = "unknown", protected=None,
         )
         result["text"] = fallback
     return result
+
+
+def guard_stream_prefix(text: str, source: str = "stream",
+                        count: bool = True) -> dict:
+    """Incremental fail-safe guard for a partially-streamed model reply.
+
+    Streaming callers render tokens as they arrive, so the output guard cannot
+    wait for the whole reply. This scans the *accumulated* prefix -- not the
+    latest chunk -- so a marker split across a chunk boundary is still caught.
+    It checks both instruction-like spans (``scan``) and outbound leak patterns
+    (``guard_output``) and returns ``abort=True`` on the first suspicion, so the
+    caller can stop live-editing without ever emitting the suspicious span.
+
+    Never raises. When ``abort`` is true and ``count`` is set, one output
+    detection is recorded for ``source``.
+    """
+    original = text or ""
+    markers: list[str] = []
+
+    try:
+        verdict = scan(original)
+        if verdict.get("suspected"):
+            markers.extend(verdict["markers"])
+    except Exception as exc:  # noqa: BLE001 - guard is optional, never block
+        logger.warning("stream scan failed for source=%s: %s", source, exc)
+
+    try:
+        out = guard_output(original, source=source, count=False)
+        if out.get("tripped"):
+            markers.extend(out["markers"])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("stream output guard failed for source=%s: %s", source, exc)
+
+    unique = sorted(set(markers))
+    abort = bool(unique)
+    if abort and count:
+        _bump("output", source)
+        _audit(
+            "security.prompt_injection.stream", source,
+            {"markers": unique, "length": len(original)},
+        )
+    return {"abort": abort, "suspected": abort, "markers": unique}

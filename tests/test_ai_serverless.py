@@ -47,7 +47,7 @@ class TestHandleCompletion:
                           return_attempts=None, provider=None):
             return {
                 "response": "Hello!",
-                "provider": "gemini",
+                "provider": "kai_brain",
                 "attempts": [],
             }
 
@@ -59,7 +59,7 @@ class TestHandleCompletion:
         assert result["object"] == "chat.completion"
         assert len(result["choices"]) == 1
         assert result["choices"][0]["message"]["content"] == "Hello!"
-        assert result["model"] == "gemini"
+        assert result["model"] == "kai_brain"
         assert "usage" in result
         assert result["usage"]["completion_tokens"] > 0
 
@@ -74,7 +74,7 @@ class TestHandleCompletion:
             received_provider = provider
             return {
                 "response": "OK",
-                "provider": provider or "gemini",
+                "provider": provider or "kai_brain",
                 "attempts": [],
             }
 
@@ -82,9 +82,9 @@ class TestHandleCompletion:
             "core.ai.ai_router.delegate", fake_delegate
         )
 
-        result = handle_completion("Say hi", model="gemini")
-        assert received_provider == "gemini"
-        assert result["model"] == "gemini"
+        result = handle_completion("Say hi", model="kai_brain")
+        assert received_provider == "kai_brain"
+        assert result["model"] == "kai_brain"
 
     def test_unknown_model_returns_error(self, monkeypatch):
         from core.ai_serverless.handler import handle_completion

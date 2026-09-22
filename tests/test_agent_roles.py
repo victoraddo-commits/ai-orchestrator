@@ -19,45 +19,27 @@ def _ensure_in_role_providers(monkeypatch, name, task_type):
     monkeypatch.setitem(ai_router.ROLE_PROVIDERS, task_type, providers)
 
 
-def test_architecture_agent_routes_to_claude(monkeypatch):
-    # Disable coding providers ahead of claude so this test stays fast.
-    import core.ai_provider as ai_provider
-    for name in ("omniroute", "gpuai_minimax"):
-        p = ai_provider.get_provider(name)
-        if p is not None:
-            monkeypatch.setitem(p, "available_fn", lambda: False)
-
-    _ensure_in_role_providers(monkeypatch, "claude", "coding")
-    _stub_provider(monkeypatch, "claude", "claude answered")
+def test_architecture_agent_routes_to_a_local_provider(monkeypatch):
+    # All earlier coding-chain locals are disabled by the autouse fixture;
+    # append a stubbed local provider so the agent has one reachable worker.
+    _ensure_in_role_providers(monkeypatch, "kai_deep", "coding")
+    _stub_provider(monkeypatch, "kai_deep", "local answered")
 
     result = agent_roles.architecture_agent("Design the new module")
 
-    assert result["provider"] == "claude"
+    assert result["provider"] == "kai_deep"
     assert result["task_type"] == "coding"
 
 
-def test_research_agent_routes_to_claude_fallback(monkeypatch):
-    # deepseek_native_pro joined "planning" -- disabled so this doesn't
-    # make a real api.deepseek.com call. OpenCode providers removed 2026-08-10.
-    import core.ai_provider as ai_provider
-    # gemini re-enabled 2026-08-02 (credit reloaded) and rejoined "planning".
-    # Only disable providers that are actually registered (qwen may be absent
-    # when RunPod env vars aren't set).
-    to_disable = [n for n in ("deepseek_native_flash", "omniroute_deepseek_flash",
-                    "openrouter", "deepseek",
-                    "deepseek_native_pro", "gemini", "geminix",
-                    "qwen4_text", "qwen4_pod_b",
-                    "local", "llama3")
-                  if ai_provider.get_provider(n) is not None]
-    for name in to_disable:
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
-
-    _ensure_in_role_providers(monkeypatch, "claude", "planning")
-    _stub_provider(monkeypatch, "claude", "claude answered")
+def test_research_agent_routes_to_a_local_provider(monkeypatch):
+    # Local-only fabric: the autouse fixture disables the default planning
+    # chain, so append a stubbed local provider and assert it is reached.
+    _ensure_in_role_providers(monkeypatch, "kai_deep", "planning")
+    _stub_provider(monkeypatch, "kai_deep", "local answered")
 
     result = agent_roles.research_agent("Summarize the docs")
 
-    assert result["provider"] == "claude"
+    assert result["provider"] == "kai_deep"
     assert result["task_type"] == "planning"
 
 
@@ -102,26 +84,15 @@ def test_general_reasoning_agent_routes_to_qwen4_text(monkeypatch):
     assert result["task_type"] == "review"
 
 
-def test_general_reasoning_agent_falls_back_to_claude_when_all_primary_unavailable(monkeypatch):
-    # 2026-08-09: deepseek_native_pro is now PRIMARY for review per operator
-    # directive. Disable all DeepSeek and primary providers so claude (the
-    # universal fallback) is the only one left standing.
-    import core.ai_provider as ai_provider
-
-    to_disable = [n for n in ("deepseek_native_pro", "deepseek_native_flash",
-                    "omniroute_deepseek_flash", "deepseek",
-                    "gemini", "geminix", "qwen4_text", "qwen4_pod_b",
-                    "groq", "local", "llama3")
-                  if ai_provider.get_provider(n) is not None]
-    for name in to_disable:
-        monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
-
-    _ensure_in_role_providers(monkeypatch, "claude", "review")
-    _stub_provider(monkeypatch, "claude", "claude answered")
+def test_general_reasoning_agent_falls_back_to_a_local_provider_when_primary_unavailable(monkeypatch):
+    # Local-only fabric: with the default review chain disabled by the autouse
+    # fixture, an appended stubbed local provider is the only one left standing.
+    _ensure_in_role_providers(monkeypatch, "kai_deep", "review")
+    _stub_provider(monkeypatch, "kai_deep", "local answered")
 
     result = agent_roles.general_reasoning_agent("Critique this proposal")
 
-    assert result["provider"] == "claude"
+    assert result["provider"] == "kai_deep"
 
 
 def test_agent_role_kwargs_forward_to_delegate(monkeypatch):

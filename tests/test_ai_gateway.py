@@ -184,7 +184,7 @@ class TestChatCompletions:
             assert "duration_ms" in data
 
     def test_handles_specific_model(self, client, valid_auth):
-        body = {**self.BODY, "model": "deepseek_native_flash"}
+        body = {**self.BODY, "model": "kai_brain"}
         resp = client.post("/v1/chat/completions",
                            json=body,
                            headers={"Authorization": valid_auth})

@@ -27,7 +27,7 @@ def paired_device(monkeypatch):
 def test_app_spend_returns_cost_summary_shape(paired_device, isolated_memory):
     from core.ai.ai_router import record_usage
 
-    record_usage("openrouter", task_type="classification", description="spend test",
+    record_usage("kai_brain", task_type="classification", description="spend test",
                  success=True, duration_ms=50,
                  usage={"prompt_tokens": 1_000_000, "completion_tokens": 100_000})
 

@@ -35,16 +35,21 @@ def _record(provider, description="test call", **kwargs):
     return record_usage(provider, description=description, **defaults)
 
 
-def test_summary_estimates_from_recorded_usage_block(isolated_memory):
+def test_summary_estimates_from_recorded_usage_block(isolated_memory, monkeypatch):
+    # The fabric is local-only, so every real provider is $0/token. Inject a
+    # synthetic priced provider to pin the estimation mechanism itself.
+    monkeypatch.setitem(provider_pricing.PRICING, "test-priced", {
+        "test-model": {"input_per_million": 0.15, "output_per_million": 0.60},
+    })
     _record(
-        "openrouter",
+        "test-priced",
         usage={"prompt_tokens": 1_000_000, "completion_tokens": 500_000},
     )
     summary = cost_tracker.get_cost_summary(days=30)
 
     assert summary["calls_estimated"] == 1
     assert summary["calls_unknown"] == 0
-    assert abs(summary["by_provider"]["openrouter"] - 0.45) < 1e-6  # $0.15 + $0.30
+    assert abs(summary["by_provider"]["test-priced"] - 0.45) < 1e-6  # $0.15 + $0.30
 
 
 def test_local_providers_estimate_to_zero_but_are_known(isolated_memory):

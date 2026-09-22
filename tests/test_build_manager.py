@@ -830,30 +830,27 @@ def test_max_concurrent_builds_defaults_when_config_is_missing_or_bad(tmp_path, 
 # -- 13R: concurrent dispatch --------------------------------------------------
 
 def _disable_code_review(monkeypatch):
-    # 2026-08-02: code review is a fallback chain now (CODE_REVIEW_CANDIDATES
-    # -- gpuai_minimax then deepseek_native_pro, see build_manager's
-    # module-level comment above it), both real, env-credential-available
-    # providers on this host/process (core.api's load_dotenv() leaks
-    # VLLM_QWEN3_CODER_*/DEEPSEEK_NATIVE_PRO_API_KEY into the whole pytest
-    # session). Tests that don't care about the review step's outcome
-    # should call this rather than only neutralizing one candidate by name
-    # (e.g. via generated_by) -- that only skips that one candidate, the
-    # chain still tries the rest for real.
+    # Code review is a local-only fallback chain now (CODE_REVIEW_CANDIDATES
+    # -- kai_brain -> kai_coder -> llama_coder_cpu), all real registered
+    # local providers on this host. Tests that don't care about the review
+    # step's outcome should call this rather than only neutralizing one
+    # candidate by name (e.g. via generated_by) -- that only skips that one
+    # candidate, the chain still tries the rest for real.
     import core.ai_provider as ai_provider
     for name in build_manager.CODE_REVIEW_CANDIDATES:
         monkeypatch.setitem(ai_provider.get_provider(name), "available_fn", lambda: False)
 
 
 def _stub_code_reviewer(monkeypatch, findings="No issues found."):
-    # OpenCode providers removed 2026-08-10. CODE_REVIEW_CANDIDATES is now
-    # just ["deepseek_native_pro"], so stub that single candidate.
+    # Local-only chain (kai_brain -> kai_coder -> llama_coder_cpu): stub every
+    # candidate so whichever one is asked first answers with `findings`.
     fake = {
         "available_fn": lambda: True,
         "run_text_task": lambda prompt, timeout=60, project_path=None: findings,
     }
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
-        lambda name: fake if name == "deepseek_native_pro" else None,
+        lambda name: fake if name in build_manager.CODE_REVIEW_CANDIDATES else None,
     )
     return fake
 
@@ -952,12 +949,11 @@ def test_persist_build_updates_only_that_builds_record():
 
 # -- 13R: CODE_REVIEW ----------------------------------------------------------
 
-def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_generated_it(monkeypatch):
-    # 2026-08-02: CODE_REVIEW_CANDIDATES is a fallback chain now, not a
-    # single reviewer -- self-review isn't independent oversight, but that
-    # only rules out gpuai_minimax specifically when it's the build's own
-    # generator. deepseek_native_pro (the fallback, "add DeepSeek-V4-Pro as
-    # fallback reviewer... behind fable 5") still gets a real attempt rather
+def test_code_review_falls_back_to_next_local_reviewer_when_generator_is_primary(monkeypatch):
+    # CODE_REVIEW_CANDIDATES is a local-only fallback chain, not a single
+    # reviewer -- self-review isn't independent oversight, but that only
+    # rules out kai_brain specifically when it's the build's own generator.
+    # kai_coder (the next local reviewer) still gets a real attempt rather
     # than the whole review being skipped outright.
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "GENERATING")
@@ -965,7 +961,7 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_genera
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
+            "provider": "kai_brain", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -974,15 +970,15 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_genera
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
 
-    fake_deepseek = {
+    fake_reviewer = {
         "available_fn": lambda: True,
         "run_text_task": lambda prompt, timeout=60, project_path=None: "Advisory: looks fine.",
     }
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
         lambda name: (
-            pytest.fail("gpuai_minimax must not be asked to review its own work") if name == "gpuai_minimax"
-            else fake_deepseek if name == "deepseek_native_pro"
+            pytest.fail("kai_brain must not be asked to review its own work") if name == "kai_brain"
+            else fake_reviewer if name == "kai_coder"
             else None
         ),
     )
@@ -993,7 +989,7 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_genera
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["code_review"] == {
         "skipped": False,
-        "reviewer": "deepseek_native_pro",
+        "reviewer": "kai_coder",
         "findings": "Advisory: looks fine.",
     }
 
@@ -1026,7 +1022,7 @@ def test_code_review_attaches_gpuai_minimax_findings_for_other_builds(monkeypatc
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["code_review"] == {
         "skipped": False,
-        "reviewer": "deepseek_native_pro",
+        "reviewer": "kai_brain",
         "findings": "Advisory: app/main.py has no tests.",
     }
 
@@ -1058,15 +1054,15 @@ def test_code_review_findings_never_block_the_build(monkeypatch, tmp_path):
 
 
 def test_code_review_skips_gracefully_when_every_reviewer_candidate_is_unavailable(monkeypatch, tmp_path):
-    # deepseek_native_pro (sole code-review candidate) is unavailable
-    # -- the whole review comes back skipped with the reason reported.
+    # Every local code-review candidate is unavailable -- the whole review
+    # comes back skipped with the reason reported.
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "omniroute_deepseek_coding", "task_type": "coding", "duration_ms": 10,
+            "provider": "qwen4_coding", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1083,20 +1079,18 @@ def test_code_review_skips_gracefully_when_every_reviewer_candidate_is_unavailab
 
     updated = build_manager.get_build(build["id"])
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
-    assert updated["code_review"] == {
-        "skipped": True,
-        "reason": "deepseek_native_pro unavailable",
-    }
+    assert updated["code_review"]["skipped"] is True
+    assert updated["code_review"]["reason"].count("unavailable") == len(build_manager.CODE_REVIEW_CANDIDATES)
 
 
-def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_is_unavailable(monkeypatch, tmp_path):
+def test_code_review_falls_back_to_next_local_reviewer_when_primary_is_unavailable(monkeypatch, tmp_path):
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
+            "provider": "qwen4_coding", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1105,15 +1099,15 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_is_una
         lambda project_path: {"scanners": {}, "total_findings": 0, "highest_severity": None},
     )
 
-    fake_deepseek = {
+    fake_reviewer = {
         "available_fn": lambda: True,
         "run_text_task": lambda prompt, timeout=60, project_path=None: "Advisory: no issues.",
     }
     monkeypatch.setattr(
         build_manager.ai_provider, "get_provider",
         lambda name: (
-            {"available_fn": lambda: False, "run_text_task": None} if name == "gpuai_minimax"
-            else fake_deepseek if name == "deepseek_native_pro"
+            {"available_fn": lambda: False, "run_text_task": None} if name == "kai_brain"
+            else fake_reviewer if name == "kai_coder"
             else None
         ),
     )
@@ -1124,19 +1118,19 @@ def test_code_review_falls_back_to_deepseek_native_pro_when_gpuai_minimax_is_una
     assert updated["status"] == "WAITING_FOR_DEPLOY_APPROVAL"
     assert updated["code_review"] == {
         "skipped": False,
-        "reviewer": "deepseek_native_pro",
+        "reviewer": "kai_coder",
         "findings": "Advisory: no issues.",
     }
 
 
-def test_code_review_skips_gracefully_when_the_gpuai_minimax_call_fails(monkeypatch, tmp_path):
+def test_code_review_skips_gracefully_when_the_local_reviewer_call_fails(monkeypatch, tmp_path):
     build = build_manager.create_build("todo-app", "desc", str(tmp_path / "proj"))
     _force_status(build["id"], "GENERATING")
 
     monkeypatch.setattr(
         build_manager, "delegate",
         lambda description, **kwargs: {
-            "provider": "gpuai_minimax", "task_type": "coding", "duration_ms": 10,
+            "provider": "qwen4_coding", "task_type": "coding", "duration_ms": 10,
             "response": {"success": True, "response_text": "Done.", "files_changed": ["app.py"], "commits": [], "tool_errors": []},
         },
     )
@@ -1168,13 +1162,13 @@ def test_advance_builds_picks_up_a_build_stranded_in_code_review(monkeypatch):
     build = build_manager.create_build("todo-app", "desc", "/tmp/proj")
     _force_status(build["id"], "CODE_REVIEW")
 
-    # "gpuai_minimax" only skips itself in the review fallback chain
-    # (self-authorship) -- deepseek_native_pro would still get a real
+    # A candidate only skips itself in the review fallback chain
+    # (self-authorship) -- the next local reviewer would still get a real
     # attempt, so also disable the whole chain.
     builds = build_manager.load_builds()
     for b in builds:
         if b["id"] == build["id"]:
-            b["generated_by"] = "gpuai_minimax"
+            b["generated_by"] = "kai_brain"
     build_manager.save_builds(builds)
 
     monkeypatch.setattr(

@@ -330,9 +330,9 @@ def test_providers_dashboard_endpoint_returns_all_registered_providers():
 
     assert response.status_code == 200
     body = response.json()
-    assert "claude" in body
-    assert "gemini" in body
-    assert "percent_remaining" in body["groq"]
+    assert "kai_brain" in body
+    assert "local" in body
+    assert "percent_remaining" in body["kai_brain"]
 
 
 def test_delegate_endpoint_requires_auth():
@@ -395,9 +395,9 @@ def test_providers_endpoint_lists_registered_providers():
 
     assert response.status_code == 200
     body = response.json()
-    assert "claude" in body
+    assert "kai_brain" in body
     assert "local" in body
-    assert "run_coding_task" not in body["claude"]
+    assert "run_coding_task" not in body["kai_brain"]
 
 
 def test_templates_endpoint_lists_available_templates():

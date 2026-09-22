@@ -82,22 +82,3 @@ def test_capture_provider_error_records_raw_detail_without_classifying_it():
     assert snapshot["status"] == "error"
     assert snapshot["percent_remaining"] is None
     assert "usage limit reached" in snapshot["detail"].lower()
-
-
-def test_claude_usage_snapshot_is_self_tracked_and_labeled_as_such(monkeypatch):
-    import core.ai.ai_router as ai_router
-
-    monkeypatch.setattr(
-        ai_router, "get_usage_history",
-        lambda: [
-            {"provider": "claude", "success": True, "timestamp": "2026-07-28T00:00:00"},
-            {"provider": "claude", "success": True, "timestamp": "2026-07-28T01:00:00"},
-            {"provider": "gemini", "success": True, "timestamp": "2026-07-28T01:00:00"},
-        ],
-    )
-
-    snapshot = provider_health.claude_usage_snapshot()
-
-    assert snapshot["requests_recorded"] == 2
-    assert snapshot["percent_remaining"] is None
-    assert "self-tracked" in snapshot["detail"].lower()

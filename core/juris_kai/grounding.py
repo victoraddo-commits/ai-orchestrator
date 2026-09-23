@@ -119,6 +119,27 @@ def retrieve(query: str, limit: int = 3) -> dict:
     return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
 
 
+def source_signature(docs: list[dict], verdict: str = "") -> str:
+    """Stable signature of the retrieved source set for cache-binding.
+
+    A cached answer may only be replayed when retrieval would return the same
+    sources, so the signature folds the verdict and the sorted source
+    identity (id, else citation, else title). Different sources -> different
+    signature -> cache miss (no stale answer attributed to fresh sources).
+    """
+    if not docs:
+        return ""
+    import hashlib
+    parts = []
+    for d in docs:
+        ident = str(d.get("id") or d.get("citation") or d.get("title") or "")
+        title = str(d.get("title") or "")
+        parts.append(f"{ident}|{title}")
+    raw = "\n".join(sorted(parts))
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+    return f"{verdict or ''}:{digest}"
+
+
 def build_sources_footer(docs: list[dict]) -> str:
     """Deterministic Sources block built from retrieval (never the model)."""
     if not docs:

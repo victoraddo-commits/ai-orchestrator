@@ -42,6 +42,10 @@ FAQ_TTL = 7 * 24 * 3600.0  # 7 days
 # An answer must be at least this long, and free of failure markers, before it
 # is worth reusing as a canned answer.
 ANSWER_MIN_CACHE_CHARS = 120
+# The strict-grounding refusal is a valid, honest answer to record, but it must
+# NEVER be reused as a canned answer: the same question may later retrieve real
+# sources. This marker keeps it out of the FAQ pool (and counts it as blocked).
+UNGROUNDED_MARKER = "so i won't guess"
 _ANSWER_ERROR_MARKERS = (
     "i couldn't generate",
     "couldn't generate a response",
@@ -51,6 +55,7 @@ _ANSWER_ERROR_MARKERS = (
     "try again later",
     "empty reply",
     "not authorized",
+    UNGROUNDED_MARKER,
 )
 
 _WS_RE = re.compile(r"\s+")
@@ -101,6 +106,11 @@ def answer_is_cacheable(answer: str) -> bool:
     return not any(marker in low for marker in _ANSWER_ERROR_MARKERS)
 
 
+def answer_is_refusal(answer: str) -> bool:
+    """True for the strict-grounding refusal (never reusable as an answer)."""
+    return UNGROUNDED_MARKER in (answer or "").lower()
+
+
 def answer_is_blocked(answer: str) -> bool:
     """True when an answer contains a failure/refusal marker."""
     low = (answer or "").strip().lower()
@@ -137,13 +147,17 @@ def context_fingerprint(context: str) -> str:
     return hashlib.sha1(context.encode("utf-8")).hexdigest()[:10]
 
 
-def faq_key(task_type: str, query: str, scope: str) -> tuple:
+def faq_key(task_type: str, query: str, scope: str,
+            source_key: str = "") -> tuple:
     """Cache key for the FAQ layer.
 
     ``scope`` is ``"__generic__"`` for non-personalised questions (shareable)
-    or the account id for anything personalised (never shared).
+    or the account id for anything personalised (never shared). ``source_key``
+    binds the answer to the retrieved source set, so a cached answer is only
+    replayed when retrieval would return the same sources.
     """
-    return ("faq", task_type or "", normalize_query(query), scope or "")
+    return ("faq", task_type or "", normalize_query(query), scope or "",
+            source_key or "")
 
 
 class TTLCache:
@@ -245,9 +259,9 @@ def corpus_version(max_age: float = _CORPUS_VERSION_TTL) -> str:
 
 
 def generation_key(task_type: str, query: str, corpus_ver: str = "na",
-                   context_key: str = "") -> tuple:
+                   context_key: str = "", source_key: str = "") -> tuple:
     return (task_type or "", normalize_query(query), str(corpus_ver),
-            context_key or "")
+            context_key or "", source_key or "")
 
 
 def retrieval_key(query: str, limit: int) -> tuple:

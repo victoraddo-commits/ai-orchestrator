@@ -181,6 +181,7 @@ def _init_schema(conn: sqlite3.Connection):
             is_generic INTEGER DEFAULT 0,
             cache_eligible INTEGER DEFAULT 0,
             cache_hit INTEGER DEFAULT 0,
+            source_key TEXT DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
@@ -340,6 +341,7 @@ def _init_schema(conn: sqlite3.Connection):
         ("is_generic", "INTEGER DEFAULT 0"),
         ("cache_eligible", "INTEGER DEFAULT 0"),
         ("cache_hit", "INTEGER DEFAULT 0"),
+        ("source_key", "TEXT DEFAULT ''"),
     ]:
         try:
             conn.execute(f"ALTER TABLE juris_qa_log ADD COLUMN {col} {coldef}")
@@ -650,12 +652,18 @@ class AccountManager:
     def record_qa(self, account_id: str, question: str = "", answer: str = "",
                   *, chat_id: str = "", task_type: str = "", model: str = "",
                   latency_ms: int = 0, confidence: Optional[float] = None,
-                  cache_hit: bool = False) -> bool:
+                  cache_hit: bool = False, source_key: str = "") -> bool:
         """Persist a full question + answer for one account (local SQLite only).
 
         This is the durable learning-loop record. Nothing is sent externally.
         Text is capped at ``QA_MAX_CHARS``. On a cacheable answer the FAQ
         cache is populated so the next identical question is served instantly.
+
+        ``source_key`` binds the entry to the retrieved source set; a cached
+        answer is only ever replayed when retrieval returns the same sources.
+        Strict-grounding refusals are recorded for learning/analytics but are
+        never cacheable (the marker in ``cache.answer_is_cacheable`` keeps them
+        out of the FAQ pool).
         """
         from core.juris_kai import cache as _cache
 
@@ -671,31 +679,34 @@ class AccountManager:
             """INSERT INTO juris_qa_log
                (account_id, chat_id, task_type, question, answer, model,
                 latency_ms, confidence, question_hash, is_generic,
-                cache_eligible, cache_hit)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                cache_eligible, cache_hit, source_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, str(chat_id or ""), task_type or "", q, a, model or "",
              int(latency_ms or 0), float(confidence), qhash,
              1 if generic else 0, 1 if cacheable else 0,
-             1 if cache_hit else 0),
+             1 if cache_hit else 0, source_key or ""),
         )
         self.db.commit()
 
         if cacheable:
             scope = "__generic__" if generic else account_id
             _cache.FAQ_CACHE.set(
-                _cache.faq_key(task_type, q, scope),
+                _cache.faq_key(task_type, q, scope, source_key),
                 {"answer": a, "model": model or "",
                  "confidence": float(confidence), "cache_scope":
                  "generic" if generic else "account"},
             )
         return True
 
-    def lookup_qa(self, account_id: str, task_type: str, question: str) -> Optional[Dict[str, Any]]:
+    def lookup_qa(self, account_id: str, task_type: str, question: str,
+                  source_key: str = "") -> Optional[Dict[str, Any]]:
         """Return a previously-stored good answer for this question, or None.
 
         Order: in-process FAQ cache, then the local ``juris_qa_log`` table.
         Generic (non-personalised) questions may be shared between accounts;
-        personalised questions are scoped to ``account_id`` only.
+        personalised questions are scoped to ``account_id`` only. ``source_key``
+        must match, so an answer based on one source set is never replayed for
+        a query that now retrieves different sources.
         """
         from core.juris_kai import cache as _cache
 
@@ -705,7 +716,7 @@ class AccountManager:
             return None
         generic = _cache.is_generic_question(q)
         scope = "__generic__" if generic else account_id
-        key = _cache.faq_key(task_type, q, scope)
+        key = _cache.faq_key(task_type, q, scope, source_key)
 
         hit = _cache.FAQ_CACHE.get(key)
         if hit and hit.get("answer"):
@@ -715,17 +726,19 @@ class AccountManager:
             row = self.db.execute(
                 """SELECT answer, model, confidence, task_type FROM juris_qa_log
                    WHERE question_hash = ? AND task_type = ? AND is_generic = 1
-                     AND cache_eligible = 1
+                     AND cache_eligible = 1 AND source_key = ?
                    ORDER BY created_at DESC LIMIT 1""",
-                (_cache.question_hash(q), task_type or ""),
+                (_cache.question_hash(q), task_type or "", source_key or ""),
             ).fetchone()
         else:
             row = self.db.execute(
                 """SELECT answer, model, confidence, task_type FROM juris_qa_log
                    WHERE question_hash = ? AND task_type = ? AND account_id = ?
                      AND is_generic = 0 AND cache_eligible = 1
+                     AND source_key = ?
                    ORDER BY created_at DESC LIMIT 1""",
-                (_cache.question_hash(q), task_type or "", account_id),
+                (_cache.question_hash(q), task_type or "", account_id,
+                 source_key or ""),
             ).fetchone()
         if not row:
             return None

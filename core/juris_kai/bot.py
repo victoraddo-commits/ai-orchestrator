@@ -372,6 +372,22 @@ class RequestContext:
     is_admin: bool
 
 
+def _send_text_with_fallback(chat_id, text, reply_markup=None,
+                             parse_mode="Markdown"):
+    """Send normally, then retry as plain text if a Markdown send fails.
+
+    Legal answers (and their Sources footer) routinely contain ``_``/``*`` in
+    titles; a Markdown parse error would otherwise drop the whole message.
+    Mirrors the retry ``_finalize_stream`` does for the streaming path.
+    """
+    resp = send_message(chat_id, text, reply_markup=reply_markup,
+                        parse_mode=parse_mode)
+    if parse_mode and isinstance(resp, dict) and not resp.get("ok"):
+        resp = send_message(chat_id, text, reply_markup=reply_markup,
+                            parse_mode=None)
+    return resp
+
+
 def _send_guarded(expected_chat_id, result: dict | None):
     """Send a response ONLY if it targets the expected chat_id.
 
@@ -387,7 +403,7 @@ def _send_guarded(expected_chat_id, result: dict | None):
             f"!= expected chat_id={expected_chat_id}. Response DROPPED."
         )
         return
-    send_message(
+    _send_text_with_fallback(
         result["chat_id"],
         result["text"],
         reply_markup=result.get("reply_markup"),
@@ -625,7 +641,7 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
 
 def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
                     chat_id=None, reply_markup=None, context="", prefix="",
-                    suffix=""):
+                    suffix="", source_key=""):
     """Generate a legal answer: FAQ cache → TTL cache → stream → blocking.
 
     Returns (text, model, streamed, cached). ``streamed=True`` means the text
@@ -641,13 +657,18 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
     are deliberately excluded from the returned/cached text, so a cache replay
     cannot duplicate them — the caller owns both and applies them to
     non-streamed answers.
+
+    ``source_key`` binds cache reuse to the retrieved source set: a cached
+    answer only counts as a hit when retrieval returns the same sources, so a
+    stale answer can never be replayed under a fresh Sources footer.
     """
     # 1) FAQ / repeat cache — a normalized repeat served instantly from the
     #    local juris_qa_log (survives restarts) + in-process FAQ layer.
     if not context and account_id:
         try:
             from core.juris_kai.accounts import get_account_manager
-            faq = get_account_manager().lookup_qa(account_id, task_type, query)
+            faq = get_account_manager().lookup_qa(
+                account_id, task_type, query, source_key=source_key)
         except Exception as exc:  # noqa: BLE001 - never break generation
             logger.warning("juris FAQ lookup failed: %s", exc)
             faq = None
@@ -656,11 +677,11 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
             return (_guard_outbound_text(faq["answer"], source="juris_kai"),
                     faq.get("model", ""), False, True)
 
-    # 2) In-process generation TTL cache. Context is folded into the key so a
-    #    follow-up answered under different history is not replayed.
+    # 2) In-process generation TTL cache. Context and source set are folded
+    #    into the key so a follow-up (or a different source set) is not replayed.
     corpus_ver = _cache.corpus_version()
     ctx_key = _cache.context_fingerprint(context)
-    key = _cache.generation_key(task_type, query, corpus_ver, ctx_key)
+    key = _cache.generation_key(task_type, query, corpus_ver, ctx_key, source_key)
     hit = _cache.GENERATION_CACHE.get(key)
     if hit and hit.get("text"):
         return (_guard_outbound_text(hit["text"], source="juris_kai"),
@@ -694,13 +715,17 @@ def _followup_context(chat_id, question: str) -> str:
 
 def _record_turn(account_id: str, chat_id, task_type: str, question: str,
                  answer: str, model: str, latency_ms: int,
-                 cache_hit: bool) -> None:
-    """Persist the Q&A for the learning loop and update the session history."""
+                 cache_hit: bool, source_key: str = "") -> None:
+    """Persist the Q&A for the learning loop and update the session history.
+
+    ``source_key`` binds the stored answer to its retrieved source set so the
+    FAQ layer only replays it for the same sources.
+    """
     try:
         get_account_manager().record_qa(
             account_id, question=question, answer=answer, chat_id=str(chat_id),
             task_type=task_type, model=model, latency_ms=int(latency_ms),
-            cache_hit=bool(cache_hit))
+            cache_hit=bool(cache_hit), source_key=source_key)
     except Exception as exc:  # noqa: BLE001 - logging must never break a reply
         logger.error("juris record_qa failed: %s", exc)
     try:
@@ -1460,15 +1485,29 @@ def _build_legal_reply(text: str, chat_id: int, account: dict,
     The banner/footer are applied by this function for non-streamed answers and
     passed as ``prefix``/``suffix`` for streamed ones (so they land in the
     final edited message rather than being lost).
+
+    Retrieval failure fails closed: any exception from ``grounding.retrieve``
+    is treated as UNGROUNDED (honest refusal, no model call), because an
+    unreachable source is not a source.
+
+    TODO(grounding-followup): ``grounding.retrieve(text)`` ignores the
+    follow-up context, so an anaphoric follow-up ("and the penalty?") can
+    ground on unrelated sources. Retrieval should incorporate ``followup_ctx``;
+    tracked as a separate task.
     """
     from core.juris_kai import grounding
     from core.juris_kai.prompt import build_grounded_prompt
 
-    result = grounding.retrieve(text)
-    verdict = result["verdict"]
-    docs = result["docs"]
     mgr = get_account_manager()
     _t0 = time.time()
+
+    try:
+        result = grounding.retrieve(text)
+        verdict = result["verdict"]
+        docs = result["docs"]
+    except Exception as exc:  # noqa: BLE001 - fail closed, never answer ungrounded
+        logger.warning("juris grounding retrieval failed (fail closed): %s", exc)
+        verdict, docs = "UNGROUNDED", []
 
     # UNGROUNDED: refuse without a model call, but still record the miss.
     if verdict == "UNGROUNDED":
@@ -1478,6 +1517,9 @@ def _build_legal_reply(text: str, chat_id: int, account: dict,
                          input_tokens=_estimate_tokens(text),
                          output_tokens=_estimate_tokens(response_text),
                          model="")
+        # Refusals are recorded for the learning loop but are never cacheable
+        # (see cache.answer_is_cacheable / UNGROUNDED_MARKER), so they can
+        # never be replayed once the same question becomes groundable.
         _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK,
                      text, response_text, "", _latency_ms, False)
         logger.info("juris grounding: UNGROUNDED (no model call) chat=%s", chat_id)
@@ -1493,28 +1535,37 @@ def _build_legal_reply(text: str, chat_id: int, account: dict,
                                    context=followup_ctx)
     banner = PARTIAL_BANNER if verdict == "PARTIAL" else ""
     footer = grounding.build_sources_footer(docs)
+    source_key = grounding.source_signature(docs, verdict)
 
     response_text, model, streamed, _cache_hit = _generate_reply(
         prompt, LEGAL_GROUNDING_TASK, text, text, account["account_id"],
         chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx,
-        prefix=banner, suffix=footer)
+        prefix=banner, suffix=footer, source_key=source_key)
     _latency_ms = int((time.time() - _t0) * 1000)
 
-    if not response_text or not response_text.strip():
+    have_answer = bool(response_text and response_text.strip())
+    if not have_answer:
         logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
         response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
 
     # The streamed message already carries the banner/footer; only un-streamed
-    # text still needs them applied here. The raw answer is recorded for the
-    # learning loop (footer/banner are presentation, not substance).
-    delivered_text = response_text if streamed else banner + response_text + footer
+    # real answers still need them applied here (never on an error/empty reply).
+    # The raw answer is recorded for the learning loop (footer/banner are
+    # presentation, not substance).
+    if streamed:
+        delivered_text = response_text
+    elif have_answer:
+        delivered_text = banner + response_text + footer
+    else:
+        delivered_text = response_text
 
     mgr.record_query(account["account_id"],
                      input_tokens=_estimate_tokens(prompt),
                      output_tokens=_estimate_tokens(response_text),
                      model=model)
     _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK, text,
-                 response_text, model, _latency_ms, _cache_hit)
+                 response_text, model, _latency_ms, _cache_hit,
+                 source_key=source_key)
 
     return {
         "chat_id": chat_id,
@@ -1613,9 +1664,10 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
 
     prompt_type, task_type, return_menu = step_prompt_map[step]
 
-    # Query the Legal Brain knowledge base for relevant Ghana legal context
-    # (previously conversation flows skipped this step — now they match
-    #  _handle_free_text() and _handle_learn_topic())
+    # Query the Legal Brain knowledge base for relevant Ghana legal context.
+    # NOTE: the strict-grounding free-text path (_build_legal_reply) no longer
+    # uses query_knowledge_base; conversation flows and _handle_learn_topic
+    # still do, so this step remains for them.
     legal_docs = query_knowledge_base(text)
     context_preamble = build_context_preamble(legal_docs)
 

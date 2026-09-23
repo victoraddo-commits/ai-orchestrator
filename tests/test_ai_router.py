@@ -1194,7 +1194,7 @@ def test_delegate_documentation_task_includes_omniroute_deepseek_flash(monkeypat
     # ROLE_PROVIDERS note). Disable all before omniroute_deepseek_flash.
     import core.ai_provider as ai_provider
 
-    for n in ("llama3", "local", "gemini", "groq",
+    for n in ("local", "gemini", "groq",
               "deepseek_native_flash", "deepseek_native_pro",
               "gpuai_minimax"):
         p = ai_provider.get_provider(n)
@@ -1569,23 +1569,22 @@ def test_deepseek_native_flash_is_registered_as_text_task_provider():
     assert provider.get("run_coding_task") is None
 
 
-def test_local_qwen_is_main_brain_primary_and_llama3_helps_utility_roles():
-    # 2026-08-12 operator directive: best local model (qwen2.5:7b, provider
-    # "local") is Kai's MAIN BRAIN -- primary for planning/architecture/review.
-    # The lighter llama3.2:3b (provider "llama3") HELPS with the quick utility
-    # roles: classification, log_analysis, documentation.
-    assert ai_router.ROLE_PROVIDERS["architecture"][0] == "local"
-    assert ai_router.ROLE_PROVIDERS["planning"][0] == "local"
-    assert ai_router.ROLE_PROVIDERS["review"][0] == "local"
+def test_local_only_roles_lead_with_the_served_local_model():
+    # Local-only fabric (owner directive: zero third-party providers). The
+    # retired llama3.2:3b provider is gone; every role chain resolves to the
+    # served local models. Main-brain roles lead with kai_brain; the fast
+    # utility roles lead with the aliased `local` provider.
+    assert ai_router.ROLE_PROVIDERS["architecture"][0] == "kai_brain"
+    assert ai_router.ROLE_PROVIDERS["planning"][0] == "kai_brain"
+    assert ai_router.ROLE_PROVIDERS["review"][0] == "kai_brain"
 
-    assert ai_router.ROLE_PROVIDERS["classification"][0] == "llama3"
-    assert ai_router.ROLE_PROVIDERS["log_analysis"][0] == "llama3"
-    assert ai_router.ROLE_PROVIDERS["documentation"][0] == "llama3"
+    assert ai_router.ROLE_PROVIDERS["classification"][0] == "local"
+    assert ai_router.ROLE_PROVIDERS["log_analysis"][0] == "local"
 
-    # deepseek_native_pro remains the first cloud fallback behind the local
-    # main brain in the reasoning roles (availability-gated, not removed).
-    assert "deepseek_native_pro" in ai_router.ROLE_PROVIDERS["planning"]
-    assert ai_router.ROLE_PROVIDERS["planning"].index("deepseek_native_pro") > 0
+    # No retired/cloud provider remains in any chain.
+    for chain in ai_router.ROLE_PROVIDERS.values():
+        assert "llama3" not in chain
+        assert "deepseek_native_pro" not in chain
 
 
 def test_deepseek_native_both_are_separate_from_openrouter_deepseek():
@@ -1857,7 +1856,7 @@ def test_delegate_demotion_tries_healthy_before_degraded(monkeypatch):
     import core.ai_provider as ai_provider
 
     # Disable providers ahead of gemini so the pair under test is reachable.
-    for n in ("llama3", "local"):
+    for n in ("local",):
         p = ai_provider.get_provider(n)
         if p:
             monkeypatch.setitem(p, "available_fn", lambda: False)
@@ -1984,7 +1983,7 @@ def test_delegate_skips_circuit_open_provider(monkeypatch):
     # deepseek_native_flash -> ... (deepseek demoted while unfunded).
     # Disable everything before groq and between groq and
     # omniroute_deepseek_flash so the circuit-open skip reaches the right fallback.
-    for n in ("llama3", "local", "gemini",
+    for n in ("local", "gemini",
               "deepseek_native_flash", "deepseek_native_pro"):
         p = ai_provider.get_provider(n)
         if p:

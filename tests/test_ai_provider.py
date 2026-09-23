@@ -10,7 +10,7 @@ import pytest
 import core.ai_provider as ai_provider
 
 LOCAL_PROVIDERS = {
-    "kai_brain", "kai_coder", "kai_deep", "llama_coder_cpu", "local", "llama3",
+    "kai_brain", "kai_coder", "kai_deep", "llama_coder_cpu", "local",
 }
 
 

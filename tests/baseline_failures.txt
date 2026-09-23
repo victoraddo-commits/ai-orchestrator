@@ -44,7 +44,6 @@ STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08
 STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[law_document]	stale task_type: 'law_document' role removed (KeyError)
 STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[planning]	stale chain: planning chain is local-only now; gemini absent
 STALE	tests/test_ai_router.py::test_gemini_reenabled_after_credit_reload_2026_08_02[review]	stale chain: review chain is local-only now; gemini absent
-STALE	tests/test_ai_router.py::test_local_qwen_is_main_brain_primary_and_llama3_helps_utility_roles	stale rename: main-brain primary is now kai_brain (was local)
 STALE	tests/test_ai_router.py::test_minimax_coding_agent_route_is_in_the_coding_rotation	stale chain: gpuai_minimax no longer in coding rotation
 STALE	tests/test_ai_router.py::test_minimax_coding_agent_route_is_not_ahead_of_the_family	stale chain: gpuai_minimax no longer in coding chain (ValueError)
 STALE	tests/test_ai_router.py::test_openrouter_claude_disabled_deepseek_native_flash_took_its_slot_2026_08_02	stale rename: classification primary is now kai_brain (was local)

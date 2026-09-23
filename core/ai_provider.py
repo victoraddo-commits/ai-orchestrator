@@ -25,7 +25,6 @@ except ImportError:
     pass
 
 import core.local_coding_bridge as local_coding_bridge
-import core.llm_clients as llm_clients
 
 
 _PROVIDERS = {}
@@ -260,11 +259,11 @@ def _llama_cpu_run_coding_task(project_path, instruction, timeout=1200, **kwargs
     )
 
 
-# ── Proxmox-B-era local text providers (retained, now honest) ───────────────
-# `local` and `llama3` predate the VM104 fabric reorg. They are still local
-# providers, but their original models (qwen2.5:7b / llama3.2:3b) are no
-# longer served, so their availability is now gated on the model actually
-# being present rather than merely the ollama endpoint answering.
+# ── Proxmox-B-era local text provider (retained, now honest) ────────────────
+# `local` predates the VM104 fabric reorg. It is still a local provider, but
+# its original model (qwen2.5:7b) is no longer served, so its availability is
+# gated on the model actually being present rather than merely the ollama
+# endpoint answering.
 def _local_run_text_task(prompt, timeout=120, project_path=None):
     """qwen3-coder:kai via the VM104 ollama fabric.
 
@@ -280,20 +279,6 @@ def _local_run_text_task(prompt, timeout=120, project_path=None):
 def _local_available():
     """True only when ollama serves the model `local` targets."""
     return _ollama_model_present(_KAI_MODEL)
-
-
-def _llama_run_text_task(prompt, timeout=120, project_path=None):
-    """llama3.2:3b via ollama — retained local provider.
-
-    Availability is gated on llama3.2:3b actually being served; it is not
-    currently in the VM104 model set, so this provider reports unavailable
-    rather than claiming the endpoint's health.
-    """
-    return llm_clients.call_ollama_llama(prompt, timeout=timeout)
-
-
-def _llama3_available():
-    return _ollama_model_present("llama3.2:3b")
 
 
 register_provider(
@@ -342,14 +327,5 @@ register_provider(
     available_fn=_local_available,
     kind="local",
     description="qwen3-coder:kai via ollama on VM104 P40 — local text-task provider (aliased to the served VM104 model; formerly qwen2.5:7b).",
-    cost_tier="free",
-)
-
-register_provider(
-    "llama3",
-    run_text_task=_llama_run_text_task,
-    available_fn=_llama3_available,
-    kind="local",
-    description="llama3.2:3b via ollama — lighter local text provider, available only when the model is actually served.",
     cost_tier="free",
 )

@@ -526,7 +526,7 @@ def call_gpuai_minimax(prompt, model=GPUAI_MINIMAX_MODEL, timeout=60, max_tokens
 
 # ── Local ollama (qwen2.5:7b) on Proxmox B ────────────────────────────
 # Deployed 2026-08-11 after benchmark Phases 1-11: qwen2.5:7b beat
-# llama3.2:3b and llama3.1:8b on speed, code quality, JSON output,
+# the smaller llama variants on speed, code quality, JSON output,
 # reliability, hallucination resistance, and long-context extraction.
 # The ollama API is reachable via LAN on Proxmox B (192.168.1.109).
 # No API key needed — ollama runs unauthenticated on the local network.
@@ -583,40 +583,6 @@ def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
             provider_health.capture_provider_error("ollama_qwen", detail=str(error)[:300])
             raise RuntimeError(f"ollama_qwen request failed: {type(error).__name__}") from None
 
-
-OLLAMA_LLAMA_MODEL = "llama3.2:3b"
-
-
-def call_ollama_llama(prompt, model=OLLAMA_LLAMA_MODEL, timeout=120):
-    """Call llama3.2:3b via ollama on Proxmox B — faster but less accurate.
-
-    Deployed 2026-08-11 alongside qwen2.5:7b. llama3.2:3b is smaller (2.0GB),
-    faster inference, and better at format compliance (no markdown fences).
-    Weaker at hallucination resistance and long-context extraction than qwen.
-    Good for simple classification, quick lookups, and low-latency tasks.
-    """
-    if not check_ollama_available():
-        raise ProviderUnavailable(
-            f"Ollama ({OLLAMA_BASE_URL}) is not reachable — is Proxmox B online?"
-        )
-
-    with _ollama_semaphore:
-        try:
-            response = requests.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json={"model": model, "prompt": prompt, "stream": False},
-                timeout=timeout,
-            )
-            response.raise_for_status()
-            data = response.json()
-            _last_call_usage.value = {
-                "prompt_tokens": int(data.get("prompt_eval_count") or 0),
-                "completion_tokens": int(data.get("eval_count") or 0),
-            }
-            return data.get("response", "")
-        except requests.RequestException as error:
-            provider_health.capture_provider_error("ollama_llama", detail=str(error)[:300])
-            raise RuntimeError(f"ollama_llama request failed: {type(error).__name__}") from None
 
 # === OLLAMA LOCAL MODEL CONFIGURATION ===
 # Added 2026-09-09: VM 104 Ollama server

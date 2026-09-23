@@ -18,7 +18,7 @@ import core.ai_provider as ai_provider
 from core.ai.ai_router import AllProvidersFailed
 
 # Providers physically served by the VM104 GPU (ollama localhost:11434).
-VM104 = {"kai_brain", "kai_coder", "kai_deep", "local", "llama3"}
+VM104 = {"kai_brain", "kai_coder", "kai_deep", "local"}
 # Providers physically served by the VM112 CPU llama.cpp server.
 VM112 = {"llama_coder_cpu", "koboldcpp_cpu", "koboldcpp_cpu_a", "koboldcpp_cpu_b"}
 

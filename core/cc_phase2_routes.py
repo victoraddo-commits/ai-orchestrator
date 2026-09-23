@@ -47,8 +47,6 @@ MODEL_SPECS = {
     "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf": {
         "params": "7B", "context_length": 32768, "quantization": "Q4_K_M",
         "size_gb": 4.4, "family": "qwen2"},
-    "llama3.2:3b": {"params": "3B", "context_length": 131072,
-                    "quantization": "Q4_K_M", "size_gb": 2.0, "family": "llama"},
 }
 
 _TITLE_OVERRIDES = {

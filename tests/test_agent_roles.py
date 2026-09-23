@@ -54,8 +54,8 @@ def test_fast_analysis_agent_routes_to_groq(monkeypatch):
     for ds in ("deepseek_native_flash", "deepseek_native_pro"):
         if ai_provider.get_provider(ds):
             monkeypatch.setitem(ai_provider.get_provider(ds), "available_fn", lambda: False)
-    # local and llama3 appear in provider config overrides — disable them too
-    for extra in ("local", "llama3"):
+    # local appears in provider config overrides — disable it too
+    for extra in ("local",):
         if ai_provider.get_provider(extra) is not None:
             monkeypatch.setitem(ai_provider.get_provider(extra), "available_fn", lambda: False)
     # groq is disabled in persisted provider state — re-enable for this test.

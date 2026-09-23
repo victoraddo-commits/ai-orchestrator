@@ -346,7 +346,7 @@ def test_delegate_endpoint_routes_and_returns_result(monkeypatch):
 
     # PROVIDER_CONFIG_OVERRIDES["log_analysis"] starts with deepseek_native_flash
     # and deepseek_native_pro. Disable them so groq is the first reachable
-    # candidate (after local/llama3 which the conftest already disables).
+    # candidate (after `local` which the conftest already disables).
     for name in ("deepseek_native_flash", "deepseek_native_pro", "qwen3_coder_text"):
         p = ai_provider.get_provider(name)
         if p is not None:
@@ -373,8 +373,8 @@ def test_delegate_endpoint_returns_502_when_all_providers_fail(monkeypatch):
     import core.ai_provider as ai_provider
 
     # Disable ALL providers in the planning chain so nothing is available.
-    # PROVIDER_CONFIG_OVERRIDES["planning"] includes local/llama3 (disabled
-    # by conftest) plus these. Guard against unregistered providers.
+    # The chain's local providers are already disabled by conftest; this
+    # covers the rest. Guard against unregistered providers.
     import core.ai.ai_router as ai_router
     for name in ai_router.get_effective_providers("planning"):
         provider = ai_provider.get_provider(name)

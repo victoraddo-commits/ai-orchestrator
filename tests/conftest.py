@@ -50,8 +50,8 @@ def isolated_law_documents(tmp_path, monkeypatch):
 def disable_slow_local_providers(monkeypatch):
     """Disable every local provider for ALL tests by default.
 
-    Local providers (kai_brain, kai_coder, kai_deep, llama_coder_cpu, local,
-    llama3) have real run_text_task/run_coding_task/available_fn functions that
+    Local providers (kai_brain, kai_coder, kai_deep, llama_coder_cpu, local)
+    have real run_text_task/run_coding_task/available_fn functions that
     connect to the VM104 ollama / VM112 llama.cpp fabric and would hang or slow
     every test that doesn't explicitly mock them. Tests that need a specific
     local provider enable it explicitly in their own setup."""

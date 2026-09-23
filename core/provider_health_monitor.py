@@ -36,7 +36,7 @@ CHECK_INTERVAL = 30  # seconds
 # only serves qwen3-coder:kai). They are kept registered so old chain
 # references still resolve, but are reported `disabled` — never `error` or
 # `degraded`, which falsely imply a transient failure worth alerting on.
-DEPRECATED_PROVIDERS = ("llama3", "local_brain_fast", "local_coder")
+DEPRECATED_PROVIDERS = ("local_brain_fast", "local_coder")
 
 # Memory file for health monitor state
 HEALTH_MONITOR_STATE_FILE = "provider_health_monitor_state.json"

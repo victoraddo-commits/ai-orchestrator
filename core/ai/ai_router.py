@@ -39,7 +39,7 @@ TASK_TYPE_KEYWORDS = {
 }
 
 # Local-only provider configuration — updated 2026-09-09
-# All roles now use local Ollama models only (qwen2.5:7b primary, llama3.2:3b fallback)
+# All roles use local Ollama / llama.cpp models only.
 # Cloud providers removed per operational directive to eliminate API dependencies
 ROLE_PROVIDERS = {
     "planning": ["kai_brain", "local"],  # 2026-09-10: kai_brain:27b for complex reasoning
@@ -81,7 +81,7 @@ ROLE_PROVIDERS["legal_coding"] = ["kai_coder", "local"]
 
 # ── §7 Model Fabric (2026-09-18): local node diversity + failover ──────────
 # Every role chain used to terminate only on VM104 (ollama localhost:11434):
-# kai_brain, kai_coder, kai_deep, local and llama3 all share that one GPU
+# kai_brain, kai_coder, kai_deep and local all share that one GPU
 # node, so losing VM104 (tunnel drop, GPU hang, OOM) took every role with it.
 # llama_coder_cpu is an independent local node — the llama.cpp server on VM112
 # (192.168.1.242:5001, Qwen2.5-Coder-7B-Q4_K_M) — already present in the

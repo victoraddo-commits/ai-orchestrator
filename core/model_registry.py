@@ -30,7 +30,6 @@ LOCAL_MODELS = {
     "koboldcpp_cpu": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
     "koboldcpp_cpu_a": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
     "koboldcpp_cpu_b": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
-    "llama3": "llama3.2:3b",
     "qwen": "qwen2.5:7b",
 }
 
@@ -39,7 +38,6 @@ LOCAL_MODELS = {
 MODEL_CAPABILITIES = {
     "qwen3-coder:kai": ["coding", "reasoning", "tool_use", "long_context", "architecture"],
     "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf": ["coding", "fast", "cpu"],
-    "llama3.2:3b": ["classification", "fast", "low_latency"],
     "qwen2.5:7b": ["classification", "reasoning", "fast"],
 }
 
@@ -52,7 +50,6 @@ _ENDPOINTS = {
     "koboldcpp_cpu": "http://192.168.1.242:5001",
     "koboldcpp_cpu_a": "http://192.168.1.242:5001",
     "koboldcpp_cpu_b": "http://192.168.1.242:5002",
-    "llama3": "http://localhost:11434",
     "qwen": "http://localhost:11434",
 }
 

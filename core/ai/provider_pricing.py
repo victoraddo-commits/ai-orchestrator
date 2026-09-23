@@ -31,9 +31,6 @@ PRICING = {
             "output_per_million": 0.00,
         },
     },
-    "llama3": {
-        "llama3.2:3b": {"input_per_million": 0.00, "output_per_million": 0.00},
-    },
 }
 
 

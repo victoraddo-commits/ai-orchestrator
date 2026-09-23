@@ -5,7 +5,10 @@ retrieval returned. No legal substance without a source (owner directive).
 
 Query normalization lives on the legal-brain (CT100) side, so this client
 drives staged retrieval by passing a ``mode`` (phrase/and/or/like) — it never
-builds FTS operators itself.
+builds FTS operators itself. The client does reduce the query to its
+significant tokens first (see ``significant_tokens``): the server keeps
+stopwords for the ``phrase`` stage, so stripping them here is a deliberate
+client-side choice, not server normalization.
 """
 from __future__ import annotations
 import logging
@@ -85,11 +88,16 @@ _GENERIC_TOKENS = frozenset({"ghana", "ghanaian", "law", "legal"})
 # Used to *measure* how substantive a query is and to extract prior-turn topic
 # tokens -- the legal-brain already drops its own stopwords for AND/OR, so this
 # mirrors rather than replaces server-side normalisation.
+#
+# Legal terms of art are deliberately NOT stopwords: "will" (a testament),
+# "act", "court", "right", "trust", "party", "estate" and the like name a
+# source or a legal concept and must keep their discriminating power. The modal
+# "may"/"shall"/"must" are ambiguous but function-word-like and stay.
 _STOPWORDS = frozenset({
     "the", "a", "an", "of", "in", "on", "at", "to", "for", "is", "are",
     "was", "were", "be", "been", "and", "or", "not", "with", "that", "this",
     "it", "its", "by", "from", "as", "but", "if", "so", "all", "any", "can",
-    "has", "had", "have", "do", "does", "did", "will", "would", "shall",
+    "has", "had", "have", "do", "does", "did", "would", "shall",
     "should", "may", "might", "i", "you", "he", "she", "we", "they", "me",
     "my", "what", "which", "who", "whom", "how", "when", "where", "about",
     "into", "over", "after", "under",
@@ -102,9 +110,16 @@ _NON_SUBSTANTIVE = _GENERIC_TOKENS | _STOPWORDS
 
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
-# Follow-up expansion bounds: only a short/anaphoric follow-up borrows context,
-# and only a few prior tokens, so context can never swamp the query.
-_FOLLOWUP_MIN_SUBSTANTIVE = 2
+# Follow-up expansion: a follow-up only borrows prior-turn context when it is
+# genuinely anaphoric -- it has no significant tokens of its own, or it opens
+# with an explicit continuation marker. The number of borrowed tokens is capped
+# by the query's own significant-token count (never more than
+# ``_FOLLOWUP_MAX_CONTEXT_TOKENS``), so context can never swamp a fresh topic.
+_FOLLOWUP_ANAPHORIC_RE = re.compile(
+    r"^\s*(?:and\b|what about\b|how about\b|why\b|then\b|also\b|more\b|"
+    r"elaborate\b|continue\b)",
+    re.IGNORECASE,
+)
 _FOLLOWUP_MAX_CONTEXT_TOKENS = 6
 
 
@@ -128,29 +143,47 @@ def significant_tokens(text: str) -> list[str]:
 
 
 def _last_user_tokens(context: str) -> list[str]:
-    """Substantive tokens from the most recent prior *user* turn in context."""
+    """Substantive tokens from the most recent prior *user* turn in context.
+
+    Returns ``[]`` when no user turn is present: tokenising a whole context
+    blob (which may be dominated by the assistant's answer) would inject noise.
+    """
     for line in reversed((context or "").splitlines()):
         match = re.match(r"\s*user\s*:\s*(.*)", line, re.IGNORECASE)
         if match:
             return significant_tokens(match.group(1))
-    return significant_tokens(context)
+    return []
+
+
+def _is_anaphoric(query: str, query_tokens: list[str]) -> bool:
+    """True when the query cannot stand on its own and continues the prior turn.
+
+    Either it has no significant tokens at all ("and for that?"), or it opens
+    with an explicit continuation marker ("and the penalty?", "why?"). A fresh
+    single topic word ("bail", "theft") is NOT anaphoric and keeps its own
+    retrieval.
+    """
+    if not query_tokens:
+        return True
+    return bool(_FOLLOWUP_ANAPHORIC_RE.match((query or "").strip()))
 
 
 def _expand_followup(query: str, context: str) -> str:
-    """Prepend bounded prior-turn topic tokens to a short anaphoric follow-up.
+    """Prepend prior-turn topic tokens to a genuinely anaphoric follow-up.
 
-    A follow-up only borrows context when it cannot stand on its own (fewer
-    than ``_FOLLOWUP_MIN_SUBSTANTIVE`` significant tokens), so a self-contained
-    question is never steered by the prior turn. At most
-    ``_FOLLOWUP_MAX_CONTEXT_TOKENS`` prior tokens are prepended; the result is
-    de-duplicated and order-stable.
+    A self-contained question is never steered by the prior turn. For an
+    anaphoric follow-up the borrowed context is capped by the query's own
+    significant-token count (with a floor of one for a tokenless "why?"), so a
+    1-token follow-up borrows at most 1 prior token rather than swamping the
+    query 6:1. The result is de-duplicated and order-stable.
     """
     if not context:
         return query
     query_tokens = significant_tokens(query)
-    if len(query_tokens) >= _FOLLOWUP_MIN_SUBSTANTIVE:
+    if not _is_anaphoric(query, query_tokens):
         return query
-    prior = _last_user_tokens(context)[:_FOLLOWUP_MAX_CONTEXT_TOKENS]
+    cap = min(_FOLLOWUP_MAX_CONTEXT_TOKENS, max(1, len(query_tokens)))
+    prior = _last_user_tokens(context)[:cap]
     if not prior:
         return query
     merged: list[str] = []

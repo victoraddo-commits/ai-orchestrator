@@ -435,6 +435,18 @@ def test_significant_tokens_drops_function_words():
         "penalty", "theft"]
 
 
+def test_will_is_a_legal_term_not_a_stopword(monkeypatch):
+    # A will is a legal instrument, so "will" must stay substantive.
+    assert grounding.significant_tokens("Will") == ["will"]
+    assert grounding.significant_tokens("the will") == ["will"]
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    r = grounding.retrieve("will")
+    assert seen, "a will must reach retrieval, not be stripped to nothing"
+    assert r["verdict"] == "UNGROUNDED"  # empty search result, not token stripping
+
+
 def test_query_of_only_generic_tokens_is_ungrounded_without_search(monkeypatch):
     calls = []
     monkeypatch.setattr(grounding, "_search",
@@ -479,18 +491,19 @@ _FOLLOWUP_CTX = (
 )
 
 
-def test_followup_borrows_prior_topic_tokens(monkeypatch):
+def test_followup_borrows_prior_topic_with_bounded_cap(monkeypatch):
     seen = []
     monkeypatch.setattr(grounding, "_search",
                         lambda query, limit=3, mode="or": seen.append(query) or [])
     grounding.retrieve("and the penalty?", context=_FOLLOWUP_CTX)
     assert seen
     toks = seen[0].lower().split()
-    for expected in ("criminal", "offences", "act", "1960", "penalty"):
-        assert expected in toks
+    assert "penalty" in toks
+    # cap = the query's significant-token count (1): exactly one prior token.
+    assert sum(t in ("criminal", "offences", "act", "1960") for t in toks) == 1
 
 
-def test_followup_context_is_bounded(monkeypatch):
+def test_followup_context_never_swamps_query(monkeypatch):
     seen = []
     monkeypatch.setattr(grounding, "_search",
                         lambda query, limit=3, mode="or": seen.append(query) or [])
@@ -500,19 +513,45 @@ def test_followup_context_is_bounded(monkeypatch):
     grounding.retrieve("and the penalty?", context=ctx)
     toks = seen[0].lower().split()
     assert "penalty" in toks
-    assert len(toks) <= grounding._FOLLOWUP_MAX_CONTEXT_TOKENS + 1
-    assert sum(t.startswith("topic") for t in toks) <= \
-        grounding._FOLLOWUP_MAX_CONTEXT_TOKENS
+    assert sum(t.startswith("topic") for t in toks) == 1
+    assert len(toks) <= 2
 
 
-def test_followup_not_expanded_when_self_contained(monkeypatch):
+def test_fresh_single_topic_not_expanded_by_unrelated_context(monkeypatch):
     seen = []
     monkeypatch.setattr(grounding, "_search",
                         lambda query, limit=3, mode="or": seen.append(query) or [])
-    grounding.retrieve("What about the Contracts Act 1960?", context=_FOLLOWUP_CTX)
-    toks = seen[0].lower().split()
-    assert "contracts" in toks
-    assert "criminal" not in toks
+    for topic in ("bail", "theft"):
+        grounding.retrieve(topic, context="User: Contracts Act 1975")
+    assert seen
+    for query in seen:
+        toks = query.lower().split()
+        assert "contracts" not in toks and "act" not in toks
+        assert toks in (["bail"], ["theft"])
+
+
+def test_pure_anaphora_without_content_tokens_expands(monkeypatch):
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    grounding.retrieve("and for that?", context=_FOLLOWUP_CTX)
+    assert seen
+    # no significant tokens of its own -> borrows one prior topic token
+    assert seen[0].lower().split() == ["criminal"]
+
+
+def test_anaphoric_marker_required_for_expansion(monkeypatch):
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    grounding.retrieve("theft", context=_FOLLOWUP_CTX)
+    assert seen
+    assert "criminal" not in seen[0].lower().split()
+
+
+def test_last_user_tokens_bails_when_no_user_turn():
+    assert grounding._last_user_tokens("Assistant: blah blah blah") == []
+    assert grounding._last_user_tokens("") == []
 
 
 def test_standalone_query_ignores_context(monkeypatch):

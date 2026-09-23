@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly Kai Legal Brain harvest cycle (Mondays 03:30)
+
+[Timer]
+OnCalendar=Mon *-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=900
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

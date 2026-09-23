@@ -56,6 +56,32 @@ def graph_backfill() -> dict:
     return _post("/graph/backfill", {}, timeout=60)
 
 
+def harvest_cycle(limit=5, stub_limit=3, delay=1.0, dry_run=False,
+                  timeout=900) -> dict:
+    """Trigger one bounded weekly harvest cycle on the legal brain (Task 8).
+
+    The brain runs discovery → full-text resolution → rights-gate → ingest →
+    dedup plus a bounded stub re-harvest, and returns its run report. A
+    non-blocking lock on the brain means an overlapping trigger comes back as
+    ``{"ok": False, "skipped": "harvest cycle already running"}`` rather than
+    running twice. Unreachable/HTTP failures return ``{"ok": False, ...}`` and
+    are never raised, so the scheduler timer can report an honest failure.
+    """
+    import urllib.error
+    body = {"limit": int(limit), "stub_limit": int(stub_limit),
+            "delay": float(delay), "dry_run": bool(dry_run)}
+    try:
+        return _post("/harvest/cycle", body, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        try:
+            payload = json.load(exc)
+        except Exception:
+            payload = {"error": f"HTTP {exc.code}"}
+        return {"ok": False, **(payload if isinstance(payload, dict) else {})}
+    except Exception as exc:  # noqa: BLE001 - scheduler must not crash
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def health():
     return _get("/health")
 

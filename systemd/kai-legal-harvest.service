@@ -1,0 +1,13 @@
+[Unit]
+Description=Kai Legal Brain weekly harvest cycle + Telegram summary (Legal Brain 2.0, Task 8)
+Documentation=file:/opt/ai-orchestrator/scripts/legal_harvest_cycle.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-orchestrator
+# Bounded and polite: 5 items discovered per lane, 3 stubs upgraded, 1s delay.
+# No overlap is enforced in-process by an exclusive flock (and by Type=oneshot).
+ExecStart=/opt/ai-orchestrator/.venv/bin/python /opt/ai-orchestrator/scripts/legal_harvest_cycle.py --limit 5 --stub-limit 3 --delay 1
+TimeoutStartSec=1800

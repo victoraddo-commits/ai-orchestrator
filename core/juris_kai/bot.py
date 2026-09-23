@@ -98,9 +98,9 @@ def _juris_protected_fragments() -> list:
     """System-prompt text that must never appear verbatim in a reply."""
     try:
         from core.juris_kai.prompt import (
-            _PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST,
+            _PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST, _GROUNDED_SCOPE,
         )
-        return [_PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST]
+        return [_PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST, _GROUNDED_SCOPE]
     except Exception:  # noqa: BLE001 - best effort
         return []
 
@@ -489,6 +489,11 @@ UNGROUNDED_REPLY = (
     "(e.g. Criminal Offences Act, Contracts Act, Land Act, the 1992 Constitution)."
 )
 PARTIAL_BANNER = "ℹ️ _Limited sources — some points may be general._\n\n"
+# Out-of-scope (non-Ghana) refusal. Emitted by the pre-model jurisdiction check
+# so the answer prompt never has to prime the model with refusal text.
+JURISDICTION_REFUSAL = (
+    "⚖️ I only handle Ghana legal matters. Please ask a question about Ghana law."
+)
 LEGAL_GROUNDING_TASK = "juris_research"
 
 
@@ -1500,6 +1505,28 @@ def _build_legal_reply(text: str, chat_id: int, account: dict,
 
     mgr = get_account_manager()
     _t0 = time.time()
+
+    # Pre-model jurisdiction check: a clearly non-Ghana question is refused
+    # here, without retrieval or a model call. The answer prompt no longer
+    # carries the refusal sentence (the weak CPU failover model echoed it
+    # verbatim instead of answering), so enforcement lives here.
+    if grounding.is_out_of_scope(text):
+        response_text = JURISDICTION_REFUSAL
+        _latency_ms = int((time.time() - _t0) * 1000)
+        mgr.record_query(account["account_id"],
+                         input_tokens=_estimate_tokens(text),
+                         output_tokens=_estimate_tokens(response_text),
+                         model="")
+        _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK,
+                     text, response_text, "", _latency_ms, False)
+        logger.info("juris grounding: out-of-scope jurisdiction "
+                    "(no model call) chat=%s", chat_id)
+        return {
+            "chat_id": chat_id,
+            "text": response_text,
+            "reply_markup": reply_markup,
+            "parse_mode": "Markdown",
+        }
 
     try:
         result = grounding.retrieve(text)

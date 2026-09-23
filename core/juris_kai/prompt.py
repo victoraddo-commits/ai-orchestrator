@@ -16,15 +16,25 @@ except Exception:  # noqa: BLE001 - optional guard, never block prompting
         return text or ""
 
 
+# Positive, refusal-free scope statement. The answer-generating prompt must
+# NEVER contain the literal refusal sentence: the weak CPU failover model
+# (llama_coder_cpu) treats the only quoted imperative as its output and echoes
+# the refusal verbatim instead of answering. Out-of-scope questions are refused
+# by a pre-model jurisdiction check (grounding.is_out_of_scope), not by priming
+# the model with refusal text.
 _JURISDICTION_GATE = (
-    "IMPORTANT: You are Juris Kai, a Ghanaian legal assistant. "
-    "You ONLY answer questions about Ghana law (Republic of Ghana). "
-    "If the user's question is about any other country's laws, legal system, "
-    "or jurisdiction, respond ONLY with: "
-    '"I only handle Ghana legal matters. Please ask a question about Ghana law." '
-    "Do NOT compare Ghana law to other countries. Do NOT reference foreign cases, "
-    "statutes, or legal principles — not even as examples or context. "
-    "Every citation, case name, statute, and legal principle you mention MUST be Ghanaian. "
+    "You are Juris Kai, a Ghanaian legal assistant. "
+    "You answer questions about the law of the Republic of Ghana. "
+    "Every citation, case name, statute, and legal principle you mention "
+    "MUST be Ghanaian. Do not discuss or compare the laws of other countries. "
+)
+
+# Scope line for grounded answers: states positively that the question IS a
+# Ghana-law question and gives the model an explicit imperative to answer.
+_GROUNDED_SCOPE = (
+    "You are Juris Kai, a Ghanaian legal assistant. "
+    "The question below is about the law of the Republic of Ghana. "
+    "Answer it directly and substantively, using ONLY the sources provided. "
 )
 
 _DATABASE_FIRST = (
@@ -205,9 +215,11 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
         )
 
     return (
-        f"{_JURISDICTION_GATE}\n\n{sources}{ctx_block}\n\n"
-        f"TASK: Answer this Ghana law question using ONLY the sources above: "
-        f"'{content}'.\n{strict}"
+        f"{_GROUNDED_SCOPE}\n\n{sources}{ctx_block}\n\n"
+        f"QUESTION (Ghana law): {content}\n\n"
+        f"{strict}\n"
+        "Write the answer for the user now. Do not repeat or paraphrase "
+        "these instructions."
     )
 
 

@@ -119,6 +119,19 @@ def test_ungrounded_returns_refusal_without_model(monkeypatch):
     assert resp["parse_mode"] == "Markdown"
 
 
+def test_out_of_scope_question_refused_without_model(monkeypatch):
+    acct = _account(900777)
+    # Retrieval would ground this, but the pre-model jurisdiction check must
+    # refuse it before the model is ever called.
+    monkeypatch.setattr(grounding, "retrieve", lambda q, limit=3: _retrieval("GROUNDED", DOCS))
+    monkeypatch.setattr(bot, "_generate_reply", _failing_generate)
+
+    resp = bot._build_legal_reply("What is the law in Nigeria?", 900777, acct)
+
+    assert resp["text"] == bot.JURISDICTION_REFUSAL
+    assert "Ghana" in resp["text"]
+
+
 def test_ungrounded_records_turn_for_learning_loop(monkeypatch):
     from core.juris_kai.accounts import get_account_manager
 

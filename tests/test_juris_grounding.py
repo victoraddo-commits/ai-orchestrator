@@ -216,6 +216,43 @@ def test_grounded_prompt_forbids_outside_citations():
     assert "Do not mention any statute, case, or article that is not in them" in p
 
 
+def test_grounded_prompt_does_not_embed_jurisdiction_refusal():
+    from core.juris_kai.prompt import build_grounded_prompt
+    p = build_grounded_prompt(
+        "legal_research", "bail", verdict="GROUNDED",
+        docs=[{"title": "Act 29", "chunk_content": "Bail..."}])
+    # The literal refusal sentence must never be primed into the model: the
+    # weak CPU failover model echoes it verbatim instead of answering.
+    assert "I only handle Ghana legal matters" not in p
+    assert "respond ONLY with" not in p
+
+
+def test_grounded_prompt_has_positive_scope_and_answer_imperative():
+    from core.juris_kai.prompt import build_grounded_prompt
+    p = build_grounded_prompt(
+        "legal_research", "bail", verdict="GROUNDED",
+        docs=[{"title": "Act 29", "chunk_content": "Bail..."}])
+    assert "You are Juris Kai, a Ghanaian legal assistant" in p
+    assert "about the law of the Republic of Ghana" in p
+    assert "Answer it directly and substantively" in p
+    # anti-hallucination instruction retained
+    assert "Cite ONLY the sources below" in p
+
+
+def test_is_out_of_scope_flags_foreign_jurisdiction():
+    assert grounding.is_out_of_scope("What is the law in Nigeria?") is True
+    assert grounding.is_out_of_scope("Explain the UK Companies Act 2006") is True
+    assert grounding.is_out_of_scope("How do United States courts work?") is True
+
+
+def test_is_out_of_scope_allows_ghana_questions():
+    assert grounding.is_out_of_scope("What does the Criminal Offences Act 1960 say?") is False
+    assert grounding.is_out_of_scope("bail application procedure in Ghana") is False
+    # a foreign national asking about their rights in Ghana is a Ghana question
+    assert grounding.is_out_of_scope("Can a Nigerian citizen own land in Ghana?") is False
+    assert grounding.is_out_of_scope("What is the penalty for murder?") is False
+
+
 def test_ungrounded_prompt_says_do_not_answer():
     from core.juris_kai.prompt import build_grounded_prompt
     p = build_grounded_prompt("legal_research", "x", verdict="UNGROUNDED", docs=[])

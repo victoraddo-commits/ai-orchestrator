@@ -69,9 +69,9 @@ def _protected_fragments() -> list:
     """Juris system-prompt text that must never appear verbatim in a reply."""
     try:
         from core.juris_kai.prompt import (
-            _PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST,
+            _PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST, _GROUNDED_SCOPE,
         )
-        return [_PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST]
+        return [_PREAMBLE, _JURISDICTION_GATE, _DATABASE_FIRST, _GROUNDED_SCOPE]
     except Exception:  # noqa: BLE001 - best effort
         return []
 

@@ -9,6 +9,7 @@ builds FTS operators itself.
 """
 from __future__ import annotations
 import logging
+import re
 
 from core.juris_kai.legal_context import MAX_CHUNK_LENGTH, _guard_chunks
 
@@ -20,6 +21,44 @@ MIN_SOURCE_CHARS = 400
 # MIN_SOURCE_CHARS there would make them ungroundable (e.g. the Constitution),
 # so they get a snippet floor that still rejects trivial stubs.
 MIN_SNIPPET_CHARS = 120
+
+# Pre-model jurisdiction check (see is_out_of_scope). The answer-generating
+# prompt no longer embeds a refusal sentence, so out-of-scope questions are
+# caught here before the model is called. Kept deliberately narrow: only an
+# explicit non-Ghana jurisdiction named in a question that does NOT also
+# reference Ghana is out of scope.
+_FOREIGN_JURISDICTION_RE = re.compile(
+    r"(?:\b(?:nigeria|nigerian|kenya|kenyan|"
+    r"south\s+africa|south\s+african|"
+    r"united\s+kingdom|uk|britain|british|england|"
+    r"united\s+states|usa|america|american|"
+    r"canada|canadian|australia|australian|"
+    r"india|indian|china|chinese|"
+    r"france|french|germany|german|"
+    r"european\s+union)\b"
+    r"|\bu\.s\.)",
+    re.IGNORECASE,
+)
+_GHANA_RE = re.compile(r"\bghana(?:ian)?\b", re.IGNORECASE)
+
+
+def is_out_of_scope(text: str) -> bool:
+    """True when a question is clearly about a non-Ghana jurisdiction.
+
+    Lightweight pre-model jurisdiction check. The answer prompt must not prime
+    the model with a refusal sentence, so out-of-scope questions are refused
+    here instead. A foreign jurisdiction is out of scope only when the question
+    does NOT also reference Ghana: "Can a Nigerian citizen own land in Ghana?"
+    is a Ghana-law question and must reach retrieval. Intentionally
+    conservative — it catches explicit "law of country X" asks, not every
+    passing foreign mention.
+    """
+    q = (text or "").strip()
+    if not q:
+        return False
+    if _GHANA_RE.search(q):
+        return False
+    return bool(_FOREIGN_JURISDICTION_RE.search(q))
 
 
 def _search(query: str, limit: int = 3, mode: str = "or") -> list[dict]:

@@ -252,6 +252,14 @@ def test_juris_kai_research_command_uses_workforce(bridge, monkeypatch):
     _fake_delegate(monkeypatch)
     monkeypatch.setattr("core.integration.module_bridge.get_bridge",
                         lambda: bridge)
+    # Strict grounding: research only reaches the workforce with a source.
+    monkeypatch.setattr(
+        "core.juris_kai.grounding.retrieve",
+        lambda q, limit=3: {
+            "docs": [{"id": 1, "title": "Contracts Act, 1960",
+                      "citation": "Act 25", "store_mode": "full",
+                      "chunk_content": "Offer and acceptance. " * 20}],
+            "verdict": "GROUNDED", "stage": 1})
     import core.juris_kai.commands as juris
 
     out = juris.handle_research("explain consideration in Ghana", {},

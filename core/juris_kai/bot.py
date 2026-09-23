@@ -43,6 +43,7 @@ from core.juris_kai.commands import handle_command
 from core.juris_kai import menus as _menus
 from core.juris_kai import cache as _cache
 from core.juris_kai import streaming as _streaming
+from core.juris_kai import grounding as _grounding
 # Convenience aliases for frequently-used menu functions
 main_menu = _menus.main_menu
 admin_main_menu = _menus.admin_main_menu
@@ -482,18 +483,12 @@ STREAM_PLACEHOLDER = "⚖️ _Searching Ghana law…_"
 # Strict grounding (owner directive): no legal substance without a retrieved
 # source. An UNGROUNDED question is refused honestly and NEVER reaches the
 # model; GROUNDED/PARTIAL answers carry a deterministic Sources footer built
-# from retrieval (plus a banner for PARTIAL).
-UNGROUNDED_REPLY = (
-    "⚖️ I couldn't find an authoritative Ghanaian source for that in my legal "
-    "database, so I won't guess. Try rephrasing, or ask about a topic I cover "
-    "(e.g. Criminal Offences Act, Contracts Act, Land Act, the 1992 Constitution)."
-)
-PARTIAL_BANNER = "ℹ️ _Limited sources — some points may be general._\n\n"
-# Out-of-scope (non-Ghana) refusal. Emitted by the pre-model jurisdiction check
-# so the answer prompt never has to prime the model with refusal text.
-JURISDICTION_REFUSAL = (
-    "⚖️ I only handle Ghana legal matters. Please ask a question about Ghana law."
-)
+# from retrieval (plus a banner for PARTIAL). The texts live in
+# ``grounding`` so every legal-answer surface shares them; aliased here for
+# backwards compatibility.
+UNGROUNDED_REPLY = _grounding.UNGROUNDED_REPLY
+PARTIAL_BANNER = _grounding.PARTIAL_BANNER
+JURISDICTION_REFUSAL = _grounding.JURISDICTION_REFUSAL
 LEGAL_GROUNDING_TASK = "juris_research"
 
 
@@ -1076,80 +1071,25 @@ def _handle_menu_action(
 # ---------------------------------------------------------------------------
 
 def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict) -> dict:
-    """Generate a legal teaching response for a topic button."""
-    from core.juris_kai.prompt import build_prompt
-    from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
-
+    """Generate a grounded legal teaching response for a topic button."""
     topic_display = label.split(" ", 1)[1] if " " in label else label
     question = f"Ghana {topic_display}"
 
-    # Query the Legal Brain knowledge base for this topic
-    legal_docs = query_knowledge_base(question)
-    context_preamble = build_context_preamble(legal_docs)
-
-    followup_ctx = _followup_context(chat_id, question)
-    base_prompt = build_prompt("legal_teaching", question, context=followup_ctx)
-    prompt = base_prompt + context_preamble
-
-    # Run delegate with a hard wall-clock timeout so one slow provider
-    # doesn't block the bot's entire polling loop indefinitely.
-    _t0 = time.time()
-    response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, "juris_legal_teaching", question,
-        f"information about {topic_display}", account["account_id"],
-        chat_id=chat_id, reply_markup=learn_menu(), context=followup_ctx)
-    _latency_ms = int((time.time() - _t0) * 1000)
-
-    mgr = get_account_manager()
-    mgr.record_query(account["account_id"],
-                     input_tokens=_estimate_tokens(prompt),
-                     output_tokens=_estimate_tokens(response_text),
-                     model=model)
-    _record_turn(account["account_id"], chat_id, "juris_legal_teaching",
-                 question, response_text, model, _latency_ms, _cache_hit)
-
-    return {
-        "chat_id": chat_id,
-        "text": None if streamed else response_text,
-        "reply_markup": learn_menu(),
-        "parse_mode": None if streamed else "Markdown",
-    }
+    # Strict grounding: teaching answers from retrieved Ghana sources only.
+    return _build_legal_reply(
+        question, chat_id, account, reply_markup=learn_menu(),
+        task_type="juris_legal_teaching")
 
 
 def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
-    """Handle case law queries."""
-    from core.juris_kai.prompt import build_prompt
-    from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
-
+    """Handle grounded case law queries."""
     question = f"{query_type} in Ghana law"
-    legal_docs = query_knowledge_base(f"{query_type} Ghana law")
-    context_preamble = build_context_preamble(legal_docs)
+    retrieval_query = f"{query_type} Ghana law"
 
-    followup_ctx = _followup_context(chat_id, question)
-    base_prompt = build_prompt("legal_case_analysis", question,
-                               context=followup_ctx)
-    prompt = base_prompt + context_preamble
-    _t0 = time.time()
-    response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, "juris_case_analysis", question,
-        query_type.lower(), account["account_id"],
-        chat_id=chat_id, reply_markup=case_law_menu(), context=followup_ctx)
-    _latency_ms = int((time.time() - _t0) * 1000)
-
-    mgr = get_account_manager()
-    mgr.record_query(account["account_id"],
-                     input_tokens=_estimate_tokens(prompt),
-                     output_tokens=_estimate_tokens(response_text),
-                     model=model)
-    _record_turn(account["account_id"], chat_id, "juris_case_analysis",
-                 question, response_text, model, _latency_ms, _cache_hit)
-
-    return {
-        "chat_id": chat_id,
-        "text": None if streamed else response_text,
-        "reply_markup": case_law_menu(),
-        "parse_mode": None if streamed else "Markdown",
-    }
+    # Strict grounding: case analysis answers from retrieved Ghana sources only.
+    return _build_legal_reply(
+        question, chat_id, account, reply_markup=case_law_menu(),
+        task_type="juris_case_analysis", query=retrieval_query)
 
 
 # ---------------------------------------------------------------------------
@@ -1475,17 +1415,28 @@ def _handle_admin_security(label: str, chat_id: int) -> dict:
 # Free-text handling
 # ---------------------------------------------------------------------------
 
-def _build_legal_reply(text: str, chat_id: int, account: dict,
-                       reply_markup=None) -> dict:
-    """Answer a free-text legal question under strict grounding.
+def _build_legal_reply(text: str, chat_id, account: dict,
+                       reply_markup=None, task_type: str = LEGAL_GROUNDING_TASK,
+                       query: str = None) -> dict:
+    """Answer a legal question under strict grounding.
 
-    Retrieval decides whether we may answer at all:
+    This is the single grounded-answer path shared by free text and the
+    Telegram menu handlers (Learn Law, Cases, practice/study flows). It calls
+    ``grounding.build_grounded_plan`` so the SAME rules apply everywhere:
+
+      * OUT-OF-SCOPE — a clearly non-Ghana question is refused before
+        retrieval or any model call.
       * UNGROUNDED — no retrieved source grounds the question, so we return an
         honest refusal and NEVER call the model. The turn is still recorded so
         the learning loop sees the miss.
       * GROUNDED  — the model answers from ``build_grounded_prompt`` sources and
         the deterministic Sources footer is appended.
       * PARTIAL   — as GROUNDED, with a "limited sources" banner prefixed.
+
+    ``task_type`` selects the generation task/budget (defaults to the free-text
+    ``juris_research`` task, keeping that path byte-for-byte identical).
+    ``text`` is the content shown to the model; ``query`` optionally overrides
+    the retrieval query when the two differ.
 
     The banner/footer are applied by this function for non-streamed answers and
     passed as ``prefix``/``suffix`` for streamed ones (so they land in the
@@ -1500,79 +1451,54 @@ def _build_legal_reply(text: str, chat_id: int, account: dict,
     ground on unrelated sources. Retrieval should incorporate ``followup_ctx``;
     tracked as a separate task.
     """
-    from core.juris_kai import grounding
-    from core.juris_kai.prompt import build_grounded_prompt
-
     mgr = get_account_manager()
     _t0 = time.time()
 
-    # Pre-model jurisdiction check: a clearly non-Ghana question is refused
-    # here, without retrieval or a model call. The answer prompt no longer
-    # carries the refusal sentence (the weak CPU failover model echoed it
-    # verbatim instead of answering), so enforcement lives here.
-    if grounding.is_out_of_scope(text):
-        response_text = JURISDICTION_REFUSAL
-        _latency_ms = int((time.time() - _t0) * 1000)
-        mgr.record_query(account["account_id"],
-                         input_tokens=_estimate_tokens(text),
-                         output_tokens=_estimate_tokens(response_text),
-                         model="")
-        _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK,
-                     text, response_text, "", _latency_ms, False)
-        logger.info("juris grounding: out-of-scope jurisdiction "
-                    "(no model call) chat=%s", chat_id)
-        return {
-            "chat_id": chat_id,
-            "text": response_text,
-            "reply_markup": reply_markup,
-            "parse_mode": "Markdown",
-        }
-
-    try:
-        result = grounding.retrieve(text)
-        verdict = result["verdict"]
-        docs = result["docs"]
-    except Exception as exc:  # noqa: BLE001 - fail closed, never answer ungrounded
-        logger.warning("juris grounding retrieval failed (fail closed): %s", exc)
-        verdict, docs = "UNGROUNDED", []
-
-    # UNGROUNDED: refuse without a model call, but still record the miss.
-    if verdict == "UNGROUNDED":
-        response_text = UNGROUNDED_REPLY
-        _latency_ms = int((time.time() - _t0) * 1000)
-        mgr.record_query(account["account_id"],
-                         input_tokens=_estimate_tokens(text),
-                         output_tokens=_estimate_tokens(response_text),
-                         model="")
-        # Refusals are recorded for the learning loop but are never cacheable
-        # (see cache.answer_is_cacheable / UNGROUNDED_MARKER), so they can
-        # never be replayed once the same question becomes groundable.
-        _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK,
-                     text, response_text, "", _latency_ms, False)
-        logger.info("juris grounding: UNGROUNDED (no model call) chat=%s", chat_id)
-        return {
-            "chat_id": chat_id,
-            "text": response_text,
-            "reply_markup": reply_markup,
-            "parse_mode": "Markdown",
-        }
-
+    retrieval_query = query if query is not None else text
     followup_ctx = _followup_context(chat_id, text)
-    prompt = build_grounded_prompt(LEGAL_GROUNDING_TASK, text, verdict, docs,
-                                   context=followup_ctx)
-    banner = PARTIAL_BANNER if verdict == "PARTIAL" else ""
-    footer = grounding.build_sources_footer(docs)
-    source_key = grounding.source_signature(docs, verdict)
+    plan = _grounding.build_grounded_plan(retrieval_query, task_type,
+                                          context=followup_ctx)
+
+    # Refused (out-of-scope or UNGROUNDED): no model call, but still record the
+    # miss for the learning loop. Refusals are recorded for learning but are
+    # never cacheable (see cache.answer_is_cacheable / UNGROUNDED_MARKER), so
+    # they can never be replayed once the same question becomes groundable.
+    if plan["refusal"]:
+        response_text = plan["refusal"]
+        _latency_ms = int((time.time() - _t0) * 1000)
+        mgr.record_query(account["account_id"],
+                         input_tokens=_estimate_tokens(text),
+                         output_tokens=_estimate_tokens(response_text),
+                         model="")
+        _record_turn(account["account_id"], chat_id, task_type,
+                     text, response_text, "", _latency_ms, False)
+        if plan["out_of_scope"]:
+            logger.info("juris grounding: out-of-scope jurisdiction "
+                        "(no model call) chat=%s", chat_id)
+        else:
+            logger.info("juris grounding: UNGROUNDED (no model call) chat=%s",
+                        chat_id)
+        return {
+            "chat_id": chat_id,
+            "text": response_text,
+            "reply_markup": reply_markup,
+            "parse_mode": "Markdown",
+        }
+
+    prompt = plan["prompt"]
+    banner = plan["banner"]
+    footer = plan["footer"]
+    source_key = plan["source_key"]
 
     response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, LEGAL_GROUNDING_TASK, text, text, account["account_id"],
+        prompt, task_type, text, text, account["account_id"],
         chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx,
         prefix=banner, suffix=footer, source_key=source_key)
     _latency_ms = int((time.time() - _t0) * 1000)
 
     have_answer = bool(response_text and response_text.strip())
     if not have_answer:
-        logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
+        logger.error(f"Empty response for legal query '{text[:80]}' from chat {chat_id}")
         response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
 
     # The streamed message already carries the banner/footer; only un-streamed
@@ -1590,7 +1516,7 @@ def _build_legal_reply(text: str, chat_id: int, account: dict,
                      input_tokens=_estimate_tokens(prompt),
                      output_tokens=_estimate_tokens(response_text),
                      model=model)
-    _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK, text,
+    _record_turn(account["account_id"], chat_id, task_type, text,
                  response_text, model, _latency_ms, _cache_hit,
                  source_key=source_key)
 
@@ -1691,13 +1617,6 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
 
     prompt_type, task_type, return_menu = step_prompt_map[step]
 
-    # Query the Legal Brain knowledge base for relevant Ghana legal context.
-    # NOTE: the strict-grounding free-text path (_build_legal_reply) no longer
-    # uses query_knowledge_base; conversation flows and _handle_learn_topic
-    # still do, so this step remains for them.
-    legal_docs = query_knowledge_base(text)
-    context_preamble = build_context_preamble(legal_docs)
-
     # Resolve the return keyboard before streaming so the final edited message
     # carries it.
     menu_fn_name = menu_routing.get(step)
@@ -1708,29 +1627,42 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     else:
         keyboard = main_menu()
 
-    followup_ctx = _followup_context(chat_id, text)
-    prompt = build_prompt(prompt_type, text, context=followup_ctx) + context_preamble
-    _t0 = time.time()
-    response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, task_type, text, f"your {step.replace('_', ' ')} request",
-        account["account_id"], chat_id=chat_id, reply_markup=keyboard,
-        context=followup_ctx)
-    _latency_ms = int((time.time() - _t0) * 1000)
+    # Document summaries are not Ghana-law answers -- the user's own text is
+    # being summarized -- so they deliberately stay on the ungrounded
+    # build_prompt path. Every other step is a legal-answer surface and routes
+    # through the shared strict-grounding path (_build_legal_reply), so it is
+    # retrieval-gated and carries the Sources footer.
+    if step == "summarize":
+        legal_docs = query_knowledge_base(text)
+        context_preamble = build_context_preamble(legal_docs)
+        followup_ctx = _followup_context(chat_id, text)
+        prompt = (build_prompt(prompt_type, text, context=followup_ctx)
+                  + context_preamble)
+        _t0 = time.time()
+        response_text, model, streamed, _cache_hit = _generate_reply(
+            prompt, task_type, text, f"your {step.replace('_', ' ')} request",
+            account["account_id"], chat_id=chat_id, reply_markup=keyboard,
+            context=followup_ctx)
+        _latency_ms = int((time.time() - _t0) * 1000)
 
-    mgr.record_query(account["account_id"],
-                     input_tokens=_estimate_tokens(prompt),
-                     output_tokens=_estimate_tokens(response_text),
-                     model=model)
-    _record_turn(account["account_id"], chat_id, task_type, text,
-                 response_text, model, _latency_ms, _cache_hit)
+        mgr.record_query(account["account_id"],
+                         input_tokens=_estimate_tokens(prompt),
+                         output_tokens=_estimate_tokens(response_text),
+                         model=model)
+        _record_turn(account["account_id"], chat_id, task_type, text,
+                     response_text, model, _latency_ms, _cache_hit)
+        del _conversation_state[state_key]
+
+        return {
+            "chat_id": chat_id,
+            "text": None if streamed else response_text,
+            "reply_markup": keyboard,
+            "parse_mode": None if streamed else "Markdown",
+        }
+
     del _conversation_state[state_key]
-
-    return {
-        "chat_id": chat_id,
-        "text": None if streamed else response_text,
-        "reply_markup": keyboard,
-        "parse_mode": None if streamed else "Markdown",
-    }
+    return _build_legal_reply(text, chat_id, account, reply_markup=keyboard,
+                              task_type=task_type)
 
 
 # ---------------------------------------------------------------------------

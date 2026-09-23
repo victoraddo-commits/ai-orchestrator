@@ -179,6 +179,75 @@ def source_signature(docs: list[dict], verdict: str = "") -> str:
     return f"{verdict or ''}:{digest}"
 
 
+# Strict-grounding reply texts (owner directive). Kept here so every
+# legal-answer surface — the bot free-text path, the Telegram menu handlers,
+# the slash commands and the Command Center test query — shares the exact same
+# refusals and PARTIAL banner. ``bot`` re-exports these names for compatibility.
+UNGROUNDED_REPLY = (
+    "⚖️ I couldn't find an authoritative Ghanaian source for that in my legal "
+    "database, so I won't guess. Try rephrasing, or ask about a topic I cover "
+    "(e.g. Criminal Offences Act, Contracts Act, Land Act, the 1992 Constitution)."
+)
+JURISDICTION_REFUSAL = (
+    "⚖️ I only handle Ghana legal matters. Please ask a question about Ghana law."
+)
+PARTIAL_BANNER = "ℹ️ _Limited sources — some points may be general._\n\n"
+
+
+def build_grounded_plan(query: str, task_type: str = "juris_research",
+                        context: str = "") -> dict:
+    """Retrieval-gated plan for a legal answer. Never calls a model.
+
+    This is the single gate every legal-answer surface routes through, so the
+    same rules apply everywhere: a non-Ghana question and an UNGROUNDED query
+    both yield a ``refusal`` (the caller must not reach a model), while
+    GROUNDED/PARTIAL yield a ``prompt`` built with
+    :func:`core.juris_kai.prompt.build_grounded_prompt`, the deterministic
+    Sources ``footer``, and (for PARTIAL) a ``banner``. Retrieval failure
+    fails closed: an unreachable source is not a source.
+
+    Returns a dict with keys:
+      ``groundable`` (bool), ``out_of_scope`` (bool), ``verdict`` (str),
+      ``docs`` (list), ``prompt`` (str), ``banner`` (str), ``footer`` (str),
+      ``source_key`` (str) and ``refusal`` (str | None).
+    """
+    q = (query or "").strip()
+
+    if is_out_of_scope(q):
+        return {"groundable": False, "out_of_scope": True,
+                "verdict": "OUT_OF_SCOPE", "docs": [], "prompt": "",
+                "banner": "", "footer": "", "source_key": "",
+                "refusal": JURISDICTION_REFUSAL}
+
+    try:
+        result = retrieve(q)
+        verdict = result["verdict"]
+        docs = result["docs"]
+    except Exception as exc:  # noqa: BLE001 - fail closed, never answer ungrounded
+        logger.warning("grounding plan retrieval failed (fail closed): %s", exc)
+        verdict, docs = "UNGROUNDED", []
+
+    if verdict == "UNGROUNDED" or not docs:
+        return {"groundable": False, "out_of_scope": False,
+                "verdict": "UNGROUNDED", "docs": [], "prompt": "",
+                "banner": "", "footer": "", "source_key": "",
+                "refusal": UNGROUNDED_REPLY}
+
+    from core.juris_kai.prompt import build_grounded_prompt
+    prompt = build_grounded_prompt(task_type, q, verdict, docs, context=context)
+    return {
+        "groundable": True,
+        "out_of_scope": False,
+        "verdict": verdict,
+        "docs": docs,
+        "prompt": prompt,
+        "banner": PARTIAL_BANNER if verdict == "PARTIAL" else "",
+        "footer": build_sources_footer(docs),
+        "source_key": source_signature(docs, verdict),
+        "refusal": None,
+    }
+
+
 def build_sources_footer(docs: list[dict]) -> str:
     """Deterministic Sources block built from retrieval (never the model)."""
     if not docs:

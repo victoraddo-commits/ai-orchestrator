@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from core.juris_kai import cc_routes
+from core.juris_kai import cc_routes, grounding
 
 BRIDGE = {"Authorization": "Bearer test-bridge-token"}
 
@@ -202,39 +202,75 @@ class TestBotControl:
 
 # ── test query ────────────────────────────────────────────────────────────
 
+GROUND_DOCS = [{
+    "id": 1, "title": "Contracts Act, 1960", "citation": "Act 25",
+    "year": 1960, "store_mode": "full",
+    "chunk_content": "A contract requires offer and acceptance. " * 20,
+}]
+GROUND_FOOTER = ("\n\n📚 *Sources*\n"
+                 "1. Contracts Act, 1960 — Act 25 — 1960 — _full_")
+
+
+def _ground(monkeypatch, verdict, docs=None):
+    monkeypatch.setattr(
+        "core.juris_kai.grounding.retrieve",
+        lambda q, limit=3: {"docs": list(docs or []), "verdict": verdict,
+                            "stage": 1})
+
+
 class TestTestQuery:
     def test_requires_query(self, client):
         r = client.post("/api/juris-kai/test-query", headers=BRIDGE, json={})
         assert r.json() == {"success": False, "error": "query is required"}
 
     def test_streamed_query(self, client, monkeypatch):
-        monkeypatch.setattr("core.juris_kai.legal_context.query_knowledge_base",
-                            lambda q: [])
-        monkeypatch.setattr("core.juris_kai.legal_context.build_context_preamble",
-                            lambda docs: "")
+        _ground(monkeypatch, "GROUNDED", GROUND_DOCS)
         monkeypatch.setattr("core.juris_kai.streaming.stream_chat",
                             lambda prompt, task_type="legal_research", **k:
                             iter(["Ghana ", "law."]))
         body = client.post("/api/juris-kai/test-query", headers=BRIDGE,
                            json={"query": "contract law", "stream": True}).json()
         assert body["success"] is True
-        assert body["text"] == "Ghana law."
+        assert body["text"] == "Ghana law." + GROUND_FOOTER
         assert body["streamed"] is True
         assert body["ttft_ms"] is not None
         assert body["budget_tokens"] > 0
+        assert body["verdict"] == "GROUNDED"
+        assert body["grounded"] is True
 
     def test_blocking_query_falls_back(self, client, monkeypatch):
-        monkeypatch.setattr("core.juris_kai.legal_context.query_knowledge_base",
-                            lambda q: [])
-        monkeypatch.setattr("core.juris_kai.legal_context.build_context_preamble",
-                            lambda docs: "")
+        _ground(monkeypatch, "GROUNDED", GROUND_DOCS)
         monkeypatch.setattr("core.juris_kai.streaming.generate",
                             lambda prompt, task_type="legal_research", **k:
                             "blocking text")
         body = client.post("/api/juris-kai/test-query", headers=BRIDGE,
                            json={"query": "contract law", "stream": False}).json()
-        assert body["text"] == "blocking text"
+        assert body["text"] == "blocking text" + GROUND_FOOTER
         assert body["streamed"] is False
+
+    def test_ungrounded_refuses_without_model(self, client, monkeypatch):
+        _ground(monkeypatch, "UNGROUNDED")
+        monkeypatch.setattr("core.juris_kai.streaming.stream_chat",
+                            lambda *a, **k: (_ for _ in ()).throw(
+                                AssertionError("no model call when ungrounded")))
+        monkeypatch.setattr("core.juris_kai.streaming.generate",
+                            lambda *a, **k: (_ for _ in ()).throw(
+                                AssertionError("no model call when ungrounded")))
+        body = client.post("/api/juris-kai/test-query", headers=BRIDGE,
+                           json={"query": "xylophone zzz", "stream": True}).json()
+        assert body["success"] is True
+        assert body["text"] == grounding.UNGROUNDED_REPLY
+        assert body["grounded"] is False
+        assert body["verdict"] == "UNGROUNDED"
+
+    def test_out_of_scope_refused(self, client, monkeypatch):
+        def boom(*a, **k):
+            raise AssertionError("no retrieval for out-of-scope")
+
+        monkeypatch.setattr("core.juris_kai.grounding.retrieve", boom)
+        body = client.post("/api/juris-kai/test-query", headers=BRIDGE,
+                           json={"query": "What is the law in Nigeria?"}).json()
+        assert body["text"] == grounding.JURISDICTION_REFUSAL
 
 
 # ── Part B: cc-prefixed aliases, service control, cache clear ─────────────
@@ -301,17 +337,23 @@ class TestCcTestQuery:
         assert r.json() == {"success": False, "error": "query is required"}
 
     def test_streamed_query(self, client, monkeypatch):
-        monkeypatch.setattr("core.juris_kai.legal_context.query_knowledge_base",
-                            lambda q: [])
-        monkeypatch.setattr("core.juris_kai.legal_context.build_context_preamble",
-                            lambda docs: "")
+        _ground(monkeypatch, "GROUNDED", GROUND_DOCS)
         monkeypatch.setattr("core.juris_kai.streaming.stream_chat",
                             lambda prompt, task_type="legal_research", **k:
                             iter(["Ghana ", "law."]))
         body = client.post("/api/juris-kai/cc/test-query", headers=BRIDGE,
                            json={"query": "contract law", "stream": True}).json()
         assert body["success"] is True
-        assert body["text"] == "Ghana law."
+        assert body["text"] == "Ghana law." + GROUND_FOOTER
+
+    def test_ungrounded_refuses_without_model(self, client, monkeypatch):
+        _ground(monkeypatch, "UNGROUNDED")
+        monkeypatch.setattr("core.juris_kai.streaming.stream_chat",
+                            lambda *a, **k: (_ for _ in ()).throw(
+                                AssertionError("no model call when ungrounded")))
+        body = client.post("/api/juris-kai/cc/test-query", headers=BRIDGE,
+                           json={"query": "xylophone zzz"}).json()
+        assert body["text"] == grounding.UNGROUNDED_REPLY
 
 
 class TestCcCache:

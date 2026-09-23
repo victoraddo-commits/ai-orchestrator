@@ -547,18 +547,32 @@ def cc_test_query(body: dict = Body(...),
     task_type = body.get("task_type") or "juris_research"
     want_stream = bool(body.get("stream", True))
 
-    from core.juris_kai.prompt import build_prompt, budget_for
+    from core.juris_kai import grounding
+    from core.juris_kai.prompt import budget_for
     from core.juris_kai import streaming as jstream
-    from core.juris_kai.legal_context import (
-        query_knowledge_base, build_context_preamble)
 
-    prompt_type = (task_type.replace("juris_", "legal_", 1)
-                   if task_type.startswith("juris_") else "legal_research")
-    docs = query_knowledge_base(query)
-    context = build_context_preamble(docs)
-    prompt = build_prompt(prompt_type, query) + context
-
+    # Strict grounding: this is a legal-answer surface, so retrieval decides
+    # whether the model may be called at all.
+    plan = grounding.build_grounded_plan(query, task_type)
+    prompt = plan["prompt"]
+    docs = plan["docs"]
     started = time.time()
+
+    if plan["refusal"]:
+        return {
+            "success": True,
+            "text": plan["refusal"],
+            "model": "",
+            "latency_ms": round((time.time() - started) * 1000, 1),
+            "ttft_ms": None,
+            "streamed": False,
+            "budget_tokens": budget_for(task_type),
+            "context_chunks": 0,
+            "context_chars": 0,
+            "verdict": plan["verdict"],
+            "grounded": False,
+        }
+
     ttft = None
     text = ""
     model = jstream.DEFAULT_MODEL
@@ -586,6 +600,8 @@ def cc_test_query(body: dict = Body(...),
     latency = round((time.time() - started) * 1000, 1)
     if error:
         return {"success": False, "error": error, "latency_ms": latency}
+    if text and text.strip():
+        text = plan["banner"] + text + plan["footer"]
     return {
         "success": True,
         "text": text,
@@ -595,7 +611,9 @@ def cc_test_query(body: dict = Body(...),
         "streamed": streamed,
         "budget_tokens": budget_for(task_type),
         "context_chunks": len(docs),
-        "context_chars": len(context),
+        "context_chars": len(prompt),
+        "verdict": plan["verdict"],
+        "grounded": plan["groundable"],
     }
 
 
@@ -754,7 +772,12 @@ def cc_test_query_stream(body: dict = Body(...),
     Events:
       * ``token`` — ``{"text": "..."}`` for each incremental chunk
       * ``error`` — ``{"error": "..."}`` if the local stream fails
-      * ``done``  — ``{"model","ttft_ms","total_ms","chars"}`` (always last)
+      * ``done``  — ``{"model","ttft_ms","total_ms","chars","verdict"}`` (last)
+
+    Strict grounding: the query is retrieval-gated first. An out-of-scope or
+    UNGROUNDED query emits only the shared refusal token (no model call); a
+    grounded answer streams with the PARTIAL banner first and the deterministic
+    Sources footer last.
 
     Uses the same ``require_juris_write`` gate and rate limit as the blocking
     ``/cc/test-query`` endpoint; the Command Center keeps that endpoint as a
@@ -766,16 +789,38 @@ def cc_test_query_stream(body: dict = Body(...),
         raise HTTPException(status_code=400, detail="query is required")
     task_type = body.get("task_type") or "juris_research"
 
-    from core.juris_kai.prompt import build_prompt
+    from core.juris_kai import grounding
     from core.juris_kai import streaming as jstream
-    from core.juris_kai.legal_context import (
-        query_knowledge_base, build_context_preamble)
 
-    prompt_type = (task_type.replace("juris_", "legal_", 1)
-                   if task_type.startswith("juris_") else "legal_research")
-    docs = query_knowledge_base(query)
-    context = build_context_preamble(docs)
-    prompt = build_prompt(prompt_type, query) + context
+    plan = grounding.build_grounded_plan(query, task_type)
+
+    if plan["refusal"]:
+        refusal = plan["refusal"]
+
+        def refusal_stream():
+            yield _sse("token", {"text": refusal})
+            yield _sse("done", {
+                "model": "",
+                "ttft_ms": None,
+                "total_ms": 0.0,
+                "chars": len(refusal),
+                "verdict": plan["verdict"],
+                "grounded": False,
+            })
+
+        return StreamingResponse(
+            refusal_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
+    prompt = plan["prompt"]
+    banner = plan["banner"]
+    footer = plan["footer"]
 
     def event_stream():
         started = time.time()
@@ -783,6 +828,9 @@ def cc_test_query_stream(body: dict = Body(...),
         chars = 0
         model = jstream.DEFAULT_MODEL
         gen = None
+        if banner:
+            chars += len(banner)
+            yield _sse("token", {"text": banner})
         try:
             gen = jstream.stream_chat(prompt, task_type=task_type,
                                       timeout=_STREAM_TIMEOUT_S)
@@ -807,11 +855,16 @@ def cc_test_query_stream(body: dict = Body(...),
                         close()
                     except Exception:
                         pass
+        if footer:
+            chars += len(footer)
+            yield _sse("token", {"text": footer})
         yield _sse("done", {
             "model": model,
             "ttft_ms": ttft_ms,
             "total_ms": round((time.time() - started) * 1000, 1),
             "chars": chars,
+            "verdict": plan["verdict"],
+            "grounded": True,
         })
 
     return StreamingResponse(

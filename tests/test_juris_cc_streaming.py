@@ -83,11 +83,13 @@ class TestTestQueryStream:
         assert r.status_code == 400
 
     def test_emits_token_and_done_events(self, client, monkeypatch):
-        monkeypatch.setattr("core.juris_kai.legal_context.query_knowledge_base",
-                            lambda q: [])
-        monkeypatch.setattr(
-            "core.juris_kai.legal_context.build_context_preamble",
-            lambda docs: "")
+        monkeypatch.setattr("core.juris_kai.grounding.retrieve",
+                            lambda q, limit=3: {
+                                "docs": [{"id": 1, "title": "Contracts Act, 1960",
+                                          "citation": "Act 25", "year": 1960,
+                                          "store_mode": "full",
+                                          "chunk_content": "Offer and acceptance. " * 20}],
+                                "verdict": "GROUNDED", "stage": 1})
         monkeypatch.setattr("core.juris_kai.streaming.stream_chat",
                             lambda prompt, task_type="legal_research", **k:
                             iter(["Ghana ", "law."]))
@@ -100,21 +102,39 @@ class TestTestQueryStream:
         events = _parse_sse(r.text)
         tokens = "".join(e["data"]["text"] for e in events
                          if e["event"] == "token")
-        assert tokens == "Ghana law."
+        assert tokens.startswith("Ghana law.")
+        assert "📚 *Sources*" in tokens
 
         done = [e["data"] for e in events if e["event"] == "done"]
         assert done, "done event missing"
-        assert done[-1]["chars"] == len("Ghana law.")
+        assert done[-1]["chars"] == len(tokens)
         assert done[-1]["model"]
         assert done[-1]["ttft_ms"] is not None
         assert done[-1]["total_ms"] is not None
 
-    def test_stream_error_emits_error_and_done(self, client, monkeypatch):
-        monkeypatch.setattr("core.juris_kai.legal_context.query_knowledge_base",
-                            lambda q: [])
+    def test_ungrounded_stream_refuses_without_model(self, client, monkeypatch):
+        monkeypatch.setattr("core.juris_kai.grounding.retrieve",
+                            lambda q, limit=3: {"docs": [], "verdict": "UNGROUNDED",
+                                                "stage": 0})
         monkeypatch.setattr(
-            "core.juris_kai.legal_context.build_context_preamble",
-            lambda docs: "")
+            "core.juris_kai.streaming.stream_chat",
+            lambda *a, **k: (_ for _ in ()).throw(
+                AssertionError("no model call when ungrounded")))
+        r = client.post(STREAM_PATH, headers=BRIDGE, json={"query": "xylophone zzz"})
+        assert r.status_code == 200
+        events = _parse_sse(r.text)
+        tokens = "".join(e["data"]["text"] for e in events
+                         if e["event"] == "token")
+        assert "won't guess" in tokens
+        assert any(e["event"] == "done" for e in events)
+
+    def test_stream_error_emits_error_and_done(self, client, monkeypatch):
+        monkeypatch.setattr("core.juris_kai.grounding.retrieve",
+                            lambda q, limit=3: {
+                                "docs": [{"id": 1, "title": "Contracts Act, 1960",
+                                          "citation": "Act 25", "store_mode": "full",
+                                          "chunk_content": "Offer and acceptance. " * 20}],
+                                "verdict": "GROUNDED", "stage": 1})
 
         def boom(prompt, task_type="legal_research", **k):
             def gen():

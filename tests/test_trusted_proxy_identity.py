@@ -129,16 +129,19 @@ def test_write_untrusted_peer_forged_headers_is_401(untrusted_client):
 
 
 def test_write_trusted_peer_headers_accepted(client, monkeypatch):
-    monkeypatch.setattr("core.juris_kai.legal_context.query_knowledge_base",
-                        lambda q: [])
-    monkeypatch.setattr("core.juris_kai.legal_context.build_context_preamble",
-                        lambda docs: "")
+    monkeypatch.setattr(
+        "core.juris_kai.grounding.retrieve",
+        lambda q, limit=3: {"docs": [{
+            "id": 1, "title": "Contracts Act, 1960", "citation": "Act 25",
+            "store_mode": "full",
+            "chunk_content": "A contract requires offer and acceptance. " * 20,
+        }], "verdict": "GROUNDED", "stage": 1})
     monkeypatch.setattr("core.juris_kai.streaming.generate",
                         lambda prompt, task_type="legal_research", **k: "ok")
     r = client.post("/api/juris-kai/cc/test-query", headers=IDENTITY,
                     json={"query": "contract law", "stream": False})
     assert r.status_code == 200
-    assert r.json()["text"] == "ok"
+    assert r.json()["text"].startswith("ok")
 
 
 # ── same class of bug in the sibling CC routers ───────────────────────────

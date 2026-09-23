@@ -10,7 +10,6 @@ core.deployment_manager.
 import re
 from typing import Dict, Any
 
-from core.juris_kai.prompt import build_prompt
 from core.juris_kai.accounts import (
     get_account_manager,
     SUBSCRIPTION_TIERS,
@@ -191,50 +190,75 @@ def handle_profile(args: str, update: Dict[str, Any], account: Dict[str, Any]) -
 
 # ---- Legal Research Commands ----
 
+def _grounded_command_text(topic: str, task_type: str,
+                           failure_message: str) -> str:
+    """Ground a slash-command answer, or return the shared refusal.
+
+    Slash commands return plain text (they have no Telegram ``chat_id`` of
+    their own), so this retrieves on the user's topic, gates on the verdict,
+    and only then calls the model with ``build_grounded_prompt``. The
+    deterministic Sources footer (and PARTIAL banner) are appended to the
+    returned text. Out-of-scope and UNGROUNDED questions never reach a model.
+    """
+    from core.juris_kai import grounding
+
+    plan = grounding.build_grounded_plan(topic, task_type)
+    if plan["refusal"]:
+        return plan["refusal"]
+    try:
+        from core.ai.ai_router import delegate
+        result = delegate(plan["prompt"], task_type=task_type,
+                          capability="text_task")
+        answer = result.get("response") or ""
+    except Exception:
+        return failure_message
+    return plan["banner"] + answer + plan["footer"]
+
+
 def handle_learn(topic: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
-    """Learn about a legal topic."""
+    """Learn about a legal topic (strict grounding)."""
     if not topic.strip():
         return "Usage: /learn <legal topic>\nExample: /learn contract law"
 
-    prompt = build_prompt("legal_teaching", topic)
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_legal_teaching", capability="text_task")
-        return result["response"]
-    except Exception as e:
-        return f"Unable to provide legal teaching. Please try again later."
+    return _grounded_command_text(
+        topic, "juris_legal_teaching",
+        "Unable to provide legal teaching. Please try again later.")
 
 
 def handle_case(case_name: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
-    """Analyze a legal case."""
+    """Analyze a legal case (strict grounding)."""
     if not case_name.strip():
         return "Usage: /case <case name>\nExample: /case Donoghue v Stevenson"
 
-    prompt = build_prompt("legal_case_analysis", case_name)
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_case_analysis", capability="text_task")
-        return result["response"]
-    except Exception as e:
-        return f"Unable to analyze case. Please try again later."
+    return _grounded_command_text(
+        case_name, "juris_case_analysis",
+        "Unable to analyze case. Please try again later.")
 
 
 def handle_research(query: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
-    """Research legal concepts.
+    """Research legal concepts (strict grounding).
 
     §37: Juris Kai requests the legal-research capability from KAI's unified
     workforce (teammate factory + mission engine + Model Fabric) instead of
     driving the model directly. The historical direct call is kept as a
-    fallback so the command never regresses.
+    fallback so the command never regresses. Both paths are now gated by
+    retrieval: the grounded prompt (with sources) is what the workforce/model
+    receives, and the Sources footer is appended to whatever answers.
     """
     if not query.strip():
         return "Usage: /research <legal query>"
 
+    from core.juris_kai import grounding
+
+    plan = grounding.build_grounded_plan(query, "juris_research")
+    if plan["refusal"]:
+        return plan["refusal"]
+
     try:
         from core.integration.module_bridge import get_bridge
         result = get_bridge().request_capability(
-            "juris-kai", "legal_research", objective=query, execute=True,
-            skills=["legal_research"])
+            "juris-kai", "legal_research", objective=plan["prompt"],
+            execute=True, skills=["legal_research"])
         mission = result.get("mission") or {}
         for task in mission.get("tasks") or []:
             if task.get("skill_id") == "legal_research" and task.get("output"):
@@ -242,21 +266,21 @@ def handle_research(query: str, update: Dict[str, Any], account: Dict[str, Any])
                 if isinstance(output, dict):
                     output = (output.get("response") or output.get("text")
                               or str(output))
-                return str(output)
+                return plan["banner"] + str(output) + plan["footer"]
     except Exception:
         pass
 
-    prompt = build_prompt("legal_research", query)
     try:
         from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_research", capability="text_task")
-        return result["response"]
-    except Exception as e:
-        return f"Unable to research. Please try again later."
+        result = delegate(plan["prompt"], task_type="juris_research",
+                          capability="text_task")
+        return plan["banner"] + (result.get("response") or "") + plan["footer"]
+    except Exception:
+        return "Unable to research. Please try again later."
 
 
 def handle_argument(topic: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
-    """Construct legal arguments."""
+    """Construct legal arguments (strict grounding)."""
     if not topic.strip():
         return "Usage: /argument <legal topic>\nExample: /argument self-defense"
 
@@ -266,17 +290,13 @@ def handle_argument(topic: str, update: Dict[str, Any], account: Dict[str, Any])
     if sub and "argument_construction" not in sub.get("features", []):
         return "⚠️ Legal argument construction requires a Basic or Professional plan.\nUpgrade with /subscribe"
 
-    prompt = build_prompt("legal_argument", topic)
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_argument_construction", capability="text_task")
-        return result["response"]
-    except Exception as e:
-        return f"Unable to construct argument. Please try again later."
+    return _grounded_command_text(
+        topic, "juris_argument_construction",
+        "Unable to construct argument. Please try again later.")
 
 
 def handle_flashcards(topic: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
-    """Generate legal flashcards."""
+    """Generate legal flashcards (strict grounding; output shape preserved)."""
     if not topic.strip():
         return "Usage: /flashcards <legal topic>"
 
@@ -285,13 +305,9 @@ def handle_flashcards(topic: str, update: Dict[str, Any], account: Dict[str, Any
     if sub and "flashcards" not in sub.get("features", []):
         return "⚠️ Flashcards require a Professional plan.\nUpgrade with /subscribe"
 
-    prompt = build_prompt("legal_flashcards", topic)
-    try:
-        from core.ai.ai_router import delegate
-        result = delegate(prompt, task_type="juris_flashcards", capability="text_task")
-        return result["response"]
-    except Exception as e:
-        return f"Unable to generate flashcards. Please try again later."
+    return _grounded_command_text(
+        topic, "juris_flashcards",
+        "Unable to generate flashcards. Please try again later.")
 
 
 # ---- Document Analysis ----

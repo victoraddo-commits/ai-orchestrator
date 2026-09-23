@@ -328,3 +328,90 @@ def test_retrieval_withholds_injection_suspected_chunk(monkeypatch):
     assert r["verdict"] == "UNGROUNDED"
     assert r["docs"] == []
     assert payload not in str(r)
+
+
+# ---------------------------------------------------------------------------
+# Shared grounding plan (build_grounded_plan) — the one gate every legal-answer
+# surface (free text, menu handlers, slash commands, CC test query) calls.
+# ---------------------------------------------------------------------------
+
+
+def _plan_docs():
+    return [{"id": 1, "title": "Criminal Offences Act, 1960",
+             "citation": "Act 29", "year": 1960, "store_mode": "full",
+             "chunk_content": "Stealing is defined in section 124. " * 20}]
+
+
+def _plan_retrieval(monkeypatch, verdict, docs=None):
+    monkeypatch.setattr(grounding, "retrieve",
+                        lambda q, limit=3: {"docs": list(docs or []),
+                                            "verdict": verdict, "stage": 1})
+
+
+def test_plan_out_of_scope_refuses_before_retrieval(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("retrieve must not run for an out-of-scope question")
+
+    monkeypatch.setattr(grounding, "retrieve", boom)
+    plan = grounding.build_grounded_plan("What is the law in Nigeria?")
+    assert plan["out_of_scope"] is True
+    assert plan["groundable"] is False
+    assert plan["refusal"] == grounding.JURISDICTION_REFUSAL
+    assert plan["prompt"] == ""
+
+
+def test_plan_ungrounded_refusal(monkeypatch):
+    _plan_retrieval(monkeypatch, "UNGROUNDED")
+    plan = grounding.build_grounded_plan("xylophone zzz bananas quantum")
+    assert plan["groundable"] is False
+    assert plan["refusal"] == grounding.UNGROUNDED_REPLY
+    assert plan["prompt"] == ""
+
+
+def test_plan_grounded_builds_prompt_and_footer(monkeypatch):
+    docs = _plan_docs()
+    _plan_retrieval(monkeypatch, "GROUNDED", docs)
+    plan = grounding.build_grounded_plan("Criminal Offences Act",
+                                         "juris_legal_teaching")
+    assert plan["groundable"] is True
+    assert plan["refusal"] is None
+    assert "SOURCE 1: Criminal Offences Act, 1960 (Act 29)" in plan["prompt"]
+    assert "Cite ONLY the sources below" in plan["prompt"]
+    assert plan["footer"] == grounding.build_sources_footer(docs)
+    assert plan["banner"] == ""
+    assert plan["source_key"] == grounding.source_signature(docs, "GROUNDED")
+
+
+def test_plan_partial_banner_and_footer(monkeypatch):
+    docs = _plan_docs()
+    _plan_retrieval(monkeypatch, "PARTIAL", docs)
+    plan = grounding.build_grounded_plan("theft punishment quantum")
+    assert plan["groundable"] is True
+    assert plan["banner"] == grounding.PARTIAL_BANNER
+    assert plan["footer"] == grounding.build_sources_footer(docs)
+    assert plan["source_key"] == grounding.source_signature(docs, "PARTIAL")
+
+
+def test_plan_fails_closed_on_retrieval_error(monkeypatch):
+    def boom(q, limit=3):
+        raise RuntimeError("legal brain down")
+
+    monkeypatch.setattr(grounding, "retrieve", boom)
+    plan = grounding.build_grounded_plan("Criminal Offences Act")
+    assert plan["groundable"] is False
+    assert plan["refusal"] == grounding.UNGROUNDED_REPLY
+
+
+def test_plan_context_reaches_grounded_prompt(monkeypatch):
+    docs = _plan_docs()
+    _plan_retrieval(monkeypatch, "GROUNDED", docs)
+    plan = grounding.build_grounded_plan("and the penalty?", "juris_research",
+                                         context="What is theft in Ghana?")
+    assert "What is theft in Ghana?" in plan["prompt"]
+
+
+def test_plan_out_of_scope_beats_retrieval_hit(monkeypatch):
+    _plan_retrieval(monkeypatch, "GROUNDED", _plan_docs())
+    plan = grounding.build_grounded_plan("What is the UK Companies Act 2006?")
+    assert plan["out_of_scope"] is True
+    assert plan["refusal"] == grounding.JURISDICTION_REFUSAL

@@ -224,6 +224,15 @@ def _cc_client(monkeypatch):
                         lambda q: [])
     monkeypatch.setattr("core.juris_kai.legal_context.build_context_preamble",
                         lambda docs: "")
+    # cc_test_query is a legal-answer surface: it is grounding-gated, so a
+    # retrieved source must exist before the model is reached.
+    monkeypatch.setattr(
+        "core.juris_kai.grounding.retrieve",
+        lambda q, limit=3: {"docs": [{
+            "id": 1, "title": "Contracts Act, 1960", "citation": "Act 25",
+            "store_mode": "full",
+            "chunk_content": "A contract requires offer and acceptance. " * 20,
+        }], "verdict": "GROUNDED", "stage": 1})
     cc_routes._rate_state.clear()
     app = FastAPI()
     app.include_router(cc_routes.router)
@@ -268,7 +277,8 @@ def test_cc_test_query_neutralizes_injected_query(monkeypatch):
     assert OVERRIDE not in sent
     assert "[neutralized" in sent
     assert body["success"] is True
-    assert body["text"] == "A neutral legal answer."
+    assert body["text"].startswith("A neutral legal answer.")
+    assert "📚 *Sources*" in body["text"]
 
 
 def test_cc_test_query_stream_neutralizes_injected_query(monkeypatch):
@@ -288,7 +298,8 @@ def test_cc_test_query_stream_neutralizes_injected_query(monkeypatch):
     assert "[neutralized" in sent
     tokens = "".join(e["data"]["text"] for e in _parse_sse(r.text)
                      if e["event"] == "token")
-    assert tokens == "Ghana law."
+    assert tokens.startswith("Ghana law.")
+    assert "📚 *Sources*" in tokens
 
 
 def test_cc_test_query_blocks_suspicious_model_output(monkeypatch):
@@ -307,7 +318,7 @@ def test_cc_test_query_blocks_suspicious_model_output(monkeypatch):
 
     assert body["success"] is True
     assert MARKER not in body["text"]
-    assert body["text"] == "SAFE GUARDED ANSWER"
+    assert body["text"].startswith("SAFE GUARDED ANSWER")
 
 
 def test_cc_test_query_stream_aborts_on_suspicious_output(monkeypatch):

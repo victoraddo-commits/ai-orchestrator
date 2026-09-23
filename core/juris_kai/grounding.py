@@ -67,6 +67,99 @@ def _search(query: str, limit: int = 3, mode: str = "or") -> list[dict]:
     return lb.search(query, limit=limit, mode=mode) or []
 
 
+# Generic jurisdiction/qualifier tokens carry no discriminating power for a
+# Ghana-only corpus: "ghana"/"ghanaian" appear in nearly every document (the
+# whole corpus is Ghanaian law) and "law"/"legal" appear in most titles. Left
+# in, they let the stage-3 OR match a nonsense query ("Ghana xylophone zzz ...")
+# on "ghana" alone, so a menu handler that synthesises "Ghana <topic>" could
+# never be UNGROUNDED. They are stripped before retrieval.
+#
+# Deliberately NOT stripped: "act" (Act 29, Act 1034), "court", "section",
+# "bill", "constitution", case names and years -- these identify a source and
+# must keep their discriminating power.
+_GENERIC_TOKENS = frozenset({"ghana", "ghanaian", "law", "legal"})
+
+# Function words and anaphora carry no retrieval signal. Mirrors the
+# legal-brain's own stopword list (core/legal/query_normalize.py) and adds the
+# words that continue a turn rather than name a topic ("and", "more", "tell").
+# Used to *measure* how substantive a query is and to extract prior-turn topic
+# tokens -- the legal-brain already drops its own stopwords for AND/OR, so this
+# mirrors rather than replaces server-side normalisation.
+_STOPWORDS = frozenset({
+    "the", "a", "an", "of", "in", "on", "at", "to", "for", "is", "are",
+    "was", "were", "be", "been", "and", "or", "not", "with", "that", "this",
+    "it", "its", "by", "from", "as", "but", "if", "so", "all", "any", "can",
+    "has", "had", "have", "do", "does", "did", "will", "would", "shall",
+    "should", "may", "might", "i", "you", "he", "she", "we", "they", "me",
+    "my", "what", "which", "who", "whom", "how", "when", "where", "about",
+    "into", "over", "after", "under",
+    "why", "then", "also", "more", "most", "really", "please", "tell",
+    "explain", "elaborate", "continue", "give", "show", "want", "need",
+    "know", "say", "said", "us", "them", "their", "his", "her", "our",
+    "your", "no", "yes",
+})
+_NON_SUBSTANTIVE = _GENERIC_TOKENS | _STOPWORDS
+
+_WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
+
+# Follow-up expansion bounds: only a short/anaphoric follow-up borrows context,
+# and only a few prior tokens, so context can never swamp the query.
+_FOLLOWUP_MIN_SUBSTANTIVE = 2
+_FOLLOWUP_MAX_CONTEXT_TOKENS = 6
+
+
+def significant_tokens(text: str) -> list[str]:
+    """Ordered, de-duplicated tokens that carry retrieval signal.
+
+    Drops the generic jurisdiction/qualifier tokens (``_GENERIC_TOKENS``) and
+    function words (``_STOPWORDS``); single characters are kept (the legal-brain
+    already drops them for the AND/OR modes, and the phrase stage may match
+    them). This is the token set the staged retrieval searches on; an empty
+    result means the query is too vague to ground.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for tok in _WORD_RE.findall((text or "").lower()):
+        if tok in _NON_SUBSTANTIVE or tok in seen:
+            continue
+        seen.add(tok)
+        out.append(tok)
+    return out
+
+
+def _last_user_tokens(context: str) -> list[str]:
+    """Substantive tokens from the most recent prior *user* turn in context."""
+    for line in reversed((context or "").splitlines()):
+        match = re.match(r"\s*user\s*:\s*(.*)", line, re.IGNORECASE)
+        if match:
+            return significant_tokens(match.group(1))
+    return significant_tokens(context)
+
+
+def _expand_followup(query: str, context: str) -> str:
+    """Prepend bounded prior-turn topic tokens to a short anaphoric follow-up.
+
+    A follow-up only borrows context when it cannot stand on its own (fewer
+    than ``_FOLLOWUP_MIN_SUBSTANTIVE`` significant tokens), so a self-contained
+    question is never steered by the prior turn. At most
+    ``_FOLLOWUP_MAX_CONTEXT_TOKENS`` prior tokens are prepended; the result is
+    de-duplicated and order-stable.
+    """
+    if not context:
+        return query
+    query_tokens = significant_tokens(query)
+    if len(query_tokens) >= _FOLLOWUP_MIN_SUBSTANTIVE:
+        return query
+    prior = _last_user_tokens(context)[:_FOLLOWUP_MAX_CONTEXT_TOKENS]
+    if not prior:
+        return query
+    merged: list[str] = []
+    for tok in prior + query_tokens:
+        if tok not in merged:
+            merged.append(tok)
+    return " ".join(merged)
+
+
 def _hydrate(hit: dict) -> dict:
     """Return ``hit`` with a content-bearing ``chunk_content``, capped.
 
@@ -129,11 +222,21 @@ def _usable(docs: list[dict]) -> list[dict]:
     return usable
 
 
-def retrieve(query: str, limit: int = 3) -> dict:
-    """Progressive retrieval. Returns {docs, verdict, stage}."""
-    q = (query or "").strip()
-    if not q:
+def retrieve(query: str, limit: int = 3, context: str = "") -> dict:
+    """Progressive retrieval. Returns {docs, verdict, stage}.
+
+    The query is reduced to its significant tokens before searching: generic
+    jurisdiction tokens ("ghana", "law", ...) are stripped so they cannot
+    ground a nonsense query via the OR stage. A short anaphoric follow-up may
+    borrow bounded topic tokens from ``context`` (the recent prior turn) so
+    "and the penalty?" searches the topic under discussion. An empty
+    significant-token set is UNGROUNDED and never searches.
+    """
+    q = _expand_followup((query or "").strip(), context)
+    tokens = significant_tokens(q)
+    if not tokens:
         return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
+    q = " ".join(tokens)
 
     # Stage 1: exact phrase (server builds the FTS phrase query)
     docs = _stage(q, limit, "phrase")
@@ -220,7 +323,14 @@ def build_grounded_plan(query: str, task_type: str = "juris_research",
                 "refusal": JURISDICTION_REFUSAL}
 
     try:
-        result = retrieve(q)
+        # Thread follow-up context into retrieval only when present, so a
+        # standalone question keeps the exact previous call shape (and its
+        # cache/source-signature behaviour). Context expansion changes the
+        # retrieved docs, so it is reflected in ``source_key`` below.
+        if context:
+            result = retrieve(q, context=context)
+        else:
+            result = retrieve(q)
         verdict = result["verdict"]
         docs = result["docs"]
     except Exception as exc:  # noqa: BLE001 - fail closed, never answer ungrounded

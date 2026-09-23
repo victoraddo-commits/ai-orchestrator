@@ -1076,20 +1076,23 @@ def _handle_learn_topic(topic_key: str, label: str, chat_id: int, account: dict)
     question = f"Ghana {topic_display}"
 
     # Strict grounding: teaching answers from retrieved Ghana sources only.
+    # The model is asked the "Ghana <topic>" question, but retrieval searches
+    # the RAW topic -- the generic jurisdiction tokens carry no discriminating
+    # power and would let a nonsense topic ground (see grounding._GENERIC_TOKENS).
     return _build_legal_reply(
         question, chat_id, account, reply_markup=learn_menu(),
-        task_type="juris_legal_teaching")
+        task_type="juris_legal_teaching", query=topic_display)
 
 
 def _handle_case_query(query_type: str, chat_id: int, account: dict) -> dict:
     """Handle grounded case law queries."""
     question = f"{query_type} in Ghana law"
-    retrieval_query = f"{query_type} Ghana law"
 
     # Strict grounding: case analysis answers from retrieved Ghana sources only.
+    # Retrieval searches the RAW query_type (not "<x> Ghana law").
     return _build_legal_reply(
         question, chat_id, account, reply_markup=case_law_menu(),
-        task_type="juris_case_analysis", query=retrieval_query)
+        task_type="juris_case_analysis", query=query_type)
 
 
 # ---------------------------------------------------------------------------
@@ -1446,10 +1449,10 @@ def _build_legal_reply(text: str, chat_id, account: dict,
     is treated as UNGROUNDED (honest refusal, no model call), because an
     unreachable source is not a source.
 
-    TODO(grounding-followup): ``grounding.retrieve(text)`` ignores the
-    follow-up context, so an anaphoric follow-up ("and the penalty?") can
-    ground on unrelated sources. Retrieval should incorporate ``followup_ctx``;
-    tracked as a separate task.
+    An anaphoric follow-up ("and the penalty?") borrows bounded topic tokens
+    from ``followup_ctx`` for retrieval (see ``grounding.retrieve``'s
+    ``context``), so it grounds on the prior topic instead of unrelated
+    sources; standalone questions are unaffected.
     """
     mgr = get_account_manager()
     _t0 = time.time()

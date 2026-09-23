@@ -325,7 +325,7 @@ class TestBotWiring:
             lambda *a, **k: "")
         monkeypatch.setattr(
             "core.juris_kai.grounding.retrieve",
-            lambda q, limit=3: {
+            lambda q, limit=3, context="": {
                 "docs": [{"title": "Criminal Offences Act, 1960",
                           "citation": "Act 29", "year": 1960,
                           "store_mode": "full", "chunk_content": "x" * 500}],
@@ -379,7 +379,7 @@ class TestBotWiring:
             lambda *a, **k: "")
         monkeypatch.setattr(
             "core.juris_kai.grounding.retrieve",
-            lambda q, limit=3: {
+            lambda q, limit=3, context="": {
                 "docs": [{"title": "Criminal Offences Act, 1960",
                           "citation": "Act 29", "year": 1960,
                           "store_mode": "full", "chunk_content": "x" * 500}],

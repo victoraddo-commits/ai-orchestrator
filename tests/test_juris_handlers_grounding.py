@@ -140,12 +140,47 @@ def test_case_query_grounded_uses_case_task_type(monkeypatch):
 def test_case_query_ungrounded_refuses_without_model(monkeypatch):
     acct = _account()
     monkeypatch.setattr(grounding, "retrieve",
-                        lambda q, limit=3: _retrieval("UNGROUNDED"))
+                        lambda q, limit=3, context="": _retrieval("UNGROUNDED"))
     monkeypatch.setattr(bot, "_generate_reply", _failing_generate)
 
     resp = bot._handle_case_query("donoghue", 12346, acct)
 
     assert resp["text"] == bot.UNGROUNDED_REPLY
+
+
+def test_case_query_nonsense_with_ghana_is_ungrounded_without_model(monkeypatch):
+    """The synthesised "Ghana law" suffix must not ground a nonsense topic.
+
+    The fake search mimics the legal-brain matching the generic "ghana" token:
+    before stripping, the handler's query was "<topic> Ghana law", so the token
+    grounded unrelated sources and burned a model call.
+    """
+    acct = _account()
+
+    def fake_search(query, limit=3, mode="or"):
+        return [DOCS[0]] if "ghana" in query.lower() else []
+
+    monkeypatch.setattr(grounding, "_search", fake_search)
+    monkeypatch.setattr(bot, "_generate_reply", _failing_generate)
+
+    resp = bot._handle_case_query("xylophone zzz bananas", 12347, acct)
+
+    assert resp["text"] == bot.UNGROUNDED_REPLY
+
+
+def test_case_query_searches_raw_topic_without_generic_tokens(monkeypatch):
+    acct = _account()
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    monkeypatch.setattr(bot, "_generate_reply", _failing_generate)
+
+    bot._handle_case_query("xylophone zzz bananas", 12348, acct)
+
+    assert seen
+    for query in seen:
+        toks = query.lower().split()
+        assert "ghana" not in toks and "law" not in toks
 
 
 def test_conversation_flow_grounded_uses_step_task_type(monkeypatch):

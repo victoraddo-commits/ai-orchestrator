@@ -344,8 +344,9 @@ def _plan_docs():
 
 def _plan_retrieval(monkeypatch, verdict, docs=None):
     monkeypatch.setattr(grounding, "retrieve",
-                        lambda q, limit=3: {"docs": list(docs or []),
-                                            "verdict": verdict, "stage": 1})
+                        lambda q, limit=3, context="": {"docs": list(docs or []),
+                                                        "verdict": verdict,
+                                                        "stage": 1})
 
 
 def test_plan_out_of_scope_refuses_before_retrieval(monkeypatch):
@@ -415,3 +416,123 @@ def test_plan_out_of_scope_beats_retrieval_hit(monkeypatch):
     plan = grounding.build_grounded_plan("What is the UK Companies Act 2006?")
     assert plan["out_of_scope"] is True
     assert plan["refusal"] == grounding.JURISDICTION_REFUSAL
+
+
+# ---------------------------------------------------------------------------
+# Query construction — generic jurisdiction tokens must not ground (Problem 1)
+# ---------------------------------------------------------------------------
+
+
+def test_significant_tokens_drops_generic_jurisdiction_tokens():
+    assert grounding.significant_tokens("Ghana Criminal Law") == ["criminal"]
+    assert grounding.significant_tokens("ghanaian legal law") == []
+    # "act" and "court" are substantive: they identify a source.
+    assert grounding.significant_tokens("Act 29 court") == ["act", "29", "court"]
+
+
+def test_significant_tokens_drops_function_words():
+    assert grounding.significant_tokens("What is the penalty for theft?") == [
+        "penalty", "theft"]
+
+
+def test_query_of_only_generic_tokens_is_ungrounded_without_search(monkeypatch):
+    calls = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda *a, **k: calls.append(a) or [])
+    for q in ("Ghana law", "ghanaian legal law", "   "):
+        r = grounding.retrieve(q)
+        assert r["verdict"] == "UNGROUNDED" and r["stage"] == 0
+    assert calls == []
+
+
+def test_generic_tokens_are_stripped_from_every_search(monkeypatch):
+    seen = []
+
+    def fake(query, limit=3, mode="or"):
+        seen.append(query)
+        return [{"title": "Criminal Offences Act", "chunk_content": "x" * 500}]
+
+    monkeypatch.setattr(grounding, "_search", fake)
+    r = grounding.retrieve("Ghana Criminal Law")
+    assert r["verdict"] == "GROUNDED"
+    assert seen, "retrieval must search"
+    for query in seen:
+        toks = query.lower().split()
+        assert "ghana" not in toks and "law" not in toks
+        assert "criminal" in toks
+
+
+def test_nonsense_query_with_ghana_is_ungrounded(monkeypatch):
+    monkeypatch.setattr(grounding, "_search", lambda *a, **k: [])
+    r = grounding.retrieve("Ghana xylophone zzz bananas quantum")
+    assert r["verdict"] == "UNGROUNDED" and r["docs"] == []
+
+
+# ---------------------------------------------------------------------------
+# Anaphoric follow-up context (Problem 2)
+# ---------------------------------------------------------------------------
+
+_FOLLOWUP_CTX = (
+    "Recent conversation context (for follow-up questions):\n"
+    "User: Criminal Offences Act 1960\n"
+    "Assistant: It defines stealing."
+)
+
+
+def test_followup_borrows_prior_topic_tokens(monkeypatch):
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    grounding.retrieve("and the penalty?", context=_FOLLOWUP_CTX)
+    assert seen
+    toks = seen[0].lower().split()
+    for expected in ("criminal", "offences", "act", "1960", "penalty"):
+        assert expected in toks
+
+
+def test_followup_context_is_bounded(monkeypatch):
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    ctx = ("Recent conversation context (for follow-up questions):\n"
+           "User: " + " ".join(f"topic{i}" for i in range(20)) + "\n"
+           "Assistant: ...")
+    grounding.retrieve("and the penalty?", context=ctx)
+    toks = seen[0].lower().split()
+    assert "penalty" in toks
+    assert len(toks) <= grounding._FOLLOWUP_MAX_CONTEXT_TOKENS + 1
+    assert sum(t.startswith("topic") for t in toks) <= \
+        grounding._FOLLOWUP_MAX_CONTEXT_TOKENS
+
+
+def test_followup_not_expanded_when_self_contained(monkeypatch):
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    grounding.retrieve("What about the Contracts Act 1960?", context=_FOLLOWUP_CTX)
+    toks = seen[0].lower().split()
+    assert "contracts" in toks
+    assert "criminal" not in toks
+
+
+def test_standalone_query_ignores_context(monkeypatch):
+    seen = []
+    monkeypatch.setattr(grounding, "_search",
+                        lambda query, limit=3, mode="or": seen.append(query) or [])
+    grounding.retrieve("Criminal Offences Act 1960",
+                       context="User: Contracts Act 1975")
+    toks = seen[0].lower().split()
+    assert "contracts" not in toks
+
+
+def test_plan_passes_context_to_retrieval(monkeypatch):
+    seen = {}
+
+    def fake_retrieve(q, limit=3, context=""):
+        seen["q"], seen["context"] = q, context
+        return {"docs": _plan_docs(), "verdict": "GROUNDED", "stage": 1}
+
+    monkeypatch.setattr(grounding, "retrieve", fake_retrieve)
+    plan = grounding.build_grounded_plan("and the penalty?", context="User: theft")
+    assert seen["context"] == "User: theft"
+    assert plan["groundable"] is True

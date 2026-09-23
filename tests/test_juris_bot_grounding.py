@@ -284,7 +284,7 @@ def test_grounded_followup_context_reaches_prompt(monkeypatch):
     from core.juris_kai import session
 
     acct = _account(900007)
-    monkeypatch.setattr(grounding, "retrieve", lambda q, limit=3: _retrieval("GROUNDED", DOCS))
+    monkeypatch.setattr(grounding, "retrieve", lambda q, limit=3, context="": _retrieval("GROUNDED", DOCS))
     captured = {}
 
     def fake_reply(prompt, task_type, query, fallback_label, account_id="",
@@ -300,6 +300,28 @@ def test_grounded_followup_context_reaches_prompt(monkeypatch):
     bot._build_legal_reply("and the penalty?", 900007, acct)
 
     assert "What is theft in Ghana?" in captured["prompt"]
+
+
+def test_anaphoric_followup_retrieves_on_prior_topic(monkeypatch):
+    from core.juris_kai import session
+
+    acct = _account(900020)
+    seen = []
+
+    def fake_search(query, limit=3, mode="or"):
+        seen.append(query)
+        return [DOCS[0]] if "criminal" in query.lower() else []
+
+    monkeypatch.setattr(grounding, "_search", fake_search)
+    monkeypatch.setattr(bot, "_generate_reply", _fake_reply)
+    session.record_conversation_turn(
+        900020, "Criminal Offences Act 1960", "Act 29 defines stealing.")
+
+    bot._build_legal_reply("and the penalty?", 900020, acct)
+
+    assert seen, "retrieval must run"
+    assert any("criminal" in q.lower() for q in seen)
+    assert all("insolvency" not in q.lower() for q in seen)
 
 
 # ---------------------------------------------------------------------------

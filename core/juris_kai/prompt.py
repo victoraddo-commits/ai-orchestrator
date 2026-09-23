@@ -6,6 +6,16 @@ This module builds Ghana-scoped legal prompts. Every prompt enforces:
   3. Never discuss, reference, or compare to other countries' laws
 """
 
+try:
+    from core.legal.injection import fence_user_content, neutralize
+except Exception:  # noqa: BLE001 - optional guard, never block prompting
+    def neutralize(text: str) -> str:
+        return text or ""
+
+    def fence_user_content(text: str) -> str:
+        return text or ""
+
+
 _JURISDICTION_GATE = (
     "IMPORTANT: You are Juris Kai, a Ghanaian legal assistant. "
     "You ONLY answer questions about Ghana law (Republic of Ghana). "
@@ -125,6 +135,7 @@ def build_prompt(task_type: str, content: str, context: str = "") -> str:
             "cases, and the 1992 Constitution. Keep under 500 words."
         )
 
+
 def build_grounded_prompt(task_type: str, content: str, verdict: str,
                           docs: list[dict]) -> str:
     """Prompt that enforces the grounding tier.
@@ -134,6 +145,13 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
     not directly support to be marked general/unverified. UNGROUNDED: the bot
     does not answer legal substance at all (the caller returns a refusal
     without calling the model); this string is a guard if it is ever called.
+
+    Source text is untrusted: each chunk is neutralized (instruction-like
+    spans stripped) and fenced, so neither a ``\"\"\"`` nor a forged fence
+    sentinel inside a chunk can break out of the quoted source block.
+    ``task_type`` is reserved for caller symmetry with ``build_prompt`` /
+    ``budget_for`` (callers pass the type they budget with); it does not alter
+    this prompt today.
     """
     if verdict == "UNGROUNDED":
         return (
@@ -146,10 +164,16 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
 
     src_lines = []
     for i, d in enumerate(docs, 1):
-        src_lines.append(
-            f'SOURCE {i}: {d.get("title", "")} ({d.get("citation", "")})\n'
-            f'"""{(d.get("chunk_content") or "")[:MAX_CHUNK_LENGTH]}"""'
-        )
+        title = (d.get("title") or "Untitled").strip()
+        citation = (d.get("citation") or "").strip()
+        label = f"SOURCE {i}: {title}"
+        if citation and citation != title:
+            label += f" ({citation})"
+        chunk = (d.get("chunk_content") or "")[:MAX_CHUNK_LENGTH]
+        chunk = chunk.replace("<<<USER_CONTENT>>>", "[fence marker removed]")
+        chunk = chunk.replace("<<<END_USER_CONTENT>>>", "[fence marker removed]")
+        body = fence_user_content(neutralize(chunk))
+        src_lines.append(f"{label}\n{body}")
     sources = "\n\n".join(src_lines)
 
     if verdict == "PARTIAL":
@@ -173,6 +197,7 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
         f"TASK: Answer this Ghana law question using ONLY the sources above: "
         f"'{content}'.\n{strict}"
     )
+
 
 # Same security pattern as law_tutor - no imports of operational modules
 # Only pure text processing and prompt construction

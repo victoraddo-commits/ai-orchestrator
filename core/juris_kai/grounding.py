@@ -10,7 +10,7 @@ builds FTS operators itself.
 from __future__ import annotations
 import logging
 
-from core.juris_kai.legal_context import MAX_CHUNK_LENGTH
+from core.juris_kai.legal_context import MAX_CHUNK_LENGTH, _guard_chunks
 
 logger = logging.getLogger("juris_kai.grounding")
 
@@ -56,8 +56,16 @@ def _hydrate(hit: dict) -> dict:
 
 
 def _stage(query: str, limit: int, mode: str) -> list[dict]:
-    """Run one retrieval stage: transport, hydrate, then keep usable docs."""
-    return _usable([_hydrate(h) for h in _search(query, limit, mode=mode)])
+    """Run one retrieval stage: transport, hydrate, guard, then keep usable.
+
+    The injection guard runs *after* hydration so it scans the exact text that
+    would enter the prompt -- including full-document content fetched from the
+    legal-brain. A suspected chunk is replaced with ``WITHHELD`` (and flagged
+    ``injection_suspected``); that sentinel is shorter than every usability
+    floor, so ``_usable`` drops it and it cannot ground an answer.
+    """
+    return _usable(_guard_chunks(
+        [_hydrate(h) for h in _search(query, limit, mode=mode)]))
 
 
 def _usable(docs: list[dict]) -> list[dict]:

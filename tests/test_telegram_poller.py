@@ -1,3 +1,5 @@
+import pytest
+
 import core.telegram_poller as poller
 
 
@@ -177,4 +179,99 @@ def test_run_forever_disables_webhooks_before_polling(monkeypatch):
         pass
 
     assert order == ["webhook", "poll"]
+
+
+# ── getUpdates retry / backoff resilience ───────────────────────────────────
+
+def test_poll_once_retries_a_transient_502_then_succeeds(monkeypatch):
+    attempts = {"n": 0}
+
+    def flaky_poll(poll_timeout):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RuntimeError("Telegram getUpdates failed: HTTPError: 502")
+        return [{"update_id": 1, "text": "hi"}]
+
+    monkeypatch.setattr(poller, "poll_updates", flaky_poll)
+    monkeypatch.setattr(poller, "route_inbound_reply", lambda msg: {"reply": "ok"})
+    monkeypatch.setattr(poller, "send_message", lambda text: None)
+
+    slept = []
+    monkeypatch.setattr(poller.time, "sleep", slept.append)
+
+    count = poller.poll_once()
+
+    assert count == 1
+    assert attempts["n"] == 2, "a transient 502 must be retried, not dropped"
+    assert len(slept) == 1 and slept[0] > 0, "backoff must be observed"
+
+
+def test_poll_once_gives_up_after_bounded_attempts(monkeypatch):
+    attempts = {"n": 0}
+
+    def always_fail(poll_timeout):
+        attempts["n"] += 1
+        raise RuntimeError("Telegram getUpdates failed: HTTPError: 502")
+
+    monkeypatch.setattr(poller, "poll_updates", always_fail)
+
+    slept = []
+    monkeypatch.setattr(poller.time, "sleep", slept.append)
+
+    with pytest.raises(RuntimeError, match="502"):
+        poller.poll_once()
+
+    assert attempts["n"] == poller.MAX_POLL_ATTEMPTS
+    assert len(slept) == poller.MAX_POLL_ATTEMPTS - 1
+
+
+def test_poll_once_does_not_retry_a_409_conflict(monkeypatch):
+    attempts = {"n": 0}
+
+    def conflict(poll_timeout):
+        attempts["n"] += 1
+        raise poller.TelegramConflictError("duplicate getUpdates consumer")
+
+    monkeypatch.setattr(poller, "poll_updates", conflict)
+
+    slept = []
+    monkeypatch.setattr(poller.time, "sleep", slept.append)
+
+    with pytest.raises(poller.TelegramConflictError):
+        poller.poll_once()
+
+    assert attempts["n"] == 1, "409 is not transient; run_forever owns its backoff"
+    assert slept == []
+
+
+class _FakeTime:
+    def __init__(self, t):
+        self.t = t
+        self.slept = []
+
+    def monotonic(self):
+        return self.t
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+
+
+def test_poll_failure_logging_is_throttled(monkeypatch):
+    poller._consecutive_poll_failures = 0
+    poller._last_failure_log_at = 0.0
+
+    logs = []
+    monkeypatch.setattr(poller, "info", logs.append)
+
+    fake = _FakeTime(1000.0)
+    monkeypatch.setattr(poller, "time", fake)
+
+    poller._log_poll_failure(RuntimeError("502"), poller.MAX_POLL_ATTEMPTS)
+    poller._log_poll_failure(RuntimeError("502"), poller.MAX_POLL_ATTEMPTS)
+    assert len(logs) == 1, "repeated failures inside the window must log once"
+
+    fake.t += poller.FAILURE_LOG_THROTTLE_SECONDS + 1
+    poller._log_poll_failure(RuntimeError("502"), poller.MAX_POLL_ATTEMPTS)
+    assert len(logs) == 2
+
 

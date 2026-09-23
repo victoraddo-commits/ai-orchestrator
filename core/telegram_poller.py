@@ -17,6 +17,7 @@ checks, and vice versa -- this is genuinely somebody else's problem to fix
 if it goes down, not a reason the rest of Kai should stop.
 """
 
+import random
 import threading
 import time
 
@@ -49,6 +50,72 @@ ERROR_BACKOFF_SECONDS = 5
 # so back off far longer instead of hammering ~11 requests/min against it.
 CONFLICT_BACKOFF_SECONDS = 60
 
+# Bounded retry around a single getUpdates call. Upstream 502s / ReadTimeouts
+# on api.telegram.org are transient; dropping the poll (the old behaviour)
+# lost the messages that arrived during the outage. Retry a few times with
+# exponential backoff + jitter before letting run_forever apply its own
+# longer backoff. The offset is only advanced inside poll_updates() on a
+# successful fetch, so a failed attempt never skips updates.
+MAX_POLL_ATTEMPTS = 5
+POLL_RETRY_BASE_SECONDS = 1.0
+POLL_RETRY_MAX_SECONDS = 30.0
+
+# Repeated identical failures are logged at most this often (a flapping
+# network must not spam the log every poll).
+FAILURE_LOG_THROTTLE_SECONDS = 60.0
+
+_consecutive_poll_failures = 0
+_last_failure_log_at = 0.0
+
+
+def _retry_delay(attempt: int) -> float:
+    """Exponential backoff (1-based attempt) capped, with 50-100% jitter."""
+    base = min(POLL_RETRY_BASE_SECONDS * (2 ** (attempt - 1)),
+               POLL_RETRY_MAX_SECONDS)
+    return base * (0.5 + random.random() * 0.5)
+
+
+def _log_poll_failure(error, attempts: int) -> None:
+    """Throttled, token-safe failure log (never raises)."""
+    global _consecutive_poll_failures, _last_failure_log_at
+    _consecutive_poll_failures += 1
+    now = time.monotonic()
+    if now - _last_failure_log_at >= FAILURE_LOG_THROTTLE_SECONDS:
+        info(
+            f"telegram_poller: getUpdates failed after {attempts} attempt(s) "
+            f"({_consecutive_poll_failures} consecutive): "
+            f"{type(error).__name__}: {error}"
+        )
+        _last_failure_log_at = now
+
+
+def _poll_updates_with_retry():
+    """getUpdates with bounded retry + exponential backoff and jitter.
+
+    A TelegramConflictError (409) is not transient -- re-raise immediately so
+    run_forever applies its long conflict backoff. Any other failure (502,
+    ReadTimeout, connection reset) is retried up to MAX_POLL_ATTEMPTS; after
+    exhaustion the last error is re-raised (run_forever catches it and keeps
+    the loop alive). A successful call resets the consecutive-failure count.
+    """
+    global _consecutive_poll_failures
+
+    last_error = None
+    for attempt in range(1, MAX_POLL_ATTEMPTS + 1):
+        try:
+            messages = poll_updates(poll_timeout=POLL_TIMEOUT)
+            _consecutive_poll_failures = 0
+            return messages
+        except TelegramConflictError:
+            raise
+        except Exception as error:  # noqa: BLE001 - transient network failure
+            last_error = error
+            if attempt < MAX_POLL_ATTEMPTS:
+                time.sleep(_retry_delay(attempt))
+
+    _log_poll_failure(last_error, MAX_POLL_ATTEMPTS)
+    raise last_error
+
 
 def _safe_send(text):
     # send_message() defaults to the single allowed operator chat; kept as
@@ -65,7 +132,7 @@ def poll_once():
     is one. Returns the number of messages processed (0 is normal/healthy
     -- it just means nothing arrived during this poll window)."""
 
-    messages = poll_updates(poll_timeout=POLL_TIMEOUT)
+    messages = _poll_updates_with_retry()
 
     for message in messages:
         try:

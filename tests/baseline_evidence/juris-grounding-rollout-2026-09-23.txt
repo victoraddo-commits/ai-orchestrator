@@ -1,0 +1,90 @@
+Juris Kai strict-grounding rollout — live end-to-end verification evidence
+==========================================================================
+Date (UTC) : 2026-09-23
+Verified by: LXC 113 kai-opencode
+Targets    : CT100 kai-legal-brain (192.168.1.100:8100)
+             CT111 kai-orchestrator (/opt/ai-orchestrator)
+Repo HEAD  : 5969bd19f8db28b6aaca66c0037e89cb609b72c9
+Model fabr.: qwen3-coder:kai (VM104 ollama, localhost tunnel)
+
+Scope: strict-grounding rollout to the remaining legal-answer handlers.
+Free text already obeyed the rule; this wires the Telegram menu handlers
+(Learn Law, Cases, practice/study conversation steps), the slash commands and
+the Command Center test-query endpoints through one shared gate so the SAME
+rules apply everywhere: out-of-scope refusal, UNGROUNDED refusal (no model),
+GROUNDED/PARTIAL with build_grounded_prompt + deterministic Sources footer
+(and PARTIAL banner).
+
+Shared helper
+  grounding.build_grounded_plan(query, task_type="juris_research", context="")
+  -> {groundable, out_of_scope, verdict, docs, prompt, banner, footer,
+      source_key, refusal}
+  bot._build_legal_reply(text, chat_id, account, reply_markup=None,
+                         task_type=LEGAL_GROUNDING_TASK, query=None) calls it
+  (free-text default unchanged); commands.py/_grounded_command_text and
+  cc_routes.py call it directly.
+
+Tests (CT111, repo HEAD 5969bd1)
+  .venv/bin/python -m pytest <juris/*, cc, injection, module, trusted-proxy> -q
+  BEFORE (63a43c6 baseline, same suite selection): 236 passed
+  AFTER : 417 passed
+  (new coverage: tests/test_juris_handlers_grounding.py + build_grounded_plan
+   cases in tests/test_juris_grounding.py; cc/injection/module/trusted-proxy
+   tests updated to assert the gate.)
+
+Services restarted and active
+  systemctl is-active juris-kai.service           -> active
+  systemctl is-active ai-orchestrator-api.service -> active
+
+Probe: /tmp/probe_rollout_live.py on CT111 (.venv/bin/python), isolated DB
+======================================================================
+
+[1] LEARN-LAW grounded topic  ('Ghana Criminal Law') -- REAL RETRIEVAL
+    model_called     : True
+    prompt_has_source: True
+    footer_in_reply  : True
+
+[2] LEARN-LAW ungrounded topic (controlled retrieval miss)
+    model_called     : False (no exception raised)
+    reply_is_refusal : True
+    reply: "I couldn't find an authoritative Ghanaian source for that in my
+            legal database, so I won't guess. ..."
+
+[3] SLASH /learn grounded ('Criminal Offences Act 1960') -- REAL RETRIEVAL
+    delegate_called  : True
+    task_type        : juris_legal_teaching
+    prompt_has_source: True
+    footer_in_reply  : True
+
+[4] SLASH /learn ungrounded ('Xylophone Zzz Bananas') -- REAL RETRIEVAL
+    delegate_called  : False (no exception raised)
+    reply_is_refusal : True
+
+[5] SLASH /learn out-of-scope ('What is the law in Nigeria?')
+    reply_is_jurisdiction_refusal: True
+    reply: "I only handle Ghana legal matters. Please ask a question about
+            Ghana law."
+
+Real retrieval + real model answer through the newly-wired /learn command
+-------------------------------------------------------------------------
+retrieve("Criminal Offences Act 1960") -> GROUNDED stage 1, 3 docs, full tier:
+  - Criminal Offences (Amendment) Act, 2020 (Act 1034)   (1200 chars)
+  - Special Military Tribunal Act,1982 PNDCL 19          (1200 chars)
+  - Electronic Transactions Act, 2008 (Act 772)          (1200 chars)
+
+/learn answer (REAL model, ai_router.delegate):
+  "The Criminal Offences Act 1960 (Act 29) has been amended by the Criminal
+   Offences (Amendment) Act, 2020 (Act 1034). Specifically, Section 239 of
+   Act 29 has been amended. The amendment categorizes the offence of
+   corruption as a felony and provides for a stiff penalty ..."
+
+  Sources
+  1. Criminal Offences (Amendment) Act, 2020 (Act 1034) — 2020 — _full_
+  2. Special Military Tribunal Act,1982 PNDCL 19 (Revised Edition) — 1982 — _full_
+  3. Electronic Transactions Act, 2008 (Act 772) — 2008 — _full_
+
+NOT-APPLICABLE (reported, not forced)
+  * _handle_conversation_flow step "summarize": it summarizes the user's own
+    uploaded document text, not Ghana law, so it deliberately stays on the
+    ungrounded build_prompt path (document upload summaries preserved).
+  * Non-legal menus/navigation/control messages: unchanged.

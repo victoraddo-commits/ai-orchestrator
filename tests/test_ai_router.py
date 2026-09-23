@@ -1847,6 +1847,67 @@ def test_latency_degradation_syncs_to_provider_health():
     assert "latency degraded" in snap.get("detail", "")
 
 
+def test_provider_latency_stale_sample_does_not_degrade():
+    # A one-off spike (e.g. a cold model load counted as latency) must not
+    # demote a provider forever. Because the router moves degraded providers
+    # to the tail, a demoted provider is never retried, so a stale sample
+    # could never clear and the flag would self-perpetuate. A sample older
+    # than STALE_SAMPLE_SECONDS is not evidence of current latency.
+    from datetime import datetime, timedelta
+
+    import core.ai.provider_latency as pl
+
+    for d in (100, 100, 100):
+        pl.record_latency("stale_prov", d)
+    pl.record_latency("stale_prov", 5000)
+    assert pl.is_latency_degraded("stale_prov") is True
+
+    state = pl._load_state()
+    state["stale_prov"]["last_updated"] = (
+        datetime.now() - timedelta(days=1)
+    ).isoformat()
+    pl._save_state(state)
+
+    assert pl.is_latency_degraded("stale_prov") is False
+    assert pl.STALE_SAMPLE_SECONDS > 0
+
+
+def test_provider_latency_stale_window_does_not_mask_fresh_spike():
+    # Staleness must only clear old verdicts -- a fresh spike still degrades.
+    import core.ai.provider_latency as pl
+
+    for d in (100, 100, 100):
+        pl.record_latency("fresh_prov", d)
+    pl.record_latency("fresh_prov", 5000)
+
+    assert pl.is_latency_degraded("fresh_prov") is True
+
+
+def test_provider_latency_recovers_after_stale_window_with_fresh_sample():
+    # Once the stale verdict clears, a fresh warm success must record and
+    # keep the provider healthy rather than re-degrading it.
+    from datetime import datetime, timedelta
+
+    import core.ai.provider_latency as pl
+
+    for d in (100, 100, 100):
+        pl.record_latency("recover_prov", d)
+    pl.record_latency("recover_prov", 5000)
+    assert pl.is_latency_degraded("recover_prov") is True
+
+    state = pl._load_state()
+    state["recover_prov"]["last_updated"] = (
+        datetime.now() - timedelta(days=1)
+    ).isoformat()
+    pl._save_state(state)
+    assert pl.is_latency_degraded("recover_prov") is False
+
+    pl.record_latency("recover_prov", 120)
+    assert pl.is_latency_degraded("recover_prov") is False
+    snap = pl.get_latency_snapshot("recover_prov")
+    assert snap["last_duration_ms"] == 120
+
+
 def test_delegate_demotion_tries_healthy_before_degraded(monkeypatch):
     # 17R: when multiple candidates exist, healthy ones are tried before
     # latency-degraded ones (demotion, not exclusion).

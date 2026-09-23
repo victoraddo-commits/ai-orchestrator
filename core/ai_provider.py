@@ -145,6 +145,11 @@ def get_provider_enabled(name: str) -> bool:
 # VM104→VM112 node failover (§7 model diversity). 100% local — no cloud.
 _KAI_MODEL = "qwen3-coder:kai"
 _OLLAMA_BASE_URL = "http://localhost:11434"
+# Keep the P40 brain resident between sparse calls. Without an explicit
+# keep_alive, ollama unloads the ~18.5GB model after its default 5-min idle,
+# so the next request pays a ~50s cold load -- which the router records as
+# provider latency and wrongly demotes the GPU provider for.
+_OLLAMA_KEEP_ALIVE = os.environ.get("KAI_OLLAMA_KEEP_ALIVE", "30m")
 _CPU_BASE_URL = os.environ.get("KAI_CPU_BASE_URL", "http://192.168.1.242:5001")
 _CPU_JUMP_HOST = os.environ.get("KAI_CPU_JUMP_HOST", "root@100.122.38.118")
 
@@ -174,6 +179,7 @@ def _kai_ollama_run_text_task(prompt, timeout=240, project_path=None, model=_KAI
                 "model": model,
                 "prompt": prompt,
                 "stream": False,
+                "keep_alive": _OLLAMA_KEEP_ALIVE,
                 "options": {"temperature": 0.7, "top_p": 0.9},
             },
             timeout=timeout,

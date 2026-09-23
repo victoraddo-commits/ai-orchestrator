@@ -109,3 +109,36 @@ def test_local_run_text_task_uses_the_vm104_served_model(monkeypatch):
 
     assert ai_provider._local_run_text_task("hi", timeout=5) == "ok"
     assert captured["model"] == "qwen3-coder:kai"
+
+
+def test_kai_ollama_text_task_keeps_model_resident(monkeypatch):
+    # The P40 brain must not unload after ollama's default 5-min idle: a cold
+    # reload takes ~50s and would be recorded as provider latency, demoting
+    # the GPU provider. Every fabric request must carry an explicit
+    # keep_alive so the resident model stays loaded between sparse calls.
+    import requests
+
+    captured = {}
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"response": "ok"}
+
+    def fake_post(url, json=None, timeout=None, **kwargs):
+        captured["url"] = url
+        captured["json"] = json
+        return _Resp()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    out = ai_provider._kai_brain_run_text_task("hi", timeout=5)
+
+    assert out == "ok"
+    assert captured["url"].endswith("/api/generate")
+    assert ai_provider._OLLAMA_KEEP_ALIVE
+    assert captured["json"]["keep_alive"] == ai_provider._OLLAMA_KEEP_ALIVE

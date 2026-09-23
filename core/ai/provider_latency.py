@@ -19,6 +19,15 @@ DEGRADATION_FACTOR_THRESHOLD = 3.0
 
 MIN_SAMPLES_FOR_BASELINE = 3
 
+# A degradation verdict is only meaningful while the observation behind it is
+# recent. The router demotes degraded providers to the tail, so a demoted
+# provider stops receiving traffic and never records another sample -- without
+# an expiry a single cold-start spike (e.g. a ~50s ollama model load counted as
+# latency) would demote a provider permanently. Samples older than this window
+# are treated as stale and cannot assert degradation; the next real request
+# records a fresh sample that re-evaluates the provider.
+STALE_SAMPLE_SECONDS = 900  # 15 minutes
+
 
 def _load_state():
     return load(LATENCY_STATE_FILE) or {}
@@ -69,12 +78,32 @@ def is_latency_degraded(provider, current_duration_ms=None):
     if baseline is None or baseline <= 0:
         return False
 
-    compare_ms = current_duration_ms if current_duration_ms is not None else entry.get("last_duration_ms")
+    if current_duration_ms is not None:
+        compare_ms = current_duration_ms
+    else:
+        # No fresh measurement supplied: a stale stored sample must not keep
+        # asserting degradation (see STALE_SAMPLE_SECONDS).
+        if _is_stale(entry):
+            return False
+        compare_ms = entry.get("last_duration_ms")
 
     if compare_ms is None:
         return False
 
     return compare_ms > baseline * DEGRADATION_FACTOR_THRESHOLD
+
+
+def _is_stale(entry, now=None):
+    """True when the entry's last observation is older than STALE_SAMPLE_SECONDS."""
+    last_updated = entry.get("last_updated")
+    if not last_updated:
+        return True
+    try:
+        observed_at = datetime.fromisoformat(last_updated)
+    except (TypeError, ValueError):
+        return True
+    now = now or datetime.now()
+    return (now - observed_at).total_seconds() > STALE_SAMPLE_SECONDS
 
 
 def get_latency_snapshot(provider):

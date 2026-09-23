@@ -162,3 +162,14 @@ def test_full_tier_boundary_399_vs_400(monkeypatch):
     _fake_search(monkeypatch, {"phrase": [
         {"title": "A", "store_mode": "full", "chunk_content": "x" * 400}]})
     assert grounding.retrieve("x")["verdict"] == "GROUNDED"
+
+
+def test_footer_lists_title_citation_and_mode():
+    docs = [{"title": "Criminal Offences Act", "citation": "Act 29", "year": 1960,
+             "court": "Parliament", "store_mode": "full"}]
+    out = grounding.build_sources_footer(docs)
+    assert "Criminal Offences Act" in out and "Act 29" in out and "full" in out
+
+
+def test_footer_empty_when_no_docs():
+    assert grounding.build_sources_footer([]) == ""

@@ -109,3 +109,24 @@ def retrieve(query: str, limit: int = 3) -> dict:
         return {"docs": docs, "verdict": "PARTIAL", "stage": 4}
 
     return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
+
+
+def build_sources_footer(docs: list[dict]) -> str:
+    """Deterministic Sources block built from retrieval (never the model)."""
+    if not docs:
+        return ""
+    lines = ["\n\n📚 *Sources*"]
+    for i, d in enumerate(docs, 1):
+        title = (d.get("title") or "Untitled").strip()
+        cite = (d.get("citation") or "").strip()
+        year = d.get("year")
+        mode = (d.get("store_mode") or "").strip()
+        bits = [title]
+        if cite and cite != title:
+            bits.append(cite)
+        if year:
+            bits.append(str(year))
+        if mode:
+            bits.append(f"_{mode}_")
+        lines.append(f"{i}. " + " — ".join(bits))
+    return "\n".join(lines)

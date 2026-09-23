@@ -1,0 +1,210 @@
+Juris Kai grounding Phase 0+1 — live end-to-end verification evidence
+=====================================================================
+Date (UTC) : 2026-09-23
+Verified by: LXC 113 kai-opencode
+Targets    : CT100 kai-legal-brain (192.168.1.100:8100)
+             CT111 kai-orchestrator (/opt/ai-orchestrator)
+Repo HEAD  : 5dcca04e16d1ffe488817f959e0e3aefdc14d984 (before this evidence commit)
+Model fabric: qwen3-coder:kai (VM104 ollama, localhost tunnel) and
+              llama_coder_cpu (VM112 llama.cpp :5001) — both reachable.
+
+Scope: verification/evidence only. No product code changed by this task.
+The only baseline-directory artefact added is this file.
+
+
+== 1. Retrieval fixed (CT100) =========================================
+Command (from CT111 against the legal-brain LAN API):
+  curl -s -o /tmp/r.json -w 'HTTP %{http_code}\n' \
+    'http://192.168.1.100:8100/search?q=Criminal%20Offences%20Act%2C%201960%20%28Act%2029%29&mode=and&limit=3'
+
+Result: HTTP 200, 3 results, real content (NOT the string "Parliament",
+NOT a 500). Top hit id=120 and its snippet:
+  - id=120 title='Criminal Offences (Amendment) Act, 2020 (Act 1034)'
+          mode=full snippet_len=187
+  SNIPPET: "…27th October, 2020  PASSED by Parliament and assented to by
+  the President  Section 1—Section 239 of Act 29 amended  The Criminal
+  Offences Act, 1960 (Act 29), referred to in this Act…"
+
+Old failing punctuation query no longer 500s. Probes via
+tests-side script probe_search.py (all HTTP 200):
+  - q='Criminal Offences Act, 1960 (Act 29)' mode=phrase -> 200, 3 results
+  - q='Criminal Offences Act, 1960 (Act 29); "quoted" & co-op?' mode=and -> 200, 0
+  - q='Criminal Offences Act, 1960 (Act 29); "quoted" & co-op?' mode=phrase -> 200, 0
+  - q='",()*:^-"' (operator-only) mode=and -> 200, 0
+  - q='Criminal Offences Act' mode=bogus -> 200, 3 (server logs fallback to 'or')
+Root cause fixed in core/legal/query_normalize.py: raw user text is NFKC
+normalized, tokenized, and emitted as quoted FTS5 literals; operators cannot
+leak into MATCH.
+
+
+== 2. Corpus integrity (CT100) ========================================
+Command:
+  pct exec 100 -- python3 /tmp/probe_audit.py http://127.0.0.1:8100
+  (runs core.legal.corpus_audit.audit on data/legal_brain.db, read-only)
+
+Report:
+  total      : 839
+  by_class   : {"empty": 704, "junk": 7, "metadata_bad": 87, "usable": 41}
+  by_flag    : {"citation_bad": 413, "empty": 581, "junk": 7,
+                "mode_lies": 2, "short": 127, "year_missing": 4}
+  full-with-empty-content : 0          <-- no `full` tier with empty body
+  quarantined docs        : 7 (all junk; ids 1,2,3,6,7,8,9)
+
+Quarantined docs excluded from /search:
+  For each quarantined doc, /search by its title was run; none returned the
+  quarantined id.  LEAKED_COUNT: 0.
+(Visibility enforced by core/legal/storage.py::_visibility_sql, which hides
+ store_mode='none' and any row with a non-empty quarantine_reason.)
+
+
+== 3. Three grounding tiers end-to-end (CT111) ========================
+Command:
+  pct exec 111 -- sh -c "cd /opt/ai-orchestrator && \
+    .venv/bin/python /tmp/probe_grounding_live.py"
+Harness: isolated temp account DB + session store, JURIS_KAI_STREAM=0,
+exercises core.juris_kai.bot._build_legal_reply against the REAL legal brain.
+Model-call detection wraps _generate_reply (records then delegates); the
+"no model" cases install a _generate_reply that raises AssertionError.
+
+-- GROUNDED (query 'Criminal Offences Act 1960') ----------------------
+  model_called: True   generate_calls: 1   source_key='GROUNDED:eb3d4f6fe042'
+  delivered text:
+    I only handle Ghana legal matters. Please ask a question about Ghana law.
+
+    📚 *Sources*
+    1. Criminal Offences (Amendment) Act, 2020 (Act 1034) — 2020 — _full_
+    2. Special Military Tribunal Act,1982 PNDCL 19 (Revised Edition) — 1982 — _full_
+    3. Electronic Transactions Act, 2008 (Act 772) — 2008 — _full_
+  -> verdict GROUNDED (stage 1), footer appended, model called.
+
+-- PARTIAL (query 'theft punishment quantum') -------------------------
+  model_called: True   generate_calls: 1   source_key='PARTIAL:b2ced8d68a80'
+  delivered text:
+    ℹ️ _Limited sources — some points may be general._
+
+    I only handle Ghana legal matters. Please ask a question about Ghana law.
+
+    📚 *Sources*
+    1. Special Military Tribunal Act,1982 PNDCL 19 (Revised Edition) — 1982 — _full_
+    2. Constitution of the Republic of Ghana, 1992 (as amended to 1996) — 1992 — _full_
+    3. Chieftaincy Act, 2008 (ACT 759) — 2008 — _full_
+  -> verdict PARTIAL (stage 3), banner + footer, model called.
+
+-- UNGROUNDED (query 'xylophone zzz bananas quantum') ------------------
+  model_called: False   generate_calls: 0
+  delivered text:
+    ⚖️ I couldn't find an authoritative Ghanaian source for that in my legal
+    database, so I won't guess. Try rephrasing, or ask about a topic I cover
+    (e.g. Criminal Offences Act, Contracts Act, Land Act, the 1992 Constitution).
+  -> verdict UNGROUNDED (stage 0); refusal; _generate_reply raising never fired.
+
+-- RETRIEVAL FAILURE (grounding.retrieve monkeypatched to raise) ------
+  model_called: False   generate_calls: 0
+  delivered text: same refusal as UNGROUNDED.
+  -> fails closed; no model call.
+
+IMPORTANT OBSERVATION: the task's suggested UNGROUNDED example
+"quantum tax on bananas" is NOT ungrounded in this corpus — the OR fallback
+(stage 3) matches on the token "tax" and returns PARTIAL, so the model IS
+called. Live verdicts: 'quantum tax on bananas' -> PARTIAL (3 docs,
+Communications Service Tax Act etc.). A genuinely source-free query was used
+for the UNGROUNDED proof ('xylophone zzz bananas quantum' -> stage 0).
+
+OPEN (model quality, not grounding logic): every GROUNDED/PARTIAL model
+answer above came back as the jurisdiction-gate refusal text. Diagnosis
+(probe_router.py / probe_gate_cause.py): the router selects
+llama_coder_cpu (VM112 Qwen2.5-Coder-7B); with the grounded prompt's leading
+_JURISDICTION_GATE present the small model echoes the refusal instruction,
+while the same prompt with the gate line stripped answers correctly
+("The sources provided do not contain information about Section 124...").
+This is a prompt/model interaction, not a grounding-tier defect.
+
+
+== 4. Regression gate (CT111) =========================================
+Command:
+  pct exec 111 -- sh -c "cd /opt/ai-orchestrator && \
+    ./scripts/test_regression_gate.sh"
+
+Run 1 (2026-09-23 ~11:22-11:35 UTC): GATE: FAIL, NEW failures = 1
+  116 failed, 4366 passed, 10 skipped, 7 deselected in 774.97s
+  known failures   : 112  (in baseline; ignored)
+  quarantined flaky: 3 failed this run (ignored, visible)
+  NEW failures     : 1
+  NEW passes       : 0
+  baseline missing : 0
+  [NEW FAILURES — not in baseline]
+    FAIL tests/test_second_brain_operational_store.py::TestManifest::test_manifest_correct
+  GATE: FAIL — see NEW FAILURES above
+
+  Investigation (NOT grounding-related):
+    The test reads the LIVE repo file
+    core/second_brain/stores/operational/manifest.json (not a temp fixture).
+    At 11:32:00 the hourly unit kai-sb-compact.service
+    (ExecStart=/usr/bin/python3 /opt/ai-orchestrator/sb_compact.py ...) ran
+    and rewrote the manifests. The operational manifest ended up malformed:
+      {
+        "schema_version": 1,
+        "merge_policy": "newest_wins",
+        "store_name": "operational",
+        "record_count": 21
+      }
+      }            <-- stray trailing brace -> json "Extra data" (char 112)
+    Root cause: sb_compact.py:80 writes the manifest with a non-atomic,
+    unclosed handle (json.dump(m, open(manifest_f, "w"), indent=2)) while
+    the running scheduler also writes the same file via
+    base_store._write_manifest — a race on the large operational store.
+    Evidence it is intermittent, not deterministic: the 12:32:31 compaction
+    re-ran and produced a VALID manifest; the other (smaller) stores written
+    at the same 11:32 tick were valid.
+    The failure is in second_brain, is not caused by the grounding work
+    (core/juris_kai), and no grounding test failed.
+    Action taken: repaired the corrupted data file to valid JSON preserving
+    its fields; confirmed the test passes in isolation
+    (1 passed in 0.31s); did NOT add it to any baseline/quarantine list.
+
+Run 2 (2026-09-23 ~12:16-12:36 UTC, after repair):
+  117 failed, 4365 passed, 10 skipped, 7 deselected in 1192.31s (0:19:52)
+  known failures   : 112  (in baseline; ignored)
+  quarantined flaky: 5 failed this run (ignored, visible)
+  NEW failures     : 0
+  NEW passes       : 0
+  baseline missing : 0
+  GATE: PASS — no new failures
+
+FINAL GATE RESULT: PASS — NEW failures = 0.
+Baseline change due to grounding work: NONE required. No grounding test is
+listed in tests/baseline_failures.txt; all grounding suites
+(test_juris_bot_grounding.py, test_juris_grounding.py,
+test_juris_learning_loop.py) pass. The transient Run-1 NEW failure was an
+unrelated pre-existing sb_compact race and was repaired, not baselined.
+
+
+== 5. Services healthy ================================================
+Commands:
+  pct exec 111 -- systemctl restart juris-kai ai-orchestrator-api
+  pct exec 100 -- systemctl restart kai-legal-brain
+
+  pct exec 111 -- systemctl is-active juris-kai ai-orchestrator-api
+    -> active / active
+  pct exec 100 -- systemctl is-active kai-legal-brain
+    -> active
+
+  pct exec 111 -- curl -sk -o /dev/null -w 'HTTP %{http_code}\n' \
+      https://127.0.0.1:8000/health        -> HTTP 200
+  CT100 /health -> HTTP 200
+    {"ok": true, "db": "/opt/kai-legal-brain/data/legal_brain.db", "documents": 832}
+juris-kai restarted cleanly ("⚖️ Juris Kai bot starting...", DB ready).
+
+
+== 6. Open / not fully verified =======================================
+  a. Grounded model answers currently surface the jurisdiction-gate refusal
+     (llama_coder_cpu prompt interaction; see section 3). Grounding plumbing
+     is correct; answer quality is a separate model/prompt issue.
+  b. sb_compact.py manifest write is non-atomic and races the live scheduler;
+     it intermittently corrupts core/second_brain/stores/operational/
+     manifest.json. Not fixed here (verification-only task). Recommended fix:
+     atomic tmp+os.replace write (as base_store._write_index already does).
+  c. "quantum tax on bananas" is PARTIAL live, not UNGROUNDED (see section 3).
+  d. The legal-brain corpus has no exact standalone "Criminal Offences Act,
+     1960 (Act 29)" record; the top hit is the 2020 Amendment Act whose text
+     quotes Act 29. Retrieval returns real content regardless.

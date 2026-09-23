@@ -1,0 +1,35 @@
+Kai regression gate — clean run, local-only transition
+Date: 2026-09-23
+Host: LXC 111 /opt/ai-orchestrator
+main @ 53bb151 (refactor: remove llama3; free_model_manager; vision; chat; poller)
+
+Command: scripts/test_regression_gate.sh
+
+== Kai regression gate ==
+python : /opt/ai-orchestrator/.venv/bin/python
+target : tests/
+baseline: tests/baseline_failures.txt
+flaky  : tests/baseline_flaky.txt
+junit  : /tmp/kai-regression-gate/junit.xml
+
+pytest exit code: 1
+117 failed, 4311 passed, 10 skipped, 7 deselected, 411 warnings in 1178.76s (0:19:38)
+
+---- gate summary ----
+passed           : 4311
+failed/errored   : 117
+skipped          : 10
+known failures   : 112  (in baseline; ignored)
+quarantined flaky: 5 failed this run (ignored, visible)
+NEW failures     : 0
+NEW passes       : 0  (baselined tests now passing)
+baseline missing : 0  (test id no longer collected)
+
+[quarantined flaky failures this run]
+  FLAKY  tests/test_circuit_breaker.py::TestCooldownAndHalfOpen::test_half_open_probe_failure_returns_to_open
+  FLAKY  tests/test_command_center_13o.py::test_command_center_health_matches_provider_registry
+  FLAKY  tests/test_command_center_13o.py::test_command_center_workforce_matches_provider_registry
+  FLAKY  tests/test_provider_health_monitor.py::TestEndToEnd::test_monitor_detects_and_alerts_on_failure
+  FLAKY  tests/test_roadmap_manager.py::test_single_repo_workspace_layout_is_unchanged_without_plugin
+
+GATE: PASS — no new failures

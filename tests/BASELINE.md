@@ -271,6 +271,49 @@ CI/pre-commit wiring (later): call the script from a job, e.g.```yaml
 (It is too slow for `pre-commit` on every commit; use it in CI or a nightly
 scheduled run.)
 
+### Local-only transition — clean gate (2026-09-23, main @ `53bb151`)
+
+Owner directive (2026-09-23): complete the Kai local-only transition —
+remove the retired `llama3` provider and the dead external-model
+`free_model_manager`, deploy a local CPU vision model on VM112, make the
+Kai bot converse normally, and make the Telegram poller resilient.
+
+- `llama3` (`llama3.2:3b`, never served) removed from `core/ai_provider.py`
+  plus its orphaned helpers and `llm_clients.call_ollama_llama`; swept from
+  `model_registry`, `provider_pricing`, `provider_health_monitor`, the
+  `cc_phase2` model catalog, and the cognitive-router emergency fallback.
+- `core/free_model_manager/` deleted (dead external-model discovery; no
+  importers anywhere).
+- Local CPU vision: Qwen2.5-VL-3B-Instruct (Q4_K_M + f16 mmproj, Apache-2.0)
+  on VM112 as `llama-vision-cpu.service` (`:5002`, llama.cpp `--mmproj`);
+  `kai.vision` / `app_vision` rewired to it (reachability-gated, fail-closed).
+- Chat: `gather_signals()` is injected only on explicit status/health intent;
+  plain chat reaches the local LLM as normal conversation.
+- Telegram poller: bounded retry (5 attempts, exponential backoff + jitter)
+  around `getUpdates`, throttled failure logging, offset preserved.
+
+`scripts/test_regression_gate.sh` on the whole suite (LXC 111):
+
+```
+117 failed, 4311 passed, 10 skipped, 7 deselected  (~19.6 min)
+known failures   : 112  (in baseline; ignored)
+quarantined flaky: 5 failed this run (ignored, visible)
+NEW failures     : 0
+NEW passes       : 0
+baseline missing : 0
+GATE: PASS — no new failures
+```
+
+Full summary: `tests/baseline_evidence/gate-clean-run-localonly-transition-2026-09-23.txt`.
+
+Baseline delta: **−1 STALE** —
+`tests/test_ai_router.py::test_local_qwen_is_main_brain_primary_and_llama3_helps_utility_roles`
+was rewritten as `test_local_only_roles_lead_with_the_served_local_model`
+(asserts the current local-only chains) and its baseline entry removed, so
+`baseline_failures.txt` now holds **112** non-flaky entries. New coverage:
+`tests/test_kai_vision.py` (5), `tests/test_kai_chat_conversation.py` (20),
+and 4 new retry tests in `tests/test_telegram_poller.py` — all green.
+
 ## Refreshing the baseline
 
 1. Run the full suite and save raw output:

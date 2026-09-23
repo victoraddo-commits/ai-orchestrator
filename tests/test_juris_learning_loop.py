@@ -323,6 +323,13 @@ class TestBotWiring:
         monkeypatch.setattr(
             "core.juris_kai.legal_context.build_context_preamble",
             lambda *a, **k: "")
+        monkeypatch.setattr(
+            "core.juris_kai.grounding.retrieve",
+            lambda q, limit=3: {
+                "docs": [{"title": "Criminal Offences Act, 1960",
+                          "citation": "Act 29", "year": 1960,
+                          "store_mode": "full", "chunk_content": "x" * 500}],
+                "verdict": "GROUNDED", "stage": 1})
         return bot, calls
 
     def test_free_text_generation_records_qa(self, monkeypatch):
@@ -370,6 +377,13 @@ class TestBotWiring:
         monkeypatch.setattr(
             "core.juris_kai.legal_context.build_context_preamble",
             lambda *a, **k: "")
+        monkeypatch.setattr(
+            "core.juris_kai.grounding.retrieve",
+            lambda q, limit=3: {
+                "docs": [{"title": "Criminal Offences Act, 1960",
+                          "citation": "Act 29", "year": 1960,
+                          "store_mode": "full", "chunk_content": "x" * 500}],
+                "verdict": "GROUNDED", "stage": 1})
 
         chat_id = 929292
         _account("Bot", telegram_id=chat_id)

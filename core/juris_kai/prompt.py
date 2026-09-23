@@ -137,7 +137,7 @@ def build_prompt(task_type: str, content: str, context: str = "") -> str:
 
 
 def build_grounded_prompt(task_type: str, content: str, verdict: str,
-                          docs: list[dict]) -> str:
+                          docs: list[dict], context: str = "") -> str:
     """Prompt that enforces the grounding tier.
 
     GROUNDED/PARTIAL: the model may cite ONLY the provided sources and must
@@ -145,6 +145,10 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
     not directly support to be marked general/unverified. UNGROUNDED: the bot
     does not answer legal substance at all (the caller returns a refusal
     without calling the model); this string is a guard if it is ever called.
+
+    ``context`` is optional bounded follow-up context (last few turns) so an
+    anaphoric follow-up ("and the penalty?") can be interpreted; it is clearly
+    labelled as conversation history, never as a citable source.
 
     Source text is untrusted: each chunk is neutralized (instruction-like
     spans stripped) and fenced, so neither a ``\"\"\"`` nor a forged fence
@@ -176,6 +180,14 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
         src_lines.append(f"{label}\n{body}")
     sources = "\n\n".join(src_lines)
 
+    ctx_block = ""
+    if (context or "").strip():
+        ctx_block = (
+            "\n\nCONVERSATION CONTEXT (prior turns — for interpreting the "
+            "question only, NOT a source and NOT citable):\n"
+            f"{context.strip()}"
+        )
+
     if verdict == "PARTIAL":
         strict = (
             "Cite ONLY the sources below. Do not mention any statute, case, or "
@@ -193,7 +205,7 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
         )
 
     return (
-        f"{_JURISDICTION_GATE}\n\n{sources}\n\n"
+        f"{_JURISDICTION_GATE}\n\n{sources}{ctx_block}\n\n"
         f"TASK: Answer this Ghana law question using ONLY the sources above: "
         f"'{content}'.\n{strict}"
     )

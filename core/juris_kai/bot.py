@@ -463,6 +463,18 @@ STREAM_MIN_CHARS = int(os.environ.get("JURIS_KAI_STREAM_MIN_CHARS", "24"))
 STREAM_MAX_MESSAGE = 3900
 STREAM_PLACEHOLDER = "⚖️ _Searching Ghana law…_"
 
+# Strict grounding (owner directive): no legal substance without a retrieved
+# source. An UNGROUNDED question is refused honestly and NEVER reaches the
+# model; GROUNDED/PARTIAL answers carry a deterministic Sources footer built
+# from retrieval (plus a banner for PARTIAL).
+UNGROUNDED_REPLY = (
+    "⚖️ I couldn't find an authoritative Ghanaian source for that in my legal "
+    "database, so I won't guess. Try rephrasing, or ask about a topic I cover "
+    "(e.g. Criminal Offences Act, Contracts Act, Land Act, the 1992 Constitution)."
+)
+PARTIAL_BANNER = "ℹ️ _Limited sources — some points may be general._\n\n"
+LEGAL_GROUNDING_TASK = "juris_research"
+
 
 def _stream_enabled() -> bool:
     val = os.environ.get("JURIS_KAI_STREAM", "1").strip().lower()
@@ -525,8 +537,15 @@ def _finalize_stream(chat_id, message_id, text, reply_markup=None) -> None:
         send_message(chat_id, text[STREAM_MAX_MESSAGE:], parse_mode=None)
 
 
-def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
+def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
+                        prefix="", suffix=""):
     """Stream a local generation into Telegram, editing as tokens arrive.
+
+    ``prefix`` (e.g. a PARTIAL banner) and ``suffix`` (e.g. the deterministic
+    Sources footer) are applied only to the FINAL edit, so they land in the
+    finished message; the streamed pieces themselves stay verbatim and the
+    returned text excludes both (the caller owns them and the cache stores the
+    raw answer only).
 
     Returns (text, model, delivered):
       * delivered=True  — the full text is already in the chat; the caller
@@ -562,7 +581,7 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
                                "⚠️ The model returned an empty reply.",
                                reply_markup=reply_markup, parse_mode=None)
             return None, "", False
-        _finalize_stream(chat_id, message_id, acc, reply_markup)
+        _finalize_stream(chat_id, message_id, prefix + acc + suffix, reply_markup)
         return acc, model, True
     except _streaming.StreamGuardAbort as exc:
         # The primitive's incremental guard stopped before the suspicious span
@@ -587,9 +606,11 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
         if acc.strip():
             # Partial output is already visible; finish delivering it.
             try:
-                _finalize_stream(chat_id, message_id, acc, reply_markup)
+                _finalize_stream(chat_id, message_id, prefix + acc + suffix,
+                                 reply_markup)
             except Exception:
-                send_message(chat_id, acc, reply_markup=reply_markup, parse_mode=None)
+                send_message(chat_id, prefix + acc + suffix,
+                             reply_markup=reply_markup, parse_mode=None)
             return acc, model, True
         telegram_api("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
         return None, "", False
@@ -603,7 +624,8 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None):
 
 
 def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
-                    chat_id=None, reply_markup=None, context=""):
+                    chat_id=None, reply_markup=None, context="", prefix="",
+                    suffix=""):
     """Generate a legal answer: FAQ cache → TTL cache → stream → blocking.
 
     Returns (text, model, streamed, cached). ``streamed=True`` means the text
@@ -613,6 +635,12 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
 
     The FAQ fast path is only used for standalone questions (no follow-up
     context), so a context-dependent answer is never wrongly replayed.
+
+    ``prefix``/``suffix`` (e.g. a PARTIAL banner and the Sources footer) are
+    applied to the *delivered* message on the streaming path (final edit) but
+    are deliberately excluded from the returned/cached text, so a cache replay
+    cannot duplicate them — the caller owns both and applies them to
+    non-streamed answers.
     """
     # 1) FAQ / repeat cache — a normalized repeat served instantly from the
     #    local juris_qa_log (survives restarts) + in-process FAQ layer.
@@ -640,7 +668,7 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
 
     if chat_id and _stream_enabled():
         text, model, delivered = _stream_to_telegram(
-            prompt, task_type, chat_id, reply_markup)
+            prompt, task_type, chat_id, reply_markup, prefix=prefix, suffix=suffix)
         if delivered and text:
             _cache.GENERATION_CACHE.set(
                 key, {"text": text, "model": model, "corpus_version": corpus_ver})
@@ -1417,6 +1445,85 @@ def _handle_admin_security(label: str, chat_id: int) -> dict:
 # Free-text handling
 # ---------------------------------------------------------------------------
 
+def _build_legal_reply(text: str, chat_id: int, account: dict,
+                       reply_markup=None) -> dict:
+    """Answer a free-text legal question under strict grounding.
+
+    Retrieval decides whether we may answer at all:
+      * UNGROUNDED — no retrieved source grounds the question, so we return an
+        honest refusal and NEVER call the model. The turn is still recorded so
+        the learning loop sees the miss.
+      * GROUNDED  — the model answers from ``build_grounded_prompt`` sources and
+        the deterministic Sources footer is appended.
+      * PARTIAL   — as GROUNDED, with a "limited sources" banner prefixed.
+
+    The banner/footer are applied by this function for non-streamed answers and
+    passed as ``prefix``/``suffix`` for streamed ones (so they land in the
+    final edited message rather than being lost).
+    """
+    from core.juris_kai import grounding
+    from core.juris_kai.prompt import build_grounded_prompt
+
+    result = grounding.retrieve(text)
+    verdict = result["verdict"]
+    docs = result["docs"]
+    mgr = get_account_manager()
+    _t0 = time.time()
+
+    # UNGROUNDED: refuse without a model call, but still record the miss.
+    if verdict == "UNGROUNDED":
+        response_text = UNGROUNDED_REPLY
+        _latency_ms = int((time.time() - _t0) * 1000)
+        mgr.record_query(account["account_id"],
+                         input_tokens=_estimate_tokens(text),
+                         output_tokens=_estimate_tokens(response_text),
+                         model="")
+        _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK,
+                     text, response_text, "", _latency_ms, False)
+        logger.info("juris grounding: UNGROUNDED (no model call) chat=%s", chat_id)
+        return {
+            "chat_id": chat_id,
+            "text": response_text,
+            "reply_markup": reply_markup,
+            "parse_mode": "Markdown",
+        }
+
+    followup_ctx = _followup_context(chat_id, text)
+    prompt = build_grounded_prompt(LEGAL_GROUNDING_TASK, text, verdict, docs,
+                                   context=followup_ctx)
+    banner = PARTIAL_BANNER if verdict == "PARTIAL" else ""
+    footer = grounding.build_sources_footer(docs)
+
+    response_text, model, streamed, _cache_hit = _generate_reply(
+        prompt, LEGAL_GROUNDING_TASK, text, text, account["account_id"],
+        chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx,
+        prefix=banner, suffix=footer)
+    _latency_ms = int((time.time() - _t0) * 1000)
+
+    if not response_text or not response_text.strip():
+        logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
+        response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
+
+    # The streamed message already carries the banner/footer; only un-streamed
+    # text still needs them applied here. The raw answer is recorded for the
+    # learning loop (footer/banner are presentation, not substance).
+    delivered_text = response_text if streamed else banner + response_text + footer
+
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(prompt),
+                     output_tokens=_estimate_tokens(response_text),
+                     model=model)
+    _record_turn(account["account_id"], chat_id, LEGAL_GROUNDING_TASK, text,
+                 response_text, model, _latency_ms, _cache_hit)
+
+    return {
+        "chat_id": chat_id,
+        "text": None if streamed else delivered_text,
+        "reply_markup": reply_markup,
+        "parse_mode": None if streamed else "Markdown",
+    }
+
+
 def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> dict:
     """Handle free-text legal queries with conversation state awareness."""
     state_key = str(chat_id)
@@ -1439,40 +1546,8 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
             "reply_markup": main_menu(),
         }
 
-    # Query the Legal Brain knowledge base for relevant Ghana legal documents
-    from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
-    legal_docs = query_knowledge_base(text)
-    context_preamble = build_context_preamble(legal_docs)
-
-    # Process as legal query with database context
-    from core.juris_kai.prompt import build_prompt
-    followup_ctx = _followup_context(chat_id, text)
-    base_prompt = build_prompt("legal_research", text, context=followup_ctx)
-    prompt = base_prompt + context_preamble
     reply_markup = main_menu() if not admin else admin_main_menu()
-    _t0 = time.time()
-    response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, "juris_research", text, text, account["account_id"],
-        chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx)
-    _latency_ms = int((time.time() - _t0) * 1000)
-
-    if not response_text or not response_text.strip():
-        logger.error(f"Empty response for free-text query '{text[:80]}' from chat {chat_id}")
-        response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
-
-    mgr.record_query(account["account_id"],
-                     input_tokens=_estimate_tokens(prompt),
-                     output_tokens=_estimate_tokens(response_text),
-                     model=model)
-    _record_turn(account["account_id"], chat_id, "juris_research", text,
-                 response_text, model, _latency_ms, _cache_hit)
-
-    return {
-        "chat_id": chat_id,
-        "text": None if streamed else response_text,
-        "reply_markup": reply_markup,
-        "parse_mode": None if streamed else "Markdown",
-    }
+    return _build_legal_reply(text, chat_id, account, reply_markup=reply_markup)
 
 
 # ---------------------------------------------------------------------------

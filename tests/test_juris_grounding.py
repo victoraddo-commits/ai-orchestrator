@@ -164,12 +164,42 @@ def test_full_tier_boundary_399_vs_400(monkeypatch):
     assert grounding.retrieve("x")["verdict"] == "GROUNDED"
 
 
-def test_footer_lists_title_citation_and_mode():
+def test_footer_full_doc_exact_output():
     docs = [{"title": "Criminal Offences Act", "citation": "Act 29", "year": 1960,
              "court": "Parliament", "store_mode": "full"}]
-    out = grounding.build_sources_footer(docs)
-    assert "Criminal Offences Act" in out and "Act 29" in out and "full" in out
+    assert grounding.build_sources_footer(docs) == (
+        "\n\n📚 *Sources*\n1. Criminal Offences Act — Act 29 — 1960 — _full_")
+
+
+def test_footer_suppresses_citation_equal_to_title():
+    docs = [{"title": "Constitution of Ghana", "citation": "Constitution of Ghana",
+             "store_mode": "reference"}]
+    assert grounding.build_sources_footer(docs) == (
+        "\n\n📚 *Sources*\n1. Constitution of Ghana — _reference_")
+
+
+def test_footer_missing_title_citation_year_mode():
+    assert grounding.build_sources_footer([{}]) == "\n\n📚 *Sources*\n1. Untitled"
+    assert grounding.build_sources_footer([{"title": "Some Act"}]) == (
+        "\n\n📚 *Sources*\n1. Some Act")
+
+
+def test_footer_is_deterministic():
+    docs = [{"title": "A", "citation": "Act 1", "year": 2000, "store_mode": "full"}]
+    assert grounding.build_sources_footer(docs) == grounding.build_sources_footer(docs)
 
 
 def test_footer_empty_when_no_docs():
     assert grounding.build_sources_footer([]) == ""
+    assert grounding.build_sources_footer(None) == ""
+
+
+def test_footer_numbers_and_preserves_order():
+    docs = [
+        {"title": "First Act", "citation": "Act 1", "store_mode": "full"},
+        {"title": "Second Act", "citation": "Act 2", "store_mode": "reference"},
+    ]
+    assert grounding.build_sources_footer(docs) == (
+        "\n\n📚 *Sources*\n"
+        "1. First Act — Act 1 — _full_\n"
+        "2. Second Act — Act 2 — _reference_")

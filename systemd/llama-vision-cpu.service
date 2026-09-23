@@ -1,0 +1,30 @@
+[Unit]
+Description=llama.cpp server — Qwen2.5-VL-3B-Instruct Q4_K_M (CPU vision) on port 5002
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kai
+Group=kai
+WorkingDirectory=/opt/llama.cpp-src
+ExecStart=/opt/llama.cpp-src/build/bin/llama-server \
+    --model /opt/kai-cpu-models/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf \
+    --mmproj /opt/kai-cpu-models/mmproj-Qwen2.5-VL-3B-Instruct-f16.gguf \
+    --port 5002 \
+    --host 0.0.0.0 \
+    --ctx-size 8192 \
+    --threads 14 \
+    --batch-size 512 \
+    --ubatch-size 512 \
+    --no-webui \
+    --parallel 1
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+MemoryMax=10G
+
+[Install]
+WantedBy=multi-user.target

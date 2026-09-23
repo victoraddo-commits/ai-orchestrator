@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 
 from core.kai_tools.registry import SAFE, CONTROLLED, HIGH_RISK, ToolSpec, tool
@@ -339,6 +340,32 @@ def goals_list() -> dict:
 
 BROWSER_URL = "http://192.168.1.120:8140"
 
+# Local CPU vision model — Qwen2.5-VL-3B-Instruct Q4_K_M served by llama.cpp
+# (``--mmproj``) on VM112. Local-only: no third-party vision endpoint exists.
+VISION_URL = os.environ.get("KAI_VISION_BASE_URL", "http://192.168.1.242:5002")
+_VISION_TIMEOUT = float(os.environ.get("KAI_VISION_TIMEOUT", "180"))
+
+
+def _vision_available(timeout: float = 3.0) -> bool:
+    """Reachability gate for the local VM112 vision server (``:5002``)."""
+    try:
+        import requests
+        r = requests.get(f"{VISION_URL}/health", timeout=timeout)
+        return r.status_code == 200 and "ok" in r.text
+    except Exception:
+        return False
+
+
+def _image_mime(image_bytes: bytes) -> str:
+    """Best-effort image MIME from magic bytes (PNG/JPEG), default PNG."""
+    if image_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if image_bytes[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    return "image/png"
+
 
 def _browser_post(path: str, payload: dict, timeout_s: float = 45.0) -> dict:
     import requests
@@ -380,16 +407,52 @@ def vision_analyze_url(url: str, question: str = "Describe this page and note an
 
 
 def _vision_ask(png_bytes: bytes, question: str) -> dict:
-    """Vision analysis — local-only fabric has no vision model configured.
+    """Analyze an image with the local CPU vision model (VM112 llama.cpp).
 
-    Previously called Gemini's native generateContent (a third-party network
-    call). Per the owner directive (zero third-party providers) this now fails
-    closed with an honest message instead of reaching an external endpoint.
+    Local-only fabric: the image is sent as an OpenAI-compatible ``image_url``
+    content part (base64 data URI) to the Qwen2.5-VL-3B-Instruct server on
+    VM112 (:5002, llama.cpp ``--mmproj``). No third-party endpoint is ever
+    contacted. Fails closed with a clear message when the local vision server
+    is unreachable or the call errors.
     """
-    raise RuntimeError(
-        "no local vision model configured — the model fabric is local-only "
-        "(zero third-party providers)"
-    )
+    if not _vision_available():
+        raise RuntimeError(
+            f"local vision model unavailable at {VISION_URL} "
+            "(VM112 llama.cpp Qwen2.5-VL-3B, port 5002)"
+        )
+
+    import requests
+
+    mime = _image_mime(png_bytes)
+    data_url = f"data:{mime};base64," + base64.b64encode(png_bytes).decode("ascii")
+    try:
+        response = requests.post(
+            f"{VISION_URL}/v1/chat/completions",
+            json={
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": question},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                }],
+                "max_tokens": 512,
+                "temperature": 0.2,
+                "stream": False,
+            },
+            timeout=_VISION_TIMEOUT,
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+    except Exception as error:  # noqa: BLE001 - surface an honest, non-crashing error
+        raise RuntimeError(f"local vision model call failed: {error}") from error
+
+    return {
+        "question": question,
+        "description": content,
+        "model": "Qwen2.5-VL-3B-Instruct",
+        "endpoint": VISION_URL,
+    }
 
 
 # --- kai.twin.* (P14) + kai.workers.delegate (P12) --------------------------------

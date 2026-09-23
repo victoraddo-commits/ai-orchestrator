@@ -305,7 +305,8 @@ class VisionBody(BaseModel):
 
 def gather_vision_payload(image_b64: str, question: str) -> dict:
     """KAI EYES: analyze an image (camera capture or screenshot) through the
-    vision model. Uses the same Gemini path as kai.vision.analyze_url."""
+    local CPU vision model (VM112 llama.cpp Qwen2.5-VL-3B). Uses the same
+    local-only path as kai.vision.analyze_url — no external calls."""
     import base64 as b64
     try:
         png = b64.b64decode(image_b64)

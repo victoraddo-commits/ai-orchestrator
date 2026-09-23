@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,6 +20,23 @@ from core.second_brain.types import MergePolicy, SecondBrainRecord
 
 if TYPE_CHECKING:
     pass
+
+
+def _atomic_write_json(path: Path, obj: dict, *, indent: int | None = None) -> None:
+    """Write ``obj`` to ``path`` atomically (temp file + ``os.replace``).
+
+    A concurrent reader always sees either the previous complete file or the
+    new complete file. The old in-place ``open(path, "w")`` truncated the live
+    file and, racing another writer, could leave a partial/stray-brace file
+    (see sb_compact.py's manifest corruption).
+    """
+    tmp = path.with_name(
+        f"{path.name}.tmp.{os.getpid()}.{threading.get_ident()}")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=indent)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 class AppendOnlyStore:
@@ -62,10 +79,7 @@ class AppendOnlyStore:
 
     def _write_index(self, index: dict[str, str]) -> None:
         """Atomic write of current-state index."""
-        tmp = self.index_file.with_suffix(f".tmp.{os.getpid()}")
-        with open(tmp, "w") as f:
-            json.dump(index, f)
-        shutil.move(str(tmp), str(self.index_file))
+        _atomic_write_json(self.index_file, index)
 
     def _rebuild_index(self) -> dict[str, str]:
         """Rebuild current_index from records.jsonl. Used after corruption."""
@@ -107,8 +121,7 @@ class AppendOnlyStore:
         manifest["merge_policy"] = self.MERGE_POLICY.value
         if record_count is not None:
             manifest["record_count"] = record_count
-        with open(self.manifest_file, "w") as f:
-            json.dump(manifest, f, indent=2)
+        _atomic_write_json(self.manifest_file, manifest, indent=2)
 
     # ── Write ────────────────────────────────────────────────────────────────
 
@@ -171,7 +184,7 @@ class AppendOnlyStore:
                     found = True
                 f_out.write(json.dumps(rec, default=str) + "\n")
         if found:
-            shutil.move(str(tmp_file), str(self.records_file))
+            os.replace(str(tmp_file), str(self.records_file))
         else:
             tmp_file.unlink()
 

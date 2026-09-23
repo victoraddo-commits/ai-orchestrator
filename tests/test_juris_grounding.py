@@ -121,6 +121,23 @@ def test_hydrate_full_long_snippet_is_not_refetched(monkeypatch):
     assert out["chunk_content"] == "s" * 500
 
 
+def test_hydrate_full_short_snippet_windows_around_query(monkeypatch):
+    # A large Act: the relevant section sits deep in the body, not at the head.
+    body = "A" * 3000 + " section 97 RAPE is defined here. " + "B" * 3000
+    monkeypatch.setattr("core.legal_brain_client.get_document",
+                        lambda i: {"content": body})
+    out = grounding._hydrate({"id": 9, "title": "Criminal Offences Act",
+                              "snippet": "short", "store_mode": "full"}, "rape")
+    assert len(out["chunk_content"]) == legal_context.MAX_CHUNK_LENGTH
+    assert "RAPE" in out["chunk_content"]
+
+
+def test_relevance_window_falls_back_to_head_without_hit():
+    body = "C" * 5000
+    assert grounding._relevance_window(body, "nonexistenttoken", 1200) == "C" * 1200
+    assert grounding._relevance_window("", "rape", 1200) == ""
+
+
 def test_hydrate_never_raises_on_fetch_failure(monkeypatch):
     def boom(doc_id):
         raise RuntimeError("service down")

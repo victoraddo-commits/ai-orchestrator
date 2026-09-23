@@ -193,14 +193,44 @@ def _expand_followup(query: str, context: str) -> str:
     return " ".join(merged)
 
 
-def _hydrate(hit: dict) -> dict:
+def _relevance_window(content: str, query: str, width: int) -> str:
+    """Return a ``width``-char window of ``content`` around the first query hit.
+
+    A full-tier document's stored body can be large (an Act's front matter, a
+    long judgment); truncating from the head can miss the very section the query
+    is about (e.g. "rape" deep in the Criminal Offences Act). When a query token
+    occurs in the body, centre the window on its first occurrence (with a small
+    lead-in so the hit is visible); otherwise fall back to the head.
+    """
+    text = content or ""
+    if not text:
+        return ""
+    tokens = significant_tokens(query)
+    if not tokens:
+        return text[:width]
+    low = text.lower()
+    pos = -1
+    for tok in tokens:
+        i = low.find(tok)
+        if i != -1 and (pos == -1 or i < pos):
+            pos = i
+    if pos == -1:
+        return text[:width]
+    lead = min(pos, width // 4)
+    start = pos - lead
+    return text[start:start + width]
+
+
+def _hydrate(hit: dict, query: str = "") -> dict:
     """Return ``hit`` with a content-bearing ``chunk_content``, capped.
 
     CT100's ``/search`` returns a relevance-centered bounded ``snippet``. That
     snippet is the best available text for ``reference``/``search_only``
     records — their stored ``content`` is an arbitrary head truncation (or
     empty) and would be worse than the snippet — so only ``full``-tier records
-    are hydrated from ``/document/{id}``. Every result is capped at
+    are hydrated from ``/document/{id}``. The full body is windowed around the
+    query (``_relevance_window``) so a large Act does not lose the relevant
+    section to a head truncation. Every result is capped at
     ``legal_context.MAX_CHUNK_LENGTH`` so prompts stay bounded.
     """
     content = (hit.get("chunk_content") or hit.get("snippet")
@@ -212,7 +242,7 @@ def _hydrate(hit: dict) -> dict:
                 from core import legal_brain_client as lb
                 full = (lb.get_document(doc_id) or {}).get("content") or ""
                 if len(full.strip()) > len(content.strip()):
-                    content = full
+                    content = _relevance_window(full, query, MAX_CHUNK_LENGTH)
             except Exception as exc:  # noqa: BLE001 - retrieval must never crash
                 logger.warning(
                     "grounding: full-document fetch failed for id=%s: %s",
@@ -230,7 +260,7 @@ def _stage(query: str, limit: int, mode: str) -> list[dict]:
     floor, so ``_usable`` drops it and it cannot ground an answer.
     """
     return _usable(_guard_chunks(
-        [_hydrate(h) for h in _search(query, limit, mode=mode)]))
+        [_hydrate(h, query) for h in _search(query, limit, mode=mode)]))
 
 
 def _usable(docs: list[dict]) -> list[dict]:

@@ -65,7 +65,7 @@ from core.ai import circuit_breaker
 from core.ai.ai_router import delegate, get_provider_dashboard, get_worker_details, AllProvidersFailed, NoCapableWorkerError, chat as ai_chat, remove_provider_from_roles, ROLE_PROVIDERS
 from core import provider_config_editor
 from core.kai.commands import dispatch as kai_dispatch
-from core.kai.planner import gather_signals, list_proposals
+from core.kai.planner import gather_signals, list_proposals, is_status_request
 import core.kai.identity as kai_identity
 import core.kai.mission as kai_mission
 import core.kai.goals as kai_goals
@@ -3666,7 +3666,13 @@ def handle_kai_chat(text: str, operator: str) -> dict:
             reply = {"matched": True, "description": "build request", "result": reply_text, "error": None}
         else:
             try:
-                signals = gather_signals()
+                # 2026-09-23 owner directive: a plain "hello" must not be
+                # answered with a system status report. Only gather the
+                # (expensive, status-heavy) signals when the operator
+                # explicitly asks about system status/health; otherwise send
+                # an empty signal set so the prompt builder omits the state
+                # block and the local LLM converses normally.
+                signals = gather_signals() if is_status_request(text) else {}
                 try:
                     from core.knowledge.store import KnowledgeStore
                     from core.knowledge.model import Principal
@@ -3973,7 +3979,7 @@ async def kai_chat_stream_endpoint(
             yield f"data: {{\"event\": \"processing\", \"message\": \"Generating response...\"}}\n\n"
             
             # Get the response from the AI (simplified for now)
-            signals = gather_signals()
+            signals = gather_signals() if is_status_request(text) else {}
             response_text = ai_chat(formatted_history, signals)
             
             # Send the response in chunks

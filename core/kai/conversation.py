@@ -519,8 +519,22 @@ def build_chat_prompt(messages, signals, directory=None):
             role = "Operator" if msg.get("role") == "user" else "Kai"
             parts.append(f"{role}: {msg.get('content', '')}")
 
-    # System state
+    # System state — only when the caller actually gathered status signals
+    # (i.e. the operator explicitly asked about system status/health). Plain
+    # conversation must NOT be answered with a system status dump, so an
+    # empty/status-less signals dict produces no state block at all.
     import json as _json
+    _status_keys = {
+        "roadmap_progress", "remaining_roadmap_work", "health_findings",
+        "recent_build_failures", "recent_ai_usage_failures", "provider_quota",
+        "application_builds",
+    }
+    state_block = ""
+    if isinstance(signals, dict) and (_status_keys & set(signals)):
+        state_block = (
+            f"Current system state:\n{_json.dumps(signals, indent=2, default=str)}\n\n"
+        )
+
     prompt = (
         "You are Kai, the operator's assistant. Answer questions truthfully "
         "using only the provided state below. Do not perform any actions, "
@@ -529,7 +543,7 @@ def build_chat_prompt(messages, signals, directory=None):
         "interface for a human operator — answer the question directly and "
         "concisely.\n\n"
         f"{chr(10).join(parts)}\n\n"
-        f"Current system state:\n{_json.dumps(signals, indent=2, default=str)}\n\n"
+        f"{state_block}"
         "Now respond to the operator's most recent message."
     )
 

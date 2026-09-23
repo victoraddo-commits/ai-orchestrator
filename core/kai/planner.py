@@ -101,6 +101,56 @@ def gather_signals():
     return _gather_signals()
 
 
+# Word-boundary status/health intent. Deliberately NOT a loose substring
+# match: a plain greeting or "write me a poem" must never pull the full
+# system-status block into a chat prompt (2026-09-23 owner directive -- the
+# bot answered "hello" with a system status dump). Only an explicit
+# status/system/health question qualifies.
+_STATUS_INTENT_RE = re.compile(
+    r"(?:"
+    r"\b(?:system|server|infra|infrastructure|service|fleet|node|nodes)\s+"
+    r"(?:status|health|state|healthcheck|diagnostics?|uptime|load|alerts?|down)\b"
+    r"|\b(?:status|health|healthcheck|diagnostics?|uptime|incidents?|"
+    r"outages?|degraded)\b"
+    r"|\bhow(?:'s| is| are)\s+(?:you|things|it|everything|the system|the fleet)\b"
+    r"|\bare you\s+(?:ok|okay|healthy|alright|down)\b"
+    r"|\beverything\s+(?:ok|okay|alright|fine|healthy|working)\b"
+    r"|\bwhat(?:'s| is)\s+(?:wrong|broken|down|the status|the problem)\b"
+    r"|\banything\s+(?:wrong|broken|down|failing)\b"
+    r"|\bany\s+(?:problems?|issues?|incidents?|alerts?)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def is_status_request(text):
+    """True only when the message explicitly asks about system status/health.
+
+    ``handle_kai_chat`` uses this to decide whether to inject the (expensive,
+    status-heavy) ``gather_signals()`` block into the chat prompt. Plain
+    conversation must go to the local LLM as normal conversation, not be
+    answered with a system status report.
+    """
+    if not text or not isinstance(text, str):
+        return False
+    return bool(_STATUS_INTENT_RE.search(text))
+
+
+# Keys ``gather_signals()`` produces that are actually system-status content
+# (as opposed to, e.g., ``knowledge_context`` added later by the RAG layer).
+STATUS_SIGNAL_KEYS = frozenset({
+    "roadmap_progress", "remaining_roadmap_work", "health_findings",
+    "recent_build_failures", "recent_ai_usage_failures", "provider_quota",
+    "application_builds",
+})
+
+
+def has_status_signals(signals) -> bool:
+    """True when ``signals`` carries real system-status content."""
+    return isinstance(signals, dict) and bool(STATUS_SIGNAL_KEYS & set(signals))
+
+
+
 def _gather_signals():
     remaining_work = [
         {"id": p["id"], "name": p.get("name", p["id"]), "status": p["status"]}

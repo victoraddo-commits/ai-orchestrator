@@ -1,4 +1,4 @@
-from core.juris_kai import grounding
+from core.juris_kai import grounding, legal_context
 
 
 def _fake_search(monkeypatch, results_by_mode):
@@ -26,6 +26,18 @@ def test_partial_when_only_or_hits(monkeypatch):
     assert r["verdict"] == "PARTIAL" and r["stage"] == 3
 
 
+def test_grounded_when_and_hits(monkeypatch):
+    _fake_search(monkeypatch, {"and": [{"title": "Some Act", "chunk_content": "y"*500}]})
+    r = grounding.retrieve("bail pending appeal")
+    assert r["verdict"] == "GROUNDED" and r["stage"] == 2
+
+
+def test_partial_when_only_like_hits(monkeypatch):
+    _fake_search(monkeypatch, {"like": [{"title": "Some Act", "chunk_content": "z"*500}]})
+    r = grounding.retrieve("zzx floop")
+    assert r["verdict"] == "PARTIAL" and r["stage"] == 4
+
+
 def test_empty_query_is_ungrounded_without_searching(monkeypatch):
     calls = []
     monkeypatch.setattr(grounding, "_search",
@@ -34,49 +46,86 @@ def test_empty_query_is_ungrounded_without_searching(monkeypatch):
     assert r["verdict"] == "UNGROUNDED" and r["stage"] == 0 and calls == []
 
 
-def test_search_populates_chunk_content_from_snippet(monkeypatch):
+def test_usable_boundary_399_falls_through_400_usable(monkeypatch):
+    _fake_search(monkeypatch, {"phrase": [{"title": "A", "chunk_content": "x"*399}]})
+    assert grounding.retrieve("x")["verdict"] == "UNGROUNDED"
+    _fake_search(monkeypatch, {"phrase": [{"title": "A", "chunk_content": "x"*400}]})
+    assert grounding.retrieve("x")["verdict"] == "GROUNDED"
+
+
+def test_retrieve_caps_content_at_max_chunk_length(monkeypatch):
+    _fake_search(monkeypatch, {"phrase": [
+        {"title": "T", "chunk_content": "z"*5000, "citation": "Act 1"}]})
+    r = grounding.retrieve("T")
+    assert r["verdict"] == "GROUNDED"
+    assert all(len(d["chunk_content"]) <= legal_context.MAX_CHUNK_LENGTH
+               for d in r["docs"])
+    assert len(r["docs"][0]["chunk_content"]) == legal_context.MAX_CHUNK_LENGTH
+
+
+def test_search_is_pure_transport(monkeypatch):
     import core.legal_brain_client as lb
-    monkeypatch.setattr(lb, "search", lambda q, limit=3, mode="or": [
-        {"id": 1, "title": "T", "snippet": "s" * 500}])
-    docs = grounding._search("T")
-    assert docs[0]["chunk_content"] == "s" * 500
+    calls = []
+
+    def fake_search(query, limit=3, mode="or"):
+        calls.append((query, limit, mode))
+        return [{"id": 1, "title": "T", "snippet": "s"*500}]
+
+    monkeypatch.setattr(lb, "search", fake_search)
+    monkeypatch.setattr(lb, "get_document",
+                        lambda i: (_ for _ in ()).throw(AssertionError("no hydration")))
+    docs = grounding._search("T", 2, mode="phrase")
+    assert calls == [("T", 2, "phrase")]
+    assert docs[0]["snippet"] == "s" * 500
+    assert "chunk_content" not in docs[0]
 
 
-def test_search_hydrates_short_snippet_from_full_document(monkeypatch):
-    import core.legal_brain_client as lb
-    monkeypatch.setattr(lb, "search", lambda q, limit=3, mode="or": [
-        {"id": 7, "title": "T", "snippet": "short"}])
-    monkeypatch.setattr(lb, "get_document", lambda doc_id: {"content": "c" * 900})
-    docs = grounding._search("T")
-    assert docs[0]["chunk_content"] == "c" * 900
+def test_hydrate_skips_search_only(monkeypatch):
+    calls = []
+    monkeypatch.setattr("core.legal_brain_client.get_document",
+                        lambda i: calls.append(i) or {"content": "c" * 900})
+    out = grounding._hydrate({"id": 1, "title": "T", "snippet": "short",
+                              "store_mode": "search_only"})
+    assert calls == []
+    assert out["chunk_content"] == "short"
 
 
-def test_search_keeps_short_snippet_when_document_not_fuller(monkeypatch):
-    import core.legal_brain_client as lb
-    monkeypatch.setattr(lb, "search", lambda q, limit=3, mode="or": [
-        {"id": 9, "title": "T", "snippet": "short"}])
-    monkeypatch.setattr(lb, "get_document", lambda doc_id: {"content": "tiny"})
-    docs = grounding._search("T")
-    assert docs[0]["chunk_content"] == "short"
+def test_hydrate_keeps_reference_snippet(monkeypatch):
+    calls = []
+    monkeypatch.setattr("core.legal_brain_client.get_document",
+                        lambda i: calls.append(i) or {"content": "HEAD" + "x" * 2000})
+    out = grounding._hydrate({"id": 2, "title": "T",
+                              "snippet": "relevance centered snippet",
+                              "store_mode": "reference"})
+    assert calls == []
+    assert out["chunk_content"] == "relevance centered snippet"
 
 
-def test_search_never_crashes_when_document_fetch_fails(monkeypatch):
-    import core.legal_brain_client as lb
-    monkeypatch.setattr(lb, "search", lambda q, limit=3, mode="or": [
-        {"id": 3, "title": "T", "snippet": "short"}])
+def test_hydrate_full_short_snippet_is_fetched_and_capped(monkeypatch):
+    calls = []
+    monkeypatch.setattr("core.legal_brain_client.get_document",
+                        lambda i: calls.append(i) or {"content": "c" * 5000})
+    out = grounding._hydrate({"id": 3, "title": "T", "snippet": "short",
+                              "store_mode": "full"})
+    assert calls == [3]
+    assert len(out["chunk_content"]) == legal_context.MAX_CHUNK_LENGTH
 
+
+def test_hydrate_full_long_snippet_is_not_refetched(monkeypatch):
+    calls = []
+    monkeypatch.setattr("core.legal_brain_client.get_document",
+                        lambda i: calls.append(i) or {"content": "x" * 5000})
+    out = grounding._hydrate({"id": 4, "title": "T", "snippet": "s" * 500,
+                              "store_mode": "full"})
+    assert calls == []
+    assert out["chunk_content"] == "s" * 500
+
+
+def test_hydrate_never_raises_on_fetch_failure(monkeypatch):
     def boom(doc_id):
         raise RuntimeError("service down")
 
-    monkeypatch.setattr(lb, "get_document", boom)
-    docs = grounding._search("T")
-    assert docs[0]["chunk_content"] == "short"
-
-
-def test_retrieve_grounded_when_full_document_hydrates_short_snippet(monkeypatch):
-    import core.legal_brain_client as lb
-    monkeypatch.setattr(lb, "search", lambda q, limit=3, mode="or": [
-        {"id": 7, "title": "Act", "snippet": "short"}])
-    monkeypatch.setattr(lb, "get_document", lambda doc_id: {"content": "c" * 900})
-    r = grounding.retrieve("Anything")
-    assert r["verdict"] == "GROUNDED" and r["stage"] == 1
+    monkeypatch.setattr("core.legal_brain_client.get_document", boom)
+    out = grounding._hydrate({"id": 5, "title": "T", "snippet": "short",
+                              "store_mode": "full"})
+    assert out["chunk_content"] == "short"

@@ -10,45 +10,54 @@ builds FTS operators itself.
 from __future__ import annotations
 import logging
 
+from core.juris_kai.legal_context import MAX_CHUNK_LENGTH
+
 logger = logging.getLogger("juris_kai.grounding")
 
 MIN_SOURCE_CHARS = 400
 
 
 def _search(query: str, limit: int = 3, mode: str = "or") -> list[dict]:
-    """Thin seam over the legal-brain client (monkeypatched in tests).
-
-    CT100's ``/search`` returns a bounded ``snippet`` (a few hundred chars),
-    not the full ``chunk_content`` downstream grounding needs. Each hit is
-    therefore normalized and, when its snippet is shorter than
-    ``MIN_SOURCE_CHARS``, hydrated from ``/document/{id}``: full-tier records
-    yield their full text, while rights-tier records only ever store a
-    bounded snippet, which is kept as-is.
-    """
+    """Pure transport seam over the legal-brain client (monkeypatched in tests)."""
     from core import legal_brain_client as lb
-    hits = lb.search(query, limit=limit, mode=mode) or []
-    return [_normalize(lb, h) for h in hits]
+    return lb.search(query, limit=limit, mode=mode) or []
 
 
-def _normalize(lb, hit: dict) -> dict:
+def _hydrate(hit: dict) -> dict:
+    """Return ``hit`` with a content-bearing ``chunk_content``, capped.
+
+    CT100's ``/search`` returns a relevance-centered bounded ``snippet``. That
+    snippet is the best available text for ``reference``/``search_only``
+    records — their stored ``content`` is an arbitrary head truncation (or
+    empty) and would be worse than the snippet — so only ``full``-tier records
+    are hydrated from ``/document/{id}``. Every result is capped at
+    ``legal_context.MAX_CHUNK_LENGTH`` so prompts stay bounded.
+    """
     content = (hit.get("chunk_content") or hit.get("snippet")
                or hit.get("content") or "")
-    if len(content.strip()) < MIN_SOURCE_CHARS and hit.get("id") is not None:
-        try:
-            doc = lb.get_document(hit["id"]) or {}
-            full = doc.get("content") or ""
-            if len(full.strip()) > len(content.strip()):
-                content = full
-        except Exception as exc:  # noqa: BLE001 - retrieval must never crash
-            logger.warning(
-                "grounding: full-document fetch failed for id=%s: %s",
-                hit.get("id"), exc)
-    return {**hit, "chunk_content": content}
+    if hit.get("store_mode") == "full" and len(content.strip()) < MIN_SOURCE_CHARS:
+        doc_id = hit.get("id")
+        if doc_id is not None:
+            try:
+                from core import legal_brain_client as lb
+                full = (lb.get_document(doc_id) or {}).get("content") or ""
+                if len(full.strip()) > len(content.strip()):
+                    content = full
+            except Exception as exc:  # noqa: BLE001 - retrieval must never crash
+                logger.warning(
+                    "grounding: full-document fetch failed for id=%s: %s",
+                    doc_id, exc)
+    return {**hit, "chunk_content": content[:MAX_CHUNK_LENGTH]}
+
+
+def _stage(query: str, limit: int, mode: str) -> list[dict]:
+    """Run one retrieval stage: transport, hydrate, then keep usable docs."""
+    return _usable([_hydrate(h) for h in _search(query, limit, mode=mode)])
 
 
 def _usable(docs: list[dict]) -> list[dict]:
     return [d for d in docs
-            if len((d.get("chunk_content") or d.get("content") or "").strip()) >= MIN_SOURCE_CHARS]
+            if len((d.get("chunk_content") or "").strip()) >= MIN_SOURCE_CHARS]
 
 
 def retrieve(query: str, limit: int = 3) -> dict:
@@ -58,22 +67,22 @@ def retrieve(query: str, limit: int = 3) -> dict:
         return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
 
     # Stage 1: exact phrase (server builds the FTS phrase query)
-    docs = _usable(_search(q, limit, mode="phrase"))
+    docs = _stage(q, limit, "phrase")
     if docs:
         return {"docs": docs, "verdict": "GROUNDED", "stage": 1}
 
     # Stage 2: AND of tokens
-    docs = _usable(_search(q, limit, mode="and"))
+    docs = _stage(q, limit, "and")
     if docs:
         return {"docs": docs, "verdict": "GROUNDED", "stage": 2}
 
     # Stage 3: OR of tokens
-    docs = _usable(_search(q, limit, mode="or"))
+    docs = _stage(q, limit, "or")
     if docs:
         return {"docs": docs, "verdict": "PARTIAL", "stage": 3}
 
     # Stage 4: raw keyword fallback (title/citation LIKE)
-    docs = _usable(_search(q, limit, mode="like"))
+    docs = _stage(q, limit, "like")
     if docs:
         return {"docs": docs, "verdict": "PARTIAL", "stage": 4}
 

@@ -15,6 +15,11 @@ from core.juris_kai.legal_context import MAX_CHUNK_LENGTH
 logger = logging.getLogger("juris_kai.grounding")
 
 MIN_SOURCE_CHARS = 400
+# Rights-limited tiers (reference/search_only) store only a relevance-centered
+# snippet, capped by the legal-brain's rights compliance. Requiring the full
+# MIN_SOURCE_CHARS there would make them ungroundable (e.g. the Constitution),
+# so they get a snippet floor that still rejects trivial stubs.
+MIN_SNIPPET_CHARS = 120
 
 
 def _search(query: str, limit: int = 3, mode: str = "or") -> list[dict]:
@@ -56,8 +61,25 @@ def _stage(query: str, limit: int, mode: str) -> list[dict]:
 
 
 def _usable(docs: list[dict]) -> list[dict]:
-    return [d for d in docs
-            if len((d.get("chunk_content") or "").strip()) >= MIN_SOURCE_CHARS]
+    """Keep docs whose text is substantial enough to ground an answer.
+
+    The floor is tier-aware: ``full`` docs must clear ``MIN_SOURCE_CHARS``,
+    while rights-limited ``reference``/``search_only`` docs — which by design
+    hold only a relevance-centered snippet — clear ``MIN_SNIPPET_CHARS``. An
+    unknown/blank tier is treated conservatively as needing ``MIN_SOURCE_CHARS``.
+    """
+    usable = []
+    for d in docs:
+        length = len((d.get("chunk_content") or "").strip())
+        if d.get("store_mode") == "full":
+            threshold = MIN_SOURCE_CHARS
+        elif d.get("store_mode") in ("reference", "search_only"):
+            threshold = MIN_SNIPPET_CHARS
+        else:
+            threshold = MIN_SOURCE_CHARS
+        if length >= threshold:
+            usable.append(d)
+    return usable
 
 
 def retrieve(query: str, limit: int = 3) -> dict:

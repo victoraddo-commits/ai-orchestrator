@@ -129,3 +129,36 @@ def test_hydrate_never_raises_on_fetch_failure(monkeypatch):
     out = grounding._hydrate({"id": 5, "title": "T", "snippet": "short",
                               "store_mode": "full"})
     assert out["chunk_content"] == "short"
+
+
+def test_reference_tier_snippet_still_grounds(monkeypatch):
+    _fake_search(monkeypatch, {"phrase": [
+        {"title": "Constitution of Ghana", "store_mode": "reference",
+         "chunk_content": "c" * 240, "citation": "1992"}]})
+    r = grounding.retrieve("constitution of ghana")
+    assert r["verdict"] == "GROUNDED" and r["stage"] == 1 and r["docs"]
+
+
+def test_reference_tier_stub_is_rejected(monkeypatch):
+    _fake_search(monkeypatch, {"phrase": [
+        {"title": "Constitution of Ghana", "store_mode": "reference",
+         "chunk_content": "c" * 50}]})
+    r = grounding.retrieve("constitution of ghana")
+    assert r["verdict"] == "UNGROUNDED" and r["docs"] == []
+
+
+def test_search_only_tier_stub_is_rejected(monkeypatch):
+    _fake_search(monkeypatch, {"phrase": [
+        {"title": "Some Index Entry", "store_mode": "search_only",
+         "chunk_content": "c" * 50}]})
+    r = grounding.retrieve("some index entry")
+    assert r["verdict"] == "UNGROUNDED" and r["docs"] == []
+
+
+def test_full_tier_boundary_399_vs_400(monkeypatch):
+    _fake_search(monkeypatch, {"phrase": [
+        {"title": "A", "store_mode": "full", "chunk_content": "x" * 399}]})
+    assert grounding.retrieve("x")["verdict"] == "UNGROUNDED"
+    _fake_search(monkeypatch, {"phrase": [
+        {"title": "A", "store_mode": "full", "chunk_content": "x" * 400}]})
+    assert grounding.retrieve("x")["verdict"] == "GROUNDED"

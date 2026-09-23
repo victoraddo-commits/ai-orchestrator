@@ -125,5 +125,54 @@ def build_prompt(task_type: str, content: str, context: str = "") -> str:
             "cases, and the 1992 Constitution. Keep under 500 words."
         )
 
+def build_grounded_prompt(task_type: str, content: str, verdict: str,
+                          docs: list[dict]) -> str:
+    """Prompt that enforces the grounding tier.
+
+    GROUNDED/PARTIAL: the model may cite ONLY the provided sources and must
+    quote them briefly. PARTIAL additionally requires any point the sources do
+    not directly support to be marked general/unverified. UNGROUNDED: the bot
+    does not answer legal substance at all (the caller returns a refusal
+    without calling the model); this string is a guard if it is ever called.
+    """
+    if verdict == "UNGROUNDED":
+        return (
+            "Do NOT answer this legal question. No authoritative Ghana legal "
+            "source was retrieved from the database. Reply only that you could "
+            "not find it and suggest rephrasing or a covered topic."
+        )
+
+    from core.juris_kai.legal_context import MAX_CHUNK_LENGTH
+
+    src_lines = []
+    for i, d in enumerate(docs, 1):
+        src_lines.append(
+            f'SOURCE {i}: {d.get("title", "")} ({d.get("citation", "")})\n'
+            f'"""{(d.get("chunk_content") or "")[:MAX_CHUNK_LENGTH]}"""'
+        )
+    sources = "\n\n".join(src_lines)
+
+    if verdict == "PARTIAL":
+        strict = (
+            "Cite ONLY the sources below. Do not mention any statute, case, or "
+            "article that is not in them. The sources only partially cover this "
+            "question: mark any point that the sources do not directly support "
+            "as general or unverified, and say so plainly if they do not answer "
+            "it. Quote the source text briefly to support each point."
+        )
+    else:
+        strict = (
+            "Cite ONLY the sources below. Do not mention any statute, case, or "
+            "article that is not in them. If the sources do not answer the "
+            "question, say so plainly. Quote the source text briefly to support "
+            "each point."
+        )
+
+    return (
+        f"{_JURISDICTION_GATE}\n\n{sources}\n\n"
+        f"TASK: Answer this Ghana law question using ONLY the sources above: "
+        f"'{content}'.\n{strict}"
+    )
+
 # Same security pattern as law_tutor - no imports of operational modules
 # Only pure text processing and prompt construction

@@ -203,3 +203,34 @@ def test_footer_numbers_and_preserves_order():
         "\n\n📚 *Sources*\n"
         "1. First Act — Act 1 — _full_\n"
         "2. Second Act — Act 2 — _reference_")
+
+
+def test_grounded_prompt_forbids_outside_citations():
+    from core.juris_kai.prompt import build_grounded_prompt
+    p = build_grounded_prompt(
+        "legal_research", "theft penalty", verdict="GROUNDED",
+        docs=[{"title": "Act 29", "chunk_content": "Stealing..."}])
+    assert "only" in p.lower() and "Act 29" in p
+
+
+def test_ungrounded_prompt_says_do_not_answer():
+    from core.juris_kai.prompt import build_grounded_prompt
+    p = build_grounded_prompt("legal_research", "x", verdict="UNGROUNDED", docs=[])
+    assert "do not" in p.lower()
+
+
+def test_partial_prompt_marks_unverified_points():
+    from core.juris_kai.prompt import build_grounded_prompt
+    p = build_grounded_prompt(
+        "legal_research", "bail", verdict="PARTIAL",
+        docs=[{"title": "Act 1", "chunk_content": "Bail is..."}])
+    assert "unverified" in p.lower() and "Act 1" in p
+
+
+def test_grounded_prompt_caps_each_source_quote():
+    from core.juris_kai.prompt import build_grounded_prompt
+    p = build_grounded_prompt(
+        "legal_research", "x", verdict="GROUNDED",
+        docs=[{"title": "T", "chunk_content": "z" * 5000}])
+    assert "z" * legal_context.MAX_CHUNK_LENGTH in p
+    assert "z" * (legal_context.MAX_CHUNK_LENGTH + 1) not in p

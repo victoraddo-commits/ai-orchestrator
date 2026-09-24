@@ -132,5 +132,21 @@ class RunTest(unittest.TestCase):
             self.assertEqual(sent, [])
 
 
+class ChangeAlertRelayTest(unittest.TestCase):
+    """Phase 6 T1: the brain's LEGAL CHANGE ALERT is relayed via Telegram."""
+
+    def test_alert_appended_to_summary(self):
+        report = _report(legal_changes={
+            "alert": "⚖️ *LEGAL CHANGE ALERT*\n1. *LAW:* Foo Bill 2024\n"
+                     "   *STATUS:* PROPOSED — NOT YET LAW"})
+        text = job.format_summary(report)
+        self.assertIn("LEGAL CHANGE ALERT", text)
+        self.assertIn("NOT YET LAW", text)
+
+    def test_no_alert_when_absent(self):
+        text = job.format_summary(_report())
+        self.assertNotIn("LEGAL CHANGE ALERT", text)
+
+
 if __name__ == "__main__":
     unittest.main()

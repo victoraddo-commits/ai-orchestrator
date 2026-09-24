@@ -107,9 +107,51 @@ def _juris_protected_fragments() -> list:
         return []
 
 
+_legal_guard_singleton = None
+
+
+def _legal_guard():
+    """AgentGuard legal boundary (Phase 6 T2), or None when unavailable.
+
+    The outbound injection guard and the citation firewall are enforced as
+    AgentGuard legal policies; if the boundary cannot be imported the bot
+    degrades to the exact pre-existing behaviour (never worse).
+    """
+    global _legal_guard_singleton
+    if _legal_guard_singleton is None:
+        try:
+            from core.agentguard.legal_policy import get_legal_guard
+            _legal_guard_singleton = get_legal_guard()
+        except Exception as exc:  # noqa: BLE001 - boundary is optional
+            logger.warning("AgentGuard legal boundary unavailable: %s", exc)
+            return None
+    return _legal_guard_singleton
+
+
 def _guard_outbound_text(text: str, source: str = "juris_kai") -> str:
-    """Redact leaked secrets/system-prompt text; safe fallback if tripped."""
-    if _guard_output is None or not text:
+    """Redact leaked secrets/system-prompt text; safe fallback if tripped.
+
+    Enforced through the AgentGuard legal boundary (injection policy); the
+    firewall is applied separately by the answer transform, so it is not run
+    twice here.
+    """
+    if not text:
+        return text
+    guard = _legal_guard()
+    if guard is not None:
+        try:
+            out = guard.guard_output(
+                text, source=source,
+                protected=_juris_protected_fragments(), apply_firewall=False)
+            injection = out.get("injection") or {}
+            if injection.get("tripped"):
+                logger.warning(
+                    "outbound leak blocked (AgentGuard legal) source=%s "
+                    "markers=%s", source, injection.get("markers"))
+            return out.get("text", text)
+        except Exception as exc:  # noqa: BLE001 - never break a legal reply
+            logger.warning("AgentGuard legal outbound guard failed: %s", exc)
+    if _guard_output is None:
         return text
     try:
         verdict = _guard_output(
@@ -595,6 +637,14 @@ def _citation_firewall_transform():
     except Exception as exc:  # noqa: BLE001
         logger.warning("citation firewall unavailable: %s", exc)
         return None
+
+    guard = _legal_guard()
+    if guard is not None:
+        def _apply_guarded(answer: str) -> str:
+            return guard.guard_output(
+                answer, source="juris_kai", apply_injection=False,
+                apply_firewall=True)["text"]
+        return _apply_guarded
 
     def _apply(answer: str) -> str:
         return citation_firewall.apply_citation_firewall(answer)["text"]

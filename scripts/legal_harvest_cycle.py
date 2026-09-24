@@ -99,6 +99,13 @@ def format_summary(report: dict) -> str:
     paths = report.get("report_paths") or []
     if paths:
         lines.append(f"Report: `{os.path.basename(paths[0])}`")
+    # Legal change watcher (Phase 6 T1): the brain embeds the bounded
+    # LEGAL CHANGE ALERT in its run report; relay it through the same Telegram
+    # notify path. A Bill is always labelled PROPOSED — never law.
+    legal = report.get("legal_changes")
+    if isinstance(legal, dict) and legal.get("alert"):
+        lines.append("")
+        lines.append(legal["alert"])
     return "\n".join(lines)
 
 

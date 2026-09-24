@@ -41,58 +41,83 @@ def _build_sites(ts_data: dict, px_data: dict) -> dict:
     """Build site hierarchy: Proxmox node → LAN → gateway → containers → services."""
     sites = {}
 
-    # Known site definitions
+    # Known site definitions (verified 2026-09-24 against the live estate).
     SITE_DEFS = {
         "SITE-A": {
             "lan_subnet": "192.168.99.0/24",
             "gateway": "192.168.99.254",
             "proxmox_name": "pve",
             "tailscale_ip": "100.83.4.27",
+            "hostname": "pve",
         },
         "SITE-B": {
             "lan_subnet": "192.168.1.0/24",
             "gateway": "192.168.1.1",
             "proxmox_name": "pve-b",
-            "tailscale_ip": "100.89.97.76",
+            "tailscale_ip": "100.122.38.118",
+            "hostname": "pve",
+            "node_host": "192.168.1.110",
         },
     }
 
+    # Flatten peers across every discovered node: only the reachable node may
+    # see the full tailnet (e.g. Proxmox A is SSH-unreachable but visible as a
+    # peer from Proxmox B).
+    all_peers: dict = {}
+    for node in (ts_data or {}).values():
+        all_peers.update(node.get("peers") or {})
+
     for site_key, defs in SITE_DEFS.items():
         px_name = defs["proxmox_name"]
+        net_info = px_data.get(px_name, {})
+        peer_info = _find_peer(all_peers, defs["tailscale_ip"], defs.get("hostname"))
+
+        # Online when SSH reachable OR the tailnet says the peer is up.
+        online = bool(net_info.get("reachable")) or bool(peer_info.get("online"))
+
         site = {
             "name": site_key,
             "lan_subnet": defs["lan_subnet"],
             "gateway": defs["gateway"],
             "proxmox": {
                 "name": px_name,
-                "proxmox_ip": px_data.get(px_name, {}).get("lan_ip", ""),
+                "proxmox_ip": net_info.get("lan_ip", ""),
                 "tailscale_ip": defs["tailscale_ip"],
-                "online": px_data.get(px_name, {}).get("reachable", False),
+                "online": online,
+                "ssh_reachable": bool(net_info.get("reachable")),
             },
             "lxcs": [],
             "vms": [],
             "services": [],
         }
 
-        # Enrich with networking
-        net_info = px_data.get(px_name, {})
+        # Enrich with networking (interfaces + rich NIC inventory)
         site["proxmox"]["lan_ip"] = net_info.get("lan_ip", "")
-        site["proxmox"]["gateway"] = net_info.get("gateway", "")
+        site["proxmox"]["gateway"] = net_info.get("gateway", "") or defs["gateway"]
         site["proxmox"]["routing_table"] = net_info.get("routing_table", [])
         site["proxmox"]["interfaces"] = net_info.get("interfaces", [])
+        site["proxmox"]["nics"] = net_info.get("nics", [])
+        site["proxmox"]["bridges"] = net_info.get("bridges", [])
+        site["proxmox"]["vlans"] = net_info.get("vlans", [])
+        site["proxmox"]["available_wan"] = net_info.get("available_wan", [])
 
-        # Tailscale peer info
-        ts_node = ts_data.get(px_name, {})
-        peer_info = {}
-        for pname, pinfo in (ts_node.get("peers") or {}).items():
-            if pinfo.get("tailscale_ip") == defs["tailscale_ip"]:
-                peer_info = pinfo
-                break
         site["tailscale_peer"] = peer_info
 
         sites[site_key] = site
 
     return sites
+
+
+def _find_peer(peers: dict, tailscale_ip: str, hostname: str | None = None) -> dict:
+    """Locate a peer by tailnet IP (preferred) or hostname."""
+    for pinfo in (peers or {}).values():
+        if pinfo.get("tailscale_ip") == tailscale_ip:
+            return pinfo
+    if hostname:
+        for pkey, pinfo in (peers or {}).items():
+            if pkey == hostname or pinfo.get("hostname") == hostname:
+                return pinfo
+    return {}
 
 
 def _build_peer_map(ts_data: dict) -> dict:

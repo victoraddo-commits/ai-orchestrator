@@ -88,6 +88,47 @@ def network_overview():
     }
 
 
+@cc_extra_router.get("/api/network/nics")
+def network_nics(refresh: bool = False, _: None = Depends(_req_op)):
+    """Per-host NIC inventory (link state, speed, MAC, RX/TX, errors) + bridges,
+    VLANs and the physical NICs available for WAN. ``refresh=1`` runs a full
+    discovery cycle and persists it first (operator-gated)."""
+    from core.network_inventory import collect_nic_inventory
+    try:
+        return JSONResponse(content=collect_nic_inventory(refresh=refresh),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"hosts": [], "error": f"{type(e).__name__}: {e}"},
+                            status_code=502)
+
+
+@cc_extra_router.get("/api/network/app-access")
+def network_app_access(_: None = Depends(_req_op)):
+    """Read-only service→network exposure view (multi-WAN policy foundation)."""
+    from core.network_inventory import app_access
+    return JSONResponse(content=app_access(), headers={"Cache-Control": "no-store"})
+
+
+@cc_extra_router.get("/api/infra/usage/history")
+def infra_usage_history(range: str = "1h", _: None = Depends(_req_op)):
+    """Bucketed data-usage time series (``1h`` | ``24h`` | ``7d``).
+
+    Samples the live snapshot on-read (min-interval throttled) then returns
+    per-interface bandwidth + disk series and totals for the CC graphs."""
+    from core import infra_usage_history as hist
+    try:
+        hist.ensure_sampled()
+        data = hist.query_history(range)
+        return JSONResponse(content={"ok": True, **data, "store": hist.stats()},
+                            headers={"Cache-Control": "no-store"})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"{type(e).__name__}: {e}",
+                             "points": [], "interfaces": {}, "disks": {}},
+                            status_code=502)
+
+
 @cc_extra_router.get("/api/infra/usage")
 def infra_usage(refresh: bool = False):
     """Per-host/CT/VM data usage: disk used/total/% and network rx/tx + rates."""

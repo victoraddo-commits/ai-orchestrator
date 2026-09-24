@@ -41,6 +41,46 @@ def test_build_graph_populates_sites():
     assert "SITE-B" in graph["sites"]
 
 
+def test_site_b_tailnet_ip_reconciled():
+    from core.topology_engine import build_graph
+    graph = build_graph({}, {})
+    assert graph["sites"]["SITE-B"]["proxmox"]["tailscale_ip"] == "100.122.38.118"
+
+
+def test_site_online_from_tailnet_peer_only():
+    """A site whose node is SSH-unreachable is still online if its peer is up.
+
+    Peers are flattened across all discovered nodes because only the reachable
+    node (Proxmox B) sees the whole tailnet.
+    """
+    from core.topology_engine import build_graph
+    ts_data = {"pve-b": {"reachable": True, "peers": {
+        "pve": {"hostname": "pve", "tailscale_ip": "100.122.38.118",
+                "online": True, "role": "SUBNET_ROUTER"},
+        "pve [100.83.4.27]": {"hostname": "pve", "tailscale_ip": "100.83.4.27",
+                              "online": True, "role": "SUBNET_ROUTER"},
+    }}}
+    graph = build_graph(ts_data, {})
+    assert graph["sites"]["SITE-B"]["proxmox"]["online"] is True
+    assert graph["sites"]["SITE-A"]["proxmox"]["online"] is True
+    assert graph["sites"]["SITE-A"]["tailscale_peer"]["tailscale_ip"] == "100.83.4.27"
+
+
+def test_build_sites_carries_nic_inventory():
+    from core.topology_engine import build_graph
+    px_data = {"pve-b": {
+        "reachable": True, "lan_ip": "192.168.1.110", "gateway": "192.168.1.1",
+        "nics": [{"name": "nic0", "kind": "physical", "up": True}],
+        "bridges": ["vmbr0"], "vlans": [], "available_wan": ["nic1"],
+    }}
+    graph = build_graph({}, px_data)
+    px = graph["sites"]["SITE-B"]["proxmox"]
+    assert px["lan_ip"] == "192.168.1.110"
+    assert px["nics"][0]["name"] == "nic0"
+    assert px["bridges"] == ["vmbr0"]
+    assert px["available_wan"] == ["nic1"]
+
+
 def test_save_only_stamps_when_changes():
     from unittest.mock import patch
     from core.network_knowledge import _empty_graph

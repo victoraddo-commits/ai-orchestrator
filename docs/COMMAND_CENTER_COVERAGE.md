@@ -447,3 +447,57 @@ config/QR. Peer list responses never include private keys.
 `tests/test_cc_wg_routes.py` (14): IP allocation, keygen/rollback, pause/resume/
 delete, all three export formats, no-key-leak in list, auth gates (401), error
 mapping (400/502), URL-safe pubkey routing, backup-on-write.
+
+## Network & Data dashboard (2026-09-24)
+
+The `network` panel (`loadNetwork`) is now a rich, sub-tabbed "Network & Data"
+experience. Sub-tabs are internal (`nwTab`), rendered as `.module-tab-btn`s:
+
+| Sub-tab | Content | Backend |
+|---|---|---|
+| **NICs** | Per-host NIC cards: link colour+label, speed, MAC, IP, RX/TX bytes, errors; bridges/VLANs; unused physical NICs flagged **AVAILABLE FOR WAN** | `GET /api/network/nics[?refresh=1]` (+ `/network/topology`) |
+| **WANs / Interfaces** | WAN candidates, bridge→member map, VLANs, per-site routing tables | `GET /api/network/nics`, `GET /api/network/app-access`, `/network/topology` |
+| **Devices (IP/MAC)** | IP↔MAC map from the topology graph (NICs, interfaces, tailnet peers) | `/network/topology`, `/network/topology/peers` |
+| **Data Usage** | Bandwidth RX/TX line+area charts, per-interface charts, disk-usage % charts, KPI cards (current throughput, totals, disk %) | `GET /api/infra/usage/history?range=1h\|24h\|7d` (+ `/api/infra/usage`) |
+| **Topology** | Sites (real online state), tunnel, peers, routes, changes, VPN/failover + discovery actions | `/network/*`, `/api/vpn/status` |
+| **App Access** | Declared service→network exposures + WAN candidates — foundation for the multi-WAN policy engine, **not enforced**; OPNsense **not configured** | `GET /api/network/app-access` |
+
+### Backend
+
+- `core/proxmox_discovery.py` — `parse_nic_inventory()` / `collect_nic_inventory()`
+  capture per-NIC name, link state, speed, MAC, MTU, bridge master, RX/TX bytes,
+  RX/TX errors from `ip -j` + `/sys/class/net/*` (read-only; no link changes).
+  Discovery defaults now target the verified live node (`192.168.1.110`) with
+  the runner's `kai_pve_usage` SSH key.
+- `core/tailscale_discovery.py` — reads `TailscaleIPs` (falls back to legacy
+  `TailnetIPs`), routes from `AdvertiseRoutes`/`PrimaryRoutes`, and de-duplicates
+  colliding hostnames by tailnet IP.
+- `core/topology_engine.py` — SITE-B tailnet IP reconciled to **100.122.38.118**
+  (was stale `100.89.97.76`); sites carry `nics`/`bridges`/`vlans`/
+  `available_wan`; site online = SSH reachable **or** tailnet peer online.
+- `core/network_discovery_cycle.py` — tunnel status derived from the real
+  tailnet peer mesh (both site peers online) rather than blind ICMP.
+- `core/infra_usage_history.py` — SQLite trend store at
+  `memory/infra_usage_history.db`; samples on read with a min interval (30s
+  default) and serves bucketed series (1h raw / 24h 5-min / 7d 1-hour). Byte/s
+  rates are derived from consecutive counter samples; 30-day retention.
+- `core/network_inventory.py` — reshapes the persisted graph for the CC and
+  builds the app-access map.
+
+### CC routes (`core/cc_extra_routes.py`, operator-gated via `_req_op`)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/network/nics` | `?refresh=1` runs a full discovery cycle (POST-like, operator) |
+| GET | `/api/network/app-access` | read-only design stub for the multi-WAN policy engine |
+| GET | `/api/infra/usage/history?range=1h\|24h\|7d` | on-read sampling + bucketed series; 400 on bad range |
+
+All three return 401 without credentials and 403 for a valid non-operator
+session. OPNsense remains an honest **"not configured"** state (no invented
+policies); the 3 unused Proxmox B NICs are surfaced as WAN *candidates* only —
+bringing them up is out of scope (firewall change).
+
+### Tests
+
+`tests/test_proxmox_nic_inventory.py`, `tests/test_infra_usage_history.py`,
+`tests/test_network_inventory.py`.

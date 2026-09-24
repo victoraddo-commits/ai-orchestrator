@@ -975,6 +975,22 @@ html, body { max-width: 100%; overflow-x: hidden; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ── Network & Data (NICs / WANs / devices / usage graphs / topology) ── */
+.nw-subtabs { margin-bottom: 12px; }
+.nw-tnum { font-variant-numeric: tabular-nums; }
+.nw-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:10px; }
+.nw-chart { border:1px solid var(--border); border-radius:8px; background:var(--bg-deep); padding:10px; margin-bottom:10px; }
+.nw-chart-h { display:flex; justify-content:space-between; align-items:baseline; font-family:var(--font-mono); font-size:0.68rem; color:var(--fg-secondary); margin-bottom:6px; gap:8px; }
+.nw-chart-x { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.58rem; color:var(--fg-muted); margin-top:2px; }
+.nw-svg { width:100%; height:120px; display:block; }
+.nw-svg.sm { height:44px; }
+.nw-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:14px; }
+.nw-nic-card { border:1px solid var(--border); border-radius:8px; background:var(--bg-deep); padding:10px; margin-bottom:8px; font-family:var(--font-mono); }
+.nw-nic-name { font-weight:600; font-size:0.75rem; }
+.nw-linkdot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+.nw-rangebtn { font-size:0.62rem; }
+@media (max-width:640px){ .nw-svg{height:96px;} }
 </style>
 </head>
 <body>
@@ -5176,31 +5192,310 @@ registerSW();
 // ── Ecosystem tabs ────────────────────────────────────────────────
 // (The generic loadJsonTab raw-dump renderer was removed: every panel now has
 // a purpose-built table/card UI so no tab can accidentally render raw JSON.)
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: NETWORK & DATA (sub-tabs: NICs | WANs | Devices | Usage | Topology | Access)
+// ═══════════════════════════════════════════════════════════════════
+const NW_TABS=[
+  {id:'nics',label:'NICs'},
+  {id:'wan',label:'WANs / Interfaces'},
+  {id:'devices',label:'Devices (IP/MAC)'},
+  {id:'usage',label:'Data Usage'},
+  {id:'topology',label:'Topology'},
+  {id:'access',label:'App Access'}
+];
+let _nwState={tab:'nics',range:'1h'};
+let _nw={};
+function nwTime(ts){const n=Number(ts);return isFinite(n)&&n>0?new Date(n*1000).toLocaleString():'—';}
+function nwTabBar(){
+  return '<div class="module-tabs nw-subtabs">'+NW_TABS.map(function(t){
+    return '<button class="module-tab-btn'+(_nwState.tab===t.id?' active':'')+'" onclick="nwTab(\''+t.id+'\')">'+esc(t.label)+'</button>';
+  }).join('')+'</div>';
+}
+function nwTab(id){_nwState.tab=id;nwRender();}
 async function loadNetwork(){
   const el=$('network-content'); if(!el) return;
-  el.innerHTML='<span class="loading">loading…</span>';
+  el.innerHTML='<span class="loading">loading network &amp; data…</span>';
   const g=async(p)=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  const r=await Promise.all([
+    g('/network/topology'),g('/network/connectivity'),g('/network/topology/peers'),
+    g('/network/topology/routes'),g('/network/changes'),g('/api/vpn/status'),
+    g('/api/network/nics'),g('/api/network/app-access')]);
+  _nw={topo:r[0],conn:r[1],peers:r[2],routes:r[3],changes:r[4],vpn:r[5],nics:r[6],access:r[7]};
+  nwRender();
+}
+function nwRender(){
+  const el=$('network-content'); if(!el) return;
+  let body='';
   try{
-    const [topo,conn,peers,routes,changes,vpn]=await Promise.all([
-      g('/network/topology'),g('/network/connectivity'),g('/network/topology/peers'),
-      g('/network/topology/routes'),g('/network/changes'),g('/api/vpn/status')]);
-    const sites=Object.values((topo&&topo.sites)||{});
-    const healthy=sites.length>0 && sites.every(s=>s.proxmox&&s.proxmox.online);
-    let html='<div class="card"><h3>Network Dashboard &middot; KAI-NET <span class="badge '+(healthy?'ok':'warn')+'">'+(sites.length?(healthy?'HEALTHY':'DEGRADED'):'UNKNOWN')+'</span></h3>';
-    html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="nwAction(\'/network/discover\')">Run Discovery</button><button class="btn btn-xs" onclick="nwAction(\'/network/connectivity/test\')">Test Connectivity</button></div><div id="nw-action-result" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px"></div>';
-    html+='<h4 style="font-size:0.7rem">Sites</h4>';
-    if(!sites.length){html+='<p class="empty">no sites discovered</p>';}
-    for(const s of sites){const px=s.proxmox||{};const lx=s.lxcs||[];
-      html+=`<div style="padding:6px 8px;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.65rem;margin-bottom:3px"><b>${esc(s.name||'?')}</b> <span class="badge ${px.online?'ok':'bad'}">${px.online?'ONLINE':'OFFLINE'}</span> &middot; LAN ${esc(s.lan_subnet||'-')} &middot; GW ${esc(s.gateway||'-')} &middot; Tailscale ${esc(px.tailscale_ip||'-')} &middot; LXCs ${lx.filter(l=>l.status==='running').length}/${lx.length}</div>`;}
-    const sec=(t,d)=>`<h4 style="font-size:0.7rem;margin-top:10px">${t}</h4>${_autoTable(d)}`;
-    html+=sec('Connectivity & Tunnel',conn)+sec('Peers',peers)+sec('Routes',routes)+sec('Recent Changes',changes)+sec('VPN / Failover',vpn);
-    html+='</div>'; el.innerHTML=html;
-  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+    if(_nwState.tab==='nics') body=nwNics();
+    else if(_nwState.tab==='wan') body=nwWan();
+    else if(_nwState.tab==='devices') body=nwDevices();
+    else if(_nwState.tab==='usage') body=nwUsageShell();
+    else if(_nwState.tab==='topology') body=nwTopology();
+    else body=nwAccess();
+  }catch(e){body='<span class="error-text">'+esc(e.message)+'</span>';}
+  el.innerHTML=nwTabBar()+body;
+  if(_nwState.tab==='usage') nwLoadUsage();
+}
+function nwErr(d){return d&&d.error?('<span class="error-text">'+esc(d.error)+'</span>'):'';}
+function nwLinkLabel(state){
+  state=String(state||'unknown').toLowerCase();
+  const up=state==='up';
+  const col=up?'var(--accent)':(state==='down'?'var(--destructive)':'var(--fg-muted)');
+  return '<span class="nw-linkdot" style="background:'+col+'"></span><span style="color:'+col+'">'+esc(up?'UP':state.toUpperCase())+'</span>';
+}
+
+// ── Tab: NICs ──────────────────────────────────────────────────────
+function nwNicRow(n,wanSet){
+  const wan=wanSet[n.name];
+  const errs=Number(n.rx_errors||0)+Number(n.tx_errors||0);
+  const speed=n.speed_mbps?n.speed_mbps+' Mb/s':(n.kind==='physical'?'—':'—');
+  return '<tr><td><b>'+esc(n.name)+'</b>'+(n.master?' <span style="color:var(--fg-muted)">→ '+esc(n.master)+'</span>':'')+'</td>'
+    +'<td>'+nwLinkLabel(n.operstate)+'</td>'
+    +'<td class="nw-tnum">'+esc(speed)+'</td>'
+    +'<td>'+esc(n.kind)+'</td>'
+    +'<td class="nw-tnum" style="font-size:0.6rem">'+esc(n.mac||'—')+'</td>'
+    +'<td class="nw-tnum">'+esc(n.ip||'—')+'</td>'
+    +'<td class="nw-tnum">'+esc(fmtBytes(n.rx_bytes))+' / '+esc(fmtBytes(n.tx_bytes))+'</td>'
+    +'<td class="nw-tnum">'+errs+'</td>'
+    +'<td>'+(wan?'<span class="badge warn">AVAILABLE FOR WAN</span>':(n.kind==='physical'&&n.up?'<span class="badge ok">IN USE</span>':''))+'</td></tr>';
+}
+function nwNics(){
+  const d=_nw.nics||{};
+  const hosts=d.hosts||[];
+  let html='<div class="card"><div class="spread" style="margin-bottom:8px"><h3 style="margin:0">NIC Inventory <span class="badge info">Proxmox read-only</span></h3>'
+    +'<span><button class="btn btn-xs btn-accent" onclick="nwRefreshNics()">Run discovery</button>'
+    +' <button class="btn btn-xs" onclick="loadNetwork()">Refresh</button></span></div>'
+    +'<div id="nw-action-result" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:8px">'
+    +(d.generated_at?('graph '+esc(String(d.generated_at).replace('T',' ').replace('Z',''))+(d.note?' · '+esc(d.note):'')):'')+'</div>';
+  if(!hosts.length){html+='<p class="empty">No NIC inventory yet. Click “Run discovery”.</p></div>';return html;}
+  for(const h of hosts){
+    const wanSet={};(h.available_wan||[]).forEach(n=>wanSet[n]=true);
+    const phys=(h.nics||[]).filter(n=>n.kind==='physical');
+    const unused=(h.available_wan||[]).length;
+    html+='<div class="nw-nic-card">'
+      +'<div class="spread"><span class="nw-nic-name">'+esc(h.site)+' · '+esc(h.node||'?')+' <span style="color:var(--fg-muted)">'+esc(h.host||'')+'</span></span>'
+      +'<span><span class="badge '+(h.online?'ok':'bad')+'">'+(h.online?'ONLINE':'OFFLINE')+'</span> '
+      +(h.ssh_reachable?'<span class="badge info">SSH ok</span>':'<span class="badge warn">no SSH</span>')+'</span></div>';
+    if(!(h.nics||[]).length){html+='<p class="empty">no NIC data persisted for this host</p></div>';continue;}
+    html+='<div style="color:var(--fg-muted);font-size:0.6rem;margin:4px 0">'+phys.length+' physical NIC(s) · '+(unused?('<b style="color:var(--warn)">'+unused+' unused → available for WAN</b>'):'all physical NICs in use')
+      +' · bridges: '+((h.bridges||[]).map(esc).join(', ')||'—')+' · VLANs: '+((h.vlans||[]).map(esc).join(', ')||'—')+'</div>';
+    html+='<div class="table-wrap"><table><thead><tr><th>NIC</th><th>Link</th><th>Speed</th><th>Kind</th><th>MAC</th><th>IP</th><th>RX / TX</th><th>Errs</th><th>WAN</th></tr></thead><tbody>';
+    for(const n of h.nics) html+=nwNicRow(n,wanSet);
+    html+='</tbody></table></div></div>';
+  }
+  html+='</div>';return html;
+}
+async function nwRefreshNics(){
+  const el=$('nw-action-result'); if(el) el.textContent='running discovery (tailscale + proxmox + connectivity)…';
+  try{const d=await apiT('/api/network/nics?refresh=1',60000); _nw.nics=d; nwRender(); toast('network discovery complete');}
+  catch(e){ if(el) el.textContent='discovery failed: '+e.message; }
+}
+
+// ── Tab: WANs / Interfaces ─────────────────────────────────────────
+function nwWan(){
+  const d=_nw.nics||{};const hosts=d.hosts||[];
+  const wanc=((_nw.access||{}).policy||{}).wan_candidates||[];
+  let html='<div class="card"><h3>WANs &amp; Interfaces</h3>';
+  html+='<p style="font-size:0.66rem;color:var(--fg-muted)">Physical NICs that are down and unassigned are candidate WAN uplinks. Bringing a link up requires a firewall / OPNsense change and is <b>not</b> performed here.</p>';
+  html+='<div class="nw-kpi">'
+    +'<div class="metric"><span class="val">'+wanc.length+'</span><span class="lbl">WAN candidates</span></div>'
+    +'<div class="metric"><span class="val info">'+hosts.length+'</span><span class="lbl">Hosts</span></div>'
+    +'<div class="metric"><span class="val">'+hosts.reduce((a,h)=>a+(h.bridges||[]).length,0)+'</span><span class="lbl">Bridges</span></div>'
+    +'<div class="metric"><span class="val">'+hosts.reduce((a,h)=>a+(h.vlans||[]).length,0)+'</span><span class="lbl">VLANs</span></div>'
+    +'</div>';
+  if(wanc.length){
+    html+='<div class="table-wrap"><table><thead><tr><th>Site</th><th>Node</th><th>NIC</th><th>MAC</th><th>Speed</th><th>State</th></tr></thead><tbody>';
+    for(const w of wanc) html+='<tr><td>'+esc(w.site)+'</td><td>'+esc(w.node||'')+'</td><td><b>'+esc(w.nic)+'</b></td><td class="nw-tnum">'+esc(w.mac||'—')+'</td><td class="nw-tnum">'+esc(w.speed_mbps?w.speed_mbps+' Mb/s':'—')+'</td><td><span class="badge warn">AVAILABLE</span></td></tr>';
+    html+='</tbody></table></div>';
+  } else html+='<p class="empty">No unused physical NICs — no WAN candidates.</p>';
+  // bridges / VLAN mapping + routes
+  for(const h of hosts){
+    const bridges=(h.bridges||[]);
+    const members=(h.nics||[]).filter(n=>n.master);
+    html+='<h4 style="font-size:0.7rem;margin-top:12px">'+esc(h.site)+' bridges &amp; VLANs</h4>';
+    if(!bridges.length&&!(h.vlans||[]).length){html+='<p class="empty">none reported</p>';continue;}
+    html+='<div class="table-wrap"><table><thead><tr><th>Bridge</th><th>Members</th></tr></thead><tbody>';
+    for(const b of bridges) html+='<tr><td><b>'+esc(b)+'</b></td><td>'+((members.filter(m=>m.master===b).map(m=>esc(m.name)).join(', '))||'—')+'</td></tr>';
+    html+='</tbody></table></div>';
+    if((h.vlans||[]).length) html+='<p style="font-size:0.64rem;color:var(--fg-muted)">VLANs: '+h.vlans.map(esc).join(', ')+'</p>';
+  }
+  // routing table from topology graph
+  const sites=Object.values((_nw.topo||{}).sites||{});
+  html+='<h4 style="font-size:0.7rem;margin-top:12px">Routing tables</h4>';
+  let anyR=false;
+  for(const s of sites){const rt=((s.proxmox||{}).routing_table)||[];if(!rt.length)continue;anyR=true;
+    html+='<div style="font-size:0.62rem;color:var(--fg-muted);margin:4px 0">'+esc(s.name)+' · GW '+esc((s.proxmox||{}).gateway||s.gateway||'—')+'</div>';
+    html+='<div class="table-wrap"><table><thead><tr><th>dst</th><th>via</th><th>dev</th></tr></thead><tbody>'
+      +rt.slice(0,20).map(r=>'<tr><td>'+esc(r.dst||'—')+'</td><td>'+esc(r.gateway||'—')+'</td><td>'+esc(r.dev||'—')+'</td></tr>').join('')+'</tbody></table></div>';
+  }
+  if(!anyR) html+='<p class="empty">No routing table persisted (Proxmox A may be unreachable over SSH).</p>';
+  html+='</div>';
+  return html;
+}
+
+// ── Tab: Devices (IP/MAC) ──────────────────────────────────────────
+function nwDevices(){
+  const sites=(_nw.topo||{}).sites||{};
+  const rows=[];const seen={};
+  const add=(host,ip,mac,iface,src)=>{const k=(mac||'')+'|'+(ip||'')+'|'+iface;if(!k||seen[k])return;seen[k]=1;rows.push({host,ip,mac,iface,src});};
+  for(const key in sites){const s=sites[key];const px=s.proxmox||{};
+    for(const n of (px.nics||[])) if(n.ip) add(s.name,n.ip,n.mac,n.name,'nic');
+    for(const i of (px.interfaces||[])) add(s.name,i.ip,i.mac,i.name,'iface');
+  }
+  const peers=(_nw.peers||{}).peers||{};
+  for(const p in peers){const pi=peers[p];add('tailnet',pi.tailscale_ip||'', '', (pi.hostname||p),'tailscale');}
+  let html='<div class="card"><h3>Connected Devices <span class="badge info">IP / MAC map</span></h3>';
+  if(!rows.length){html+='<p class="empty">No device addresses in the topology graph yet. Run discovery.</p></div>';return html;}
+  html+='<div class="table-wrap"><table><thead><tr><th>Host / Site</th><th>IP</th><th>MAC</th><th>Interface</th><th>Source</th></tr></thead><tbody>';
+  for(const r of rows) html+='<tr><td>'+esc(r.host)+'</td><td class="nw-tnum">'+esc(r.ip||'—')+'</td><td class="nw-tnum" style="font-size:0.6rem">'+esc(r.mac||'—')+'</td><td>'+esc(r.iface||'—')+'</td><td>'+esc(r.src)+'</td></tr>';
+  html+='</tbody></table></div><p style="font-size:0.62rem;color:var(--fg-muted)">'+rows.length+' address(es) · derived from the persisted topology graph; ARP/neighbour tables are not collected.</p></div>';
+  return html;
+}
+
+// ── Tab: Data Usage (graphs) ───────────────────────────────────────
+function nwUsageShell(){
+  const ranges=['1h','24h','7d'];
+  let html='<div class="card"><div class="spread" style="margin-bottom:8px"><h3 style="margin:0">Data Usage &amp; Bandwidth</h3>'
+    +'<span>'+ranges.map(r=>'<button class="btn btn-xs nw-rangebtn'+(_nwState.range===r?' btn-accent':'')+'" onclick="nwSetRange(\''+r+'\')">'+r+'</button>').join(' ')+'</span></div>'
+    +'<div id="nw-usage-body"><span class="loading">loading history…</span></div></div>';
+  return html;
+}
+function nwSetRange(r){_nwState.range=r;nwLoadUsage();}
+async function nwLoadUsage(){
+  const el=$('nw-usage-body'); if(!el) return;
+  el.innerHTML='<span class="loading">loading '+esc(_nwState.range)+' history…</span>';
+  const g=async(p)=>{try{return await apiT(p,30000);}catch(e){return {error:e.message};}};
+  const [h,u]=await Promise.all([g('/api/infra/usage/history?range='+_nwState.range),g('/api/infra/usage')]);
+  _nw.hist=h;_nw.usage=u;
+  try{el.innerHTML=nwUsage(h,u);}catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function nwChart(title,lines,fmt){
+  lines=(lines||[]).filter(l=>l.points&&l.points.length>=2);
+  if(!lines.length) return '<div class="nw-chart"><div class="nw-chart-h"><span>'+esc(title)+'</span></div><p class="empty">not enough samples yet — history builds as the usage collector is sampled (need ≥2 points in range).</p></div>';
+  const w=520,hgt=120,pad=26,padR=6,padB=6;
+  const allv=[];lines.forEach(l=>l.points.forEach(p=>allv.push(Number(p.y)||0)));
+  const max=Math.max(1,...allv);
+  const X=(i,tot)=>pad+(tot>1?(i/(tot-1))*(w-pad-padR):0);
+  const Y=v=>hgt-padB-((v/max)*(hgt-padB-8));
+  let svg='<svg class="nw-svg" viewBox="0 0 '+w+' '+hgt+'" preserveAspectRatio="none" role="img" aria-label="'+esc(title)+'">';
+  svg+='<line x1="'+pad+'" y1="'+(hgt-padB)+'" x2="'+(w-padR)+'" y2="'+(hgt-padB)+'" stroke="var(--border)" stroke-width="1"/>';
+  lines.forEach(function(l){
+    const pts=l.points;let line='',area='';
+    pts.forEach(function(p,i){const x=X(i,pts.length).toFixed(1),y=Y(Number(p.y)||0).toFixed(1);line+=(i?'L':'M')+x+','+y;area+=(i?'L':'M')+x+','+y;});
+    const first=X(0,pts.length).toFixed(1),last=X(pts.length-1,pts.length).toFixed(1);
+    if(lines.length===1) svg+='<path d="'+(area+'L'+last+','+(hgt-padB)+'L'+first+','+(hgt-padB)+'Z')+'" fill="'+l.color+'" opacity="0.13"/>';
+    svg+='<path d="'+line+'" fill="none" stroke="'+l.color+'" stroke-width="1.6"/>';
+  });
+  svg+='</svg>';
+  const t0=lines[0].points[0].t,t1=lines[0].points[lines[0].points.length-1].t;
+  const legend=lines.length>1?lines.map(function(l){return '<span style="color:'+l.color+'">&#9632; '+esc(l.label)+'</span>';}).join(' '):'';
+  return '<div class="nw-chart"><div class="nw-chart-h"><span>'+esc(title)+'</span><span class="nw-tnum">max '+esc(fmt?fmt(max):max)+'</span></div>'
+    +svg
+    +'<div class="nw-chart-x"><span>'+esc(nwTime(t0))+'</span><span>'+esc(nwTime(t1))+'</span></div>'
+    +(legend?'<div class="nw-chart-x" style="justify-content:flex-start;gap:12px">'+legend+'</div>':'')
+    +'</div>';
+}
+function nwUsage(h,u){
+  if(h&&h.error) return '<span class="error-text">history: '+esc(h.error)+'</span>';
+  const pts=(h&&h.points)||[];
+  let html='';
+  if(!pts.length){
+    html+='<p class="empty">No history yet for '+esc(_nwState.range)+'. The collector samples on read; open this tab or wait for the scheduler.</p>';
+  }
+  // KPI cards from the latest point / live snapshot
+  const last=pts.length?pts[pts.length-1]:null;
+  const tot=(u&&u.totals)||{};
+  const curRate=last?((Number(last.rx_rate)||0)+(Number(last.tx_rate)||0)):(tot.rx_rate!=null?tot.rx_rate+tot.tx_rate:null);
+  html+='<div class="nw-kpi">'
+    +'<div class="metric"><span class="val info nw-tnum">'+esc(fmtRate(curRate))+'</span><span class="lbl">Current throughput</span></div>'
+    +'<div class="metric"><span class="val nw-tnum">'+esc(fmtBytes(last?last.rx:tot.rx_total))+'</span><span class="lbl">RX '+esc(_nwState.range)+'</span></div>'
+    +'<div class="metric"><span class="val nw-tnum">'+esc(fmtBytes(last?last.tx:tot.tx_total))+'</span><span class="lbl">TX '+esc(_nwState.range)+'</span></div>'
+    +'<div class="metric"><span class="val'+(tot.disk_pct>=85?' warn':'')+' nw-tnum">'+esc(tot.disk_pct==null?'—':tot.disk_pct+'%')+'</span><span class="lbl">Estate disk</span></div>'
+    +'<div class="metric"><span class="val nw-tnum">'+esc(fmtBytes(tot.disk_used))+'</span><span class="lbl">Disk used</span></div>'
+    +'<div class="metric"><span class="val nw-tnum">'+esc((h&&h.sample_count)||0)+'</span><span class="lbl">Samples</span></div>'
+    +'</div>';
+  html+='<div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:8px">'
+    +'range '+esc((h&&h.range)||_nwState.range)+(h&&h.bucket_s?(' · bucket '+h.bucket_s+'s'):' · raw')+' · '
+    +'store '+esc(((h&&h.store||{}).samples)||0)+' sample(s)'+(h&&h.store&&h.store.last_ts?(' · last '+esc(nwTime(h.store.last_ts))):'')+'</div>';
+  // bandwidth (rx + tx) over time, zero baseline
+  html+=nwChart('Bandwidth RX / TX ('+_nwState.range+')',[
+    {label:'RX',color:'var(--info)',points:pts.map(p=>({t:p.t,y:Number(p.rx_rate)||0}))},
+    {label:'TX',color:'var(--warn)',points:pts.map(p=>({t:p.t,y:Number(p.tx_rate)||0}))}
+  ],fmtRate);
+  // per-interface bandwidth (busiest interfaces, up to 3)
+  const ifaces=h&&h.interfaces?h.interfaces:{};
+  const ranked=[];
+  for(const scope in ifaces){for(const s of ifaces[scope]){
+    const sum=s.series.reduce((a,p)=>a+(Number(p.rx_rate)||0)+(Number(p.tx_rate)||0),0);
+    ranked.push({scope,iface:s.iface,series:s.series,sum});
+  }}
+  ranked.sort((a,b)=>b.sum-a.sum);
+  html+='<h4 style="font-size:0.72rem">Per-interface bandwidth</h4>';
+  if(!ranked.length) html+='<p class="empty">no per-interface series yet</p>';
+  for(const r of ranked.slice(0,3)){
+    html+=nwChart(r.scope+' · '+r.iface,[
+      {label:'RX',color:'var(--info)',points:r.series.map(p=>({t:p.t,y:Number(p.rx_rate)||0}))},
+      {label:'TX',color:'var(--warn)',points:r.series.map(p=>({t:p.t,y:Number(p.tx_rate)||0}))}
+    ],fmtRate);
+  }
+  // disk usage over time
+  html+='<h4 style="font-size:0.72rem">Disk usage</h4>';
+  const disks=h&&h.disks?h.disks:{};
+  let anyDisk=false;
+  for(const scope in disks){
+    const series=disks[scope];if(!series.length)continue;anyDisk=true;
+    html+=nwChart(scope+' · disk used %',[{label:'%',color:'var(--accent)',points:series.map(p=>({t:p.t,y:Number(p.pct)||0}))}],x=>Number(x).toFixed(1)+'%');
+  }
+  if(!anyDisk) html+='<p class="empty">no disk series yet</p>';
+  return html;
+}
+
+// ── Tab: Topology ──────────────────────────────────────────────────
+function nwTopology(){
+  const topo=_nw.topo||{};const conn=_nw.conn||{};
+  const sites=Object.values(topo.sites||{});
+  const healthy=sites.length>0&&sites.every(s=>s.proxmox&&s.proxmox.online);
+  let html='<div class="card"><h3>Network Dashboard · KAI-NET <span class="badge '+(healthy?'ok':'warn')+'">'+(sites.length?(healthy?'HEALTHY':'DEGRADED'):'UNKNOWN')+'</span></h3>';
+  html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="nwAction(\'/network/discover\')">Run Discovery</button><button class="btn btn-xs" onclick="nwAction(\'/network/connectivity/test\')">Test Connectivity</button><button class="btn btn-xs" onclick="loadNetwork()">Refresh</button></div><div id="nw-action-result" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px"></div>';
+  html+='<h4 style="font-size:0.7rem">Sites</h4>';
+  if(!sites.length)html+='<p class="empty">no sites discovered</p>';
+  for(const s of sites){const px=s.proxmox||{};const lx=s.lxcs||[];
+    html+='<div style="padding:6px 8px;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.65rem;margin-bottom:3px"><b>'+esc(s.name||'?')+'</b> <span class="badge '+(px.online?'ok':'bad')+'">'+(px.online?'ONLINE':'OFFLINE')+'</span> &middot; LAN '+esc(s.lan_subnet||'-')+' &middot; GW '+esc(s.gateway||'-')+' &middot; Tailscale '+esc(px.tailscale_ip||'-')+' &middot; LXCs '+lx.filter(l=>l.status==='running').length+'/'+lx.length+'</div>';}
+  const sec=(t,d)=>'<h4 style="font-size:0.7rem;margin-top:10px">'+t+'</h4>'+_autoTable(d);
+  html+=sec('Connectivity & Tunnel',conn)+sec('Peers',_nw.peers)+sec('Routes',_nw.routes)+sec('Recent Changes',_nw.changes)+sec('VPN / Failover',_nw.vpn);
+  html+='</div>';return html;
 }
 async function nwAction(path){
   const el=$('nw-action-result'); if(el) el.textContent='running '+path+'…';
   try{const d=await api(path,{method:'POST',body:'{}'}); if(el) el.textContent=path+' → '+JSON.stringify(d).slice(0,400);}
   catch(e){ if(el) el.textContent=path+' → error: '+e.message; }
+}
+
+// ── Tab: App Access (multi-WAN policy foundation) ──────────────────
+function nwAccess(){
+  const a=_nw.access||{};const pol=a.policy||{};
+  let html='<div class="card"><h3>App Access by Network <span class="badge warn">DESIGN STUB · not enforced</span></h3>';
+  html+='<p style="font-size:0.66rem;color:var(--fg-muted)">'+esc(pol.note||'Read-only foundation for the multi-WAN policy engine.')+'</p>';
+  const exp=a.declared_exposures||[];
+  html+='<h4 style="font-size:0.7rem">Declared exposures (static seed)</h4>';
+  if(!exp.length) html+='<p class="empty">none declared</p>';
+  else{html+='<div class="table-wrap"><table><thead><tr><th>Service</th><th>Port</th><th>Networks</th><th>Enforced</th><th>Source</th></tr></thead><tbody>';
+    for(const e of exp) html+='<tr><td><b>'+esc(e.service)+'</b></td><td class="nw-tnum">'+esc(e.port)+'</td><td>'+((e.networks||[]).map(esc).join(', ')||'—')+'</td><td>'+(e.enforced?'<span class="badge ok">yes</span>':'<span class="badge warn">no</span>')+'</td><td>'+esc(e.source||'—')+'</td></tr>';
+    html+='</tbody></table></div>';}
+  const wc=pol.wan_candidates||[];
+  html+='<h4 style="font-size:0.7rem;margin-top:10px">WAN candidates</h4>';
+  if(!wc.length) html+='<p class="empty">none</p>';
+  else{html+='<div class="table-wrap"><table><thead><tr><th>Site</th><th>NIC</th><th>MAC</th><th>Speed</th></tr></thead><tbody>';
+    for(const w of wc) html+='<tr><td>'+esc(w.site)+'</td><td><b>'+esc(w.nic)+'</b></td><td class="nw-tnum">'+esc(w.mac||'—')+'</td><td class="nw-tnum">'+esc(w.speed_mbps?w.speed_mbps+' Mb/s':'—')+'</td></tr>';
+    html+='</tbody></table></div><p style="font-size:0.6rem;color:var(--fg-muted)">'+esc(pol.wan_candidates_note||'')+'</p>';}
+  const ops=pol.opnsense||{};
+  html+='<h4 style="font-size:0.7rem;margin-top:10px">Firewall / edge</h4>';
+  html+='<p style="font-size:0.66rem"><span class="badge '+(ops.configured?'ok':'warn')+'">OPNsense '+(ops.configured?'configured':'NOT CONFIGURED')+'</span> '+esc(ops.note||'')+'</p>';
+  const svc=a.services||[];
+  html+='<h4 style="font-size:0.7rem;margin-top:10px">Services in topology graph</h4>';
+  html+=svc.length?_autoTable(svc):'<p class="empty">none recorded</p>';
+  html+='</div>';return html;
 }
 let wgTimer=null;
 // URL-safe opaque form of a WireGuard pubkey (may contain '/' and '+').

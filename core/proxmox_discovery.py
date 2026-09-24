@@ -4,7 +4,7 @@ Correlates Tailscale IP ↔ Proxmox node ↔ LAN IP ↔ subnets.
 Uses existing proxmox_monitor.PROXMOX_NODES and SSH commands (no API calls).
 """
 
-import os, json, subprocess
+import os, re, json, subprocess
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -15,12 +15,28 @@ from core.proxmox_monitor import _get_node_configs
 # SSH helpers (same pattern as tailscale_discovery)
 # -------------------------------------------------------------------
 
+def _default_ssh_key() -> str:
+    """First existing SSH key usable for node discovery.
+
+    The live runner (LXC 111) authenticates to Proxmox B with
+    ``/root/.ssh/kai_pve_usage`` (the same key the usage collector uses); it has
+    no ``id_rsa``. Resolve at call time so tests can inject their own key.
+    """
+    for cand in (os.environ.get("KAI_DISCOVERY_SSH_KEY"),
+                 os.environ.get("PROXMOX_SSH_KEY"),
+                 "/root/.ssh/kai_pve_usage",
+                 "/root/.ssh/id_rsa"):
+        if cand and os.path.exists(cand):
+            return cand
+    return os.environ.get("PROXMOX_SSH_KEY", "/root/.ssh/id_rsa")
+
+
 def _ssh(node: dict, cmd: str) -> tuple[str, str, int]:
-    key = node.get("ssh_key", os.environ.get("PROXMOX_SSH_KEY", "/root/.ssh/id_rsa"))
+    key = node.get("ssh_key") or _default_ssh_key()
     full_cmd = [
         "ssh", "-i", key,
         "-o", "StrictHostKeyChecking=no",
-        "-o", "ConnectTimeout=10",
+        "-o", "ConnectTimeout=6",
         f"root@{node['host']}",
         cmd,
     ]
@@ -29,6 +45,167 @@ def _ssh(node: dict, cmd: str) -> tuple[str, str, int]:
         return r.stdout, r.stderr, r.returncode
     except subprocess.TimeoutExpired:
         return "", "timeout", 124
+
+
+# -------------------------------------------------------------------
+# NIC inventory (link state, speed, MAC, counters, bridge/VLAN mapping)
+# -------------------------------------------------------------------
+
+_PHYSICAL_IFACE_RE = re.compile(r"^(nic|eth|en|em|eno|ens|enp|bond|wl)")
+_VLAN_RE = re.compile(r"^.+\.[0-9]+$")
+_VIRTUAL_IFACE_RE = re.compile(r"^(tap|veth|fwln|fwpr|vnet)")
+
+_NIC_SCRIPT = r"""
+set -u
+echo '===ADDR==='
+timeout 6 ip -j addr show 2>/dev/null || true
+echo '===LINK==='
+timeout 6 ip -j link show 2>/dev/null || true
+echo '===SYSFS==='
+for i in /sys/class/net/*; do
+  n=$(basename "$i")
+  printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$n" \
+    "$(cat "$i/operstate" 2>/dev/null)" \
+    "$(cat "$i/speed" 2>/dev/null)" \
+    "$(cat "$i/statistics/rx_bytes" 2>/dev/null)" \
+    "$(cat "$i/statistics/tx_bytes" 2>/dev/null)" \
+    "$(cat "$i/statistics/rx_errors" 2>/dev/null)" \
+    "$(cat "$i/statistics/tx_errors" 2>/dev/null)" \
+    "$(cat "$i/carrier" 2>/dev/null)"
+done
+echo '===BRIDGE==='
+ls -d /sys/class/net/*/bridge 2>/dev/null | sed 's#/sys/class/net/##; s#/bridge##' || true
+"""
+
+
+def _split_sections(text: str) -> dict[str, str]:
+    sections: dict[str, str] = {}
+    cur: str | None = None
+    buf: list[str] = []
+    for line in (text or "").splitlines():
+        if line.startswith("===") and line.endswith("==="):
+            if cur is not None:
+                sections[cur] = "\n".join(buf)
+            cur = line.strip("=")
+            buf = []
+        elif cur is not None:
+            buf.append(line)
+    if cur is not None:
+        sections[cur] = "\n".join(buf)
+    return sections
+
+
+def _int_or_none(value: str) -> Optional[int]:
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def _classify_iface(name: str, bridges: set[str]) -> str:
+    if name in bridges or name.startswith(("vmbr", "br")):
+        return "bridge"
+    if name.startswith(("tailscale", "zt", "wg")):
+        return "vpn"
+    if _VIRTUAL_IFACE_RE.match(name):
+        return "virtual"
+    if _PHYSICAL_IFACE_RE.match(name):
+        return "physical"
+    return "other"
+
+
+def parse_nic_inventory(text: str) -> dict:
+    """Parse the collector output into a rich NIC/bridge/VLAN inventory.
+
+    Pure function so it can be unit-tested with captured ``ip -j`` + sysfs
+    fixtures. Never invents values: missing fields are ``None``/``0``.
+    """
+    sections = _split_sections(text)
+    try:
+        addr = json.loads(sections.get("ADDR") or "[]") or []
+    except json.JSONDecodeError:
+        addr = []
+    try:
+        link = json.loads(sections.get("LINK") or "[]") or []
+    except json.JSONDecodeError:
+        link = []
+
+    sysfs: dict[str, dict] = {}
+    for line in (sections.get("SYSFS") or "").splitlines():
+        parts = line.split("|")
+        if len(parts) < 8 or not parts[0].strip():
+            continue
+        sysfs[parts[0].strip()] = {
+            "operstate": parts[1].strip() or None,
+            "speed_mbps": _int_or_none(parts[2]),
+            "rx_bytes": _int_or_none(parts[3]) or 0,
+            "tx_bytes": _int_or_none(parts[4]) or 0,
+            "rx_errors": _int_or_none(parts[5]) or 0,
+            "tx_errors": _int_or_none(parts[6]) or 0,
+            "carrier": parts[7].strip() not in ("", "0"),
+        }
+    bridges = {b.strip() for b in (sections.get("BRIDGE") or "").split() if b.strip()}
+
+    link_by = {l.get("ifname"): l for l in link if l.get("ifname")}
+    addr_by = {a.get("ifname"): a for a in addr if a.get("ifname")}
+
+    nics: list[dict] = []
+    # Iterate real interfaces only (``ip`` sees them); sysfs alone can contain
+    # non-interface entries such as ``bonding_masters``.
+    for name in sorted(set(addr_by) | set(link_by)):
+        if name == "lo":
+            continue
+        l = link_by.get(name, {})
+        a = addr_by.get(name, {})
+        s = sysfs.get(name, {})
+        ips = [ai.get("local") for ai in (a.get("addr_info") or [])
+               if ai.get("family") == "inet" and ai.get("local")]
+        flags = l.get("flags") or []
+        operstate = (s.get("operstate") or l.get("operstate") or "unknown").lower()
+        up = operstate == "up" or "UP" in flags
+        kind = _classify_iface(name, bridges)
+        nics.append({
+            "name": name,
+            "kind": kind,
+            "operstate": operstate,
+            "up": up,
+            "speed_mbps": s.get("speed_mbps"),
+            "mac": a.get("address") or l.get("address"),
+            "mtu": l.get("mtu"),
+            "master": l.get("master"),
+            "ip": ips[0] if ips else None,
+            "ips": ips,
+            "altnames": a.get("altnames") or [],
+            "rx_bytes": s.get("rx_bytes", 0),
+            "tx_bytes": s.get("tx_bytes", 0),
+            "rx_errors": s.get("rx_errors", 0),
+            "tx_errors": s.get("tx_errors", 0),
+            "carrier": bool(s.get("carrier")),
+        })
+
+    vlans = [n["name"] for n in nics if _VLAN_RE.match(n["name"])]
+    available_wan = sorted(
+        n["name"] for n in nics
+        if n["kind"] == "physical" and not n["up"] and not n["master"])
+    return {
+        "nics": nics,
+        "bridges": sorted(bridges),
+        "vlans": vlans,
+        "available_wan": available_wan,
+    }
+
+
+def collect_nic_inventory(node: dict) -> dict:
+    """Run the NIC collector on one node and parse it (never raises)."""
+    empty = {"nics": [], "bridges": [], "vlans": [], "available_wan": []}
+    stdout, stderr, rc = _ssh(node, _NIC_SCRIPT)
+    if rc != 0 and not (stdout or "").strip():
+        return {**empty, "error": (stderr or f"exit {rc}").strip()}
+    try:
+        return parse_nic_inventory(stdout)
+    except Exception as e:  # noqa: BLE001
+        return {**empty, "error": f"{type(e).__name__}: {e}"}
 
 
 # -------------------------------------------------------------------
@@ -57,33 +234,24 @@ def discover_node_networking(node: dict) -> dict:
     if rc == 0:
         ssh_ok = True
         try:
-            # RFC1918 private ranges + loopback + Tailscale/CGNAT carrier-grade NAT
-            private_prefixes = ("10.", "100.", "127.", "172.16.", "172.17.", "172.18.",
-                                "172.19.", "172.20.", "172.21.", "172.22.", "172.23.",
-                                "172.24.", "172.25.", "172.26.", "172.27.", "172.28.",
-                                "172.29.", "172.30.", "172.31.", "192.168.")
             for iface in json.loads(stdout):
-                info = {"name": iface.get("ifname"), "ip": None, "mac": None}
-                for addr_info in iface.get("addr_info", []):
-                    info["ip"] = addr_info.get("local")
-                info["mac"] = iface.get("address")
+                ipv4 = [ai.get("local") for ai in (iface.get("addr_info") or [])
+                        if ai.get("family") == "inet" and ai.get("local")]
+                info = {"name": iface.get("ifname"), "ip": ipv4[0] if ipv4 else None,
+                        "ips": ipv4, "mac": iface.get("address")}
                 result["interfaces"].append(info)
-                # Identify LAN IP (prefer non-private, else first non-loopback/non-ts)
-                if info["ip"]:
-                    ip = info["ip"]
-                    if not ip.startswith(private_prefixes):
+            # Identify the LAN IP: first IPv4 on a LAN-ish interface (not
+            # loopback / tailnet / zerotier / docker).
+            for info in result["interfaces"]:
+                name = info["name"] or ""
+                if name.startswith(("lo", "tailscale", "zt", "docker", "br-", "veth", "tap")):
+                    continue
+                for ip in info.get("ips") or []:
+                    if not ip.startswith("127."):
                         result["lan_ip"] = ip
                         break
-            # Fallback: grab first non-private-prefix IP if nothing better found
-            if result["lan_ip"] is None:
-                for iface in json.loads(stdout):
-                    for addr_info in iface.get("addr_info", []):
-                        ip = addr_info.get("local")
-                        if ip and not ip.startswith(private_prefixes):
-                            result["lan_ip"] = ip
-                            break
-                    if result["lan_ip"]:
-                        break
+                if result["lan_ip"]:
+                    break
         except json.JSONDecodeError:
             # JSON parse failed — interface data unavailable, continue without it
             pass
@@ -120,6 +288,18 @@ def discover_node_networking(node: dict) -> dict:
             result["gateway"] = parts[idx + 1] if idx + 1 < len(parts) else None
 
     result["reachable"] = ssh_ok
+
+    # Rich NIC inventory (link state, speed, MAC, counters, bridge/VLAN map).
+    nic_inv = collect_nic_inventory(node)
+    result["nics"] = nic_inv.get("nics", [])
+    result["bridges"] = nic_inv.get("bridges", [])
+    result["vlans"] = nic_inv.get("vlans", [])
+    result["available_wan"] = nic_inv.get("available_wan", [])
+    if nic_inv.get("nics"):
+        ssh_ok = True
+    if nic_inv.get("error"):
+        result["nic_error"] = nic_inv["error"]
+    result["reachable"] = ssh_ok
     return result
 
 
@@ -152,9 +332,19 @@ def _correlate_tailscale_to_node(ts_data: dict, px_nodes: dict) -> dict:
 
 
 def discover_all_nodes() -> dict:
-    """Full network-aware Proxmox discovery across all configured nodes."""
+    """Full network-aware Proxmox discovery across all configured nodes.
+
+    Hosts are corrected to the verified live estate: Proxmox B (the reachable
+    node that hosts LXC 100-114) is ``192.168.1.110``. An env override
+    (``KAI_NETWORK_PVE_B_HOST``) wins when present.
+    """
+    overrides = {
+        "pve-b": os.environ.get("KAI_NETWORK_PVE_B_HOST", "192.168.1.110"),
+    }
     results = {}
     for node in _get_node_configs():
-        net = discover_node_networking(node)
-        results[node["name"]] = net
+        node = dict(node)
+        if node["name"] in overrides:
+            node["host"] = overrides[node["name"]]
+        results[node["name"]] = discover_node_networking(node)
     return results

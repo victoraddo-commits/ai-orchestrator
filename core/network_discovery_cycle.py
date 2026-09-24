@@ -9,7 +9,7 @@ from core.logger import info
 from core import incident_manager
 from core import kai_event_bus
 
-# Site definitions for connectivity testing
+# Site definitions for connectivity testing (verified 2026-09-24).
 SITE_A = {
     "name": "SITE-A",
     "tailscale_ip": "100.83.4.27",
@@ -18,10 +18,21 @@ SITE_A = {
 }
 SITE_B = {
     "name": "SITE-B",
-    "tailscale_ip": "100.89.97.76",
+    "tailscale_ip": "100.122.38.118",
     "gateway": "192.168.1.1",
-    "proxmox_ip": "192.168.1.109",
+    "proxmox_ip": "192.168.1.110",
 }
+
+
+def _tailnet_peer_state(ts_data: dict) -> dict[str, bool]:
+    """Map tailnet IP → online across every discovered node's peer list."""
+    state: dict[str, bool] = {}
+    for node in (ts_data or {}).values():
+        for peer in (node.get("peers") or {}).values():
+            ip = peer.get("tailscale_ip")
+            if ip:
+                state[ip] = bool(peer.get("online"))
+    return state
 
 
 def run_network_discovery_cycle():
@@ -35,15 +46,27 @@ def run_network_discovery_cycle():
     # 2. Build graph
     graph = build_graph(ts_data, px_data)
 
-    # 3. Connectivity test
+    # 3. Connectivity test (ICMP from the orchestrator; may be blind to the
+    #    tailnet if this host has no tailscale seat).
     conn = test_site_paths(SITE_A, SITE_B)
     graph["connectivity"] = {
         "a_to_b_direct": conn.get("a_to_b_direct", "UNKNOWN"),
         "b_to_a_direct": conn.get("b_to_a_direct", "UNKNOWN"),
         "a_subnet_to_b_subnet": conn.get("a_subnet_to_b_subnet", "UNKNOWN"),
     }
+    # Tunnel health is the real tailnet mesh state (both site peers online),
+    # preferred over ICMP when the peer state is known.
+    peer_state = _tailnet_peer_state(ts_data)
+    a_up = peer_state.get(SITE_A["tailscale_ip"])
+    b_up = peer_state.get(SITE_B["tailscale_ip"])
+    if a_up is not None and b_up is not None:
+        healthy = a_up and b_up
+        graph["connectivity"]["peer_state"] = {
+            SITE_A["tailscale_ip"]: a_up, SITE_B["tailscale_ip"]: b_up}
+    else:
+        healthy = conn.get("a_to_b_direct") == "PASS"
     graph["tunnel"] = {
-        "status": "HEALTHY" if conn.get("a_to_b_direct") == "PASS" else "DEGRADED",
+        "status": "HEALTHY" if healthy else "DEGRADED",
         "a_to_b_latency_ms": conn.get("a_to_b_latency_ms"),
         "b_to_a_latency_ms": conn.get("b_to_a_latency_ms"),
         "packet_loss_pct": conn.get("packet_loss_pct", 0.0),

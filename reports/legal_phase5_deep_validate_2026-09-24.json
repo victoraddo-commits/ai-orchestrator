@@ -1,0 +1,364 @@
+{
+  "generated": "2026-09-24T09:32:46+00:00",
+  "model": "qwen3-coder:kai",
+  "corpus": "CT100",
+  "rows": [
+    {
+      "key": "rape",
+      "area": "criminal",
+      "question": "What is the offence of rape under Ghanaian law?",
+      "retrieve_s": 1.0,
+      "verdict": "GROUNDED",
+      "authority_count": 3,
+      "sources": [
+        "Criminal Offences Act,1960 Act 29 (Revised)",
+        "Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill, 2021",
+        "Human Sexual Rights and Family Values Bill, 2025"
+      ],
+      "footer_status_tags": [
+        "AMENDED",
+        "PROPOSED"
+      ],
+      "quick": {
+        "refused": false,
+        "latency_s": 3.07,
+        "answer": "The sources provided do not explicitly define the offence of rape under Ghanaian law. While **Source 1 (Criminal Offences Act, 1960, Act 29)** outlines general provisions and structures for criminal offences, it does not contain a specific definition of rape.\u2026",
+        "mentions_contrary": [],
+        "firewall": {
+          "checked": 3,
+          "unverified": 0,
+          "all_verified": true,
+          "unverified_displays": []
+        }
+      },
+      "deep": {
+        "refused": false,
+        "latency_s": 33.05,
+        "latency_parts": {
+          "advocate": 8.21,
+          "opponent": 15.157,
+          "judge": 9.681,
+          "total": 33.048
+        },
+        "degraded": false,
+        "authority_count": 3,
+        "established": 3,
+        "disputed": 2,
+        "unresolved": 11,
+        "confidence": 0.32,
+        "contrary_authorities": [],
+        "contrary_terms": [],
+        "irac": {
+          "issue": "What is the offence of rape under Ghanaian law?",
+          "rule": "The Criminal Offences Act, 1960 (Act 29) provides general provisions for criminal offences, including attempts, abetment, conspiracy, and exemptions. Section 5 states: \u201cThis Part applies to other offences, except where a contrary intention appears.\u201d Section 4 provides that \u201cIn the interpretation of\u2026",
+          "application": "The sources provided do not contain any definition or description of the offence of rape. The Criminal Offences Act, 1960 (Act 29) outlines general principles and categories of offences but does not explicitly define rape. Section 5 indicates that the Part applies to other offences unless a contrar\u2026",
+          "conclusion": "- Established: The Criminal Offences Act, 1960 (Act 29) governs criminal offences in Ghana and provides general rules applicable to other offences unless otherwise indicated. - Disputed: There is disagreement over whether rape is implicitly covered by the Act without explicit definition or statutor\u2026"
+        },
+        "answer": "*\u2696\ufe0f Deep Research \u2014 IRAC* *Issue:* What is the offence of rape under Ghanaian law? *Rule:* The Criminal Offences Act, 1960 (Act 29) provides general provisions for criminal offences, including attempts, abetment, conspiracy, and exemptions. Section 5 states: \u201cThis Part applies to other offences, except where a contrary intention appears.\u201d Section 4 provides that \u201cIn the interpretation of this Act\u2026",
+        "firewall": {
+          "checked": 7,
+          "unverified": 0,
+          "all_verified": true,
+          "unverified_displays": []
+        }
+      }
+    },
+    {
+      "key": "human_rights",
+      "area": "human_rights",
+      "question": "How are human rights enforced in Ghana?",
+      "retrieve_s": 0.83,
+      "verdict": "GROUNDED",
+      "authority_count": 3,
+      "sources": [
+        "Constitution of the Republic of Ghana, 1992 (as amended to 1996)",
+        "Human Sexual Rights and Family Values Bill, 2025",
+        "INTERCEPTION OF POSTAL PACKETS AND TELECOMMUNICATION MESSAGES.pdf"
+      ],
+      "footer_status_tags": [
+        "PROPOSED",
+        "UNKNOWN"
+      ],
+      "quick": {
+        "refused": false,
+        "latency_s": 6.5,
+        "answer": "In Ghana, human rights are enforced primarily through the judiciary, as provided for under Chapter V of the Constitution 1992 (as amended 1996). The Constitution guarantees fundamental human rights and freedoms, and individuals can seek redress in court if th\u2026",
+        "mentions_contrary": [
+          "amended"
+        ],
+        "firewall": {
+          "checked": 0,
+          "unverified": 0,
+          "all_verified": true,
+          "unverified_displays": []
+        }
+      },
+      "deep": {
+        "refused": false,
+        "latency_s": 36.2,
+        "latency_parts": {
+          "advocate": 9.529,
+          "opponent": 15.822,
+          "judge": 10.848,
+          "total": 36.199
+        },
+        "degraded": false,
+        "authority_count": 6,
+        "established": 8,
+        "disputed": 4,
+        "unresolved": 4,
+        "confidence": 0.5,
+        "contrary_authorities": [
+          "Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill, 2021",
+          "Armed Forces Amendment Bill ,2022",
+          "Constitution Amendment Entrenched Provisions Bill, 2014"
+        ],
+        "contrary_terms": [],
+        "irac": {
+          "issue": "How are human rights enforced in Ghana?",
+          "rule": "The Constitution of the Republic of Ghana, 1992 (as amended to 1996), establishes fundamental human rights in Chapter V and provides for the enforcement of such rights through judicial review and administrative mechanisms. The Commission on Human Rights and Administrative Justice is established und\u2026",
+          "application": "According to the Constitution, Chapter V \u2013 Fundamental Human Rights and Freedoms, enshrines rights such as the right to life, liberty, security of the person, privacy, dignity, and freedom of thought, conscience, and religion (Section 1(2)). These rights are justiciable and form part of the supreme\u2026",
+          "conclusion": "- Established: Human rights are entrenched in the Constitution (Chapter V), and there exists a constitutional body, the Commission on Human Rights and Administrative Justice, established under Chapter XVIII to investigate violations and recommend remedies. - Disputed: Whether human rights enforceme\u2026"
+        },
+        "answer": "*\u2696\ufe0f Deep Research \u2014 IRAC* *Issue:* How are human rights enforced in Ghana? *Rule:* The Constitution of the Republic of Ghana, 1992 (as amended to 1996), establishes fundamental human rights in Chapter V and provides for the enforcement of such rights through judicial review and administrative mechanisms. The Commission on Human Rights and Administrative Justice is established under Chapter XVIII \u2026",
+        "firewall": {
+          "checked": 0,
+          "unverified": 0,
+          "all_verified": true,
+          "unverified_displays": []
+        }
+      }
+    },
+    {
+      "key": "civil_procedure",
+      "area": "procedure",
+      "question": "What are the civil procedure rules for summary judgment in Ghana?",
+      "retrieve_s": 1.09,
+      "verdict": "GROUNDED",
+      "authority_count": 3,
+      "sources": [
+        "Courts Act 1993 (ACT 459)",
+        "Chieftaincy Act, 2008 (ACT 759)",
+        "Tribunals Bill,2026"
+      ],
+      "footer_status_tags": [
+        "CURRENT",
+        "PROPOSED"
+      ],
+      "quick": {
+        "refused": false,
+        "latency_s": 4.0,
+        "answer": "The provided sources do not contain specific information on the civil procedure rules for summary judgment in Ghana. Source 1 (Courts Act 1993, Act 459) outlines the structure and jurisdiction of various courts in Ghana but does not detail procedural rules su\u2026",
+        "mentions_contrary": [],
+        "firewall": {
+          "checked": 4,
+          "unverified": 1,
+          "all_verified": false,
+          "unverified_displays": [
+            "Act 759"
+          ]
+        }
+      },
+      "deep": {
+        "refused": false,
+        "latency_s": 34.19,
+        "latency_parts": {
+          "advocate": 7.234,
+          "opponent": 17.045,
+          "judge": 9.909,
+          "total": 34.188
+        },
+        "degraded": false,
+        "authority_count": 6,
+        "established": 4,
+        "disputed": 6,
+        "unresolved": 5,
+        "confidence": 0.45,
+        "contrary_authorities": [
+          "Ghana Civil Aviation Bill, 2024",
+          "Courts Act, 1993 Act 459 (Revised)",
+          "High Court (Civil Procedure )(Amendment) rules , 2019 C.I.122"
+        ],
+        "contrary_terms": [],
+        "irac": {
+          "issue": "What are the civil procedure rules for summary judgment in Ghana?",
+          "rule": "The sources do not establish specific civil procedure rules for summary judgment in Ghana.",
+          "application": "The Courts Act 1993 (Act 459) establishes the structure and jurisdiction of courts, including Superior Courts, Circuit Courts, and District Courts, but does not detail summary judgment procedures. Section 52 of the Courts Act provides that \u201cMonthly lists to be sent to High Court and Power of High C\u2026",
+          "conclusion": "- ESTABLISHED: The Courts Act 1993 (Act 459) and Chieftaincy Act 2008 (Act 759) do not contain specific provisions on summary judgment. - DISPUTED: There is no direct conflict in the sources, but there is disagreement among legal practitioners regarding whether implied procedural mechanisms allow f\u2026"
+        },
+        "answer": "*\u2696\ufe0f Deep Research \u2014 IRAC* *Issue:* What are the civil procedure rules for summary judgment in Ghana? *Rule:* The sources do not establish specific civil procedure rules for summary judgment in Ghana. *Application:* The Courts Act 1993 (Act 459) establishes the structure and jurisdiction of courts, including Superior Courts, Circuit Courts, and District Courts, but does not detail summary judgment\u2026",
+        "firewall": {
+          "checked": 12,
+          "unverified": 1,
+          "all_verified": false,
+          "unverified_displays": [
+            "Act 759"
+          ]
+        }
+      }
+    },
+    {
+      "key": "bill",
+      "area": "bill",
+      "question": "What does the Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill 2021 provide?",
+      "retrieve_s": 1.05,
+      "verdict": "GROUNDED",
+      "authority_count": 3,
+      "sources": [
+        "Matrimonial Causes Act, 1971 ACT 367 (Revised Edition)",
+        "Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill, 2021",
+        "Human Sexual Rights and Family Values Bill, 2025"
+      ],
+      "footer_status_tags": [
+        "CURRENT",
+        "PROPOSED"
+      ],
+      "quick": {
+        "refused": false,
+        "latency_s": 5.1,
+        "answer": "The Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill, 2021 provides for: 1. **Prohibition of LGBTQ+ activities**: The Bill aims to proscribe LGBTQ+ and related activities (SOURCE 2). 2. **Prohibition of propaganda or advocacy for LGBTQ+\u2026",
+        "mentions_contrary": [],
+        "firewall": {
+          "checked": 1,
+          "unverified": 0,
+          "all_verified": true,
+          "unverified_displays": []
+        }
+      },
+      "deep": {
+        "refused": false,
+        "latency_s": 38.4,
+        "latency_parts": {
+          "advocate": 9.837,
+          "opponent": 16.361,
+          "judge": 12.206,
+          "total": 38.404
+        },
+        "degraded": false,
+        "authority_count": 4,
+        "established": 3,
+        "disputed": 5,
+        "unresolved": 7,
+        "confidence": 0.39,
+        "contrary_authorities": [
+          "Constitution Amendment Entrenched Provisions Bill, 2014"
+        ],
+        "contrary_terms": [],
+        "irac": {
+          "issue": "What does the Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill 2021 provide?",
+          "rule": "The Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill 2021 provides for proper human sexual rights and Ghanaian family values; proscribes LGBTQ+ and related activities; proscribes propaganda of, advocacy for or promotion of LGBTTQQIAAP+ and related activities; and provides for\u2026",
+          "application": "The sources establish that the object of the Bill is to provide for proper human sexual rights and Ghanaian family values; proscribe LGBTQ+ and related activities; proscribe propaganda of, advocacy for or promotion of LGBTTQQIAAP+ and related activities; and provide for the protection of and suppor\u2026",
+          "conclusion": "- Established: The object of the Bill is to provide for proper human sexual rights and Ghanaian family values; proscribe LGBTQ+ and related activities; proscribe propaganda of, advocacy for or promotion of LGBTTQQIAAP+ and related activities; and provide for the protection of and support for childr\u2026"
+        },
+        "answer": "*\u2696\ufe0f Deep Research \u2014 IRAC* *Issue:* What does the Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill 2021 provide? *Rule:* The Promotion of Proper Human Sexual Rights and Ghanaian Family Values Bill 2021 provides for proper human sexual rights and Ghanaian family values; proscribes LGBTQ+ and related activities; proscribes propaganda of, advocacy for or promotion of LGBTTQQIAA\u2026",
+        "firewall": {
+          "checked": 3,
+          "unverified": 0,
+          "all_verified": true,
+          "unverified_displays": []
+        }
+      }
+    },
+    {
+      "key": "absurd_vacuous",
+      "area": "absurd",
+      "question": "ghana law",
+      "retrieve_s": 0.0,
+      "verdict": "UNGROUNDED",
+      "authority_count": 0,
+      "sources": [],
+      "footer_status_tags": [],
+      "quick": {
+        "refused": true,
+        "latency_s": 0.0,
+        "answer": "\u2696\ufe0f I couldn't find an authoritative Ghanaian source for that in my legal database, so I won't guess. Try rephrasing, or ask about a topic I cover (e.g. Criminal Offences Act, Contracts Act, Land Act, the 1992 Constitution)."
+      },
+      "deep": {
+        "refused": true,
+        "latency_s": 0.0,
+        "established": 0,
+        "disputed": 0,
+        "unresolved": 0,
+        "authority_count": 0,
+        "contrary_authorities": [],
+        "confidence": null,
+        "degraded": false,
+        "answer": "\u2696\ufe0f I couldn't find an authoritative Ghanaian source for that in my legal database, so I won't guess. Try rephrasing, or ask about a topic I cover (e.g. Criminal Offences Act, Contracts Act, Land Act, the 1992 Constitution)."
+      }
+    },
+    {
+      "key": "absurd_nonsense",
+      "area": "absurd",
+      "question": "What is the Ghana tax treatment of quantum entanglement?",
+      "retrieve_s": 0.93,
+      "verdict": "PARTIAL",
+      "authority_count": 3,
+      "sources": [
+        "Income Amendment No.2 Bill, 2016",
+        "Income Tax Amendment No.2 Bill, 2022",
+        "Income Tax  (Amendment)(No 2)  Bill, 2022"
+      ],
+      "footer_status_tags": [
+        "PROPOSED"
+      ],
+      "quick": {
+        "refused": false,
+        "latency_s": 5.84,
+        "answer": "The Ghana tax treatment of quantum entanglement is **not addressed** in the provided sources. **Supporting Evidence:** - **Source 1 (Income Tax Amendment No.2 Bill, 2016)** discusses amendments to income tax laws regarding gifts tax and capital gains tax but \u2026",
+        "mentions_contrary": [
+          "amendment"
+        ],
+        "firewall": {
+          "checked": 0,
+          "unverified": 0,
+          "all_verified": true,
+          "unverified_displays": []
+        }
+      },
+      "deep": {
+        "refused": false,
+        "latency_s": 35.06,
+        "latency_parts": {
+          "advocate": 9.463,
+          "opponent": 14.172,
+          "judge": 11.428,
+          "total": 35.063
+        },
+        "degraded": false,
+        "authority_count": 11,
+        "established": 2,
+        "disputed": 2,
+        "unresolved": 12,
+        "confidence": 0.3,
+        "contrary_authorities": [
+          "West African Gas Pipeline Act, 2004 (Act 681). Revised Edition",
+          "Value Added Tax (amendment) (NO.2)  Act, 2022 (ACT 1087)",
+          "REVENUE ADMINISTRATION BILL, 2016.pdf",
+          "Chartered Institute of Taxation Bill, 2014",
+          "National Health Insurance (Amendment) Act, 2018 (Act 971)",
+          "Electronic Transfer Levy Repeal Bill, 2025",
+          "Exemptions Bill ,2021",
+          "Valve Added Tax (Amendment) (No.2)Bill, 2022",
+          "Tax Amnesty Bill, 2017"
+        ],
+        "contrary_terms": [],
+        "irac": {
+          "issue": "What is the Ghana tax treatment of quantum entanglement?",
+          "rule": "The sources establish that the Ghana tax system, as defined in the Income Tax Act, 2015 ([unverified \u2014 not found in database]) and its amendments, does not explicitly address quantum entanglement. The Income Tax (Amendment) No. 2 Bill, 2016, clarifies that gifts are taxable only if received in resp\u2026",
+          "application": "The sources do not contain any provision that defines or taxes quantum entanglement. The 2016 amendment states: \u201cThe principal enactment gave the impression that gifts can only be subject to tax when it is received in respect of employment, business and investment. A person may however receive gift\u2026",
+          "conclusion": "- Established: The Ghana tax system does not explicitly treat quantum entanglement as a taxable event. The Income Tax Act and its amendments focus on employment income, business profits, investment gains, and capital realisations but do not mention quantum entanglement. - Disputed: No conflict exis\u2026"
+        },
+        "answer": "*\u2696\ufe0f Deep Research \u2014 IRAC* *Issue:* What is the Ghana tax treatment of quantum entanglement? *Rule:* The sources establish that the Ghana tax system, as defined in the Income Tax Act, 2015 ([unverified \u2014 not found in database]) and its amendments, does not explicitly address quantum entanglement. The Income Tax (Amendment) No. 2 Bill, 2016, clarifies that gifts are taxable only if received in resp\u2026",
+        "firewall": {
+          "checked": 6,
+          "unverified": 2,
+          "all_verified": false,
+          "unverified_displays": [
+            "Act 1087",
+            "Act 1087"
+          ]
+        }
+      }
+    }
+  ]
+}

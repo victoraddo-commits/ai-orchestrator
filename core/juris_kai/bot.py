@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -196,6 +197,7 @@ HELP_TEXT = (
     "/account — Your account status\n"
     "/subscribe — View subscription plans\n"
     "/subscribe <tier> [email] — Buy a plan (Paystack checkout)\n"
+    "/deep <question> — Deep Research (3-pass, slower, with counter-authorities)\n"
     "/forget — Delete your stored questions & answers\n\n"
     "_Not a substitute for professional legal advice._"
 )
@@ -490,6 +492,20 @@ UNGROUNDED_REPLY = _grounding.UNGROUNDED_REPLY
 PARTIAL_BANNER = _grounding.PARTIAL_BANNER
 JURISDICTION_REFUSAL = _grounding.JURISDICTION_REFUSAL
 LEGAL_GROUNDING_TASK = "juris_research"
+
+# Deep Research (3-pass: advocate → oppose → judge) is EXPLICIT opt-in — it is
+# never reached by an ordinary message. Live it takes ~45 s, so it carries its
+# own wall-clock budget and, on timeout, degrades to the single-pass grounded
+# answer rather than blocking the bot's polling loop. Deep turns are recorded
+# under their own task type so a structured deep answer can never be replayed
+# as a Quick (single-pass) answer.
+DEEP_TASK_TYPE = "juris_deep"
+# ~3x the worst observed live total (38.4 s), so a single stalled pass cannot
+# block the poller indefinitely; JURIS_KAI_DEEP_TIMEOUT overrides.
+DEEP_TIMEOUT = int(os.environ.get("JURIS_KAI_DEEP_TIMEOUT", "120"))
+DEEP_FALLBACK_NOTE = (
+    "⏱️ _Deep Research exceeded its time budget — showing a single-pass "
+    "grounded answer._\n\n")
 
 
 def _stream_enabled() -> bool:
@@ -947,6 +963,11 @@ def handle_message(update: dict) -> dict | None:
     if result is not None:
         return result
 
+    # Deep Research — explicit 3-pass mode (opt-in latency), never the default.
+    if message_text == "/deep" or message_text.startswith("/deep "):
+        question = message_text[len("/deep"):].strip()
+        return _handle_deep_command(question, chat_id, account, admin)
+
     # Commands with / prefix
     if message_text.startswith("/"):
         return _handle_legacy_command(message_text, chat_id, account, admin)
@@ -977,6 +998,22 @@ def _handle_menu_action(
     }
     if text in legal_topics:
         return _handle_learn_topic(legal_topics[text], text, chat_id, account)
+
+    if text == "🔬 Deep Research":
+        _conversation_state[str(chat_id)] = {"step": "deep_research", "data": {}}
+        return {
+            "chat_id": chat_id,
+            "text": (
+                "🔬 *Deep Research*\n\n"
+                "Send your Ghana legal question and I'll research it in three "
+                "grounded passes (Advocate → Opponent → Judge): what the "
+                "authorities establish, what is disputed, and the counter-"
+                "authorities — with an explicit uncertainty assessment.\n\n"
+                "Type the question below (or /menu to cancel)."
+            ),
+            "reply_markup": '{"remove_keyboard": true}',
+            "parse_mode": "Markdown",
+        }
 
     if text == "🔍 Search Topic":
         _conversation_state[str(chat_id)] = {"step": "search_topic", "data": {}}
@@ -1459,6 +1496,205 @@ def _handle_admin_security(label: str, chat_id: int) -> dict:
 # Free-text handling
 # ---------------------------------------------------------------------------
 
+def _deliver_grounded_plan(plan: dict, text: str, chat_id, account: dict,
+                           reply_markup, followup_ctx: str, task_type: str,
+                           started_at: float, note: str = "") -> dict:
+    """Generate, record and shape the reply for a groundable plan.
+
+    Shared by Quick mode (``_build_legal_reply``) and the Deep Research timeout
+    fallback, so both delivery paths are identical: streaming, the PARTIAL
+    banner / Sources footer, and the learning-loop record. ``note`` is an
+    optional prefix (e.g. the Deep timeout notice) folded in with the banner.
+    """
+    mgr = get_account_manager()
+    prompt = plan["prompt"]
+    banner = (note + plan["banner"]) if note else plan["banner"]
+    footer = plan["footer"]
+    source_key = plan["source_key"]
+
+    response_text, model, streamed, _cache_hit = _generate_reply(
+        prompt, task_type, text, text, account["account_id"],
+        chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx,
+        prefix=banner, suffix=footer, source_key=source_key,
+        answer_transform=_citation_firewall_transform())
+    _latency_ms = int((time.time() - started_at) * 1000)
+
+    have_answer = bool(response_text and response_text.strip())
+    if not have_answer:
+        logger.error(f"Empty response for legal query '{text[:80]}' from chat {chat_id}")
+        response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
+
+    # The streamed message already carries the banner/footer; only un-streamed
+    # real answers still need them applied here (never on an error/empty reply).
+    # The raw answer is recorded for the learning loop (footer/banner are
+    # presentation, not substance).
+    if streamed:
+        delivered_text = response_text
+    elif have_answer:
+        delivered_text = banner + response_text + footer
+    else:
+        delivered_text = response_text
+
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(prompt),
+                     output_tokens=_estimate_tokens(response_text),
+                     model=model)
+    _record_turn(account["account_id"], chat_id, task_type, text,
+                 response_text, model, _latency_ms, _cache_hit,
+                 source_key=source_key)
+
+    return {
+        "chat_id": chat_id,
+        "text": None if streamed else delivered_text,
+        "reply_markup": reply_markup,
+        "parse_mode": None if streamed else "Markdown",
+    }
+
+
+def _run_deep_bounded(query: str, docs: list, context: str = ""):
+    """Run the three-pass pipeline under a hard wall-clock budget.
+
+    Returns ``(result, None)`` on success, else ``(None, reason)``. The passes
+    run on a daemon worker so a stalled local model can never block the bot's
+    synchronous polling loop: once ``DEEP_TIMEOUT`` elapses the caller returns a
+    single-pass answer while the abandoned worker finishes (or its own per-pass
+    read timeout fires) on its own.
+    """
+    from core.juris_kai import reasoning
+
+    box: dict = {}
+
+    def _work():
+        try:
+            box["result"] = reasoning.run_deep(query, docs, context)
+        except Exception as exc:  # noqa: BLE001 - degrade, never hang the caller
+            box["error"] = exc
+
+    worker = threading.Thread(target=_work, name="juris-deep", daemon=True)
+    worker.start()
+    worker.join(DEEP_TIMEOUT)
+    if worker.is_alive():
+        logger.warning("Deep Research exceeded its %ss budget", DEEP_TIMEOUT)
+        return None, f"timeout after {DEEP_TIMEOUT}s"
+    if "error" in box:
+        logger.error("Deep Research failed: %s", box["error"])
+        return None, "error"
+    if not box.get("result"):
+        return None, "empty"
+    return box["result"], None
+
+
+def _build_deep_reply(text: str, chat_id, account: dict, reply_markup=None,
+                      query: str = None,
+                      task_type: str = LEGAL_GROUNDING_TASK) -> dict:
+    """Answer with Deep Research (retrieve → advocate → oppose → judge).
+
+    Shares the strict grounding gate with Quick mode, so OUT-OF-SCOPE and
+    UNGROUNDED questions are refused honestly and NEVER reach the passes (nor
+    the model). A groundable question runs ``reasoning.run_deep`` under
+    ``DEEP_TIMEOUT``; a timeout/failure degrades to the existing single-pass
+    grounded path (never blank). The structured answer (IRAC + Authorities +
+    Counter-authorities + Uncertainty) plus the shared deterministic Sources
+    footer is delivered non-streamed, and the judge body is run through the
+    citation firewall once more before delivery.
+
+    Non-streamed is deliberate: the answer is an object assembled only *after*
+    all three passes finish, so streaming a single section would show a partial
+    answer and then rewrite it. The 3-pass latency is opt-in and bounded.
+    """
+    from core.juris_kai import reasoning
+
+    mgr = get_account_manager()
+    _t0 = time.time()
+    retrieval_query = query if query is not None else text
+    followup_ctx = _followup_context(chat_id, text)
+    plan = _grounding.build_grounded_plan(retrieval_query, task_type,
+                                          context=followup_ctx)
+
+    if plan["refusal"]:
+        response_text = plan["refusal"]
+        _latency_ms = int((time.time() - _t0) * 1000)
+        mgr.record_query(account["account_id"],
+                         input_tokens=_estimate_tokens(text),
+                         output_tokens=_estimate_tokens(response_text),
+                         model="")
+        _record_turn(account["account_id"], chat_id, DEEP_TASK_TYPE,
+                     text, response_text, "", _latency_ms, False)
+        logger.info("juris deep: %s (no model call) chat=%s",
+                    "out-of-scope jurisdiction" if plan["out_of_scope"]
+                    else "UNGROUNDED", chat_id)
+        return {
+            "chat_id": chat_id,
+            "text": response_text,
+            "reply_markup": reply_markup,
+            "parse_mode": "Markdown",
+        }
+
+    result, failure = _run_deep_bounded(text, plan["docs"], context=followup_ctx)
+    if result is None:
+        logger.warning("Deep Research degraded to single pass (%s) chat=%s",
+                       failure, chat_id)
+        return _deliver_grounded_plan(plan, text, chat_id, account, reply_markup,
+                                      followup_ctx, task_type, _t0,
+                                      note=DEEP_FALLBACK_NOTE)
+
+    body = reasoning.render_deep(
+        result, narrative_transform=_citation_firewall_transform())
+    banner = plan["banner"]
+    footer = plan["footer"]
+    delivered_text = banner + body + footer
+    model = _streaming.DEFAULT_MODEL
+    _latency_ms = int((time.time() - _t0) * 1000)
+
+    mgr.record_query(account["account_id"],
+                     input_tokens=_estimate_tokens(text),
+                     output_tokens=_estimate_tokens(delivered_text),
+                     model=model)
+    _record_turn(account["account_id"], chat_id, DEEP_TASK_TYPE, text,
+                 body, model, _latency_ms, False,
+                 source_key=plan["source_key"])
+
+    return {
+        "chat_id": chat_id,
+        "text": delivered_text,
+        "reply_markup": reply_markup,
+        "parse_mode": "Markdown",
+    }
+
+
+def _handle_deep_command(question: str, chat_id, account: dict, admin: bool) -> dict:
+    """Handle ``/deep [question]`` — explicit Deep Research (3-pass) mode."""
+    menu = admin_main_menu() if admin else main_menu()
+    q = (question or "").strip()
+    if not q:
+        return {
+            "chat_id": chat_id,
+            "text": (
+                "🔬 *Deep Research*\n\n"
+                "Send a Ghana legal question to research it in three grounded "
+                "passes (Advocate → Opponent → Judge), with counter-authorities "
+                "and an explicit uncertainty assessment.\n\n"
+                "Usage: `/deep <question>` — or tap 🔬 Deep Research under "
+                "📚 Learn Law. It is slower than a normal question."
+            ),
+            "reply_markup": menu,
+            "parse_mode": "Markdown",
+        }
+
+    limit_check = get_account_manager().check_query_limit(account["account_id"])
+    if not limit_check["allowed"]:
+        return {
+            "chat_id": chat_id,
+            "text": (
+                f"⚠️ You've reached your daily query limit "
+                f"({limit_check['limit']} queries/day).\n"
+                "Upgrade your plan with /subscribe for more queries."
+            ),
+            "reply_markup": menu,
+        }
+    return _build_deep_reply(q, chat_id, account, reply_markup=menu, query=q)
+
+
 def _build_legal_reply(text: str, chat_id, account: dict,
                        reply_markup=None, task_type: str = LEGAL_GROUNDING_TASK,
                        query: str = None) -> dict:
@@ -1529,48 +1765,8 @@ def _build_legal_reply(text: str, chat_id, account: dict,
             "parse_mode": "Markdown",
         }
 
-    prompt = plan["prompt"]
-    banner = plan["banner"]
-    footer = plan["footer"]
-    source_key = plan["source_key"]
-
-    response_text, model, streamed, _cache_hit = _generate_reply(
-        prompt, task_type, text, text, account["account_id"],
-        chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx,
-        prefix=banner, suffix=footer, source_key=source_key,
-        answer_transform=_citation_firewall_transform())
-    _latency_ms = int((time.time() - _t0) * 1000)
-
-    have_answer = bool(response_text and response_text.strip())
-    if not have_answer:
-        logger.error(f"Empty response for legal query '{text[:80]}' from chat {chat_id}")
-        response_text = "⚠️ I couldn't process that query. Please try rephrasing or use /menu for options."
-
-    # The streamed message already carries the banner/footer; only un-streamed
-    # real answers still need them applied here (never on an error/empty reply).
-    # The raw answer is recorded for the learning loop (footer/banner are
-    # presentation, not substance).
-    if streamed:
-        delivered_text = response_text
-    elif have_answer:
-        delivered_text = banner + response_text + footer
-    else:
-        delivered_text = response_text
-
-    mgr.record_query(account["account_id"],
-                     input_tokens=_estimate_tokens(prompt),
-                     output_tokens=_estimate_tokens(response_text),
-                     model=model)
-    _record_turn(account["account_id"], chat_id, task_type, text,
-                 response_text, model, _latency_ms, _cache_hit,
-                 source_key=source_key)
-
-    return {
-        "chat_id": chat_id,
-        "text": None if streamed else delivered_text,
-        "reply_markup": reply_markup,
-        "parse_mode": None if streamed else "Markdown",
-    }
+    return _deliver_grounded_plan(plan, text, chat_id, account, reply_markup,
+                                  followup_ctx, task_type, _t0)
 
 
 def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> dict:
@@ -1620,6 +1816,14 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
             "text": "⚠️ Daily query limit reached. Try again tomorrow or upgrade your plan.",
             "reply_markup": main_menu(),
         }
+
+    # Deep Research is an explicit 3-pass mode (never the default); the menu
+    # button drops the user into this step and the next free-text question runs
+    # the passes under the same strict grounding gate.
+    if step == "deep_research":
+        del _conversation_state[state_key]
+        return _build_deep_reply(text, chat_id, account,
+                                 reply_markup=main_menu())
 
     from core.juris_kai.prompt import build_prompt
     from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble

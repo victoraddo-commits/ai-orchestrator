@@ -272,6 +272,75 @@ def test_run_deep_degrades_to_single_pass_never_blank(monkeypatch):
     assert not res["judge"]["irac"]["rule"].strip() == ""
 
 
+# ---------------------------------------------------------------------------
+# render_deep — the structured answer the bot delivers
+# ---------------------------------------------------------------------------
+
+def test_render_deep_has_structured_sections():
+    res = {
+        "authorities": ["Act 29"],
+        "opponent": {"contrary_authorities": ["Act 500"]},
+        "judge": {
+            "irac": {"issue": "Is rape an offence?", "rule": "Act 29 says so.",
+                     "application": "It applies.", "conclusion": "Established."},
+            "established": [{"proposition": "Rape is an offence."}],
+            "disputed": [{"proposition": "The minor exception."}],
+            "unresolved": [],
+            "confidence": 0.5,
+            "authorities": ["Act 29"],
+        },
+        "docs": [DOC],
+        "degraded": False,
+    }
+    text = reasoning.render_deep(res)
+    for token in ("IRAC", "Issue", "Rule", "Application", "Conclusion",
+                  "Authorities", "Act 29", "Counter-authorities", "Act 500",
+                  "Uncertainty", "Established", "Disputed", "Confidence"):
+        assert token in text, token
+
+
+def test_render_deep_narrative_transform_skips_authority_lists():
+    res = {
+        "authorities": ["Act 29"],
+        "opponent": {"contrary_authorities": ["Act 500"]},
+        "judge": {"irac": {"issue": "I", "rule": "R", "application": "A",
+                           "conclusion": "C"}, "established": [],
+                  "disputed": [], "unresolved": [], "confidence": 0.0,
+                  "authorities": ["Act 29"]},
+        "docs": [DOC], "degraded": False,
+    }
+    seen = {}
+
+    def transform(text):
+        seen["text"] = text
+        return text.replace("ISSUE-PLACEHOLDER", "REWRITTEN")
+
+    out = reasoning.render_deep(res, narrative_transform=transform)
+    assert "IRAC" in seen["text"]           # only the narrative is transformed
+    assert "Act 500" not in seen["text"]    # authority lists are not passed in
+    assert "• Act 500" in out               # ...but still rendered untouched
+
+
+def test_render_deep_is_never_blank():
+    text = reasoning.render_deep({})
+    assert text.strip()
+    assert "IRAC" in text
+    assert "Authorities" in text
+    assert "Uncertainty" in text
+
+
+def test_render_deep_flags_degradation():
+    res = {
+        "judge": {"irac": {"issue": "Q"}, "established": [], "disputed": [],
+                  "unresolved": [], "confidence": 0.0, "authorities": []},
+        "authorities": [], "opponent": {"contrary_authorities": []},
+        "docs": [], "degraded": True,
+    }
+    text = reasoning.render_deep(res)
+    assert "degraded" in text.lower()
+    assert "None retrieved" in text
+
+
 def test_run_deep_survives_total_model_outage(monkeypatch):
     monkeypatch.setattr(
         reasoning._grounding, "retrieve",

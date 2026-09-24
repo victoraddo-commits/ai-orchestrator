@@ -441,6 +441,63 @@ def _empty_judge(query: str, reason: str = "no authoritative source retrieved") 
     }
 
 
+def render_deep(result: dict, narrative_transform=None) -> str:
+    """Render a ``run_deep`` result into the structured Deep Research answer.
+
+    Sections, in order: IRAC, Authorities, Counter-authorities, Uncertainty.
+    The deterministic 📚 Sources footer is deliberately **not** included here:
+    the caller appends ``grounding.build_sources_footer(result["docs"])`` so
+    Quick and Deep mode share the exact same footer (temporal status included).
+
+    ``narrative_transform`` is applied to the model-authored IRAC block only
+    (e.g. the citation firewall), never to the retrieval-derived authorities /
+    counter-authorities lists (those are corpus documents, not model output, so
+    running a citation verifier over their identity strings would mis-flag real
+    sources). Each pass already firewalled its own narrative; this is an
+    optional second pass at the delivery boundary.
+
+    Pure and total — a partial/degraded result still renders every section with
+    an explicit honest placeholder, so the delivered answer is never blank.
+    """
+    result = result or {}
+    judge = result.get("judge") or {}
+    irac = judge.get("irac") or {}
+    authorities = list(result.get("authorities")
+                       or judge.get("authorities") or [])
+    contrary = list((result.get("opponent") or {})
+                    .get("contrary_authorities") or [])
+    established = list(judge.get("established") or [])
+    disputed = list(judge.get("disputed") or [])
+    unresolved = list(judge.get("unresolved") or [])
+    confidence = judge.get("confidence")
+
+    irac_block = "\n".join([
+        "*⚖️ Deep Research — IRAC*",
+        f"*Issue:* {irac.get('issue') or '—'}",
+        f"*Rule:* {irac.get('rule') or '—'}",
+        f"*Application:* {irac.get('application') or '—'}",
+        f"*Conclusion:* {irac.get('conclusion') or '—'}",
+    ])
+    if narrative_transform:
+        irac_block = narrative_transform(irac_block)
+
+    lines = [irac_block, "", "*Authorities*"]
+    lines += [f"• {a}" for a in authorities] or ["_None retrieved._"]
+    lines += ["", "*Counter-authorities*"]
+    lines += [f"• {a}" for a in contrary] or [
+        "_None identified in the retrieved sources._"]
+    lines += ["", "*Uncertainty*"]
+    summary = (f"Established: {len(established)} · Disputed: {len(disputed)} · "
+               f"Unresolved: {len(unresolved)}")
+    if confidence is not None:
+        summary += f" · Confidence: {confidence}"
+    lines.append(summary)
+    if result.get("degraded"):
+        lines.append("_⚠️ Some reasoning passes degraded; the answer is "
+                     "bounded to the retrieved sources._")
+    return "\n".join(lines)
+
+
 def _result(query, docs, verdict, adv, opp, judgement, degraded, timings) -> dict:
     return {
         "query": query,

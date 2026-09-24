@@ -26,7 +26,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 import core.authz as authz
 from core.payments.keys import PaymentConfigError
@@ -615,6 +615,83 @@ def cc_test_query(body: dict = Body(...),
         "verdict": plan["verdict"],
         "grounded": plan["groundable"],
     }
+
+
+# ── exportable reports (operator/entitlement gated) ───────────────────────
+
+@router.post("/api/juris-kai/reports")
+def cc_reports_create(body: dict = Body(...),
+                      operator: str = Depends(require_juris_write),
+                      request: Request = None):
+    """Create a PDF + DOCX report from a result (or by running ``query``).
+
+    Entitlement-gated when an ``account_id`` is supplied (Pro/Pro+/institution
+    only; free tier gets an upgrade prompt) and metered as ``report_export``.
+    A trusted operator creating a report without an account id is allowed
+    through and not metered against a user.
+    """
+    from core.juris_kai import reports as _reports
+    from core.juris_kai import entitlements as _entitlements
+    from core.juris_kai.accounts import get_account_manager
+
+    _rate_limit(request, operator)
+    kind = str(body.get("kind") or "deep").strip().lower()
+    if kind not in _reports.KINDS:
+        kind = "deep"
+    query = str(body.get("query") or "").strip()
+    account_id = str(body.get("account_id") or "").strip()
+    plan = str(body.get("plan") or "").strip()
+    mgr = get_account_manager()
+
+    if account_id:
+        prompt = _entitlements.check_feature(mgr, account_id, "export_reports")
+        if prompt:
+            raise HTTPException(status_code=403, detail=prompt)
+
+    result = body.get("result")
+    try:
+        if not isinstance(result, dict):
+            if not query:
+                return {"success": False,
+                        "error": "provide a result or a query"}
+            result = _reports.run_query(kind, query)
+        out = _reports.create_report(kind=kind, result=result, query=query,
+                                     plan=plan)
+    except Exception as exc:  # noqa: BLE001 - never crash the control plane
+        logger.warning("juris report create failed: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+    if account_id:
+        try:
+            mgr.record_usage(account_id, "report_export",
+                             details=f"{kind}:{out['id']}")
+        except Exception as exc:  # noqa: BLE001 - metering must not break export
+            logger.warning("juris report metering failed: %s", exc)
+    _log_admin(operator, "report_create",
+               {"id": out["id"], "kind": kind, "account_id": account_id})
+    return {"success": True, **out}
+
+
+@router.get("/api/juris-kai/reports")
+def cc_reports_list(_: str = Depends(require_cc_read)):
+    """List stored reports (newest first)."""
+    from core.juris_kai import reports as _reports
+    return {"success": True, "reports": _reports.list_reports()}
+
+
+@router.get("/api/juris-kai/reports/{report_id}.{fmt}")
+def cc_reports_download(report_id: str, fmt: str,
+                        _: str = Depends(require_cc_read)):
+    """Download a report as PDF or DOCX."""
+    from core.juris_kai import reports as _reports
+    fmt = fmt.lower()
+    if fmt not in _reports.CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="format must be pdf or docx")
+    path = _reports.report_path(report_id, fmt)
+    if path is None:
+        raise HTTPException(status_code=404, detail="report not found")
+    return FileResponse(str(path), media_type=_reports.CONTENT_TYPES[fmt],
+                        filename=path.name)
 
 
 # ── pricing (editable tiers) ──────────────────────────────────────────────

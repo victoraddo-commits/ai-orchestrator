@@ -342,6 +342,25 @@ def send_typing(chat_id: int | str) -> None:
     telegram_api("sendChatAction", {"chat_id": chat_id, "action": "typing"})
 
 
+def send_document(chat_id: int | str, file_path: str, caption: str = "",
+                  reply_markup: str | None = None) -> dict:
+    """Upload a local file (e.g. an exported report) to a Telegram chat."""
+    url = f"https://api.telegram.org/bot{_get_bot_token()}/sendDocument"
+    try:
+        with open(file_path, "rb") as fh:
+            files = {"document": (os.path.basename(file_path), fh)}
+            data = {"chat_id": str(chat_id)}
+            if caption:
+                data["caption"] = caption[:1024]
+            if reply_markup:
+                data["reply_markup"] = reply_markup
+            resp = requests.post(url, data=data, files=files, timeout=90)
+        return resp.json()
+    except Exception as exc:  # noqa: BLE001 - a failed upload must not crash
+        logger.error("sendDocument failed: %s", exc)
+        return {"ok": False, "description": str(exc)}
+
+
 def answer_callback(callback_id: str, text: str = "", show_alert: bool = False) -> dict:
     """Answer a callback query."""
     data = {"callback_query_id": callback_id}
@@ -1867,10 +1886,22 @@ def _build_deep_reply(text: str, chat_id, account: dict, reply_markup=None,
                  body, model, _latency_ms, False,
                  source_key=plan["source_key"])
 
+    # Offer an inline "Export report" action. Best-effort: if the reports
+    # module/stash fails, the answer still ships with the normal keyboard.
+    export_markup = reply_markup
+    try:
+        from core.juris_kai import reports as _reports
+        token = _reports.stash_result(
+            result, query=retrieval_query,
+            plan=str(account.get("tier") or account.get("plan") or ""))
+        export_markup = _reports.export_keyboard(token)
+    except Exception as exc:  # noqa: BLE001 - never block the deep answer
+        logger.warning("could not offer report export: %s", exc)
+
     return {
         "chat_id": chat_id,
         "text": delivered_text,
-        "reply_markup": reply_markup,
+        "reply_markup": export_markup,
         "parse_mode": "Markdown",
     }
 
@@ -2357,8 +2388,76 @@ def handle_callback(callback_query: dict) -> dict | None:
             "parse_mode": "Markdown",
         }
 
+    # Export a stashed Deep/Authority result as PDF + DOCX
+    if data.startswith("report:"):
+        return _handle_report_export(data.split(":", 1)[1], chat_id,
+                                     telegram_id, callback_id)
+
     answer_callback(callback_id, "Action received.")
     return None
+
+
+def _handle_report_export(token: str, chat_id, telegram_id: str,
+                          callback_id: str) -> dict:
+    """Create a report from a stashed result and deliver the download links.
+
+    Entitlement-gated (Pro/Pro+/institution) and metered as ``report_export``;
+    a free account gets the upgrade prompt and no report is created.
+    """
+    from core.juris_kai import reports as _reports
+
+    mgr = get_account_manager()
+    account = mgr.get_by_telegram(telegram_id)
+    if not account:
+        answer_callback(callback_id, "No account found.")
+        return {"chat_id": chat_id, "text": "Please send /start first.",
+                "reply_markup": main_menu()}
+
+    prompt = _entitlements.check_feature(mgr, account["account_id"],
+                                         "export_reports")
+    if prompt:
+        answer_callback(callback_id, "Upgrade required", show_alert=True)
+        return {"chat_id": chat_id, "text": prompt,
+                "reply_markup": main_menu(), "parse_mode": "Markdown"}
+
+    stashed = _reports.load_stash(token)
+    if not stashed:
+        answer_callback(callback_id, "Report expired")
+        return {"chat_id": chat_id,
+                "text": ("⚠️ That report has expired. Run Deep Research again "
+                         "and tap *Export report*."),
+                "reply_markup": main_menu(), "parse_mode": "Markdown"}
+
+    try:
+        out = _reports.create_report(
+            kind=stashed.get("kind") or "deep", result=stashed.get("result"),
+            query=stashed.get("query") or "", plan=stashed.get("plan") or "")
+    except Exception as exc:  # noqa: BLE001 - export must never crash the bot
+        logger.error("report export failed: %s", exc)
+        answer_callback(callback_id, "Export failed", show_alert=True)
+        return {"chat_id": chat_id,
+                "text": "⚠️ Could not create the report. Please try again.",
+                "reply_markup": main_menu()}
+
+    mgr.record_usage(account["account_id"], "report_export",
+                     details=f"{out['kind']}:{out['id']}")
+    answer_callback(callback_id, "Report ready ✅")
+
+    # Best-effort: upload the PDF directly, then always return the links.
+    try:
+        send_document(chat_id, out["pdf_path"],
+                      caption=f"📄 Juris Kai report — {out['query']}")
+    except Exception as exc:  # noqa: BLE001 - links still ship on failure
+        logger.warning("report document upload failed: %s", exc)
+
+    return {
+        "chat_id": chat_id,
+        "text": (f"📄 *Report ready* (`{out['id']}`)\n"
+                 f"PDF: `{out['pdf']}`\nDOCX: `{out['docx']}`\n\n"
+                 f"_{out['pdf_bytes']} B PDF · {out['docx_bytes']} B DOCX_"),
+        "reply_markup": main_menu(),
+        "parse_mode": "Markdown",
+    }
 
 
 # ---------------------------------------------------------------------------

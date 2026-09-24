@@ -464,6 +464,10 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
    <div id="stat" class="muted"></div>
  </div>
  <div class="card"><h3>Uploaded directives</h3><ul id="list"></ul></div>
+ <div class="card"><h3>Docs / Reports</h3>
+   <ul id="docs"></ul>
+   <pre id="docview" style="display:none;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,monospace;font-size:12px;max-height:60vh;overflow:auto;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:10px"></pre>
+ </div>
 </main>
 <script>
 let unlocked=false, lastTouch=0;
@@ -494,6 +498,27 @@ drop.onclick=()=>file.click(); file.onchange=()=>[...file.files].forEach(f=>uplo
 ['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('hover')}));
 ['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('hover')}));
 drop.addEventListener('drop',ev=>{[...ev.dataTransfer.files].forEach(f=>uploadBlob(f,f.name))});
+async function loadDocs(){
+ const el=document.getElementById('docs'); if(!el) return;
+ try{
+  const r=await fetch('/api/directives/docs',{credentials:'same-origin'});
+  if(!r.ok){el.innerHTML='<li class="muted">approve with Duo to list docs</li>';return}
+  const j=await r.json(); const rows=(j&&j.docs)||[];
+  el.innerHTML=rows.map(function(d){var u='/api/directives/docs/'+String(d.path).split('/').map(encodeURIComponent).join('/');
+    return '<li><span>'+d.path+'</span><span class="muted">'+d.size+'B &middot; '
+      +'<a href="#" data-path="'+d.path+'" onclick="viewDoc(this.dataset.path);return false">view</a> &middot; '
+      +'<a href="'+u+'">download</a></span></li>';}).join('')||'<li class="muted">no docs</li>';
+ }catch(e){el.innerHTML='<li class="err">'+e.message+'</li>';}
+}
+async function viewDoc(path){
+ const p=document.getElementById('docview'); if(!p) return;
+ try{
+  const u='/api/directives/docs/'+String(path).split('/').map(encodeURIComponent).join('/');
+  const r=await fetch(u,{credentials:'same-origin'});
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  p.textContent=await r.text(); p.style.display='block'; p.scrollIntoView({behavior:'smooth'});
+ }catch(e){p.textContent='error: '+e.message; p.style.display='block';}
+}
 async function load(){
  const r=await fetch('/api/directives',{credentials:'same-origin'});
  if(!r.ok){document.getElementById('list').innerHTML='<li class="muted">approve with Duo to list</li>';return}
@@ -511,7 +536,7 @@ window.addEventListener('focus',()=>touch());
  try{const s=await fetch('/session',{credentials:'same-origin'}).then(r=>r.json());
      if(s.authenticated){unlocked=true; const st=document.getElementById('ustat'); st.textContent='session active (5 min idle)'; st.className='ok';}}
  catch(e){}
- load(); touch();
+ load(); loadDocs(); touch();
 })();
 </script></body></html>"""
 

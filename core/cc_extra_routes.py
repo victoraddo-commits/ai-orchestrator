@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -1021,4 +1022,224 @@ def legal_brain_firewall():
         "domains": domains,
         "sources": sources,
     }
+
+
+# ── Legal Brain panel proxy (Legal Brain 2.0 Phase 8, Task 3) ───────────────
+# The CC browser never talks to the brain (CT100) directly. Every route here
+# proxies ``core.legal_brain_client`` (the token is injected server-side) and is
+# operator-gated — even reads, because a corpus read is still privileged. The
+# upstream base URL/token never reaches the browser.
+
+def _lb_error(exc: Exception) -> JSONResponse:
+    """Map a brain transport error to an honest, non-2xx JSON response.
+
+    An upstream ``HTTPError`` keeps its status (e.g. 404 unknown everyday
+    topic); anything else is a 502 (brain unreachable / bad payload).
+    """
+    import urllib.error
+    if isinstance(exc, urllib.error.HTTPError):
+        code = exc.code if 400 <= exc.code < 600 else 502
+        return JSONResponse({"ok": False, "error": f"brain HTTP {exc.code}"},
+                            status_code=code)
+    return JSONResponse(
+        {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+        status_code=502)
+
+
+def _lb_ok(data):
+    """Wrap a brain dict payload (or list) in the ``{ok: True, ...}`` shape."""
+    if isinstance(data, dict):
+        return {"ok": True, **data}
+    return {"ok": True, "data": data}
+
+
+@cc_extra_router.get("/api/legal/health")
+def legal_health(stale_days: int | None = None, _: None = Depends(_req_op)):
+    """Corpus knowledge-health snapshot (docs/with-content/temporal/integrity)."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.legal_health(stale_days=stale_days))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/coverage")
+def legal_coverage(threshold: int | None = None, _: None = Depends(_req_op)):
+    """Legal-area coverage + harvest priorities."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.coverage(threshold=threshold))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/gaps")
+def legal_gaps(status: str = "", limit: int = 50,
+               _: None = Depends(_req_op)):
+    """Ask-to-Acquire gap queue (status/domain/ministry/question)."""
+    from core import legal_brain_client as lb
+    try:
+        gaps = lb.list_gaps(status=status or None, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+    return {"ok": True, "count": len(gaps or []), "gaps": gaps or []}
+
+
+class _AcquireBody(BaseModel):
+    per_source: int = 5
+    delay: float = 0.5
+
+
+@cc_extra_router.post("/api/legal/gaps/{gap_id}/acquire")
+def legal_gap_acquire(gap_id: int, body: _AcquireBody | None = None,
+                      _: None = Depends(_req_op)):
+    """Run one bounded acquisition pass for a gap (operator-gated write)."""
+    from core import legal_brain_client as lb
+    per_source = int(body.per_source) if body is not None else 5
+    delay = float(body.delay) if body is not None else 0.5
+    return lb.acquire_gap(gap_id, per_source=per_source, delay=delay)
+
+
+@cc_extra_router.get("/api/legal/everyday")
+def legal_everyday(_: None = Depends(_req_op)):
+    """Everyday-Law topic catalogue."""
+    from core import legal_brain_client as lb
+    try:
+        return {"ok": True, "topics": lb.everyday_topics()}
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/everyday/{topic}")
+def legal_everyday_topic(topic: str, _: None = Depends(_req_op)):
+    """One grounded plain-language explainer (404 for an unknown topic)."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.everyday(topic))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/licences")
+def legal_licences(_: None = Depends(_req_op)):
+    """Source commercial-use licence register (read-only)."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.licences())
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/relations/{doc_id}")
+def legal_relations(doc_id: int, _: None = Depends(_req_op)):
+    """Typed knowledge-graph relations of one document."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.relations(doc_id))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/status/{doc_id}")
+def legal_status(doc_id: int, _: None = Depends(_req_op)):
+    """Temporal / current-law status of one document."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.status(doc_id))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+class _AskBody(BaseModel):
+    query: str = ""
+    task_type: str = "juris_research"
+    deep: bool = False
+    context: str = ""
+
+
+def _compact_docs(docs: list) -> list:
+    """Bound retrieval docs to the fields the Ask tab renders (never bodies)."""
+    keep = ("id", "title", "citation", "year", "store_mode", "authority_level")
+    return [{k: d.get(k) for k in keep if d.get(k) is not None}
+            for d in (docs or [])]
+
+
+def _legal_generate(prompt: str, task_type: str) -> tuple[str, str]:
+    """Blocking local generation with the same fallback as the Juris test query."""
+    from core.juris_kai import streaming
+    try:
+        return streaming.generate(prompt, task_type=task_type), streaming.DEFAULT_MODEL
+    except Exception:  # noqa: BLE001 - fall back to the generic router
+        from core.ai.ai_router import delegate
+        result = delegate(prompt, task_type=task_type, capability="text_task")
+        return (result.get("response") or ""), (result.get("provider") or "")
+
+
+def _legal_ask_quick(query: str, task_type: str, context: str) -> dict:
+    from core.juris_kai import grounding
+    plan = grounding.build_grounded_plan(query, task_type, context=context,
+                                         asker="cc")
+    if plan["refusal"]:
+        return {
+            "success": True, "mode": "quick", "text": plan["refusal"],
+            "verdict": plan["verdict"], "grounded": False,
+            "refusal": plan["refusal"], "sources": [], "sources_footer": "",
+            "uncertainty": None, "model": "", "latency_ms": 0,
+        }
+    started = time.time()
+    try:
+        text, model = _legal_generate(plan["prompt"], task_type)
+    except Exception as exc:  # noqa: BLE001 - report, never blank the endpoint
+        return {"success": False, "mode": "quick", "error": str(exc)}
+    if text and text.strip():
+        text = plan["banner"] + text + plan["footer"]
+    return {
+        "success": True, "mode": "quick", "text": text,
+        "verdict": plan["verdict"], "grounded": bool(plan.get("groundable")),
+        "refusal": None, "sources": _compact_docs(plan["docs"]),
+        "sources_footer": plan["footer"], "uncertainty": None,
+        "model": model, "latency_ms": round((time.time() - started) * 1000, 1),
+    }
+
+
+def _legal_ask_deep(query: str) -> dict:
+    from core.juris_kai import grounding, reasoning
+    result = reasoning.run_deep(query)
+    docs = result.get("docs") or []
+    judge = result.get("judge") or {}
+    text = (reasoning.render_deep(result)
+            + grounding.build_sources_footer(docs))
+    return {
+        "success": True, "mode": "deep", "text": text,
+        "verdict": result.get("verdict") or ("GROUNDED" if docs else "UNGROUNDED"),
+        "grounded": bool(docs), "refusal": None,
+        "sources": _compact_docs(docs),
+        "sources_footer": grounding.build_sources_footer(docs),
+        "uncertainty": {
+            "established": len(judge.get("established") or []),
+            "disputed": len(judge.get("disputed") or []),
+            "unresolved": len(judge.get("unresolved") or []),
+            "confidence": judge.get("confidence"),
+        },
+        "degraded": bool(result.get("degraded")),
+        "latency": result.get("latency") or {},
+        "model": "deep",
+    }
+
+
+@cc_extra_router.post("/api/legal/ask")
+def legal_ask(body: _AskBody, _: None = Depends(_req_op)):
+    """Grounded legal answer for the Ask tab; optional deep (IRAC) reasoning.
+
+    Strict grounding: an unsupported or non-Ghana question is refused without a
+    model call. Operator-gated because it invokes local generation and may
+    record an Ask-to-Acquire gap.
+    """
+    query = (body.query or "").strip()
+    if not query:
+        return {"success": False, "error": "query is required"}
+    if body.deep:
+        return _legal_ask_deep(query)
+    return _legal_ask_quick(query, body.task_type or "juris_research",
+                            body.context or "")
 

@@ -252,17 +252,35 @@ def source_health():
     return _get("/source-health", timeout=40)
 
 
-def legal_health(stale_days=None):
+def legal_health(stale_days=None, timeout=30):
     """Corpus knowledge-health snapshot (Phase 6 T3), token-gated read.
 
     Returns the brain's ``/legal/health`` payload (docs, with_content, by_area,
     temporal_counts, unknown_status, stale_authorities, integrity, suspect_docs).
-    Transport failures raise, so a caller can degrade gracefully.
+    The default timeout is generous (30s): the brain re-checks integrity over the
+    whole corpus on this call. Transport failures raise, so a caller can degrade.
     """
     path = "/legal/health"
     if stale_days is not None:
         path += f"?stale_days={int(stale_days)}"
-    return _get_auth(path)
+    return _get_auth(path, timeout=timeout)
+
+
+def coverage(threshold=None, timeout=20):
+    """Legal-area coverage + harvest priorities (Phase 0/T3), token-gated read."""
+    path = "/coverage"
+    if threshold is not None:
+        path += f"?threshold={int(threshold)}"
+    return _get_auth(path, timeout=timeout)
+
+
+def licences(timeout=15):
+    """Source commercial-use licence register (token-gated read).
+
+    Returns the brain payload ``{version, register, markdown}`` so the Command
+    Center can render the register as a read-only table.
+    """
+    return _get_auth("/licences", timeout=timeout)
 
 
 def sources():

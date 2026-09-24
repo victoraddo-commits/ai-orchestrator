@@ -1043,7 +1043,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <a class="nav-item active" href="#home" data-hash="home"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Home</span></a>
       <div class="sidebar-section-label">Management</div>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
-      <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal</span></a>
+      <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal Brain</span></a>
       <a class="nav-item" href="#payments" data-hash="payments"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M6 15h4"/></svg></span><span class="label">Pricing &amp; Payments</span></a>
       <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a7 7 0 0 0-4 12.7V17a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-2.3A7 7 0 0 0 12 2z"/><line x1="10" y1="21" x2="14" y2="21"/></svg></span><span class="label">Arbitra</span></a>
       <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
@@ -1433,7 +1433,7 @@ const SK = 'kai_command_session_v3';
 // Per-model dedicated pages, registered at runtime from /api/models/catalog.
 window.MODEL_PAGES = {};   // slug -> {id, title}
 const PANEL_TITLES = {
-  home:'home', modules:'modules', legal:'legal', 'ai-workforce':'workforce', arbitra:'Arbitra', bet:'KAI Bet',
+  home:'home', modules:'modules', legal:'Legal Brain', 'ai-workforce':'workforce', arbitra:'Arbitra', bet:'KAI Bet',
   payments:'Pricing & Payments',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
@@ -2372,7 +2372,8 @@ async function loadLegal(){
   try{const data=await api('/api/modules');S.modules=data.modules;
     const legal=data.modules.filter(m=>LEGAL_MODULES.includes(m.name));
     if(!legal.length){el.innerHTML='<p class="empty">No legal modules registered</p>';return;}
-    let html='<div style="margin-bottom:20px"><div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Applications</div>';
+    let html=_legalBrainCard();
+    html+='<div style="margin-bottom:20px"><div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--warn);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;padding:8px 12px;background:var(--bg-elevated);border:1px solid var(--border)">Legal Applications</div>';
     // Juris Kai
     // Juris Kai — Command Center control plane (Part B). Views mount lazily
     // via jurisMount(): overview, corpus, ingest, accounts, referrals, bot,
@@ -2410,8 +2411,350 @@ async function loadLegal(){
     </div>`;
     html+='</div>';el.innerHTML=html;
     if(typeof jurisMount==='function'&&document.getElementById('juris-tabs'))jurisMount();
+    legalBrainMount();
     loadLegalGroups();}
   catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// LEGAL BRAIN — Ask · Reports · Gaps · Everyday Law · Corpus health · Licences
+// Legal Brain 2.0 Phase 8, Task 3. All data flows through the operator-gated
+// /api/legal/* proxy (core/cc_extra_routes.py) + the existing
+// /api/juris-kai/reports routes; the browser never reaches CT100 directly.
+// Native views only — status is always a colour AND a label; empty states.
+// ═══════════════════════════════════════════════════════════════════
+const LEGAL_BRAIN_TABS=[
+  {n:'ask',l:'Ask'},{n:'reports',l:'Reports'},{n:'gaps',l:'Gaps (Ask-to-Acquire)'},
+  {n:'everyday',l:'Everyday Law'},{n:'health',l:'Corpus health'},{n:'licences',l:'Licences'}
+];
+let LEGAL_BRAIN_ACTIVE='ask';
+let LB_GAP_MSG='';
+
+function _lbMetric(label,val,cls){
+  return '<div class="metric"><span class="val'+(cls?' '+cls:'')+'">'+esc(val==null?'—':val)+'</span><span class="lbl">'+esc(label)+'</span></div>';
+}
+function _legalBrainCard(){
+  return '<div class="card" id="legal-brain-card" style="margin-bottom:12px">'
+    +'<h3>Legal Brain <span class="badge ok">grounded</span>'
+    +' <span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="legalBrainMount()">Refresh</button></span></h3>'
+    +'<p style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">Ghana law corpus served from CT100 &middot; answers are grounded and advisory (not legal advice) &middot; operator-gated proxy — no direct brain access</p>'
+    +'<div class="action-row" id="legal-brain-tabs" style="gap:6px;flex-wrap:wrap"></div>'
+    +'<div id="lbp-content" style="margin-top:10px"><span class="loading">loading…</span></div>'
+    +'</div>';
+}
+function legalBrainMount(){
+  const tabs=$('legal-brain-tabs'); if(!tabs)return;
+  tabs.innerHTML=LEGAL_BRAIN_TABS.map(t=>'<button type="button" class="btn btn-xs '+(t.n===LEGAL_BRAIN_ACTIVE?'btn-accent':'')+'" data-lb="'+t.n+'" onclick="legalBrainTab(\''+t.n+'\')">'+esc(t.l)+'</button>').join('');
+  legalBrainTab(LEGAL_BRAIN_ACTIVE);
+}
+function legalBrainTab(tab){
+  LEGAL_BRAIN_ACTIVE=tab;
+  document.querySelectorAll('#legal-brain-tabs [data-lb]').forEach(b=>b.classList.toggle('btn-accent',b.dataset.lb===tab));
+  const c=$('lbp-content'); if(!c)return;
+  c.dataset.lb=tab;
+  const views={ask:lbAskView,reports:lbReportsView,gaps:lbGapsView,everyday:lbEverydayView,health:lbHealthView,licences:lbLicencesView};
+  (views[tab]||lbAskView)();
+}
+function _lbStale(tab){const c=$('lbp-content');return !c||c.dataset.lb!==tab;}
+
+// ── Ask ─────────────────────────────────────────────────────────────
+function lbAskView(){
+  const c=$('lbp-content'); if(!c)return;
+  c.innerHTML='<div class="card"><h3>Ask <span class="badge info">grounded</span></h3>'
+    +'<p class="field-hint">Retrieval decides whether the model may answer: an unsupported or non-Ghana question is refused, never guessed. Deep runs the Advocate ∥ Opponent → Judge IRAC pass.</p>'
+    +'<div class="action-row" style="flex-wrap:wrap;gap:6px;align-items:center">'
+    +'<input id="lbp-q" class="search-input" style="flex:1;min-width:220px" placeholder="e.g. What are the requirements for a valid contract in Ghana?" onkeyup="if(event.key===\'Enter\')lbAskRun()">'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap"><input type="checkbox" id="lbp-deep"> Deep (IRAC)</label>'
+    +'<button class="btn btn-sm btn-accent" onclick="lbAskRun()">Ask</button></div>'
+    +'<div id="lbp-ask-result" style="margin-top:10px"></div></div>';
+}
+async function lbAskRun(){
+  const q=(($('lbp-q')||{}).value||'').trim();
+  if(!q){toast('Enter a question first','err');return;}
+  const deep=!!(($('lbp-deep')||{}).checked);
+  const out=$('lbp-ask-result');
+  if(out)out.innerHTML='<span class="loading">'+(deep?'running deep reasoning (IRAC)…':'retrieving grounded sources…')+'</span>';
+  try{
+    const d=await apiT('/api/legal/ask',180000,{method:'POST',body:JSON.stringify({query:q,deep:deep})});
+    if(_lbStale('ask'))return;
+    if(!d.success){out.innerHTML='<span class="error-text">'+esc(d.error||'ask failed')+'</span>';return;}
+    const verdict=d.verdict||(d.grounded?'GROUNDED':'UNGROUNDED');
+    const cls=d.grounded?'ok':(verdict==='PARTIAL'?'warn':'bad');
+    let h='<div class="card" style="background:var(--bg-elevated)">'
+      +'<div class="spread" style="margin-bottom:8px"><span><span class="badge '+cls+'">'+esc(verdict)+'</span> '
+      +'<span style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">'+esc(d.mode||'quick')
+      +(d.model?' · '+esc(d.model):'')+(d.latency_ms?' · '+d.latency_ms+' ms':'')+'</span></span>'
+      +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbAskExport()">Export report</button></span></div>'
+      +'<div style="white-space:pre-wrap;word-break:break-word;font-size:0.74rem;line-height:1.55;color:var(--fg)">'+esc(d.text||'')+'</div>';
+    if(d.uncertainty){
+      const u=d.uncertainty;
+      h+='<div class="metric-row" style="margin-top:10px">'
+        +_lbMetric('Established',u.established,'ok')+_lbMetric('Disputed',u.disputed,'warn')
+        +_lbMetric('Unresolved',u.unresolved,'bad')+_lbMetric('Confidence',u.confidence,'info')+'</div>';
+    }
+    h+='<div id="lbp-ask-export" style="margin-top:8px"></div>';
+    if(d.sources&&d.sources.length){
+      h+='<h4 style="font-size:0.68rem;margin-top:10px">📚 Sources</h4><div class="table-wrap"><table><thead><tr><th>Title</th><th>Citation</th><th>Year</th><th>Mode</th><th>Authority</th></tr></thead><tbody>';
+      for(const s of d.sources){
+        h+='<tr><td>'+esc(s.title||'—')+'</td><td>'+esc(s.citation||'—')+'</td><td>'+esc(s.year||'—')+'</td><td>'+esc(s.store_mode||'—')+'</td><td>'+esc(s.authority_level||'—')+'</td></tr>';
+      }
+      h+='</tbody></table></div>';
+    }
+    if(d.degraded)h+='<p class="field-hint">⚠️ Some reasoning passes degraded; the answer is bounded to the retrieved sources.</p>';
+    h+='</div>';
+    out.innerHTML=h;
+    out.dataset.query=q;
+  }catch(e){ if(out)out.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+function lbAskExport(){
+  const box=$('lbp-ask-result');
+  const q=(box&&box.dataset.query)||(($('lbp-q')||{}).value||'').trim();
+  if(!q){toast('Ask a question first','err');return;}
+  confirmAction('Export report',
+    'Render this question into a downloadable PDF + DOCX report? (Runs a deep analysis server-side.)',
+    async()=>{
+      const slot=$('lbp-ask-export'); if(slot)slot.innerHTML='<span class="loading">generating report…</span>';
+      toast('Generating report…');
+      try{
+        const d=await apiT('/api/juris-kai/reports',180000,{method:'POST',body:JSON.stringify({query:q,kind:'deep'})});
+        if(!d.success){if(slot)slot.innerHTML='<span class="error-text">'+esc(d.error||'export failed')+'</span>';return;}
+        if(slot)slot.innerHTML='<div class="card" style="background:var(--bg-surface)"><h4 style="font-size:0.7rem">Report <code>'+esc(d.id)+'</code> ready</h4>'
+          +'<div class="action-row"><button class="btn btn-xs btn-accent" onclick="lbReportOpen(\''+esc(d.id)+'\')">Open PDF</button>'
+          +'<button class="btn btn-xs" onclick="lbReportDownload(\''+esc(d.id)+'\',\'pdf\')">PDF</button>'
+          +'<button class="btn btn-xs" onclick="lbReportDownload(\''+esc(d.id)+'\',\'docx\')">DOCX</button></div></div>';
+        toast('Report '+d.id+' ready');
+      }catch(e){if(slot)slot.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+    });
+}
+
+// ── Reports ─────────────────────────────────────────────────────────
+async function lbReportsView(){
+  const c=$('lbp-content'); if(!c)return;
+  c.innerHTML='<span class="loading">loading reports…</span>';
+  try{
+    const d=await api('/api/juris-kai/reports');
+    if(_lbStale('reports'))return;
+    if(d&&d.success===false){c.innerHTML='<span class="error-text">'+esc(d.error||'unavailable')+'</span>';return;}
+    const rows=(d&&d.reports)||[];
+    let h='<div class="card"><h3>Reports <span class="badge info">'+rows.length+'</span>'
+      +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbReportsView()">Refresh</button></span></h3>'
+      +'<p class="field-hint">Exportable research reports — PDF + DOCX, citation-firewalled, informational only.</p>';
+    if(!rows.length){h+='<p class="empty">No reports yet — ask a question and use Export.</p>';}
+    else{
+      h+='<div class="table-wrap"><table><thead><tr><th>Question</th><th>Kind</th><th>Date</th><th>Size</th><th>Actions</th></tr></thead><tbody>';
+      for(const r of rows){
+        h+='<tr><td>'+esc(r.query||'—')+'<div style="font-size:0.6rem;color:var(--fg-muted)"><code>'+esc(r.id)+'</code></div></td>'
+          +'<td><span class="badge info">'+esc(r.kind||'—')+'</span></td>'
+          +'<td>'+esc((r.date||r.created_at||'').slice(0,19))+'</td>'
+          +'<td>'+esc(fmtBytes((r.pdf_bytes||0)+(r.docx_bytes||0)))+'</td>'
+          +'<td class="action-row"><button class="btn btn-xs" onclick="lbReportOpen(\''+esc(r.id)+'\')">Open PDF</button> '
+          +'<button class="btn btn-xs" onclick="lbReportDownload(\''+esc(r.id)+'\',\'pdf\')">PDF</button> '
+          +'<button class="btn btn-xs" onclick="lbReportDownload(\''+esc(r.id)+'\',\'docx\')">DOCX</button></td></tr>';
+      }
+      h+='</tbody></table></div>';
+    }
+    h+='</div>';
+    c.innerHTML=h;
+  }catch(e){ if(!_lbStale('reports'))c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+async function _lbReportBlob(id,fmt){
+  const h={}; if(S.token)h['X-Kai-Session']=S.token;
+  const res=await fetch('/api/juris-kai/reports/'+encodeURIComponent(id)+'.'+fmt,{headers:h});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  return res.blob();
+}
+async function lbReportOpen(id){
+  try{const b=await _lbReportBlob(id,'pdf');const u=URL.createObjectURL(b);window.open(u,'_blank');setTimeout(()=>URL.revokeObjectURL(u),60000);}
+  catch(e){toast('Open failed: '+e.message,'err');}
+}
+async function lbReportDownload(id,fmt){
+  try{const b=await _lbReportBlob(id,fmt);const u=URL.createObjectURL(b);const a=document.createElement('a');
+    a.href=u;a.download='juris_report_'+id+'.'+fmt;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);
+    toast('downloading '+fmt);}catch(e){toast('Download failed: '+e.message,'err');}
+}
+
+// ── Gaps (Ask-to-Acquire) ───────────────────────────────────────────
+async function lbGapsView(){
+  const c=$('lbp-content'); if(!c)return;
+  c.innerHTML='<span class="loading">loading gap queue…</span>';
+  try{
+    const d=await api('/api/legal/gaps?limit=100');
+    if(_lbStale('gaps'))return;
+    const rows=(d&&d.gaps)||[];
+    let h='<div class="card"><h3>Gaps (Ask-to-Acquire) <span class="badge info">'+rows.length+'</span>'
+      +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbGapsView()">Refresh</button></span></h3>'
+      +'<p class="field-hint">Unanswered questions the corpus cannot meet. Acquire runs one bounded harvest pass for a gap (contacts external legal sources).</p>';
+    if(d&&d.ok===false){h+='<span class="error-text">'+esc(d.error||'unavailable')+'</span>';}
+    else if(!rows.length){h+='<p class="empty">No gaps recorded.</p>';}
+    else{
+      h+='<div class="table-wrap"><table><thead><tr><th>Status</th><th>Domain</th><th>Ministry</th><th>Question</th><th>Acquire</th></tr></thead><tbody>';
+      for(const g of rows){
+        const st=String(g.status||'').toLowerCase();
+        const bc=(st.indexOf('filled')>=0||st==='closed')?'ok':((st.indexOf('not')>=0||st.indexOf('unfound')>=0)?'bad':((st.indexOf('open')>=0||st==='needs_review')?'warn':'info'));
+        h+='<tr><td><span class="badge '+bc+'">'+esc(g.status||'—')+'</span></td>'
+          +'<td>'+esc(g.domain||'—')+'</td><td>'+esc(g.ministry||'—')+'</td>'
+          +'<td style="max-width:360px">'+esc(g.question||'')+'</td>'
+          +'<td><button class="btn btn-xs btn-accent" onclick="lbGapAcquire(\''+esc(g.id)+'\')">Acquire</button></td></tr>';
+      }
+      h+='</tbody></table></div>';
+    }
+    h+='<div id="lbp-gap-result" style="margin-top:8px">'+LB_GAP_MSG+'</div></div>';
+    c.innerHTML=h;
+  }catch(e){ if(!_lbStale('gaps'))c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+function lbGapAcquire(id){
+  confirmAction('Acquire gap',
+    'Run one bounded acquisition pass for gap '+id+'? This contacts external legal sources and can take a while.',
+    async()=>{
+      LB_GAP_MSG='<span class="loading">acquiring gap '+esc(id)+'… (contacts sources)</span>';
+      lbGapsView();
+      try{
+        const d=await apiT('/api/legal/gaps/'+encodeURIComponent(id)+'/acquire',180000,{method:'POST',body:JSON.stringify({})});
+        const ok=!!d.ok;
+        LB_GAP_MSG='<div class="card" style="background:var(--bg-surface)"><h4 style="font-size:0.7rem">Gap '+esc(id)+' — <span class="badge '+(ok?'ok':'bad')+'">'+esc(ok?'filled / progressed':'not found / no new source')+'</span></h4>'
+          +'<div style="font-size:0.6rem;color:var(--fg-muted);font-family:var(--font-mono);word-break:break-word">'+esc(JSON.stringify(d))+'</div></div>';
+        toast(ok?'Gap '+id+' progressed':'Gap '+id+' not filled');
+      }catch(e){LB_GAP_MSG='<span class="error-text">'+esc(e.message)+'</span>';}
+      lbGapsView();
+    });
+}
+
+// ── Everyday Law ────────────────────────────────────────────────────
+async function lbEverydayView(){
+  const c=$('lbp-content'); if(!c)return;
+  c.innerHTML='<span class="loading">loading topics…</span>';
+  try{
+    const d=await api('/api/legal/everyday');
+    if(_lbStale('everyday'))return;
+    const topics=(d&&d.topics)||[];
+    let h='<div class="card"><h3>Everyday Law <span class="badge info">'+topics.length+' topics</span>'
+      +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbEverydayView()">Refresh</button></span></h3>'
+      +'<p class="field-hint">Plain-language explainers, grounded in a controlling instrument with its currency. Pick a topic:</p>';
+    if(d&&d.ok===false){h+='<span class="error-text">'+esc(d.error||'unavailable')+'</span>';}
+    else if(!topics.length){h+='<p class="empty">No topics.</p>';}
+    else{
+      h+='<div class="action-row" style="flex-wrap:wrap;gap:6px">';
+      for(const t of topics){h+='<button class="btn btn-xs" onclick="lbEverydayFetch(\''+esc(t.key)+'\')">'+esc(t.label||t.key)+'</button>';}
+      h+='</div>';
+    }
+    h+='<div id="lbp-everyday-result" style="margin-top:10px"></div></div>';
+    c.innerHTML=h;
+  }catch(e){ if(!_lbStale('everyday'))c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+async function lbEverydayFetch(key){
+  const out=$('lbp-everyday-result'); if(out)out.innerHTML='<span class="loading">fetching '+esc(key)+'…</span>';
+  try{
+    const d=await apiT('/api/legal/everyday/'+encodeURIComponent(key),30000);
+    if(_lbStale('everyday'))return;
+    if(d.ok===false){out.innerHTML='<span class="error-text">'+esc(d.error||'unknown topic')+'</span>';return;}
+    let h='<div class="card" style="background:var(--bg-elevated)"><h4 style="font-size:0.75rem">'+esc(d.label||key)+' '
+      +'<span class="badge '+(d.grounded?'ok':'bad')+'">'+(d.grounded?'grounded':'no source')+'</span>'
+      +(d.currency?' <span class="badge info">'+esc(d.currency)+'</span>':'')+'</h4>';
+    if(d.instrument)h+='<div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin-bottom:6px">Instrument: '+esc(d.instrument.title||d.instrument.citation||'—')+'</div>';
+    h+='<div style="white-space:pre-wrap;word-break:break-word;font-size:0.74rem;line-height:1.55">'+esc(d.explainer||d.notice||'')+'</div>';
+    if(d.sources&&d.sources.length){
+      h+='<h4 style="font-size:0.66rem;margin-top:8px">📚 Sources</h4><div class="table-wrap"><table><tbody>';
+      for(const s of d.sources){h+='<tr><td>'+esc(s.title||s.citation||'—')+'</td><td>'+esc(s.citation||'')+'</td><td>'+esc(s.year||'')+'</td></tr>';}
+      h+='</tbody></table></div>';
+    }
+    if(d.disclaimer)h+='<p class="field-hint">'+esc(d.disclaimer)+'</p>';
+    h+='</div>';
+    out.innerHTML=h;
+  }catch(e){ if(out)out.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+
+// ── Corpus health ───────────────────────────────────────────────────
+async function lbHealthView(){
+  const c=$('lbp-content'); if(!c)return;
+  c.innerHTML='<span class="loading">loading corpus health…</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {ok:false,error:e.message};}};
+  try{
+    const [h,cov]=await Promise.all([g('/api/legal/health'),g('/api/legal/coverage')]);
+    if(_lbStale('health'))return;
+    if(h.ok===false&&cov.ok===false){c.innerHTML='<span class="error-text">'+esc(h.error||'unavailable')+'</span>';return;}
+    const integ=h.integrity||{};
+    const tc=h.temporal_counts||{};
+    let html='<div class="card"><h3>Corpus health <span class="badge info">'+esc(h.docs==null?'—':h.docs)+' docs</span>'
+      +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbHealthView()">Refresh</button></span></h3>'
+      +'<div class="metric-row">'
+      +_lbMetric('Documents',h.docs,'info')+_lbMetric('With content',h.with_content,'ok')
+      +_lbMetric('Unknown status',h.unknown_status,'warn')
+      +_lbMetric('Stale authorities',(h.stale_authorities||[]).length,'warn')
+      +_lbMetric('Suspect docs',(h.suspect_docs||[]).length,(h.suspect_docs||[]).length?'bad':'ok')
+      +_lbMetric('Hash mismatches',integ.hash_mismatches==null?'—':integ.hash_mismatches,integ.hash_mismatches?'bad':'ok')
+      +_lbMetric('Duplicates',integ.duplicates==null?'—':integ.duplicates,(integ.duplicates?'warn':'ok'))
+      +'</div>';
+    const tcKeys=Object.keys(tc);
+    if(tcKeys.length){
+      html+='<h4 style="font-size:0.68rem;margin-top:10px">Temporal counts</h4><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+        +tcKeys.map(k=>{const v=tc[k];const cls=(k==='REPEALED'||k==='HISTORICAL')?'bad':(k==='CURRENT'?'ok':(k==='AMENDED'?'warn':'info'));
+          return '<span class="badge '+cls+'">'+esc(k)+': '+esc(v)+'</span>';}).join('')+'</div>';
+    }
+    const areas=(cov&&cov.areas)||h.by_area||{};
+    const areaKeys=Object.keys(areas);
+    if(areaKeys.length){
+      html+='<h4 style="font-size:0.68rem;margin-top:12px">Coverage by area <span style="color:var(--fg-muted)">(threshold '+esc((cov&&cov.threshold)||'—')+')</span></h4>'
+        +'<div class="table-wrap"><table><thead><tr><th>Area</th><th>Total</th><th>With content</th><th>Coverage</th><th>Weak</th></tr></thead><tbody>';
+      for(const [name,a] of areaKeys.map(k=>[k,areas[k]])){
+        const tot=a.total||0,wc=a.with_content||0,pct=tot?Math.round(wc/tot*100):0;
+        const weak=(a.weak!=null?a.weak:(pct<((cov&&cov.threshold)||5)));
+        html+='<tr><td>'+esc(name)+'</td><td>'+esc(tot)+'</td><td>'+esc(wc)+'</td><td>'+pct+'%</td>'
+          +'<td><span class="badge '+(weak?'warn':'ok')+'">'+(weak?'weak':'ok')+'</span></td></tr>';
+      }
+      html+='</tbody></table></div>';
+    }
+    const pri=(cov&&cov.harvest_priorities)||[];
+    if(pri.length){
+      html+='<h4 style="font-size:0.68rem;margin-top:12px">Harvest priorities</h4><div class="table-wrap"><table><thead><tr><th>Area</th><th>Deficit</th><th>Total</th></tr></thead><tbody>'
+        +pri.slice(0,10).map(p=>'<tr><td>'+esc(p.area)+'</td><td>'+esc(p.deficit)+'</td><td>'+esc(p.total)+'</td></tr>').join('')+'</tbody></table></div>';
+    }
+    if((h.suspect_docs||[]).length){
+      html+='<h4 style="font-size:0.68rem;margin-top:12px">Suspect documents</h4><div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Reasons</th></tr></thead><tbody>'
+        +h.suspect_docs.slice(0,10).map(s=>'<tr><td>'+esc(s.document_id)+'</td><td>'+esc(s.title||'')+'</td><td>'+esc((s.reasons||s.markers||[]).join(', '))+'</td></tr>').join('')+'</tbody></table></div>';
+    }
+    html+='<p class="field-hint">Generated '+esc(h.generated_at||'')+(h.stale_days?' · stale threshold '+esc(h.stale_days)+'d':'')+'</p></div>';
+    c.innerHTML=html;
+  }catch(e){ if(!_lbStale('health'))c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+
+// ── Licences ────────────────────────────────────────────────────────
+async function lbLicencesView(){
+  const c=$('lbp-content'); if(!c)return;
+  c.innerHTML='<span class="loading">loading licence register…</span>';
+  try{
+    const d=await api('/api/legal/licences');
+    if(_lbStale('licences'))return;
+    if(d.ok===false){c.innerHTML='<span class="error-text">'+esc(d.error||'unavailable')+'</span>';return;}
+    const reg=d.register||{};
+    const ids=Object.keys(reg).sort();
+    const commercial=ids.filter(i=>reg[i].commercial);
+    let h='<div class="card"><h3>Licences <span class="badge info">'+ids.length+' sources</span>'
+      +'<span class="badge ok">'+commercial.length+' commercial-cleared</span>'
+      +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbLicencesView()">Refresh</button> <button class="btn btn-xs" onclick="lbLicenceMarkdown()">View register</button></span></h3>'
+      +'<p class="field-hint">Source commercial-use register (v'+esc(d.version||'—')+'). Fail-closed: a source is served to the commercial arm only when explicitly cleared. Foundation/mission arm is unaffected.</p>';
+    if(!ids.length){h+='<p class="empty">No register entries.</p>';}
+    else{
+      h+='<div class="table-wrap"><table><thead><tr><th>Source</th><th>Licence</th><th>Commercial</th><th>AI input</th><th>Basis</th><th>Evidence</th></tr></thead><tbody>';
+      for(const sid of ids){
+        const e=reg[sid]||{};
+        h+='<tr><td><code>'+esc(sid)+'</code></td><td>'+esc(e.licence||'—')+'</td>'
+          +'<td><span class="badge '+(e.commercial?'ok':'bad')+'">'+(e.commercial?'yes':'no')+'</span></td>'
+          +'<td><span class="badge '+(e.ai_input?'ok':'bad')+'">'+(e.ai_input?'yes':'no')+'</span></td>'
+          +'<td style="max-width:320px">'+esc(e.basis||'')+'</td><td>'+esc(e.evidence_date||'')+'</td></tr>';
+      }
+      h+='</tbody></table></div>';
+    }
+    h+='<div id="lbp-licence-doc" style="margin-top:10px"></div></div>';
+    c.innerHTML=h;
+    c._lbMarkdown=d.markdown||'';
+  }catch(e){ if(!_lbStale('licences'))c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+function lbLicenceMarkdown(){
+  const c=$('lbp-content'); if(!c)return;
+  const doc=$('lbp-licence-doc'); if(!doc)return;
+  if(doc.dataset.open==='1'){doc.innerHTML='';doc.dataset.open='0';return;}
+  doc.dataset.open='1';
+  doc.innerHTML='<div class="card" style="background:var(--bg-elevated)"><pre style="white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:0.66rem;line-height:1.5;max-height:420px;overflow:auto;border:1px solid var(--border);padding:8px;border-radius:4px">'+esc(c._lbMarkdown||'')+'</pre></div>';
 }
 
 // ═══════════════════════════════════════════════════════════════════

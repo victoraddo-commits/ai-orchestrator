@@ -13,7 +13,7 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 |---|---|---|---|
 | `home` | Home | loadHome | /api/status, /api/summary |
 | `modules` | Modules | loadModules | /kai/modules |
-| `legal` | Legal | loadLegal | /kai/legal-brain |
+| `legal` | Legal Brain | loadLegal | /api/legal/* (brain proxy), /api/juris-kai/reports, /cc/legal |
 | `payments` | Pricing & Payments | loadPayments | /api/juris-kai/cc/plans, /cc/pricing, /cc/payments |
 | `ai-workforce` | Workforce | loadWorkforce | /kai/workforce* |
 | `money` | Money | loadMoney | /kai/money* |
@@ -330,3 +330,63 @@ no-publish-on-baseline).
   Factory panel renders the unreachable state with the error and a Retry.
 - The factory host still rejects SSH (no key authorised for CT111); the
   endpoint is now honest about that instead of crashing.
+
+## Legal Brain panel (2026-09-24, Phase 8 Task 3)
+
+The `legal` panel is now the **Legal Brain** (sidebar label `Legal Brain`) and
+leads with a native, tabbed Legal Brain card (`#legal-brain-card`) rendered by
+`loadLegal()` → `legalBrainMount()`. The existing legal-app cards (Juris Kai
+control plane, SUSU, Knowledge Engine, Legal Groups) remain below it.
+
+| Tab | Loader | Backend (all via CT111 proxy) |
+|---|---|---|
+| Ask | `lbAskView()` / `lbAskRun()` | `POST /api/legal/ask` (quick grounding or `deep=true` → `reasoning.run_deep`); `POST /api/juris-kai/reports` for Export |
+| Reports | `lbReportsView()` | `GET /api/juris-kai/reports`, `GET /api/juris-kai/reports/{id}.{pdf,docx}` |
+| Gaps (Ask-to-Acquire) | `lbGapsView()` / `lbGapAcquire()` | `GET /api/legal/gaps`, `POST /api/legal/gaps/{id}/acquire` |
+| Everyday Law | `lbEverydayView()` / `lbEverydayFetch()` | `GET /api/legal/everyday`, `GET /api/legal/everyday/{topic}` |
+| Corpus health | `lbHealthView()` | `GET /api/legal/health` + `GET /api/legal/coverage` |
+| Licences | `lbLicencesView()` | `GET /api/legal/licences` |
+
+Wiring points (all present): sidebar `nav-item[data-hash="legal"]`,
+`<section class="panel" id="panel-legal">`, `PANEL_TITLES.legal = "Legal Brain"`,
+`loadPanel()` → `loadLegal`, and `loadLegal()`.
+
+### Proxy routes added (`core/cc_extra_routes.py`, operator-gated)
+
+| Method | Path | Brain call |
+|---|---|---|
+| GET | `/api/legal/health` | `legal_brain_client.legal_health` (30s timeout) |
+| GET | `/api/legal/coverage` | `.coverage` |
+| GET | `/api/legal/gaps` | `.list_gaps` |
+| POST | `/api/legal/gaps/{id}/acquire` | `.acquire_gap` (write) |
+| GET | `/api/legal/everyday` | `.everyday_topics` |
+| GET | `/api/legal/everyday/{topic}` | `.everyday` |
+| GET | `/api/legal/licences` | `.licences` |
+| GET | `/api/legal/relations/{doc_id}` | `.relations` |
+| GET | `/api/legal/status/{doc_id}` | `.status` |
+| POST | `/api/legal/ask` | `grounding.build_grounded_plan` / `reasoning.run_deep` (write) |
+
+Every route requires an operator (bridge token, CC session, or the auth-proxy
+`X-Kai-User`/`X-Kai-User-Id` identity) and `401`s otherwise; the brain base URL
+and token are injected server-side and never reach the browser.
+
+### Brain endpoint added (CT100)
+
+`GET /licences` (token-gated) serves `core.legal.licenses` as
+`{version, register, markdown}` so the Licences tab can render the source
+commercial-use register as a read-only table. Verified `401` unauth / `200`
+auth (29 sources, 1 commercial-cleared).
+
+### Verification
+
+- `tests/test_cc_legal_routes.py` (25 cases): auth gate + delegation + ask
+  quick/deep/refusal. `tests/test_licences_api.py` (2 cases) on CT100.
+- CT111 `tests/test_juris_*.py tests/test_cc_*.py tests/test_legal_*.py` →
+  **683 passed**. `scripts/cc_contract_check.py --identity` → **CONTRACT OK**
+  (172 CC endpoints).
+- Live: served `/command-center` contains the `legal` nav-item, `panel-legal`,
+  `legal:loadLegal`, `loadLegal()`, `legalBrainMount()`, `lbAskView()`,
+  `#legal-brain-card`; each tab loaded live (Ask GROUNDED on
+  `qwen3-coder:kai`; reports list + PDF/DOCX download; 3 gaps; 7 everyday
+  topics; health docs=1445; 29 licence sources). Deep ask + report export
+  verified end-to-end (PDF `%PDF-`, DOCX `PK`).

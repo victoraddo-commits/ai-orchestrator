@@ -4,11 +4,13 @@ Retrieval supplies the verdict and citations; the model may only cite what
 retrieval returned. No legal substance without a source (owner directive).
 
 Query normalization lives on the legal-brain (CT100) side, so this client
-drives staged retrieval by passing a ``mode`` (phrase/and/or/like) — it never
-builds FTS operators itself. The client does reduce the query to its
-significant tokens first (see ``significant_tokens``): the server keeps
-stopwords for the ``phrase`` stage, so stripping them here is a deliberate
-client-side choice, not server normalization.
+drives retrieval by passing a ``mode`` — it never builds FTS operators itself.
+The primary mode is ``hybrid`` (authority-aware BM25 + dense + RRF); the
+staged modes (phrase/and/or/like) are the fallback when hybrid is unavailable
+or inconclusive. The client reduces the query to its significant tokens first
+(see ``significant_tokens``): the server keeps stopwords for the ``phrase``
+stage, so stripping them here is a deliberate client-side choice, not server
+normalization.
 """
 from __future__ import annotations
 import logging
@@ -285,12 +287,77 @@ def _usable(docs: list[dict]) -> list[dict]:
     return usable
 
 
+# --- Hybrid (primary) grounding calibration ---------------------------------
+# ``/search?mode=hybrid`` (CT100) is authority-aware: each result carries
+# ``score`` (0.7·relevance + 0.3·authority), ``confidence`` (similarity +
+# authority + match stage), ``authority_level`` and ``bm25_rank``. Hybrid is the
+# primary strategy; the staged modes remain the fallback when it is unavailable
+# or inconclusive. The thresholds *strengthen* grounding: a hybrid hit reaches
+# GROUNDED only with primary authority, strong score/confidence AND a real
+# lexical (BM25) match. A dense-only or secondary hit is at most PARTIAL, so
+# semantic adjacency can never turn a nonsense query into an answer.
+HYBRID_MIN_SCORE = 0.45
+HYBRID_GROUNDED_SCORE = 0.70
+HYBRID_GROUNDED_CONFIDENCE = 0.65
+# Dense (nomic cosine) floor for GROUNDED. BM25 alone is not trustworthy: a
+# single junk token can match OCR noise in a real statute ("xylophone zzz"
+# matching "zzz'9" in the Appropriation Act), so a strong semantic match is
+# required. A pure lexical hit (no dense side) still grounds only when it is
+# the top BM25 result and carries primary authority.
+HYBRID_MIN_DENSE = 0.55
+HYBRID_MAX_BM25_RANK = 3
+PRIMARY_AUTHORITY = frozenset(
+    {"constitution", "act", "instrument", "judgment"})
+
+
+def _as_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _hybrid_verdict(docs: list[dict]):
+    """Verdict for a usable hybrid result set, or ``None`` to fall back.
+
+    ``None`` means "no reliable hybrid grounding" — the caller then runs the
+    existing staged modes. GROUNDED requires primary authority plus a strong
+    score/confidence and a lexical BM25 match; anything else usable is PARTIAL.
+    """
+    if not docs:
+        return None
+    top = docs[0]
+    score = _as_float(top.get("score"))
+    conf = _as_float(top.get("confidence"))
+    authority = (top.get("authority_level") or "").strip().lower()
+    if score is None and conf is None and not authority:
+        # A brain that predates the calibration fields: the hybrid match is
+        # still authority-aware, so preserve the old exact-hit GROUNDED.
+        return "GROUNDED"
+    if score is not None and score < HYBRID_MIN_SCORE:
+        return None
+    dense = _as_float(top.get("dense_sim"))
+    bm25_rank = _as_float(top.get("bm25_rank"))
+    semantic = dense is not None and dense >= HYBRID_MIN_DENSE
+    lexical_only = (dense is None and bm25_rank is not None
+                    and bm25_rank <= HYBRID_MAX_BM25_RANK)
+    strong = (
+        authority in PRIMARY_AUTHORITY
+        and (score is None or score >= HYBRID_GROUNDED_SCORE)
+        and (conf is None or conf >= HYBRID_GROUNDED_CONFIDENCE)
+        and (semantic or lexical_only)
+    )
+    return "GROUNDED" if strong else "PARTIAL"
+
+
 def retrieve(query: str, limit: int = 3, context: str = "") -> dict:
     """Progressive retrieval. Returns {docs, verdict, stage}.
 
-    The query is reduced to its significant tokens before searching: generic
-    jurisdiction tokens ("ghana", "law", ...) are stripped so they cannot
-    ground a nonsense query via the OR stage. A short anaphoric follow-up may
+    Primary strategy is authority-aware ``hybrid`` retrieval (BM25 + dense +
+    RRF); the staged modes are the fallback when hybrid is unavailable or
+    inconclusive. The query is reduced to its significant tokens before
+    searching: generic jurisdiction tokens ("ghana", "law", ...) are stripped
+    so they cannot ground a nonsense query. A short anaphoric follow-up may
     borrow bounded topic tokens from ``context`` (the recent prior turn) so
     "and the penalty?" searches the topic under discussion. An empty
     significant-token set is UNGROUNDED and never searches.
@@ -301,25 +368,32 @@ def retrieve(query: str, limit: int = 3, context: str = "") -> dict:
         return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
     q = " ".join(tokens)
 
-    # Stage 1: exact phrase (server builds the FTS phrase query)
-    docs = _stage(q, limit, "phrase")
+    # Stage 1 (primary): authority-aware hybrid retrieval.
+    docs = _stage(q, limit, "hybrid")
     if docs:
-        return {"docs": docs, "verdict": "GROUNDED", "stage": 1}
+        verdict = _hybrid_verdict(docs)
+        if verdict:
+            return {"docs": docs, "verdict": verdict, "stage": 1}
 
-    # Stage 2: AND of tokens
-    docs = _stage(q, limit, "and")
+    # Stage 2 (fallback): exact phrase (server builds the FTS phrase query)
+    docs = _stage(q, limit, "phrase")
     if docs:
         return {"docs": docs, "verdict": "GROUNDED", "stage": 2}
 
-    # Stage 3: OR of tokens
+    # Stage 3: AND of tokens
+    docs = _stage(q, limit, "and")
+    if docs:
+        return {"docs": docs, "verdict": "GROUNDED", "stage": 3}
+
+    # Stage 4: OR of tokens
     docs = _stage(q, limit, "or")
     if docs:
-        return {"docs": docs, "verdict": "PARTIAL", "stage": 3}
+        return {"docs": docs, "verdict": "PARTIAL", "stage": 4}
 
-    # Stage 4: raw keyword fallback (title/citation LIKE)
+    # Stage 5: raw keyword fallback (title/citation LIKE)
     docs = _stage(q, limit, "like")
     if docs:
-        return {"docs": docs, "verdict": "PARTIAL", "stage": 4}
+        return {"docs": docs, "verdict": "PARTIAL", "stage": 5}
 
     return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
 

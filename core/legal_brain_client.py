@@ -115,10 +115,26 @@ def ingest(title, content, citation="", court="", year=0, doc_type="",
         return {"ok": False, **(payload if isinstance(payload, dict) else {})}
 
 
+SEARCH_MODES = ("hybrid", "phrase", "and", "or", "like")
+
+
 def search(query, limit=20, mode="or"):
+    """Search the legal brain, forwarding ``mode`` to ``/search``.
+
+    ``mode="hybrid"`` is the authority-aware primary path (BM25 + dense + RRF);
+    its results also carry ``score``, ``confidence``, ``authority_level`` and
+    ``bm25_rank``. The staged modes (phrase/and/or/like) remain available as the
+    grounding fallback. An unknown mode is passed through and the brain falls
+    back to ``or`` rather than erroring.
+    """
     q = urllib.parse.quote(query or "")
     m = urllib.parse.quote(mode or "or")
     return _get(f"/search?q={q}&limit={limit}&mode={m}").get("results", [])
+
+
+def search_hybrid(query, limit=3):
+    """Authority-aware hybrid retrieval (BM25 + dense + RRF), the primary path."""
+    return search(query, limit=limit, mode="hybrid")
 
 
 def documents(jurisdiction=None, status=None, limit=50):

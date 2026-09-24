@@ -11,12 +11,17 @@ import urllib.request
 BASE = os.environ.get("KAI_LEGAL_BRAIN_URL", "http://192.168.1.100:8100")
 
 
-def _get(path, timeout=8, auth=False):
+def _get(path, timeout=8):
+    with urllib.request.urlopen(BASE + path, timeout=timeout) as resp:
+        return json.load(resp)
+
+
+def _get_auth(path, timeout=8):
+    """GET with the write token (for token-gated read endpoints like /beliefs)."""
     headers = {}
-    if auth:
-        tok = _token()
-        if tok:
-            headers["X-Legal-Token"] = tok
+    tok = _token()
+    if tok:
+        headers["X-Legal-Token"] = tok
     req = urllib.request.Request(BASE + path, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.load(resp)
@@ -156,7 +161,7 @@ def verify_citations(text, record=False):
 
 def beliefs(limit=50):
     """Read the belief ledger (verified propositions) from the legal brain."""
-    return _get(f"/beliefs?limit={int(limit)}", auth=True).get("beliefs", [])
+    return _get_auth(f"/beliefs?limit={int(limit)}").get("beliefs", [])
 
 
 def documents(jurisdiction=None, status=None, limit=50):

@@ -83,6 +83,14 @@ class TestMeter:
         assert m["deep_research"]["used"] == 1
         assert m["deep_research"]["remaining"] == 0
 
+    def test_report_export_counts_in_the_meter(self):
+        acct = _free()
+        assert _mgr().usage_meter(acct["account_id"])["report_exports"] == 0
+        _mgr().record_usage(acct["account_id"], "report_export",
+                            details="deep:r1")
+        m = _mgr().usage_meter(acct["account_id"])
+        assert m["report_exports"] == 1
+
     def test_paid_tier_has_room(self):
         acct = _mgr().create_account("pro@example.com", "Pro", "monthly_pro")
         m = _mgr().usage_meter(acct["account_id"])

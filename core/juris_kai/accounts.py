@@ -1657,6 +1657,7 @@ class AccountManager:
                 docs_used = int(row["documents_this_month"] or 0)
 
         deep_used = self._count_usage_today(account_id, "deep_research")
+        report_used = self._count_usage_today(account_id, "report_export")
         tokens = self._sum_tokens_today(account_id)
 
         def _bucket(used: int, limit: int) -> Dict[str, int]:
@@ -1671,6 +1672,7 @@ class AccountManager:
                 tier, "documents_per_month")),
             "deep_research": _bucket(deep_used, _entitlements.quota(
                 tier, "deep_research_per_day")),
+            "report_exports": report_used,
             "tokens_today": tokens,
         }
 

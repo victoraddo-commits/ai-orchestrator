@@ -164,6 +164,47 @@ def beliefs(limit=50):
     return _get_auth(f"/beliefs?limit={int(limit)}").get("beliefs", [])
 
 
+def status(doc_id):
+    """Temporal / current-law status of one document (Phase 3 T3).
+
+    Token-gated read on CT100 (``GET /status/{id}``); returns
+    ``{document_id, found, title, status, reasons, as_of, cached}``.
+    """
+    return _get_auth(f"/status/{int(doc_id)}")
+
+
+def statuses(ids):
+    """Bulk temporal status (``GET /status?ids=...``); returns a list."""
+    clean = [int(i) for i in (ids or [])]
+    if not clean:
+        return []
+    joined = ",".join(str(i) for i in clean)
+    return _get_auth(f"/status?ids={joined}").get("statuses", [])
+
+
+def relations(doc_id):
+    """Typed knowledge-graph relations of one document (``GET /relations/{id}``)."""
+    return _get_auth(f"/relations/{int(doc_id)}")
+
+
+def document_authority(doc_id):
+    """Combined relations + temporal status for one document (Phase 3 T3/T4).
+
+    Both halves are best-effort: a failure is reported in ``*_error`` rather
+    than raised, so a caller can degrade gracefully.
+    """
+    out = {"document_id": doc_id}
+    try:
+        out["relations"] = relations(doc_id)
+    except Exception as exc:  # noqa: BLE001 - caller degrades
+        out["relations_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        out["status"] = status(doc_id)
+    except Exception as exc:  # noqa: BLE001 - caller degrades
+        out["status_error"] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
 def documents(jurisdiction=None, status=None, limit=50):
     parts = [f"limit={limit}"]
     if jurisdiction:

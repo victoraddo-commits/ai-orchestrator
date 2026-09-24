@@ -713,3 +713,45 @@ def test_plan_passes_context_to_retrieval(monkeypatch):
     plan = grounding.build_grounded_plan("and the penalty?", context="User: theft")
     assert seen["context"] == "User: theft"
     assert plan["groundable"] is True
+
+
+# ---------------------------------------------------------------------------
+# currency in the deterministic Sources footer (Phase 3 T4)
+# ---------------------------------------------------------------------------
+
+def test_footer_shows_amended_currency():
+    docs = [{"id": 853, "title": "Criminal Offences Act, 1960",
+             "citation": "Act 29", "year": 1960, "store_mode": "full",
+             "temporal_status": "AMENDED",
+             "amended_by": "Criminal Offences (Amendment) Act, 2020 (Act 1034)"}]
+    out = grounding.build_sources_footer(docs)
+    assert ("as amended by Criminal Offences (Amendment) Act, 2020 (Act 1034)"
+            in out)
+    assert out.endswith("[AMENDED]")
+
+
+def test_footer_shows_repealed_and_unknown_status():
+    docs = [
+        {"title": "Old Levy Act", "temporal_status": "REPEALED"},
+        {"title": "Mystery Act", "temporal_status": "UNKNOWN"},
+    ]
+    out = grounding.build_sources_footer(docs)
+    assert "[REPEALED]" in out
+    assert "[UNKNOWN]" in out
+
+
+def test_footer_omits_currency_when_absent():
+    docs = [{"title": "Plain Act", "citation": "Act 1", "store_mode": "full"}]
+    out = grounding.build_sources_footer(docs)
+    assert "as amended by" not in out
+    assert "[" not in out
+    assert out == "\n\n📚 *Sources*\n1. Plain Act — Act 1 — _full_"
+
+
+def test_footer_truncates_very_long_amendment_list():
+    docs = [{"title": "Big Act", "temporal_status": "AMENDED",
+             "amended_by": "; ".join(f"Amendment Act {i}" for i in range(40))}]
+    out = grounding.build_sources_footer(docs)
+    assert len(out) < 600
+    assert "[AMENDED]" in out
+

@@ -140,3 +140,75 @@ def test_ungrounded_query_never_reaches_firewall(monkeypatch):
     resp = bot._build_legal_reply("quantum entanglement tax", 123456, acct)
     assert resp["text"] == bot.UNGROUNDED_REPLY
     assert calls == [], "firewall must not run for a refusal"
+
+
+# ---------------------------------------------------------------------------
+# temporal / currency handling (Phase 3 T4)
+# ---------------------------------------------------------------------------
+
+def _span(text, needle, status="VERIFIED", temporal_status=None):
+    start = text.index(needle)
+    cit = {"display": needle, "status": status, "start": start,
+           "end": start + len(needle)}
+    if temporal_status is not None:
+        cit["temporal_status"] = temporal_status
+    return cit
+
+
+def test_repealed_citation_is_flagged_repealed_not_generic():
+    text = "Old levy is under Act 100."
+    verifier = lambda t: {
+        "citations": [_span(text, "Act 100", "MISMATCH", "REPEALED")],
+        "summary": {"MISMATCH": 1}, "all_verified": False}
+    out = citation_firewall.apply_citation_firewall(text, verifier=verifier)
+    assert citation_firewall.REPEALED_MARKER in out["text"]
+    assert "Act 100" not in out["text"]
+    assert citation_firewall.UNVERIFIED_MARKER not in out["text"]
+    assert out["changed"] is True and out["error"] is None
+
+
+def test_unknown_status_is_kept_but_noted():
+    text = "The Mystery Act applies."
+    verifier = lambda t: {
+        "citations": [_span(text, "Mystery Act", "VERIFIED", "UNKNOWN")],
+        "summary": {"VERIFIED": 1}, "all_verified": True}
+    out = citation_firewall.apply_citation_firewall(text, verifier=verifier)
+    assert "Mystery Act" in out["text"]
+    assert "status unknown" in out["text"]
+    assert out["changed"] is True
+
+
+def test_current_status_is_kept_unchanged():
+    text = "The Companies Act applies."
+    verifier = lambda t: {
+        "citations": [_span(text, "Companies Act", "VERIFIED", "CURRENT")],
+        "summary": {"VERIFIED": 1}, "all_verified": True}
+    out = citation_firewall.apply_citation_firewall(text, verifier=verifier)
+    assert out["text"] == text and out["changed"] is False
+
+
+def test_amended_status_is_kept_unchanged():
+    text = "The Criminal Offences Act applies."
+    verifier = lambda t: {
+        "citations": [_span(text, "Criminal Offences Act", "VERIFIED",
+                            "AMENDED")],
+        "summary": {"VERIFIED": 1}, "all_verified": True}
+    out = citation_firewall.apply_citation_firewall(text, verifier=verifier)
+    assert out["text"] == text and out["changed"] is False
+
+
+def test_repealed_and_unknown_combined_rewrite_is_correct():
+    text = "Old Act and New Act both apply."
+    citations = [
+        _span(text, "Old Act", "MISMATCH", "REPEALED"),
+        _span(text, "New Act", "VERIFIED", "UNKNOWN"),
+    ]
+    verifier = lambda t: {"citations": citations,
+                          "summary": {"MISMATCH": 1, "VERIFIED": 1},
+                          "all_verified": False}
+    out = citation_firewall.apply_citation_firewall(text, verifier=verifier)
+    assert citation_firewall.REPEALED_MARKER in out["text"]
+    assert "Old Act" not in out["text"]
+    assert "New Act" in out["text"]
+    assert "status unknown" in out["text"]
+

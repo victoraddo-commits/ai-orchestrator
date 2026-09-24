@@ -22,6 +22,12 @@ logger = logging.getLogger("juris_kai.citation_firewall")
 
 # Keep this string in lock-step with core.legal.citations.UNVERIFIED_MARKER.
 UNVERIFIED_MARKER = "[unverified — not found in database]"
+# A citation to an instrument the temporal engine reports as repealed is not
+# merely unverifiable — it is bad law, and must say so.
+REPEALED_MARKER = "[repealed]"
+# A verified citation whose currency cannot be established is kept (it is real
+# and in the corpus) and annotated rather than stripped.
+UNKNOWN_NOTE = " [status unknown]"
 
 _VERIFIED = "VERIFIED"
 
@@ -31,17 +37,37 @@ def _default_verifier(text: str) -> dict:
     return lb.verify_citations(text, record=True)
 
 
-def _apply_marker(text: str, citations: list, marker: str) -> str:
-    """Replace each non-verified citation span with ``marker`` (right-to-left)."""
-    edits = sorted(
-        ((c.get("start"), c.get("end")) for c in citations
-         if c.get("status") != _VERIFIED),
-        key=lambda se: se[0] if isinstance(se[0], int) else -1,
-        reverse=True)
-    for start, end in edits:
-        if (isinstance(start, int) and isinstance(end, int)
-                and 0 <= start < end <= len(text)):
-            text = text[:start] + marker + text[end:]
+def _edits(text: str, citations: list, marker: str) -> list:
+    """Rewrite ops ``(start, end, replacement)`` for one answer.
+
+    A ``REPEALED`` temporal status wins over the generic marker (a repealed
+    instrument is flagged ``[repealed]``); an otherwise-``VERIFIED`` citation
+    with ``UNKNOWN`` currency is kept and gets a trailing note; every other
+    non-verified span is replaced with ``marker``. Spans outside the text are
+    ignored so a malformed report can never corrupt the answer.
+    """
+    ops = []
+    n = len(text)
+    for c in citations or []:
+        start, end = c.get("start"), c.get("end")
+        if not (isinstance(start, int) and isinstance(end, int)
+                and 0 <= start < end <= n):
+            continue
+        temporal = (c.get("temporal_status") or "").strip().upper()
+        if temporal == "REPEALED":
+            ops.append((start, end, REPEALED_MARKER))
+        elif c.get("status") != _VERIFIED:
+            ops.append((start, end, marker))
+        elif temporal == "UNKNOWN":
+            ops.append((end, end, UNKNOWN_NOTE))
+    return ops
+
+
+def _apply_edits(text: str, ops: list) -> str:
+    """Apply right-to-left so earlier spans keep their original offsets."""
+    for start, end, replacement in sorted(
+            ops, key=lambda op: (op[0], op[1]), reverse=True):
+        text = text[:start] + replacement + text[end:]
     return text
 
 
@@ -51,7 +77,9 @@ def apply_citation_firewall(answer: str, verifier=None, marker: str = UNVERIFIED
     Returns ``{text, report, changed, error}``:
 
     * ``text``    — the answer with every non-``VERIFIED`` citation replaced by
-      ``marker`` (unchanged when verification is unavailable).
+      ``marker`` (``[repealed]`` when the temporal engine says repealed), and
+      any verified-but-``UNKNOWN`` citation kept with a ``[status unknown]``
+      note. Unchanged when verification is unavailable.
     * ``report``  — the verifier's raw report (for audit / belief-ledger reuse).
     * ``changed`` — whether any span was rewritten.
     * ``error``   — a human-readable failure string, or ``None`` on success.
@@ -77,6 +105,7 @@ def apply_citation_firewall(answer: str, verifier=None, marker: str = UNVERIFIED
         return {"text": text, "report": {}, "changed": False,
                 "error": "malformed verifier report"}
 
-    cleaned = _apply_marker(text, report.get("citations") or [], marker)
+    ops = _edits(text, report.get("citations") or [], marker)
+    cleaned = _apply_edits(text, ops)
     return {"text": cleaned, "report": report, "changed": cleaned != text,
             "error": None}

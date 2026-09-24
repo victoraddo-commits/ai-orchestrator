@@ -27,7 +27,7 @@ def _capture(monkeypatch, payload):
     captured = {}
 
     def fake_urlopen(url, timeout=None):
-        captured["url"] = url
+        captured["url"] = getattr(url, "full_url", url)
         return _FakeResp(payload)
 
     monkeypatch.setattr(lb.urllib.request, "urlopen", fake_urlopen)
@@ -68,3 +68,51 @@ def test_search_hybrid_helper_sets_mode(monkeypatch):
     assert params["mode"] == ["hybrid"]
     assert params["q"] == ["human rights"]
     assert "hybrid" in lb.SEARCH_MODES
+
+
+# ── Phase 3 T3/T4: relations + temporal status helpers ───────────────────
+
+def test_status_helper_hits_status_endpoint(monkeypatch):
+    captured = _capture(monkeypatch, {"document_id": 853,
+                                      "status": "AMENDED"})
+    out = lb.status(853)
+    assert out["status"] == "AMENDED"
+    assert captured["url"].endswith("/status/853")
+
+
+def test_statuses_helper_bulk_query(monkeypatch):
+    captured = _capture(monkeypatch, {"statuses": [{"document_id": 1}]})
+    out = lb.statuses([1, 2, 3])
+    assert out == [{"document_id": 1}]
+    assert "/status?ids=1,2,3" in captured["url"]
+
+
+def test_relations_helper_hits_relations_endpoint(monkeypatch):
+    captured = _capture(monkeypatch, {"document_id": 5, "amended_by": []})
+    out = lb.relations(5)
+    assert out["document_id"] == 5
+    assert captured["url"].endswith("/relations/5")
+
+
+def test_document_authority_combines_relations_and_status(monkeypatch):
+    payload = {"document_id": 9, "status": "REPEALED"}
+
+    def fake_get_auth(path, timeout=8):
+        return payload
+
+    monkeypatch.setattr(lb, "_get_auth", fake_get_auth)
+    out = lb.document_authority(9)
+    assert out["document_id"] == 9
+    assert out["relations"] == payload
+    assert out["status"] == payload
+
+
+def test_document_authority_reports_helper_errors(monkeypatch):
+    def boom(path, timeout=8):
+        raise RuntimeError("brain down")
+
+    monkeypatch.setattr(lb, "_get_auth", boom)
+    out = lb.document_authority(9)
+    assert out["document_id"] == 9
+    assert "relations_error" in out and "status_error" in out
+

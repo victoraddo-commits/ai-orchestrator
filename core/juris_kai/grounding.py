@@ -496,7 +496,13 @@ def build_grounded_plan(query: str, task_type: str = "juris_research",
 
 
 def build_sources_footer(docs: list[dict]) -> str:
-    """Deterministic Sources block built from retrieval (never the model)."""
+    """Deterministic Sources block built from retrieval (never the model).
+
+    Currency is additive (Phase 3 T4): when a source carries an ``amended_by``
+    string the footer says "as amended by …", and a ``temporal_status`` is shown
+    as a ``[STATUS]`` tag (e.g. ``[AMENDED]`` / ``[REPEALED]``). Sources without
+    those fields render exactly as before.
+    """
     if not docs:
         return ""
     lines = ["\n\n📚 *Sources*"]
@@ -512,5 +518,23 @@ def build_sources_footer(docs: list[dict]) -> str:
             bits.append(str(year))
         if mode:
             bits.append(f"_{mode}_")
-        lines.append(f"{i}. " + " — ".join(bits))
+        line = " — ".join(bits)
+        amendment = _footer_amendment(d.get("amended_by") or "")
+        if amendment:
+            line += f" — as amended by {amendment}"
+        status = (d.get("temporal_status") or "").strip().upper()
+        if status:
+            line += f" [{status}]"
+        lines.append(f"{i}. " + line)
     return "\n".join(lines)
+
+
+_FOOTER_AMENDMENT_MAX = 180
+
+
+def _footer_amendment(text: str) -> str:
+    """Whitespace-normalize + bound the amendment clause for the footer."""
+    collapsed = " ".join((text or "").split())
+    if len(collapsed) <= _FOOTER_AMENDMENT_MAX:
+        return collapsed
+    return collapsed[: _FOOTER_AMENDMENT_MAX - 1].rstrip() + "…"

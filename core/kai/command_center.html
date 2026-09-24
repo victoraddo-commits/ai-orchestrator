@@ -5203,17 +5203,140 @@ async function nwAction(path){
   catch(e){ if(el) el.textContent=path+' → error: '+e.message; }
 }
 let wgTimer=null;
+// URL-safe opaque form of a WireGuard pubkey (may contain '/' and '+').
+function wgEnc(pk){try{return btoa(String(pk)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}catch(e){return String(pk);}}
+function wgSafe(s){return String(s||'').replace(/[^A-Za-z0-9 ._()\-]/g,'').slice(0,64);}
+function wgFmtBytes(n){n=Number(n)||0;const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++;}return n.toFixed(i?1:0)+' '+u[i];}
+function wgAgo(ts){if(!ts)return 'never';const s=Math.max(0,Math.floor(Date.now()/1000-Number(ts)));if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
+function wgMsg(t,ok){const el=$('wg-msg');if(el)el.innerHTML='<div style="font-size:0.65rem;margin:6px 0;color:'+(ok?'var(--ok,#27c93f)':'var(--bad,#e5484d)')+'">'+esc(t)+'</div>';}
+function wgDetail(title,bodyHtml){
+  const el=$('wireguard-content'); if(!el) return;
+  el.innerHTML='<div class="card"><h3>'+title+'</h3>'+bodyHtml
+    +'<div class="action-row" style="margin-top:10px"><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Back to devices</button></div></div>';
+}
+function wgDevRow(p){
+  const up=(Number(p.latest_handshake)||0)>0, paused=!!p.paused;
+  const badge=paused?'<span class="badge warn">PAUSED</span>':(up?'<span class="badge ok">UP</span>':'<span class="badge bad">DOWN</span>');
+  const border=paused?'var(--warn,#D29922)':(up?'var(--ok,#27c93f)':'var(--bad,#e5484d)');
+  const enc=wgEnc(p.pubkey);
+  let acts;
+  if(p.managed){
+    acts=(paused?`<button class="btn btn-xs btn-accent" onclick="wgResume('${enc}')">Resume</button>`
+                :`<button class="btn btn-xs" onclick="wgPause('${enc}')">Pause</button>`)
+      +` <button class="btn btn-xs" onclick="wgExport('${enc}','wg')">WG</button>`
+      +` <button class="btn btn-xs" onclick="wgExport('${enc}','ddwrt')">DD-WRT</button>`
+      +` <button class="btn btn-xs" onclick="wgExport('${enc}','openwrt')">OpenWRT</button>`
+      +` <button class="btn btn-xs" onclick="wgShowQR('${enc}')">QR</button>`
+      +` <button class="btn btn-xs" onclick="wgDelete('${enc}','${wgSafe(p.name)}')">Delete</button>`;
+  } else {
+    acts='<span style="color:var(--fg-muted);font-size:0.6rem">external peer — no Kai client key to export</span>';
+  }
+  return `<div style="padding:8px 10px;border:1px solid var(--border);border-left:3px solid ${border};font-family:var(--font-mono);font-size:0.65rem;margin-bottom:6px;border-radius:4px">
+<b>${esc(p.name||('device '+String(p.pubkey||'').slice(0,8)))}</b> ${badge} <span style="color:var(--fg-muted)">${esc(p.address||'')}</span>
+<div style="margin-top:3px;color:var(--fg-muted)">endpoint <b>${esc(p.endpoint||'-')}</b> · allowed <b>${esc((p.allowed_ips||[]).join(', '))}</b></div>
+<div>handshake <b>${esc(wgAgo(p.latest_handshake))}</b> · rx <b>${wgFmtBytes(p.rx_bytes)}</b> · tx <b>${wgFmtBytes(p.tx_bytes)}</b></div>
+<div class="action-row" style="margin-top:6px">${acts}</div></div>`;
+}
 async function loadWireguard(){
+  const el=$('wireguard-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  const g=async(p)=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  const d=await g('/api/wg/peers');
+  const peers=(d&&Array.isArray(d.peers))?d.peers:[];
+  const live=d&&!d.error;
+  let html='<div class="card"><h3>WireGuard Devices &middot; CT102 pool (10.6.0.0/24) <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span></h3>';
+  html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="wgAddForm()">Add device</button><button class="btn btn-xs" onclick="loadWireguard()">Refresh</button><button class="btn btn-xs" onclick="wgExitNode()">Exit node (CT103)</button><button class="btn btn-xs" onclick="wgRaw()">Raw</button></div>';
+  html+='<div id="wg-last" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px">'
+    +(d&&d.interface_public_key?('server pub '+esc(String(d.interface_public_key).slice(0,10))+'&hellip; · port '+esc(String(d.listen_port||''))+' · '+peers.length+' devices'):'')
+    +(d&&d.error?' <span class="error-text">'+esc(d.error)+'</span>':'')+'</div>';
+  html+='<div id="wg-add"></div><div id="wg-msg"></div>';
+  if(!peers.length){html+='<p class="empty">no devices yet — use “Add device”.</p>';}
+  for(const p of peers) html+=wgDevRow(p);
+  html+='</div>'; el.innerHTML=html;
+}
+function wgAddCancel(){const el=$('wg-add'); if(el) el.innerHTML='';}
+function wgAddForm(){
+  const el=$('wg-add'); if(!el) return;
+  el.innerHTML='<div class="card" style="margin-bottom:8px"><h4 style="font-size:0.7rem">Add WireGuard device</h4>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+    +'<input id="wg-name" placeholder="device name (e.g. Pixel 9)" style="flex:1;min-width:160px">'
+    +'<input id="wg-ip" placeholder="IP (optional)" style="width:150px">'
+    +'<input id="wg-dns" placeholder="DNS (optional)" style="width:150px">'
+    +'<button class="btn btn-xs btn-accent" onclick="wgAdd()">Create</button>'
+    +'<button class="btn btn-xs" onclick="wgAddCancel()">Cancel</button></div></div>';
+}
+async function wgAdd(){
+  const name=(($('wg-name')||{}).value||'').trim();
+  if(!name){wgMsg('name required',false);return;}
+  const body={name:name};
+  const ip=(($('wg-ip')||{}).value||'').trim(); if(ip)body.ip=ip;
+  const dns=(($('wg-dns')||{}).value||'').trim(); if(dns)body.dns=dns;
+  wgMsg('creating '+name+'…',true);
+  try{
+    const d=await api('/api/wg/peers',{method:'POST',body:JSON.stringify(body)});
+    wgShowResult('Device created — '+esc(d.name)+' ('+esc(d.ip)+')',d.config,d.qr_png_base64,wgEnc(d.pubkey));
+  }catch(e){wgMsg('create failed: '+e.message,false);}
+}
+function wgShowResult(title,config,qr,enc){
+  wgDetail(title,
+    (qr?'<div style="text-align:center;margin:10px 0"><img alt="WireGuard QR" style="width:220px;height:220px;background:#fff;padding:8px;border-radius:6px" src="data:image/png;base64,'+qr+'"></div>':'')
+    +'<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">client config — contains this device&rsquo;s private key; share only with the device owner.</div>'
+    +'<textarea readonly style="width:100%;height:220px;font-family:var(--font-mono);font-size:0.62rem;white-space:pre">'+esc(config||'')+'</textarea>'
+    +'<div class="action-row" style="margin-top:6px">'
+    +'<button class="btn btn-xs" onclick="wgDownload(\''+enc+'\',\'wg\')">Download .conf</button>'
+    +'<button class="btn btn-xs" onclick="wgExport(\''+enc+'\',\'ddwrt\')">DD-WRT</button>'
+    +'<button class="btn btn-xs" onclick="wgExport(\''+enc+'\',\'openwrt\')">OpenWRT</button></div>');
+}
+async function wgExport(enc,fmt){
+  try{
+    const d=await api('/api/wg/peers/'+enc+'/config?type='+encodeURIComponent(fmt));
+    wgDetail(esc(d.name||'device')+' &middot; '+esc(fmt)+' export',
+      '<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">'+esc(fmt)+' config — contains this device&rsquo;s private key.</div>'
+      +'<textarea readonly style="width:100%;height:280px;font-family:var(--font-mono);font-size:0.62rem;white-space:pre">'+esc(d.config||'')+'</textarea>'
+      +'<div class="action-row" style="margin-top:6px"><button class="btn btn-xs" onclick="wgDownload(\''+enc+'\',\''+fmt+'\')">Download</button>'
+      +(fmt==='wg'?'<button class="btn btn-xs" onclick="wgShowQR(\''+enc+'\')">QR</button>':'')+'</div>');
+  }catch(e){toast('export failed: '+e.message);}
+}
+async function wgShowQR(enc){
+  try{
+    const d=await api('/api/wg/peers/'+enc+'/qr?type=wg');
+    wgDetail('Device QR',
+      '<div style="text-align:center;margin:10px 0"><img alt="WireGuard QR" style="width:240px;height:240px;background:#fff;padding:10px;border-radius:6px" src="data:image/png;base64,'+esc(d.qr_png_base64||'')+'"></div>'
+      +'<p style="font-size:0.64rem;color:var(--fg-muted)">Scan with the WireGuard app. The QR encodes the full client config (private key included).</p>');
+  }catch(e){toast('QR failed: '+e.message);}
+}
+async function wgDownload(enc,fmt){
+  try{
+    const d=await api('/api/wg/peers/'+enc+'/config?type='+encodeURIComponent(fmt));
+    const ext=(fmt==='wg')?'conf':(fmt==='ddwrt'?'ddwrt.txt':'openwrt.txt');
+    const blob=new Blob([d.config||''],{type:'text/plain'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=(wgSafe(d.name)||'kai-wg-device')+'.'+ext;
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){toast('download failed: '+e.message);}
+}
+async function wgPause(enc){try{await api('/api/wg/peers/'+enc+'/pause',{method:'POST'});toast('device paused');loadWireguard();}catch(e){toast('pause failed: '+e.message);}}
+async function wgResume(enc){try{await api('/api/wg/peers/'+enc+'/resume',{method:'POST'});toast('device resumed');loadWireguard();}catch(e){toast('resume failed: '+e.message);}}
+async function wgDelete(enc,name){
+  if(!confirm('Delete WireGuard device "'+(name||'')+'"? This removes the peer and its stored client key.'))return;
+  try{await api('/api/wg/peers/'+enc,{method:'DELETE'});toast('device deleted');loadWireguard();}catch(e){toast('delete failed: '+e.message);}
+}
+async function wgRaw(){
+  try{const d=await api('/api/wg/raw'); wgDetail('WireGuard raw (exit node CT103)',
+    '<pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto">'+esc(d.raw||d.error||'no output')+'</pre>');
+  }catch(e){toast('wg raw failed: '+e.message);}
+}
+async function wgExitNode(){
   const el=$('wireguard-content'); if(!el) return;
   el.innerHTML='<span class="loading">loading…</span>';
   const g=async(p)=>{try{return await api(p);}catch(e){return {error:e.message};}};
   const d=await g('/api/wg/status');
   const ifaces=d&&Array.isArray(d.ifaces)?d.ifaces:[];
-  const ts=d&&d.ts?new Date(d.ts*1000).toLocaleTimeString():'-';
   const labels=(d&&d.labels)||{};
   let html='<div class="card"><h3>WireGuard &middot; Kai Exit Node (CT103) <span class="badge '+(ifaces.length?'ok':'warn')+'">'+(ifaces.length?'LIVE':'OFFLINE')+'</span></h3>';
-  html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Refresh</button><button class="btn btn-xs" onclick="wgNight()">TTY</button></div>';
-  html+='<div id="wg-last" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px">updated '+ts+(d&&d.error?' &middot; <span class="error-text">'+esc(d.error)+'</span>':'')+'</div>';
+  html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="wgExitNode()">Refresh</button><button class="btn btn-xs" onclick="wgRaw()">Raw</button></div>';
+  if(d&&d.error)html+='<div class="error-text" style="font-size:0.64rem;margin-bottom:6px">'+esc(d.error)+'</div>';
   if(!ifaces.length){html+='<p class="empty">no peer data — wg not running or dashboard unreachable</p>';}
   for(const f of ifaces){
     html+=`<h4 style="font-size:0.7rem;margin-top:8px">Interface <code>${esc(f.iface)}</code> · pub ${esc(String(f.pub||'').slice(0,8))}&hellip; · port ${esc(f.port)}</h4>`;
@@ -5224,25 +5347,11 @@ async function loadWireguard(){
       html+=`<div style="padding:7px 9px;border:1px solid var(--border);border-left:3px solid ${up?'var(--ok,#27c93f)':'var(--bad,#e5484d)'};font-family:var(--font-mono);font-size:0.65rem;margin-bottom:5px;border-radius:4px">
 <b>${esc(name)}</b> <span class="badge ${up?'ok':'bad'}">${up?'UP':'DOWN'}</span>
 <div style="margin-top:3px;color:var(--fg-muted)">endpoint <b>${esc(pe.endpoint)}</b> · allowed <b>${esc(pe.allowed)}</b></div>
-<div>handshake <b style="color:${up?'var(--ok,#27c93f)':'var(--bad,#e5484d)'}">${esc(pe.since)}</b> · rx <b>${pe.rx_mb.toFixed(1)}</b> MB · tx <b>${pe.tx_mb.toFixed(1)}</b> MB</div></div>`;
+<div>handshake <b style="color:${up?'var(--ok,#27c93f)':'var(--bad,#e5484d)'}">${esc(pe.since)}</b> · rx <b>${Number(pe.rx_mb||0).toFixed(1)}</b> MB · tx <b>${Number(pe.tx_mb||0).toFixed(1)}</b> MB</div></div>`;
     }
   }
-  const tsd=(d&&d.tailscale)||{};
-  const tsp=tsd.peers||[];
-  if(tsp.length){
-    html+=`<h4 style="font-size:0.7rem;margin-top:12px">Tailscale peers · deerude</h4>`;
-    for(const p of tsp){
-      html+=`<div style="padding:6px 9px;border:1px solid var(--border);border-left:3px solid ${p.online?'var(--ok,#27c93f)':'var(--bad,#e5484d)'};font-family:var(--font-mono);font-size:0.65rem;margin-bottom:4px;border-radius:4px"><b>${esc(p.name)}</b> <span style="color:var(--fg-muted)">${esc(p.ip)}</span> <span class="badge ${p.online?'ok':'bad'}">${p.online?'ONLINE':'OFFLINE'}</span> ${p.online?'':'<span style="color:var(--fg-muted)">last seen '+esc(p.last_seen)+'</span>'}</div>`;
-    }
-  }
-  html+='</div>'; el.innerHTML=html;
-}
-async function wgNight(){
-  const ok=confirm('Launch TTY view to the WireGuard exit node?');
-  if(!ok)return;
-  try{const d=await api('/api/wg/raw'); const el=$('wireguard-content');
-    if(el) el.innerHTML='<div class="card"><h3>WireGuard raw (wg show all dump)</h3><pre style="font-size:0.6rem;white-space:pre-wrap;word-break:break-word;max-height:400px;overflow:auto">'+esc(d.raw||d.error||'no output')+'</pre><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Back</button></div>';
-  }catch(e){toast('wg raw failed: '+e.message);}
+  html+='<div class="action-row" style="margin-top:10px"><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Back to devices</button></div></div>';
+  el.innerHTML=html;
 }
 async function loadDirectory(){
   const el=$('directory-content'); if(!el) return;

@@ -1328,3 +1328,150 @@ def legal_ask(body: _AskBody, _: None = Depends(_req_op)):
     return _legal_ask_quick(query, body.task_type or "juris_research",
                             body.context or "")
 
+
+# ---------------------------------------------------------------------------
+# WireGuard device management — CT102 "device pool" (10.6.0.0/24)
+#
+# The Command Center never reaches CT102 directly: the WG host is not
+# reachable on the LAN from the CC (ARP/TCP to 192.168.1.182 fail from PVE-A,
+# PVE-B and CT111; only `pct exec` works). ``core.wg_peer_service`` drives the
+# CT102 agent over the existing key-based SSH chain
+# (CT111 -> PVE-B -> PVE-A -> `pct exec 102`), so no new listener is exposed on
+# the WireGuard host. Every route below is operator-gated (or accepts the
+# WG_CTL_TOKEN service token) and never returns a server private key.
+# ---------------------------------------------------------------------------
+
+def _req_wg_op(request: Request) -> None:
+    """Operator OR service-token gate for WireGuard management endpoints."""
+    import secrets
+    tok = os.environ.get("WG_CTL_TOKEN")
+    if tok:
+        supplied = request.headers.get("x-kai-wg-token", "")
+        if supplied and secrets.compare_digest(supplied, tok):
+            return
+    _req_op(request)
+
+
+def _wg_svc():
+    from core import wg_peer_service
+    return wg_peer_service
+
+
+def encode_pubkey_param(pubkey: str) -> str:
+    """Opaque, URL-safe form of a WireGuard pubkey for use in path segments.
+
+    WireGuard pubkeys are standard base64 and may contain ``/`` (which cannot
+    appear in a URL path segment) and ``+``. We therefore URL-safe-base64 the
+    pubkey string itself. Raw pubkeys (no ``+``/``/``) are also accepted by
+    :func:`_decode_pubkey_param`, so both forms keep working.
+    """
+    import base64 as _b64
+    return _b64.urlsafe_b64encode(pubkey.encode("ascii")).decode("ascii").rstrip("=")
+
+
+def _decode_pubkey_param(value: str) -> str:
+    import base64 as _b64
+    import re as _re
+    if value and _re.fullmatch(r"[A-Za-z0-9_-]{20,120}", value):
+        try:
+            pad = "=" * (-len(value) % 4)
+            dec = _b64.urlsafe_b64decode(value + pad).decode("ascii")
+            if _re.fullmatch(r"[A-Za-z0-9+/]{42}[A-Za-z0-9+/=]{2}", dec):
+                return dec
+        except Exception:  # noqa: BLE001
+            pass
+    return value
+
+
+def _wg_err(exc):
+    status = getattr(exc, "status", 502)
+    if not isinstance(status, int) or status < 400:
+        status = 502
+    return JSONResponse({"error": str(exc)}, status_code=status)
+
+
+class WgAddDevice(BaseModel):
+    name: str
+    ip: str | None = None
+    dns: str | None = None
+    allowed_ips: str | None = None
+    endpoint: str | None = None
+    keepalive: int | None = None
+    mtu: int | None = None
+
+
+@cc_extra_router.get("/api/wg/peers")
+def wg_devices(_: None = Depends(_req_wg_op)):
+    """List devices in the WireGuard pool (private keys are never included)."""
+    try:
+        return JSONResponse(content=_wg_svc().list_peers(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers")
+def wg_device_add(body: WgAddDevice, _: None = Depends(_req_wg_op)):
+    """Add a device: allocate the next free IP, generate keys, return config+QR."""
+    try:
+        opts = body.model_dump(exclude_none=True)
+        name = opts.pop("name")
+        return JSONResponse(content=_wg_svc().add_peer(name, **opts))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/pause")
+def wg_device_pause(pubkey: str, _: None = Depends(_req_wg_op)):
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().pause_peer(pubkey))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/resume")
+def wg_device_resume(pubkey: str, _: None = Depends(_req_wg_op)):
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().resume_peer(pubkey))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.delete("/api/wg/peers/{pubkey}")
+def wg_device_delete(pubkey: str, _: None = Depends(_req_wg_op)):
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().delete_peer(pubkey))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/peers/{pubkey}/config")
+def wg_device_config(pubkey: str, type: str = "wg",
+                     _: None = Depends(_req_wg_op)):
+    """Export a client config as WireGuard / DD-WRT / OpenWRT."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().peer_config(pubkey, type),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/peers/{pubkey}/qr")
+def wg_device_qr(pubkey: str, type: str = "wg", raw: int = 0,
+                 _: None = Depends(_req_wg_op)):
+    """QR for the client config; JSON base64 by default, ``?raw=1`` for PNG."""
+    import base64 as _b64
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        data = _wg_svc().peer_qr(pubkey, type)
+        if raw:
+            return Response(content=_b64.b64decode(data["qr_png_base64"]),
+                            media_type="image/png")
+        return JSONResponse(content=data, headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+

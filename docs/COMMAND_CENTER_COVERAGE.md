@@ -390,3 +390,60 @@ auth (29 sources, 1 commercial-cleared).
   `qwen3-coder:kai`; reports list + PDF/DOCX download; 3 gaps; 7 everyday
   topics; health docs=1445; 29 licence sources). Deep ask + report export
   verified end-to-end (PDF `%PDF-`, DOCX `PK`).
+
+## WireGuard device management (2026-09-24)
+
+The `wireguard` panel is now a **device management** surface for the CT102
+"device pool" (`wireguard` CT, `10.6.0.1/24`, UDP 51860), not just a read-only
+exit-node view. The CT103 exit-node mesh (`headscale`, `192.168.66.0/29`,
+R1/R2) remains available via the panel's **Exit node (CT103)** button, which
+still calls the read-only `GET /api/wg/status` + `GET /api/wg/raw` kaidash
+bridge.
+
+**Why CT102**: it is the only server with a `/24` pool (~250 devices); CT103's
+`/29` is the small exit-node mesh. Confirmed live: CT102 `wg0 = 10.6.0.1/24`,
+listen 51860, 3 existing peers (`test`, `S21 Ultra`, `MTN router`).
+
+**Design**: the CC/CT111 never reaches CT102 directly — CT102 is *not*
+reachable on the LAN from the CC (ARP/TCP to `192.168.1.182` fail from PVE-A,
+PVE-B and CT111; only `pct exec` works). Management therefore runs over the
+existing key-based SSH chain `CT111 -> PVE-B -> PVE-A -> pct exec 102`, calling
+a stdlib-only agent (`/opt/kai-wg-agent/wg_agent.py`, source `core/wg_agent.py`).
+No new listener is exposed on the WireGuard host. Controller:
+`core/wg_peer_service.py` (injectable SSH transport, QR rendering via `segno`).
+Every write backs up `wg0.conf` first and is audit-logged.
+
+### Panel wiring points (all present)
+
+- sidebar `nav-item[data-hash="wireguard"]` (unchanged)
+- `<section class="panel" id="panel-wireguard">` (unchanged)
+- `PANEL_TITLES.wireguard` (unchanged)
+- `loadPanel()` → `loadWireguard` (unchanged key; body upgraded)
+- `loadWireguard()` + helpers `wgAddForm/wgAdd/wgShowResult/wgExport/wgDownload/`
+  `wgShowQR/wgPause/wgResume/wgDelete/wgExitNode/wgRaw`
+
+### Proxy routes added (`core/cc_extra_routes.py`, operator- or token-gated)
+
+| Method | Path | Delegates to |
+|---|---|---|
+| GET | `/api/wg/peers` | `wg_peer_service.list_peers` |
+| POST | `/api/wg/peers` | `.add_peer` (allocate IP + keygen + config/QR) |
+| POST | `/api/wg/peers/{pubkey}/pause` | `.pause_peer` |
+| POST | `/api/wg/peers/{pubkey}/resume` | `.resume_peer` |
+| DELETE | `/api/wg/peers/{pubkey}` | `.delete_peer` |
+| GET | `/api/wg/peers/{pubkey}/config?type=wg\|ddwrt\|openwrt` | `.peer_config` |
+| GET | `/api/wg/peers/{pubkey}/qr?type=wg[&raw=1]` | `.peer_qr` (segno PNG) |
+
+`{pubkey}` path segments use a URL-safe opaque encoding (WireGuard pubkeys may
+contain `/` and `+`); raw pubkeys without those chars also work. All routes
+401 without an operator session, bridge token, trusted-proxy identity, or the
+optional `WG_CTL_TOKEN` service token (`X-Kai-WG-Token`). The server private
+key is never returned; a client's private key appears only in that client's own
+config/QR. Peer list responses never include private keys.
+
+### Tests
+
+`tests/test_wg_agent.py` (22), `tests/test_wg_peer_service.py` (9),
+`tests/test_cc_wg_routes.py` (14): IP allocation, keygen/rollback, pause/resume/
+delete, all three export formats, no-key-leak in list, auth gates (401), error
+mapping (400/502), URL-safe pubkey routing, backup-on-write.

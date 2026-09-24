@@ -553,7 +553,7 @@ def cc_test_query(body: dict = Body(...),
 
     # Strict grounding: this is a legal-answer surface, so retrieval decides
     # whether the model may be called at all.
-    plan = grounding.build_grounded_plan(query, task_type)
+    plan = grounding.build_grounded_plan(query, task_type, asker=operator)
     prompt = plan["prompt"]
     docs = plan["docs"]
     started = time.time()
@@ -792,7 +792,7 @@ def cc_test_query_stream(body: dict = Body(...),
     from core.juris_kai import grounding
     from core.juris_kai import streaming as jstream
 
-    plan = grounding.build_grounded_plan(query, task_type)
+    plan = grounding.build_grounded_plan(query, task_type, asker=operator)
 
     if plan["refusal"]:
         refusal = plan["refusal"]

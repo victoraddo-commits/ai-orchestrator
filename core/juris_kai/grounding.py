@@ -14,7 +14,9 @@ normalization.
 """
 from __future__ import annotations
 import logging
+import os
 import re
+import threading
 
 from core.juris_kai.legal_context import MAX_CHUNK_LENGTH, _guard_chunks
 
@@ -453,9 +455,81 @@ JURISDICTION_REFUSAL = (
 PARTIAL_BANNER = "ℹ️ _Limited sources — some points may be general._\n\n"
 
 
+# ---------------------------------------------------------------------------
+# Ask-to-Acquire gap recording (Phase 7, Task 3)
+# ---------------------------------------------------------------------------
+
+def _has_on_topic_primary(docs: list) -> bool:
+    """True when the result set includes a primary authority on the topic.
+
+    Staged-mode docs carry no ``authority_level``; only a hybrid result is
+    authority-annotated. Absence therefore counts as "no on-topic primary",
+    which is the conservative choice for gap recording.
+    """
+    for d in docs or []:
+        level = (d.get("authority_level") or "").strip().lower()
+        if level in PRIMARY_AUTHORITY:
+            return True
+    return False
+
+
+def needs_acquisition(verdict: str, docs: list) -> bool:
+    """Whether a verdict should be logged as an acquisition gap.
+
+    UNGROUNDED always; PARTIAL only when it has **no on-topic primary** source
+    (a PARTIAL anchored on an Act/Constitution is already useful and must not
+    spawn a crawl).
+    """
+    if verdict == "UNGROUNDED":
+        return True
+    if verdict == "PARTIAL":
+        return not _has_on_topic_primary(docs)
+    return False
+
+
+def record_gap_best_effort(question: str, asker=None):
+    """Send one gap to the legal brain; swallow every error (best-effort)."""
+    try:
+        from core import legal_brain_client as lb
+        return lb.record_gap(question, asker=asker)
+    except Exception as exc:  # noqa: BLE001 - never break the answer
+        logger.warning("grounding: gap recording failed (ignored): %s", exc)
+        return None
+
+
+def maybe_record_gap(question: str, verdict: str, docs: list, asker=None,
+                     blocking: bool = False) -> bool:
+    """Record an unanswered question as an acquisition gap (best-effort).
+
+    Never blocks the answer: the network call runs on a daemon thread unless
+    ``blocking`` is set (tests). Disabled entirely by ``KAI_LEGAL_GAP_RECORD=0``
+    and when no ``asker`` is known. Returns True when a gap was (or will be)
+    recorded.
+    """
+    if not asker:
+        return False
+    if os.environ.get("KAI_LEGAL_GAP_RECORD", "1") == "0":
+        return False
+    if not needs_acquisition(verdict, docs):
+        return False
+    if blocking:
+        record_gap_best_effort(question, asker)
+    else:
+        threading.Thread(target=record_gap_best_effort,
+                         args=(question, asker), daemon=True,
+                         name="juris-gap-record").start()
+    return True
+
+
 def build_grounded_plan(query: str, task_type: str = "juris_research",
-                        context: str = "", commercial: bool = False) -> dict:
+                        context: str = "", commercial: bool = False,
+                        asker=None) -> dict:
     """Retrieval-gated plan for a legal answer. Never calls a model.
+
+    ``asker`` (the Telegram chat id / CC user) is optional: when given, an
+    UNGROUNDED question — or a PARTIAL with no on-topic primary — is recorded
+    as an acquisition gap on the legal brain (best-effort, off the answer
+    path), so the demand-driven harvester can go and find the missing law.
 
     This is the single gate every legal-answer surface routes through, so the
     same rules apply everywhere: a non-Ghana question and an UNGROUNDED query
@@ -502,10 +576,15 @@ def build_grounded_plan(query: str, task_type: str = "juris_research",
         verdict, docs = "UNGROUNDED", []
 
     if verdict == "UNGROUNDED" or not docs:
+        maybe_record_gap(q, "UNGROUNDED", [], asker=asker)
         return {"groundable": False, "out_of_scope": False,
                 "verdict": "UNGROUNDED", "docs": [], "prompt": "",
                 "banner": "", "footer": "", "source_key": "",
                 "refusal": UNGROUNDED_REPLY}
+
+    # PARTIAL with no on-topic primary source is still an acquisition gap: it
+    # is logged (best-effort) but the answer is delivered as usual.
+    maybe_record_gap(q, verdict, docs, asker=asker)
 
     from core.juris_kai.prompt import build_grounded_prompt
     prompt = build_grounded_prompt(task_type, q, verdict, docs, context=context)

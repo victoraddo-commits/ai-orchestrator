@@ -272,3 +272,49 @@ def sources():
 def monitor():
     """New-document monitor across configured sources (stateful on the brain)."""
     return _get("/monitor", timeout=120)
+
+
+# --- Ask-to-Acquire gap queue (Phase 7, Task 3) -----------------------------
+
+def record_gap(question, asker=None, timeout=8):
+    """Record an unanswered question as an acquisition gap on the brain.
+
+    Best-effort by contract: callers run it off the answer path. The brain
+    dedups by normalised topic and routes the question to a domain/ministry.
+    """
+    return _post("/gaps", {"question": question,
+                           "asker": "" if asker is None else str(asker)},
+                 timeout=timeout)
+
+
+def list_gaps(status=None, limit=50, timeout=8):
+    """List gaps (optionally by status) from the brain."""
+    path = f"/gaps?limit={int(limit)}"
+    if status:
+        path += "&status=" + urllib.parse.quote(status)
+    return _get_auth(path, timeout=timeout).get("gaps", [])
+
+
+def acquire_gap(gap_id, per_source=5, delay=0.5, timeout=600):
+    """Run one bounded acquisition pass for a gap; returns the brain outcome.
+
+    A transport failure returns ``{"ok": False, ...}`` rather than raising, so
+    the scheduler can report an honest failure.
+    """
+    import urllib.error
+    body = {"per_source": int(per_source), "delay": float(delay)}
+    try:
+        return _post(f"/gaps/{int(gap_id)}/acquire", body, timeout=timeout)
+    except urllib.error.HTTPError as exc:
+        try:
+            payload = json.load(exc)
+        except Exception:
+            payload = {"error": f"HTTP {exc.code}"}
+        return {"ok": False, **(payload if isinstance(payload, dict) else {})}
+    except Exception as exc:  # noqa: BLE001 - scheduler must not crash
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def mark_gap_notified(gap_id, timeout=8):
+    """Record the one-shot notification guard on a gap."""
+    return _post(f"/gaps/{int(gap_id)}/notified", {}, timeout=timeout)

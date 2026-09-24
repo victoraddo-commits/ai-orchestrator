@@ -80,6 +80,19 @@ def isolated_injection_metrics(tmp_path, monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def disable_legal_gap_recording(monkeypatch):
+    """Never let a test hit the live legal-brain gap queue.
+
+    ``grounding.build_grounded_plan`` records UNGROUNDED questions as
+    acquisition gaps when an ``asker`` is supplied. Tests exercise that path
+    with the real bot call sites, so recording is disabled by default; the
+    dedicated gap tests opt back in with ``KAI_LEGAL_GAP_RECORD=1``.
+    """
+    monkeypatch.setenv("KAI_LEGAL_GAP_RECORD", "0")
+    yield
+
+
 @pytest.fixture
 def client():
     """FastAPI TestClient for API route tests."""

@@ -1704,7 +1704,7 @@ def _build_deep_reply(text: str, chat_id, account: dict, reply_markup=None,
     retrieval_query = query if query is not None else text
     followup_ctx = _followup_context(chat_id, text)
     plan = _grounding.build_grounded_plan(retrieval_query, task_type,
-                                          context=followup_ctx)
+                                          context=followup_ctx, asker=chat_id)
 
     if plan["refusal"]:
         response_text = plan["refusal"]
@@ -1832,7 +1832,7 @@ def _build_legal_reply(text: str, chat_id, account: dict,
     retrieval_query = query if query is not None else text
     followup_ctx = _followup_context(chat_id, text)
     plan = _grounding.build_grounded_plan(retrieval_query, task_type,
-                                          context=followup_ctx)
+                                          context=followup_ctx, asker=chat_id)
 
     # Refused (out-of-scope or UNGROUNDED): no model call, but still record the
     # miss for the learning loop. Refusals are recorded for learning but are

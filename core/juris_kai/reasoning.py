@@ -16,6 +16,7 @@ is the legal brain (CT100). Both are injectable seams for tests.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import re
 import time
@@ -50,6 +51,13 @@ CONTRARY_TERMS = (
 )
 
 _MAX_PROPOSITIONS = 8
+
+# Advocate and opponent depend only on retrieval (not on each other), so they
+# run concurrently on a two-thread pool; the judge waits for both. The alias is
+# a seam so tests can force the sequential fallback.
+_PASS_POOL_SIZE = 2
+_ThreadPoolExecutor = concurrent.futures.ThreadPoolExecutor
+
 _BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*")
 _MD_RE = re.compile(r"[*_`#>]+")
 _ENUM_RE = re.compile(r"(?<!\d)\s(\d{1,2}[.)]\s)")
@@ -513,12 +521,72 @@ def _result(query, docs, verdict, adv, opp, judgement, degraded, timings) -> dic
     }
 
 
+def _timed_call(fn, *args):
+    """Run ``fn(*args)`` capturing its duration and any exception.
+
+    Returns ``(result, duration_s, error)`` and never raises, so one failed
+    pass is handled by the degradation policy instead of killing the run.
+    """
+    t0 = time.perf_counter()
+    try:
+        result, error = fn(*args), None
+    except Exception as exc:  # noqa: BLE001 - degrade, never kill the run
+        result, error = None, exc
+    return result, round(time.perf_counter() - t0, 3), error
+
+
+def _apply_pass_outcomes(q, docs, adv, adv_err, opp, opp_err):
+    """Map raw pass outcomes onto the existing degradation policy (never blank)."""
+    degraded = False
+    if adv is None:
+        logger.warning("advocate pass failed -> single-pass fallback: %s", adv_err)
+        degraded = True
+        adv = _single_pass(q, docs, error=adv_err)
+    if opp is None:
+        logger.warning("opponent pass failed: %s", opp_err)
+        degraded = True
+        opp = _empty_pass(OPPONENT, docs, opp_err)
+    return adv, opp, degraded
+
+
+def _run_passes_parallel(q, docs):
+    """Run advocate ∥ opponent concurrently, then settle each outcome.
+
+    ``oppose`` is called with no advocate argument: both passes depend only on
+    retrieval, which is what makes them independent. Returns
+    ``(adv, opp, degraded, timings)``; a pool failure propagates so the caller
+    can fall back to the sequential path.
+    """
+    t0 = time.perf_counter()
+    with _ThreadPoolExecutor(max_workers=_PASS_POOL_SIZE,
+                             thread_name_prefix="juris-pass") as pool:
+        fut_adv = pool.submit(_timed_call, advocate, q, docs)
+        fut_opp = pool.submit(_timed_call, oppose, q, docs, "")
+        adv, adv_dur, adv_err = fut_adv.result()
+        opp, opp_dur, opp_err = fut_opp.result()
+    wall = round(time.perf_counter() - t0, 3)
+    adv, opp, degraded = _apply_pass_outcomes(q, docs, adv, adv_err,
+                                              opp, opp_err)
+    return adv, opp, degraded, {"advocate": adv_dur, "opponent": opp_dur,
+                                "parallel": wall}
+
+
+def _run_passes_sequential(q, docs):
+    """Sequential fallback used when the thread pool cannot be used."""
+    adv, adv_dur, adv_err = _timed_call(advocate, q, docs)
+    opp, opp_dur, opp_err = _timed_call(oppose, q, docs, "")
+    adv, opp, degraded = _apply_pass_outcomes(q, docs, adv, adv_err,
+                                              opp, opp_err)
+    return adv, opp, degraded, {"advocate": adv_dur, "opponent": opp_dur}
+
+
 def run_deep(query: str, docs: list | None = None, context: str = "") -> dict:
-    """Orchestrate retrieve → advocate → oppose → judge.
+    """Orchestrate retrieve → (advocate ∥ opponent) → judge.
 
     A missing/ungrounded result returns an honest unresolved judgement without
     calling the model. A failed pass degrades to a single grounded pass or a
-    deterministic judgement — the result is never blank.
+    deterministic judgement — the result is never blank. If the thread pool is
+    unavailable the passes run sequentially instead.
     """
     q = (query or "").strip()
     timings: dict = {}
@@ -540,25 +608,13 @@ def run_deep(query: str, docs: list | None = None, context: str = "") -> dict:
         return _result(q, [], verdict or "UNGROUNDED", None, None,
                        _empty_judge(q), False, timings)
 
-    degraded = False
-
-    t0 = time.perf_counter()
     try:
-        adv = advocate(q, docs)
-    except Exception as exc:  # noqa: BLE001 - degrade to a single pass
-        logger.warning("advocate pass failed -> single-pass fallback: %s", exc)
-        degraded = True
-        adv = _single_pass(q, docs, error=exc)
-    timings["advocate"] = round(time.perf_counter() - t0, 3)
-
-    t0 = time.perf_counter()
-    try:
-        opp = oppose(q, docs, adv.get("argument", ""))
-    except Exception as exc:  # noqa: BLE001 - judge still runs
-        logger.warning("opponent pass failed: %s", exc)
-        degraded = True
-        opp = _empty_pass(OPPONENT, docs, exc)
-    timings["opponent"] = round(time.perf_counter() - t0, 3)
+        adv, opp, degraded, pass_timings = _run_passes_parallel(q, docs)
+    except Exception as exc:  # noqa: BLE001 - pool unavailable -> sequential
+        logger.warning("parallel passes unavailable, running sequentially: %s",
+                       exc)
+        adv, opp, degraded, pass_timings = _run_passes_sequential(q, docs)
+    timings.update(pass_timings)
 
     t0 = time.perf_counter()
     try:
@@ -568,7 +624,12 @@ def run_deep(query: str, docs: list | None = None, context: str = "") -> dict:
         degraded = True
         judgement = _deterministic_judge(q, adv, opp)
     timings["judge"] = round(time.perf_counter() - t0, 3)
-    timings["total"] = round(
-        sum(v for k, v in timings.items() if k != "total"), 3)
+
+    if "parallel" in timings:
+        phase = timings.get("retrieve", 0.0) + timings["parallel"] + timings["judge"]
+    else:
+        phase = (timings.get("retrieve", 0.0) + timings.get("advocate", 0.0)
+                 + timings.get("opponent", 0.0) + timings.get("judge", 0.0))
+    timings["total"] = round(phase, 3)
 
     return _result(q, docs, verdict, adv, opp, judgement, degraded, timings)

@@ -53,7 +53,34 @@ def release_lock(fd) -> None:
         os.close(fd)
 
 
-def format_summary(report: dict) -> str:
+def format_health(health: dict) -> str:
+    """Render the weekly knowledge-health block (Phase 6 T3 key numbers).
+
+    Pure and total: a missing/empty health payload returns ``""`` so the harvest
+    summary degrades to exactly its previous form.
+    """
+    if not isinstance(health, dict) or not health:
+        return ""
+    temporal = health.get("temporal_counts") or {}
+    integ = health.get("integrity") or {}
+    unknown = health.get("unknown_status", temporal.get("UNKNOWN", 0))
+    return "\n".join([
+        "🩺 *Knowledge health*",
+        f"Docs: {health.get('docs', 0)} · with content: "
+        f"{health.get('with_content', 0)}",
+        (f"Temporal: CURRENT={temporal.get('CURRENT', 0)} "
+         f"AMENDED={temporal.get('AMENDED', 0)} "
+         f"REPEALED={temporal.get('REPEALED', 0)} "
+         f"PROPOSED={temporal.get('PROPOSED', 0)} UNKNOWN={unknown}"),
+        (f"Stale primary authorities (>{health.get('stale_days', '?')}d): "
+         f"{len(health.get('stale_authorities') or [])}"),
+        (f"Integrity: hash mismatches={integ.get('hash_mismatches', 0)} "
+         f"duplicates={integ.get('duplicates', 0)}"),
+        f"Suspect docs: {len(health.get('suspect_docs') or [])}",
+    ])
+
+
+def format_summary(report: dict, health: dict = None) -> str:
     """Build the Telegram summary for a cycle report (or a skip/error)."""
     header = "⚖️ *Legal Brain 2.0 — weekly harvest*"
     if not isinstance(report, dict):
@@ -106,6 +133,11 @@ def format_summary(report: dict) -> str:
     if isinstance(legal, dict) and legal.get("alert"):
         lines.append("")
         lines.append(legal["alert"])
+    # Weekly knowledge-health summary (Phase 6 T3), alongside the harvest.
+    health_block = format_health(health)
+    if health_block:
+        lines.append("")
+        lines.append(health_block)
     return "\n".join(lines)
 
 
@@ -132,7 +164,16 @@ def run(*, limit: int = DEFAULT_LIMIT, stub_limit: int = DEFAULT_STUB_LIMIT,
                                           delay=delay, dry_run=dry_run)
         except Exception as exc:  # noqa: BLE001 - a scheduler job must not crash
             report = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        summary = format_summary(report)
+        # Best-effort weekly knowledge-health snapshot (Phase 6 T3). A missing
+        # helper (older client) or a health failure must never break the report.
+        health = None
+        try:
+            getter = getattr(client, "legal_health", None)
+            if getter is not None:
+                health = getter()
+        except Exception:  # noqa: BLE001
+            health = None
+        summary = format_summary(report, health)
         if notify:
             try:
                 alert(summary)

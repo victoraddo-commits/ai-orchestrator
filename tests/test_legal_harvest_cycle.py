@@ -132,6 +132,74 @@ class RunTest(unittest.TestCase):
             self.assertEqual(sent, [])
 
 
+def _health(**over):
+    health = {
+        "docs": 1445, "with_content": 1320, "unknown_status": 715,
+        "stale_days": 180,
+        "temporal_counts": {"CURRENT": 325, "AMENDED": 17, "REPEALED": 1,
+                            "PROPOSED": 387, "UNKNOWN": 715},
+        "integrity": {"hash_mismatches": 593, "duplicates": 2},
+        "stale_authorities": [], "suspect_docs": [{"document_id": 1539}],
+    }
+    health.update(over)
+    return health
+
+
+class HealthSummaryTest(unittest.TestCase):
+    """Phase 6 T3: the weekly Telegram summary carries the knowledge health."""
+
+    def test_format_health_has_key_numbers(self):
+        text = job.format_health(_health())
+        self.assertIn("Knowledge health", text)
+        self.assertIn("UNKNOWN=715", text)
+        self.assertIn("hash mismatches=593", text)
+        self.assertIn("Suspect docs: 1", text)
+
+    def test_format_health_empty_is_blank(self):
+        self.assertEqual(job.format_health(None), "")
+        self.assertEqual(job.format_health({}), "")
+
+    def test_summary_appends_health(self):
+        text = job.format_summary(_report(), _health())
+        self.assertIn("Knowledge health", text)
+        self.assertIn("UNKNOWN=715", text)
+
+    def test_summary_without_health_unchanged(self):
+        self.assertNotIn("Knowledge health", job.format_summary(_report()))
+
+
+class FakeHealthClient(FakeClient):
+    def __init__(self, health, **kw):
+        super().__init__(**kw)
+        self._health = health
+
+    def legal_health(self, **kw):
+        return self._health
+
+
+class HealthRunTest(unittest.TestCase):
+    def test_run_includes_health(self):
+        with tempfile.TemporaryDirectory() as d:
+            sent = []
+            job.run(lock_path=os.path.join(d, "h.lock"),
+                    client=FakeHealthClient(_health()),
+                    alert=lambda text, **kw: sent.append(text))
+            self.assertIn("Knowledge health", sent[0])
+
+    def test_health_failure_does_not_break_run(self):
+        class BoomClient(FakeClient):
+            def legal_health(self, **kw):
+                raise RuntimeError("health down")
+
+        with tempfile.TemporaryDirectory() as d:
+            sent = []
+            result = job.run(lock_path=os.path.join(d, "h.lock"),
+                             client=BoomClient(),
+                             alert=lambda text, **kw: sent.append(text))
+            self.assertTrue(result["report"]["ok"])
+            self.assertNotIn("Knowledge health", sent[0])
+
+
 class ChangeAlertRelayTest(unittest.TestCase):
     """Phase 6 T1: the brain's LEGAL CHANGE ALERT is relayed via Telegram."""
 

@@ -107,6 +107,19 @@ def test_document_authority_combines_relations_and_status(monkeypatch):
     assert out["status"] == payload
 
 
+def test_legal_health_helper_hits_endpoint(monkeypatch):
+    captured = _capture(monkeypatch, {"docs": 5, "unknown_status": 2})
+    out = lb.legal_health()
+    assert out["docs"] == 5
+    assert captured["url"].endswith("/legal/health")
+
+
+def test_legal_health_helper_forwards_stale_days(monkeypatch):
+    captured = _capture(monkeypatch, {"docs": 5})
+    lb.legal_health(stale_days=30)
+    assert "/legal/health?stale_days=30" in captured["url"]
+
+
 def test_document_authority_reports_helper_errors(monkeypatch):
     def boom(path, timeout=8):
         raise RuntimeError("brain down")

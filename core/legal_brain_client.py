@@ -235,6 +235,19 @@ def source_health():
     return _get("/source-health", timeout=40)
 
 
+def legal_health(stale_days=None):
+    """Corpus knowledge-health snapshot (Phase 6 T3), token-gated read.
+
+    Returns the brain's ``/legal/health`` payload (docs, with_content, by_area,
+    temporal_counts, unknown_status, stale_authorities, integrity, suspect_docs).
+    Transport failures raise, so a caller can degrade gracefully.
+    """
+    path = "/legal/health"
+    if stale_days is not None:
+        path += f"?stale_days={int(stale_days)}"
+    return _get_auth(path)
+
+
 def sources():
     return _get("/registry")
 

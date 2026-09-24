@@ -190,6 +190,15 @@ def handle_profile(args: str, update: Dict[str, Any], account: Dict[str, Any]) -
 
 # ---- Legal Research Commands ----
 
+def _firewall(answer: str) -> str:
+    """Strip unverifiable citations from a grounded answer (fail-open)."""
+    try:
+        from core.juris_kai import citation_firewall
+        return citation_firewall.apply_citation_firewall(answer)["text"]
+    except Exception:  # noqa: BLE001 - never break a command reply
+        return answer
+
+
 def _grounded_command_text(topic: str, task_type: str,
                            failure_message: str) -> str:
     """Ground a slash-command answer, or return the shared refusal.
@@ -212,7 +221,7 @@ def _grounded_command_text(topic: str, task_type: str,
         answer = result.get("response") or ""
     except Exception:
         return failure_message
-    return plan["banner"] + answer + plan["footer"]
+    return plan["banner"] + _firewall(answer) + plan["footer"]
 
 
 def handle_learn(topic: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
@@ -266,7 +275,7 @@ def handle_research(query: str, update: Dict[str, Any], account: Dict[str, Any])
                 if isinstance(output, dict):
                     output = (output.get("response") or output.get("text")
                               or str(output))
-                return plan["banner"] + str(output) + plan["footer"]
+                return plan["banner"] + _firewall(str(output)) + plan["footer"]
     except Exception:
         pass
 
@@ -274,7 +283,7 @@ def handle_research(query: str, update: Dict[str, Any], account: Dict[str, Any])
         from core.ai.ai_router import delegate
         result = delegate(plan["prompt"], task_type="juris_research",
                           capability="text_task")
-        return plan["banner"] + (result.get("response") or "") + plan["footer"]
+        return plan["banner"] + _firewall(result.get("response") or "") + plan["footer"]
     except Exception:
         return "Unable to research. Please try again later."
 

@@ -84,7 +84,7 @@ def _capture_reply(monkeypatch, answer="The answer."):
 
     def fake_reply(prompt, task_type, query, fallback_label, account_id="",
                    chat_id=None, reply_markup=None, context="", prefix="",
-                   suffix="", source_key=""):
+                   suffix="", source_key="", **kwargs):
         captured.update(prompt=prompt, task_type=task_type, query=query,
                         prefix=prefix, suffix=suffix, source_key=source_key)
         return answer, "m", False, False

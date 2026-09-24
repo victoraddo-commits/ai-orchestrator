@@ -98,7 +98,7 @@ def _failing_generate(*args, **kwargs):
 
 def _fake_reply(prompt, task_type, query, fallback_label, account_id="",
                 chat_id=None, reply_markup=None, context="", prefix="",
-                suffix="", source_key=""):
+                suffix="", source_key="", **kwargs):
     return "The answer.", "m", False, False
 
 
@@ -181,7 +181,7 @@ def test_ungrounded_then_grounded_is_not_replayed(monkeypatch):
 
     def fake_reply(prompt, task_type, query, fallback_label, account_id="",
                    chat_id=None, reply_markup=None, context="", prefix="",
-                   suffix="", source_key=""):
+                   suffix="", source_key="", **kwargs):
         calls["n"] += 1
         return "Grounded answer.", "m", False, False
 
@@ -238,7 +238,7 @@ def test_grounded_appends_footer_and_uses_grounded_prompt(monkeypatch):
 
     def fake_reply(prompt, task_type, query, fallback_label, account_id="",
                    chat_id=None, reply_markup=None, context="", prefix="",
-                   suffix="", source_key=""):
+                   suffix="", source_key="", **kwargs):
         captured.update(prompt=prompt, prefix=prefix, suffix=suffix,
                         source_key=source_key)
         return "The answer.", "m", False, False
@@ -289,7 +289,7 @@ def test_grounded_followup_context_reaches_prompt(monkeypatch):
 
     def fake_reply(prompt, task_type, query, fallback_label, account_id="",
                    chat_id=None, reply_markup=None, context="", prefix="",
-                   suffix="", source_key=""):
+                   suffix="", source_key="", **kwargs):
         captured["prompt"] = prompt
         return "ok", "m", False, False
 
@@ -401,7 +401,7 @@ def test_streamed_reply_returns_none_and_forwards_footer(monkeypatch):
 
     def fake_reply(prompt, task_type, query, fallback_label, account_id="",
                    chat_id=None, reply_markup=None, context="", prefix="",
-                   suffix="", source_key=""):
+                   suffix="", source_key="", **kwargs):
         captured.update(prefix=prefix, suffix=suffix)
         return "Streamed answer.", "m", True, False
 
@@ -421,7 +421,7 @@ def test_streamed_partial_forwards_banner_prefix(monkeypatch):
 
     def fake_reply(prompt, task_type, query, fallback_label, account_id="",
                    chat_id=None, reply_markup=None, context="", prefix="",
-                   suffix="", source_key=""):
+                   suffix="", source_key="", **kwargs):
         captured.update(prefix=prefix, suffix=suffix)
         return "Streamed answer.", "m", True, False
 

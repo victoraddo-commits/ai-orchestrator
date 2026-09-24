@@ -553,8 +553,41 @@ def _finalize_stream(chat_id, message_id, text, reply_markup=None) -> None:
         send_message(chat_id, text[STREAM_MAX_MESSAGE:], parse_mode=None)
 
 
+def _transform_answer(answer: str, transform) -> str:
+    """Apply an optional answer transform (the citation firewall), fail-open.
+
+    The firewall already never raises, but a bad transform must not lose a
+    legal answer: on any failure the original text is returned unchanged.
+    """
+    if not transform:
+        return answer
+    try:
+        return transform(answer)
+    except Exception as exc:  # noqa: BLE001 - never break a legal reply
+        logger.warning("juris answer transform failed (fail open): %s", exc)
+        return answer
+
+
+def _citation_firewall_transform():
+    """Build the answer transform that strips unverifiable citations.
+
+    Returns ``None`` (no transform) if the module cannot be imported, so the
+    answer path degrades to the pre-Phase-2 behaviour rather than failing.
+    """
+    try:
+        from core.juris_kai import citation_firewall
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("citation firewall unavailable: %s", exc)
+        return None
+
+    def _apply(answer: str) -> str:
+        return citation_firewall.apply_citation_firewall(answer)["text"]
+
+    return _apply
+
+
 def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
-                        prefix="", suffix=""):
+                        prefix="", suffix="", answer_transform=None):
     """Stream a local generation into Telegram, editing as tokens arrive.
 
     ``prefix`` (e.g. a PARTIAL banner) and ``suffix`` (e.g. the deterministic
@@ -597,8 +630,9 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
                                "⚠️ The model returned an empty reply.",
                                reply_markup=reply_markup, parse_mode=None)
             return None, "", False
-        _finalize_stream(chat_id, message_id, prefix + acc + suffix, reply_markup)
-        return acc, model, True
+        final = _transform_answer(acc, answer_transform)
+        _finalize_stream(chat_id, message_id, prefix + final + suffix, reply_markup)
+        return final, model, True
     except _streaming.StreamGuardAbort as exc:
         # The primitive's incremental guard stopped before the suspicious span
         # was rendered. Drop the partial message; the caller falls back to the
@@ -621,13 +655,14 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
         logger.warning(f"Telegram streaming failed for {task_type}: {exc}")
         if acc.strip():
             # Partial output is already visible; finish delivering it.
+            partial = _transform_answer(acc, answer_transform)
             try:
-                _finalize_stream(chat_id, message_id, prefix + acc + suffix,
+                _finalize_stream(chat_id, message_id, prefix + partial + suffix,
                                  reply_markup)
             except Exception:
-                send_message(chat_id, prefix + acc + suffix,
+                send_message(chat_id, prefix + partial + suffix,
                              reply_markup=reply_markup, parse_mode=None)
-            return acc, model, True
+            return partial, model, True
         telegram_api("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
         return None, "", False
     finally:
@@ -641,7 +676,7 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
 
 def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
                     chat_id=None, reply_markup=None, context="", prefix="",
-                    suffix="", source_key=""):
+                    suffix="", source_key="", answer_transform=None):
     """Generate a legal answer: FAQ cache → TTL cache → stream → blocking.
 
     Returns (text, model, streamed, cached). ``streamed=True`` means the text
@@ -674,7 +709,9 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
             faq = None
         if faq and faq.get("answer"):
             logger.info("juris FAQ cache hit task=%s account=%s", task_type, account_id)
-            return (_guard_outbound_text(faq["answer"], source="juris_kai"),
+            return (_transform_answer(
+                        _guard_outbound_text(faq["answer"], source="juris_kai"),
+                        answer_transform),
                     faq.get("model", ""), False, True)
 
     # 2) In-process generation TTL cache. Context and source set are folded
@@ -684,12 +721,15 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
     key = _cache.generation_key(task_type, query, corpus_ver, ctx_key, source_key)
     hit = _cache.GENERATION_CACHE.get(key)
     if hit and hit.get("text"):
-        return (_guard_outbound_text(hit["text"], source="juris_kai"),
+        return (_transform_answer(
+                    _guard_outbound_text(hit["text"], source="juris_kai"),
+                    answer_transform),
                 hit.get("model", ""), False, True)
 
     if chat_id and _stream_enabled():
         text, model, delivered = _stream_to_telegram(
-            prompt, task_type, chat_id, reply_markup, prefix=prefix, suffix=suffix)
+            prompt, task_type, chat_id, reply_markup, prefix=prefix, suffix=suffix,
+            answer_transform=answer_transform)
         if delivered and text:
             _cache.GENERATION_CACHE.set(
                 key, {"text": text, "model": model, "corpus_version": corpus_ver})
@@ -697,6 +737,7 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
 
     text, model = _delegate_with_timeout(prompt, task_type, fallback_label, account_id)
     text = _guard_outbound_text(text, source="juris_kai")
+    text = _transform_answer(text, answer_transform)
     if text:
         _cache.GENERATION_CACHE.set(
             key, {"text": text, "model": model, "corpus_version": corpus_ver})
@@ -1496,7 +1537,8 @@ def _build_legal_reply(text: str, chat_id, account: dict,
     response_text, model, streamed, _cache_hit = _generate_reply(
         prompt, task_type, text, text, account["account_id"],
         chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx,
-        prefix=banner, suffix=footer, source_key=source_key)
+        prefix=banner, suffix=footer, source_key=source_key,
+        answer_transform=_citation_firewall_transform())
     _latency_ms = int((time.time() - _t0) * 1000)
 
     have_answer = bool(response_text and response_text.strip())

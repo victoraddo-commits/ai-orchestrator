@@ -11,8 +11,14 @@ import urllib.request
 BASE = os.environ.get("KAI_LEGAL_BRAIN_URL", "http://192.168.1.100:8100")
 
 
-def _get(path, timeout=8):
-    with urllib.request.urlopen(BASE + path, timeout=timeout) as resp:
+def _get(path, timeout=8, auth=False):
+    headers = {}
+    if auth:
+        tok = _token()
+        if tok:
+            headers["X-Legal-Token"] = tok
+    req = urllib.request.Request(BASE + path, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.load(resp)
 
 
@@ -135,6 +141,22 @@ def search(query, limit=20, mode="or"):
 def search_hybrid(query, limit=3):
     """Authority-aware hybrid retrieval (BM25 + dense + RRF), the primary path."""
     return search(query, limit=limit, mode="hybrid")
+
+
+def verify_citations(text, record=False):
+    """Verify a generated answer's citations against the corpus (Phase 2 T1).
+
+    Returns CT100's report ``{citations, summary, all_verified}`` for the text.
+    Transport failures raise, so the caller's hallucination firewall can fail
+    open rather than blank a legal answer.
+    """
+    return _post("/citations/verify",
+                 {"text": text or "", "record": bool(record)})
+
+
+def beliefs(limit=50):
+    """Read the belief ledger (verified propositions) from the legal brain."""
+    return _get(f"/beliefs?limit={int(limit)}", auth=True).get("beliefs", [])
 
 
 def documents(jurisdiction=None, status=None, limit=50):

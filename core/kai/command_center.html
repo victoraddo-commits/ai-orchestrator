@@ -1013,8 +1013,8 @@ html, body { max-width: 100%; overflow-x: hidden; }
         <input type="password" id="login-pass" autocomplete="current-password" placeholder="········">
       </div>
       <div class="checkbox-row">
-        <input type="checkbox" id="login-remember">
-        <label for="login-remember">Remember this session for 7 days</label>
+        <input type="checkbox" id="login-remember" checked>
+        <label for="login-remember">Keep me signed in on this device</label>
       </div>
       <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
       <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
@@ -1507,6 +1507,13 @@ function runConfirm() {
 }
 
 // ── Auth ──────────────────────────────────────────────────────────
+const REMEMBER_KEY='kai_remember';
+function isRemembered(){
+  try{return localStorage.getItem(REMEMBER_KEY)!=='0';}catch{return true;}
+}
+function setRemembered(rem){
+  try{localStorage.setItem(REMEMBER_KEY, rem?'1':'0');}catch{}
+}
 function getToken() {
   if (S.token) return S.token;
   try { const d=JSON.parse(localStorage.getItem(SK)||sessionStorage.getItem(SK)||'{}');
@@ -1515,6 +1522,9 @@ function getToken() {
 }
 function saveToken(rem) {
   const d=JSON.stringify({token:S.token,role:S.role,username:S.username});
+  setRemembered(rem);
+  // Keep exactly one copy so a stale token can never shadow the fresh one.
+  localStorage.removeItem(SK);sessionStorage.removeItem(SK);
   (rem?localStorage:sessionStorage).setItem(SK,d);
 }
 function clearToken() {
@@ -1526,13 +1536,42 @@ async function api(path, opts={}) {
   const h={'Content-Type':'application/json',...(opts.headers||{})};
   if(S.token) h['X-Kai-Session']=S.token;
   const r=await fetch(path,{...opts,headers:h});
+  // 401 = credentials were not accepted (missing/expired/invalid) → log out.
+  // 403 = we ARE authenticated but lack the capability → show a permission
+  // error and keep the session; it must never trigger a logout.
   if(r.status===401){clearToken();showLogin();throw new Error('Session expired');}
+  if(r.status===403){
+    let m='Permission denied';
+    try{const j=await r.json();m=j.detail||j.error||m;}catch{}
+    const e=new Error(m);e.status=403;throw e;
+  }
   if(!r.ok){
     let m=`HTTP ${r.status}`;
     try{const j=await r.json();m=j.detail||j.error||m;}catch{}
     throw new Error(m);
   }
   return r.json();
+}
+
+// Proactively extend the session before it expires. Never logs the user out
+// on failure — a transient error just means we keep the existing token.
+async function refreshSession(){
+  const token=getToken(); if(!token) return false;
+  if(!isRemembered()) return false;
+  try{
+    const r=await fetch('/auth/refresh',{method:'POST',headers:{'X-Kai-Session':token}});
+    if(!r.ok) return false;
+    const d=await r.json();
+    if(d&&d.token){S.token=d.token;if(d.role)S.role=d.role;saveToken(true);return true;}
+  }catch(e){}
+  return false;
+}
+const REFRESH_INTERVAL_MS=6*60*60*1000;  // 6h — well inside the 24h JWT TTL
+function scheduleRefresh(){
+  if(!isRemembered()) return;
+  refreshSession();
+  clearInterval(window._kaiRefresh);
+  window._kaiRefresh=setInterval(()=>{ if(S.token) refreshSession(); }, REFRESH_INTERVAL_MS);
 }
 
 // api() with a hard timeout so one slow upstream never blocks a panel.
@@ -1584,7 +1623,11 @@ async function doLogout() { try{await api('/auth/logout',{method:'POST'});}catch
 
 // Duo-first sign-in (push or SMS code)
 function _duoEnter(d){
-  S.token=d.cc_token||d.token; S.role='operator'; S.username=d.user; saveToken(true);
+  // The Duo HMAC token is NOT a Command Center session — only the orchestrator
+  // JWT (cc_token) is. Refuse to enter with anything less instead of silently
+  // storing a token every request would 401 on.
+  if(!d.cc_token) throw new Error('server did not issue a Command Center session');
+  S.token=d.cc_token; S.role='operator'; S.username=d.user; saveToken(true);
   $('login-screen').classList.add('hidden'); $('app-wrap').classList.add('active');
   $('user-display').innerHTML='<span class="user-role">Duo · '+esc(d.user)+'</span>';
   initApp();
@@ -5100,15 +5143,35 @@ function registerSW(){
 }
 registerSW();
 (function boot(){
+  // Reflect the operator's saved "keep me signed in" choice.
+  const remBox=$('login-remember'); if(remBox) remBox.checked=isRemembered();
   const token=getToken();
-  if(token){fetch('/auth/status',{headers:{'X-Kai-Session':token}}).then(r=>r.json()).then(d=>{
-    if(d.role&&d.role!=='anonymous'){
-      S.token=token;S.role=d.role;S.username='session';
-      $('login-screen').classList.add('hidden');$('app-wrap').classList.add('active');
-      $('user-display').innerHTML=`<span class="user-role">${S.role}</span>`;
-      initApp();
-    } else clearToken();
-  }).catch(()=>clearToken());}
+  if(!token) return;
+  // Soft login screen: shown without wiping the stored token, so a transient
+  // server/network failure can never log a remembered user out.
+  const softLogin=()=>{$('login-screen').classList.remove('hidden');$('app-wrap').classList.remove('active');};
+  const enter=(role)=>{S.token=token;S.role=role;S.username='session';
+    $('login-screen').classList.add('hidden');$('app-wrap').classList.add('active');
+    $('user-display').innerHTML=`<span class="user-role">${esc(role)}</span>`;
+    initApp();scheduleRefresh();};
+  let attempts=0;
+  const check=()=>{
+    fetch('/auth/status',{headers:{'X-Kai-Session':token}})
+      .then(r=>{ if(r.status===401){clearToken();showLogin();return null;} return r.json(); })
+      .then(d=>{
+        if(d===null) return;                       // genuine 401 → logged out
+        if(d.role&&d.role!=='anonymous'){ enter(d.role); }
+        else { clearToken(); showLogin(); }        // server rejected the token
+      })
+      .catch(()=>{
+        // Transient error: retry with backoff, then soft-fail anonymous and
+        // KEEP the token so a later boot/refresh can recover the session.
+        attempts++;
+        if(attempts<4) setTimeout(check,1500*attempts);
+        else softLogin();
+      });
+  };
+  check();
 })();
 // ── Ecosystem tabs ────────────────────────────────────────────────
 // (The generic loadJsonTab raw-dump renderer was removed: every panel now has

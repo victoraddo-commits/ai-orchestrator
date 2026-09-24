@@ -34,10 +34,16 @@ def _req_op(request: Request) -> None:
     if tok:
         from core import authz
         try:
-            if authz._resolve_session(tok):
-                return
+            role = authz.resolve_role(tok)
         except Exception:  # noqa: BLE001
-            pass
+            role = None
+        if role == "operator":
+            return
+        # Valid session but not an operator → authorization failure (403);
+        # missing/invalid credentials fall through to 401 below.
+        if role is not None:
+            raise HTTPException(status_code=403,
+                                detail="operator capability required")
     from core.auth.trusted_proxy import proxy_identity
     if proxy_identity(request, request.headers.get("x-kai-user"),
                       request.headers.get("x-kai-user-id")):
@@ -641,11 +647,13 @@ def _mask(name: str, v: str) -> str:
 
 
 def _operator(request: Request) -> bool:
+    """Legacy boolean operator check. Prefer ``_req_op`` for write gates so a
+    valid-but-insufficient session yields 403 (not 401)."""
     tok = request.headers.get("x-kai-session", "")
     if tok:
         from core import authz
         try:
-            if authz._resolve_session(tok):
+            if authz.resolve_role(tok) == "operator":
                 return True
         except Exception:  # noqa: BLE001
             pass
@@ -676,8 +684,7 @@ class _HubtelBody(BaseModel):
 
 @cc_extra_router.put("/hubtel/config")
 def hubtel_config(body: _HubtelBody, request: Request):
-    if not _operator(request):
-        return JSONResponse(status_code=401, content={"ok": False, "error": "operator session required"})
+    _req_op(request)
     provided = {k: v for k, v in body.model_dump().items() if v}
     if not provided:
         return {"ok": False, "error": "no fields provided"}

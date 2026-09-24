@@ -26,10 +26,16 @@ def _require_operator(request: Request) -> None:
     if tok:
         from core import authz
         try:
-            if authz._resolve_session(tok):
-                return
+            role = authz.resolve_role(tok)
         except Exception:  # noqa: BLE001
-            pass
+            role = None
+        if role == "operator":
+            return
+        # Valid session but not an operator → authorization failure (403);
+        # missing/invalid credentials fall through to 401 below.
+        if role is not None:
+            raise HTTPException(status_code=403,
+                                detail="operator capability required")
     from core.auth.trusted_proxy import proxy_identity
     if proxy_identity(request, request.headers.get("x-kai-user"),
                       request.headers.get("x-kai-user-id")):

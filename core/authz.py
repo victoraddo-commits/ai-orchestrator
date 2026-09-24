@@ -178,6 +178,53 @@ def authenticate(username: str, password: str, client_ip: str = "127.0.0.1") -> 
     return token
 
 
+def create_session_for(username: str, role: str = "viewer") -> str:
+    """Mint a real JWT session for *username* with *role*.
+
+    Non-password auth flows (Duo SSO, trusted bridges) use this to obtain the
+    same signed Command Center session token that :func:`authenticate` issues
+    for a password login.  This does **not** verify credentials — callers must
+    establish identity first (e.g. Duo push approval) before invoking it.
+
+    The token is a signed JWT (so ``verify_jwt`` / ``resolve_role`` accept it)
+    and is also registered in the in-process session store, matching the
+    password-login path.
+    """
+    token = create_jwt({
+        "sub": username,
+        "role": role,
+    })
+    _sessions[token] = {
+        "username": username,
+        "role": role,
+        "created": datetime.now(timezone.utc).isoformat(),
+    }
+    return token
+
+
+def refresh_session(token: str) -> str | None:
+    """Mint a fresh JWT from a valid session *token*, preserving its role.
+
+    Returns the new token, or None when the supplied token is missing,
+    expired, revoked, or otherwise not refreshable (e.g. a non-JWT device
+    token).  The new token is registered in the in-process session store just
+    like a fresh login.
+    """
+    session = _resolve_session(token)
+    if session is None:
+        return None
+    from core.jwt_auth import refresh_jwt
+    new_token = refresh_jwt(token)
+    if new_token is None:
+        return None
+    _sessions[new_token] = {
+        "username": session["username"],
+        "role": session["role"],
+        "created": datetime.now(timezone.utc).isoformat(),
+    }
+    return new_token
+
+
 def _map_vault_role_to_orch_role(vault_role: str) -> str:
     """Map vault SSO role to orchestrator role.
 

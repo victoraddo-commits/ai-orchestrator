@@ -961,6 +961,31 @@ def auth_status(
     return {"role": "anonymous", "auth_method": "none", "capabilities": []}
 
 
+@app.post("/auth/refresh")
+def auth_refresh(response: Response, x_kai_session: str | None = Header(default=None)):
+    """Mint a fresh session JWT from a valid, unexpired session.
+
+    Keeps the Command Center signed in past the base JWT TTL without another
+    interactive login.  Returns 401 for missing/invalid/expired credentials.
+    """
+    new_token = authz.refresh_session(x_kai_session or "")
+    if new_token is None:
+        raise HTTPException(status_code=401, detail="Valid session required")
+    from core.jwt_auth import JWT_EXPIRY_SECONDS
+    role = authz.resolve_role(new_token)
+    response.set_cookie(
+        key="kai_session",
+        value=new_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=JWT_EXPIRY_SECONDS,
+        path="/",
+    )
+    return {"token": new_token, "token_type": "session", "role": role,
+            "expires_in": JWT_EXPIRY_SECONDS}
+
+
 # ── Phase 15C: Audit log ─────────────────────────────────────────────────
 
 AUDIT_SOURCES = {
@@ -3744,9 +3769,15 @@ def _require_session_or_bridge(
             authorization.encode(), f"Bearer {_load_api_token()}".encode()):
         from core.bridge_auth import BRIDGE_OPERATOR
         return BRIDGE_OPERATOR
-    if x_kai_session and (authz.check_capability(x_kai_session, "kai.command")
-                          or authz.check_capability(x_kai_session, "delegate.use")):
-        return x_kai_session
+    if x_kai_session:
+        if (authz.check_capability(x_kai_session, "kai.command")
+                or authz.check_capability(x_kai_session, "delegate.use")):
+            return x_kai_session
+        # A valid session that simply lacks the capability is an authorization
+        # failure (403), NOT an authentication failure (401).  Returning 401
+        # here used to make the SPA wipe the session and force a re-login.
+        if authz.resolve_role(x_kai_session) is not None:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
     raise HTTPException(status_code=401, detail="Missing or invalid credentials")
 
 

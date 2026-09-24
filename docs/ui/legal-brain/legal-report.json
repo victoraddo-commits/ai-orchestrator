@@ -1,0 +1,291 @@
+{
+  "base": "https://127.0.0.1:18000/command-center",
+  "generated": "2026-09-24T17:09:18.803Z",
+  "panels": [
+    {
+      "tab": "__http",
+      "width": 360,
+      "status": 401,
+      "url": "https://127.0.0.1:18000/api/susu/stats"
+    },
+    {
+      "tab": "__http",
+      "width": 360,
+      "status": 401,
+      "url": "https://127.0.0.1:18000/api/susu/stats"
+    },
+    {
+      "tab": "__http",
+      "width": 360,
+      "status": 502,
+      "url": "https://127.0.0.1:18000/cc/arbitra/arbitra/overview"
+    },
+    {
+      "tab": "ask",
+      "width": 360,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "ASK GROUNDED Retrieval decides whether the model may answer: an unsupported or non-Ghana question is refused, never guessed. Deep runs the A"
+    },
+    {
+      "tab": "reports",
+      "width": 360,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "REPORTS 2 Refresh Exportable research reports — PDF + DOCX, citation-firewalled, informational only. QUESTION KIND DATE SIZE ACTIONS What ar"
+    },
+    {
+      "tab": "gaps",
+      "width": 360,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "GAPS (ASK-TO-ACQUIRE) 3 Refresh Unanswered questions the corpus cannot meet. Acquire runs one bounded harvest pass for a gap (contacts exter"
+    },
+    {
+      "tab": "everyday",
+      "width": 360,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "EVERYDAY LAW 7 TOPICS Refresh Plain-language explainers, grounded in a controlling instrument with its currency. Pick a topic: Traffic & veh"
+    },
+    {
+      "tab": "health",
+      "width": 360,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "CORPUS HEALTH 1445 DOCS Refresh 1445 DOCUMENTS 1320 WITH CONTENT 715 UNKNOWN STATUS 0 STALE AUTHORITIES 1 SUSPECT DOCS 0 HASH MISMATCHES 11 "
+    },
+    {
+      "tab": "licences",
+      "width": 360,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "LICENCES 29 SOURCES 1 COMMERCIAL-CLEARED Refresh View register Source commercial-use register (v2026-09-24). Fail-closed: a source is served"
+    },
+    {
+      "tab": "__http",
+      "width": 768,
+      "status": 401,
+      "url": "https://127.0.0.1:18000/api/susu/stats"
+    },
+    {
+      "tab": "__http",
+      "width": 768,
+      "status": 401,
+      "url": "https://127.0.0.1:18000/api/susu/stats"
+    },
+    {
+      "tab": "__http",
+      "width": 768,
+      "status": 502,
+      "url": "https://127.0.0.1:18000/cc/arbitra/arbitra/overview"
+    },
+    {
+      "tab": "ask",
+      "width": 768,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "ASK GROUNDED Retrieval decides whether the model may answer: an unsupported or non-Ghana question is refused, never guessed. Deep runs the A"
+    },
+    {
+      "tab": "reports",
+      "width": 768,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "REPORTS 2 Refresh Exportable research reports — PDF + DOCX, citation-firewalled, informational only. QUESTION KIND DATE SIZE ACTIONS What ar"
+    },
+    {
+      "tab": "gaps",
+      "width": 768,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "GAPS (ASK-TO-ACQUIRE) 3 Refresh Unanswered questions the corpus cannot meet. Acquire runs one bounded harvest pass for a gap (contacts exter"
+    },
+    {
+      "tab": "everyday",
+      "width": 768,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "EVERYDAY LAW 7 TOPICS Refresh Plain-language explainers, grounded in a controlling instrument with its currency. Pick a topic: Traffic & veh"
+    },
+    {
+      "tab": "health",
+      "width": 768,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "CORPUS HEALTH 1445 DOCS Refresh 1445 DOCUMENTS 1320 WITH CONTENT 715 UNKNOWN STATUS 0 STALE AUTHORITIES 1 SUSPECT DOCS 0 HASH MISMATCHES 11 "
+    },
+    {
+      "tab": "licences",
+      "width": 768,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "LICENCES 29 SOURCES 1 COMMERCIAL-CLEARED Refresh View register Source commercial-use register (v2026-09-24). Fail-closed: a source is served"
+    },
+    {
+      "tab": "__http",
+      "width": 1280,
+      "status": 401,
+      "url": "https://127.0.0.1:18000/api/susu/stats"
+    },
+    {
+      "tab": "__http",
+      "width": 1280,
+      "status": 401,
+      "url": "https://127.0.0.1:18000/api/susu/stats"
+    },
+    {
+      "tab": "__http",
+      "width": 1280,
+      "status": 502,
+      "url": "https://127.0.0.1:18000/cc/arbitra/arbitra/overview"
+    },
+    {
+      "tab": "ask",
+      "width": 1280,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "ASK GROUNDED Retrieval decides whether the model may answer: an unsupported or non-Ghana question is refused, never guessed. Deep runs the A"
+    },
+    {
+      "tab": "reports",
+      "width": 1280,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "REPORTS 2 Refresh Exportable research reports — PDF + DOCX, citation-firewalled, informational only. QUESTION KIND DATE SIZE ACTIONS What ar"
+    },
+    {
+      "tab": "gaps",
+      "width": 1280,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "GAPS (ASK-TO-ACQUIRE) 3 Refresh Unanswered questions the corpus cannot meet. Acquire runs one bounded harvest pass for a gap (contacts exter"
+    },
+    {
+      "tab": "everyday",
+      "width": 1280,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "EVERYDAY LAW 7 TOPICS Refresh Plain-language explainers, grounded in a controlling instrument with its currency. Pick a topic: Traffic & veh"
+    },
+    {
+      "tab": "health",
+      "width": 1280,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "CORPUS HEALTH 1445 DOCS Refresh 1445 DOCUMENTS 1320 WITH CONTENT 715 UNKNOWN STATUS 0 STALE AUTHORITIES 1 SUSPECT DOCS 0 HASH MISMATCHES 11 "
+    },
+    {
+      "tab": "licences",
+      "width": 1280,
+      "overflow": false,
+      "ready": true,
+      "error": null,
+      "empty": false,
+      "errorText": false,
+      "snippet": "LICENCES 29 SOURCES 1 COMMERCIAL-CLEARED Refresh View register Source commercial-use register (v2026-09-24). Fail-closed: a source is served"
+    }
+  ],
+  "console": [
+    {
+      "w": 360,
+      "text": "An SSL certificate error occurred when fetching the script."
+    },
+    {
+      "w": 360,
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "w": 360,
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "w": 360,
+      "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)"
+    },
+    {
+      "w": 768,
+      "text": "An SSL certificate error occurred when fetching the script."
+    },
+    {
+      "w": 768,
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "w": 768,
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "w": 768,
+      "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)"
+    },
+    {
+      "w": 1280,
+      "text": "An unknown error occurred when fetching the script."
+    },
+    {
+      "w": 1280,
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "w": 1280,
+      "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    },
+    {
+      "w": 1280,
+      "text": "Failed to load resource: the server responded with a status of 502 (Bad Gateway)"
+    }
+  ],
+  "pageerrors": []
+}

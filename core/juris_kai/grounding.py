@@ -66,9 +66,16 @@ def is_out_of_scope(text: str) -> bool:
     return bool(_FOREIGN_JURISDICTION_RE.search(q))
 
 
-def _search(query: str, limit: int = 3, mode: str = "or") -> list[dict]:
-    """Pure transport seam over the legal-brain client (monkeypatched in tests)."""
+def _search(query: str, limit: int = 3, mode: str = "or",
+            commercial: bool = False) -> list[dict]:
+    """Pure transport seam over the legal-brain client (monkeypatched in tests).
+
+    The non-commercial path keeps the legacy call shape (no ``commercial``
+    kwarg), so the foundation arm's behaviour is byte-for-byte unchanged.
+    """
     from core import legal_brain_client as lb
+    if commercial:
+        return lb.search(query, limit=limit, mode=mode, commercial=True) or []
     return lb.search(query, limit=limit, mode=mode) or []
 
 
@@ -223,7 +230,7 @@ def _relevance_window(content: str, query: str, width: int) -> str:
     return text[start:start + width]
 
 
-def _hydrate(hit: dict, query: str = "") -> dict:
+def _hydrate(hit: dict, query: str = "", commercial: bool = False) -> dict:
     """Return ``hit`` with a content-bearing ``chunk_content``, capped.
 
     CT100's ``/search`` returns a relevance-centered bounded ``snippet``. That
@@ -242,7 +249,9 @@ def _hydrate(hit: dict, query: str = "") -> dict:
         if doc_id is not None:
             try:
                 from core import legal_brain_client as lb
-                full = (lb.get_document(doc_id) or {}).get("content") or ""
+                doc = (lb.get_document(doc_id, commercial=True) if commercial
+                       else lb.get_document(doc_id))
+                full = (doc or {}).get("content") or ""
                 if len(full.strip()) > len(content.strip()):
                     content = _relevance_window(full, query, MAX_CHUNK_LENGTH)
             except Exception as exc:  # noqa: BLE001 - retrieval must never crash
@@ -252,7 +261,8 @@ def _hydrate(hit: dict, query: str = "") -> dict:
     return {**hit, "chunk_content": content[:MAX_CHUNK_LENGTH]}
 
 
-def _stage(query: str, limit: int, mode: str) -> list[dict]:
+def _stage(query: str, limit: int, mode: str,
+           commercial: bool = False) -> list[dict]:
     """Run one retrieval stage: transport, hydrate, guard, then keep usable.
 
     The injection guard runs *after* hydration so it scans the exact text that
@@ -260,9 +270,14 @@ def _stage(query: str, limit: int, mode: str) -> list[dict]:
     legal-brain. A suspected chunk is replaced with ``WITHHELD`` (and flagged
     ``injection_suspected``); that sentinel is shorter than every usability
     floor, so ``_usable`` drops it and it cannot ground an answer.
+
+    ``commercial`` is threaded through both the search and the full-document
+    hydration so a commercial request never pulls a non-commercial document.
     """
+    hits = (_search(query, limit, mode=mode, commercial=True) if commercial
+            else _search(query, limit, mode=mode))
     return _usable(_guard_chunks(
-        [_hydrate(h, query) for h in _search(query, limit, mode=mode)]))
+        [_hydrate(h, query, commercial=commercial) for h in hits]))
 
 
 def _usable(docs: list[dict]) -> list[dict]:
@@ -350,7 +365,8 @@ def _hybrid_verdict(docs: list[dict]):
     return "GROUNDED" if strong else "PARTIAL"
 
 
-def retrieve(query: str, limit: int = 3, context: str = "") -> dict:
+def retrieve(query: str, limit: int = 3, context: str = "",
+             commercial: bool = False) -> dict:
     """Progressive retrieval. Returns {docs, verdict, stage}.
 
     Primary strategy is authority-aware ``hybrid`` retrieval (BM25 + dense +
@@ -361,6 +377,9 @@ def retrieve(query: str, limit: int = 3, context: str = "") -> dict:
     borrow bounded topic tokens from ``context`` (the recent prior turn) so
     "and the penalty?" searches the topic under discussion. An empty
     significant-token set is UNGROUNDED and never searches.
+
+    ``commercial=True`` applies the commercial-use gate at every stage: the
+    company arm only ever grounds on commercially-licensed content.
     """
     q = _expand_followup((query or "").strip(), context)
     tokens = significant_tokens(q)
@@ -369,29 +388,29 @@ def retrieve(query: str, limit: int = 3, context: str = "") -> dict:
     q = " ".join(tokens)
 
     # Stage 1 (primary): authority-aware hybrid retrieval.
-    docs = _stage(q, limit, "hybrid")
+    docs = _stage(q, limit, "hybrid", commercial=commercial)
     if docs:
         verdict = _hybrid_verdict(docs)
         if verdict:
             return {"docs": docs, "verdict": verdict, "stage": 1}
 
     # Stage 2 (fallback): exact phrase (server builds the FTS phrase query)
-    docs = _stage(q, limit, "phrase")
+    docs = _stage(q, limit, "phrase", commercial=commercial)
     if docs:
         return {"docs": docs, "verdict": "GROUNDED", "stage": 2}
 
     # Stage 3: AND of tokens
-    docs = _stage(q, limit, "and")
+    docs = _stage(q, limit, "and", commercial=commercial)
     if docs:
         return {"docs": docs, "verdict": "GROUNDED", "stage": 3}
 
     # Stage 4: OR of tokens
-    docs = _stage(q, limit, "or")
+    docs = _stage(q, limit, "or", commercial=commercial)
     if docs:
         return {"docs": docs, "verdict": "PARTIAL", "stage": 4}
 
     # Stage 5: raw keyword fallback (title/citation LIKE)
-    docs = _stage(q, limit, "like")
+    docs = _stage(q, limit, "like", commercial=commercial)
     if docs:
         return {"docs": docs, "verdict": "PARTIAL", "stage": 5}
 
@@ -435,7 +454,7 @@ PARTIAL_BANNER = "ℹ️ _Limited sources — some points may be general._\n\n"
 
 
 def build_grounded_plan(query: str, task_type: str = "juris_research",
-                        context: str = "") -> dict:
+                        context: str = "", commercial: bool = False) -> dict:
     """Retrieval-gated plan for a legal answer. Never calls a model.
 
     This is the single gate every legal-answer surface routes through, so the
@@ -445,6 +464,11 @@ def build_grounded_plan(query: str, task_type: str = "juris_research",
     :func:`core.juris_kai.prompt.build_grounded_prompt`, the deterministic
     Sources ``footer``, and (for PARTIAL) a ``banner``. Retrieval failure
     fails closed: an unreachable source is not a source.
+
+    ``commercial=True`` is passed by the commercial (company) arm so its
+    retrieval only ever grounds on commercially-licensed content; the
+    foundation arm leaves it ``False``. The strict no-ungrounded rule is
+    unchanged either way.
 
     Returns a dict with keys:
       ``groundable`` (bool), ``out_of_scope`` (bool), ``verdict`` (str),
@@ -463,11 +487,14 @@ def build_grounded_plan(query: str, task_type: str = "juris_research",
         # Thread follow-up context into retrieval only when present, so a
         # standalone question keeps the exact previous call shape (and its
         # cache/source-signature behaviour). Context expansion changes the
-        # retrieved docs, so it is reflected in ``source_key`` below.
+        # retrieved docs, so it is reflected in ``source_key`` below. The
+        # commercial flag is likewise forwarded only when set, so the
+        # foundation arm's call shape is unchanged.
+        extra = {"commercial": True} if commercial else {}
         if context:
-            result = retrieve(q, context=context)
+            result = retrieve(q, context=context, **extra)
         else:
-            result = retrieve(q)
+            result = retrieve(q, **extra)
         verdict = result["verdict"]
         docs = result["docs"]
     except Exception as exc:  # noqa: BLE001 - fail closed, never answer ungrounded

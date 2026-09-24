@@ -129,7 +129,7 @@ def ingest(title, content, citation="", court="", year=0, doc_type="",
 SEARCH_MODES = ("hybrid", "phrase", "and", "or", "like")
 
 
-def search(query, limit=20, mode="or"):
+def search(query, limit=20, mode="or", commercial=False):
     """Search the legal brain, forwarding ``mode`` to ``/search``.
 
     ``mode="hybrid"`` is the authority-aware primary path (BM25 + dense + RRF);
@@ -137,15 +137,22 @@ def search(query, limit=20, mode="or"):
     ``bm25_rank``. The staged modes (phrase/and/or/like) remain available as the
     grounding fallback. An unknown mode is passed through and the brain falls
     back to ``or`` rather than erroring.
+
+    ``commercial=True`` forwards the commercial-use gate (``commercial=1``), so
+    the brain excludes content whose source licence forbids commercial use.
+    The foundation/mission arm leaves it ``False``.
     """
     q = urllib.parse.quote(query or "")
     m = urllib.parse.quote(mode or "or")
-    return _get(f"/search?q={q}&limit={limit}&mode={m}").get("results", [])
+    path = f"/search?q={q}&limit={limit}&mode={m}"
+    if commercial:
+        path += "&commercial=1"
+    return _get(path).get("results", [])
 
 
-def search_hybrid(query, limit=3):
+def search_hybrid(query, limit=3, commercial=False):
     """Authority-aware hybrid retrieval (BM25 + dense + RRF), the primary path."""
-    return search(query, limit=limit, mode="hybrid")
+    return search(query, limit=limit, mode="hybrid", commercial=commercial)
 
 
 def verify_citations(text, record=False):
@@ -214,16 +221,26 @@ def documents(jurisdiction=None, status=None, limit=50):
     return _get("/documents?" + "&".join(parts)).get("documents", [])
 
 
-def get_document(doc_id):
-    return _get(f"/document/{doc_id}")
+def get_document(doc_id, commercial=False):
+    """Fetch one document; ``commercial=True`` applies the commercial-use gate."""
+    path = f"/document/{doc_id}"
+    if commercial:
+        path += "?commercial=1"
+    return _get(path)
 
 
-def versions(doc_id):
-    return _get(f"/versions/{doc_id}").get("versions", [])
+def versions(doc_id, commercial=False):
+    path = f"/versions/{doc_id}"
+    if commercial:
+        path += "?commercial=1"
+    return _get(path).get("versions", [])
 
 
-def integrity(doc_id):
-    return _get(f"/integrity/{doc_id}")
+def integrity(doc_id, commercial=False):
+    path = f"/integrity/{doc_id}"
+    if commercial:
+        path += "?commercial=1"
+    return _get(path)
 
 
 def stats():

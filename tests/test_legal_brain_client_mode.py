@@ -129,3 +129,37 @@ def test_document_authority_reports_helper_errors(monkeypatch):
     assert out["document_id"] == 9
     assert "relations_error" in out and "status_error" in out
 
+
+# ── commercial-use gate forwarding ───────────────────────────────────────
+
+def test_search_forwards_commercial(monkeypatch):
+    captured = _capture(monkeypatch, {"results": [{"title": "x"}]})
+    lb.search("bail application", limit=3, mode="hybrid", commercial=True)
+    params = _params(captured["url"])
+    assert params["commercial"] == ["1"]
+    assert params["mode"] == ["hybrid"]
+
+
+def test_search_omits_commercial_by_default(monkeypatch):
+    captured = _capture(monkeypatch, {"results": []})
+    lb.search("bail")
+    assert "commercial" not in _params(captured["url"])
+
+
+def test_search_hybrid_forwards_commercial(monkeypatch):
+    captured = _capture(monkeypatch, {"results": []})
+    lb.search_hybrid("human rights", commercial=True)
+    assert _params(captured["url"])["commercial"] == ["1"]
+
+
+def test_get_document_forwards_commercial(monkeypatch):
+    captured = _capture(monkeypatch, {"id": 5})
+    lb.get_document(5, commercial=True)
+    assert captured["url"].endswith("/document/5?commercial=1")
+
+
+def test_get_document_omits_commercial_by_default(monkeypatch):
+    captured = _capture(monkeypatch, {"id": 5})
+    lb.get_document(5)
+    assert captured["url"].endswith("/document/5")
+

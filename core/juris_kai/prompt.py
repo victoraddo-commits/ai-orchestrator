@@ -62,6 +62,10 @@ TASK_MAX_TOKENS = {
     "juris_argument_construction": 900,
     "juris_flashcards": 450,
     "juris_chat": 700,
+    # Phase 5 three-pass reasoning: each pass has its own bounded budget.
+    "juris_advocate": 500,
+    "juris_opponent": 500,
+    "juris_judge": 800,
 }
 DEFAULT_MAX_TOKENS = 800
 

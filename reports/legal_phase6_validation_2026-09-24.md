@@ -140,3 +140,14 @@ New CT 111 tests: `tests/test_juris_tools.py` (15), `tests/test_juris_practice_t
 - CT 100 `juris-legal-brain` (`master`): `bde1a1d` feat(legal): legal-brain health monitoring + endpoint
 - CT 111 `ai-orchestrator` (`runner-kai-2.0-20260918`): `c8e8d3e` feat(legal): weekly knowledge-health summary in harvest job
 - CT 111 `ai-orchestrator` (`runner-kai-2.0-20260918`): `69aac5b` feat(juris): practice + research tools (contract, issue matrix, chronology, authority bundle)
+
+**Push status:** commits are local; `git push` could not authenticate to
+GitHub from either host in this session (no credential helper / token present),
+so the CT 100 `master` and CT 111 `runner-kai-2.0-20260918` branches were not
+pushed. This is an environment/credentials gap, not a code gap.
+
+## 7. Services
+
+- CT 100 `kai-legal-brain`: **active** (restarted after the `/legal/health` deploy).
+- CT 111 `juris-kai`: **active** (restarted after the tools/menu/bot deploy).
+- CT 111 `ai-orchestrator-api`: **active** (restarted).

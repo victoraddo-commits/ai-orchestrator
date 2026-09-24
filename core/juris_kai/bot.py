@@ -1680,6 +1680,15 @@ def _handle_admin_security(label: str, chat_id: int) -> dict:
 # Free-text handling
 # ---------------------------------------------------------------------------
 
+def _sponsor_footer_for(account: dict) -> str:
+    """The free-tier sponsor footer for an account, or "" (never raises)."""
+    try:
+        tier = (account or {}).get("subscription_tier") or "free_trial"
+        return _sponsor.footer_for(tier)
+    except Exception:  # noqa: BLE001 - a sponsor must never break a reply
+        return ""
+
+
 def _sponsor_attach(text: str, account: dict) -> str:
     """Append the free-tier sponsor footer (never inside the answer body).
 
@@ -1689,11 +1698,8 @@ def _sponsor_attach(text: str, account: dict) -> str:
     """
     if not text:
         return text
-    try:
-        tier = (account or {}).get("subscription_tier") or "free_trial"
-        return _sponsor.attach(text, tier)
-    except Exception:  # noqa: BLE001 - a sponsor must never break a reply
-        return text
+    footer = _sponsor_footer_for(account)
+    return f"{text}\n\n{footer}" if footer else text
 
 
 def _deliver_grounded_plan(plan: dict, text: str, chat_id, account: dict,
@@ -1712,10 +1718,15 @@ def _deliver_grounded_plan(plan: dict, text: str, chat_id, account: dict,
     footer = plan["footer"]
     source_key = plan["source_key"]
 
+    # Free-tier contextual sponsor: appended to the *delivered* message (on
+    # both the streamed and blocking paths) but never to the recorded answer.
+    sponsor_footer = _sponsor_footer_for(account)
+    stream_suffix = footer + (f"\n\n{sponsor_footer}" if sponsor_footer else "")
+
     response_text, model, streamed, _cache_hit = _generate_reply(
         prompt, task_type, text, text, account["account_id"],
         chat_id=chat_id, reply_markup=reply_markup, context=followup_ctx,
-        prefix=banner, suffix=footer, source_key=source_key,
+        prefix=banner, suffix=stream_suffix, source_key=source_key,
         answer_transform=_citation_firewall_transform())
     _latency_ms = int((time.time() - started_at) * 1000)
 
@@ -1729,17 +1740,13 @@ def _deliver_grounded_plan(plan: dict, text: str, chat_id, account: dict,
     # The raw answer is recorded for the learning loop (footer/banner are
     # presentation, not substance).
     if streamed:
+        # The streamed final edit already carried stream_suffix (footer +
+        # sponsor); only the raw answer is returned/recorded here.
         delivered_text = response_text
     elif have_answer:
-        delivered_text = banner + response_text + footer
+        delivered_text = banner + response_text + stream_suffix
     else:
         delivered_text = response_text
-
-    # Free-tier contextual sponsor: appended to the delivered text only (never
-    # to the recorded answer, never on paid tiers). Streamed replies already
-    # carry their final text, so they are left untouched.
-    if not streamed:
-        delivered_text = _sponsor_attach(delivered_text, account)
 
     mgr.record_query(account["account_id"],
                      input_tokens=_estimate_tokens(prompt),

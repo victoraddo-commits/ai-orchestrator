@@ -144,6 +144,34 @@ class TestBotDelivery:
         rows = get_account_manager().qa_history(acct["account_id"])
         assert rows and "Ghana Law Reports" not in rows[0]["answer"]
 
+    def test_streamed_suffix_carries_sponsor_not_stored(self, monkeypatch):
+        import core.juris_kai.bot as bot
+        from core.juris_kai.accounts import get_account_manager
+
+        _enable()
+        acct = get_account_manager().get_or_create("sponsor-2", "T")
+        captured = {}
+
+        def fake(prompt, task_type, query, fallback_label, account_id="",
+                 chat_id=None, reply_markup=None, context="", prefix="",
+                 suffix="", source_key="", **k):
+            captured["suffix"] = suffix
+            return "ANSWER", "m", True, False
+
+        monkeypatch.setattr(bot, "_generate_reply", fake)
+        plan = {"prompt": "p", "banner": "", "footer": "",
+                "source_key": "", "docs": []}
+        out = bot._deliver_grounded_plan(plan, "q", 1, acct, None, "",
+                                         "juris_research", 0.0)
+
+        # The streamed final edit carries the sponsor in its suffix; the caller
+        # returns no text (the stream already delivered it)...
+        assert "Ghana Law Reports" in captured["suffix"]
+        assert out["text"] is None
+        # ...and the stored answer never contains it.
+        rows = get_account_manager().qa_history(acct["account_id"])
+        assert rows and "Ghana Law Reports" not in rows[0]["answer"]
+
     def test_no_sponsor_on_paid_tier_delivery(self, monkeypatch):
         import core.juris_kai.bot as bot
         from core.juris_kai.accounts import get_account_manager

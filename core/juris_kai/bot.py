@@ -45,6 +45,7 @@ from core.juris_kai import menus as _menus
 from core.juris_kai import cache as _cache
 from core.juris_kai import streaming as _streaming
 from core.juris_kai import grounding as _grounding
+from core.juris_kai import everyday as _everyday
 # Convenience aliases for frequently-used menu functions
 main_menu = _menus.main_menu
 admin_main_menu = _menus.admin_main_menu
@@ -231,6 +232,7 @@ HELP_TEXT = (
     "🧠 *Study Tools* — Flashcards, memory drills, quick quizzes\n"
     "📄 *Documents* — Upload and analyze legal documents (session-based)\n"
     "🎓 *Progress* — Track your learning history and weak areas\n"
+    "📖 *Everyday Law* — Plain-language summaries of everyday topics\n"
     "⚙️ *Settings* — Language, learning level, notifications, account\n\n"
     "*Commands:*\n"
     "/menu — Show the main menu\n"
@@ -247,7 +249,8 @@ HELP_TEXT = (
     "/authorities <issue> — Authorities in the database for an issue\n"
     "/statute <query> — Search enactments & instruments only\n"
     "/caselaw <query> — Case-law mode (honest when no judgment corpus)\n"
-    "/forget — Delete your stored questions & answers\n\n"
+    "/forget — Delete your stored questions & answers\n"
+    "/everyday [topic] — Plain-language Everyday Law summaries\n\n"
     "_Not a substitute for professional legal advice._"
 )
 
@@ -1025,6 +1028,11 @@ def handle_message(update: dict) -> dict | None:
         question = message_text[len("/deep"):].strip()
         return _handle_deep_command(question, chat_id, account, admin)
 
+    # Everyday Law — plain-language grounded summaries (Phase 7, Task 4).
+    if message_text == "/everyday" or message_text.startswith("/everyday "):
+        args = message_text[len("/everyday"):].strip()
+        return _handle_everyday_command(args, chat_id, account)
+
     # Commands with / prefix
     if message_text.startswith("/"):
         return _handle_legacy_command(message_text, chat_id, account, admin)
@@ -1236,7 +1244,78 @@ def _handle_menu_action(
                 "reply_markup": '{"remove_keyboard": true}',
                 "parse_mode": "Markdown"}
 
+    # ---- Everyday Law (Phase 7, Task 4) ----
+    if text == "📖 Everyday Law":
+        return {"chat_id": chat_id, "text": _everyday.INTRO,
+                "reply_markup": _everyday.everyday_menu(),
+                "parse_mode": "Markdown"}
+    if text in _everyday.LABEL_TO_KEY:
+        return _handle_everyday_topic(_everyday.LABEL_TO_KEY[text], chat_id,
+                                      account)
+
     return None
+
+
+# ---------------------------------------------------------------------------
+# Everyday Law (Phase 7, Task 4)
+# ---------------------------------------------------------------------------
+
+def _handle_everyday_topic(topic_key: str, chat_id: int, account: dict) -> dict:
+    """Fetch + deliver one grounded Everyday-Law explainer.
+
+    The explainer is generated on the Legal Brain under strict grounding and
+    the citation firewall; the delivered text is passed through the AgentGuard
+    output gate and the citation firewall here as well, so the Telegram surface
+    is firewalled exactly like every other legal answer.
+    """
+    from core import legal_brain_client as lb
+    try:
+        data = lb.everyday(topic_key)
+    except Exception as exc:  # noqa: BLE001 - degrade honestly, never guess
+        logger.warning("everyday fetch failed for %s: %s", topic_key, exc)
+        data = {"topic": topic_key, "grounded": False,
+                "error": f"{type(exc).__name__}: {exc}"}
+
+    text = _everyday.render_explainer(data)
+    text = _guard_outbound_text(text, source="juris_everyday")
+    transform = _citation_firewall_transform()
+    if transform is not None:
+        try:
+            text = transform(text)
+        except Exception as exc:  # noqa: BLE001 - firewall fails open
+            logger.warning("everyday firewall failed (fail open): %s", exc)
+
+    if data.get("grounded"):
+        # An ungrounded topic is already recorded as a gap on the brain; only
+        # count a delivered explainer against the account's query meter.
+        try:
+            get_account_manager().record_query(
+                account["account_id"],
+                input_tokens=_estimate_tokens(topic_key),
+                output_tokens=_estimate_tokens(text), model="")
+        except Exception:  # noqa: BLE001 - metering must never break a reply
+            pass
+
+    return {"chat_id": chat_id, "text": text,
+            "reply_markup": _everyday.everyday_menu(),
+            "parse_mode": "Markdown"}
+
+
+def _handle_everyday_command(args: str, chat_id: int, account: dict) -> dict:
+    """``/everyday`` (topic menu) or ``/everyday <topic>`` (one explainer)."""
+    if not args:
+        return {"chat_id": chat_id, "text": _everyday.INTRO,
+                "reply_markup": _everyday.everyday_menu(),
+                "parse_mode": "Markdown"}
+    key = _everyday.resolve_topic(args)
+    if key is None:
+        labels = "\n".join(f"• {label}" for _k, label in _everyday.TOPIC_LABELS)
+        return {"chat_id": chat_id,
+                "text": (f"I don't know the topic *{args}*.\n\nChoose one:\n"
+                         f"{labels}"),
+                "reply_markup": _everyday.everyday_menu(),
+                "parse_mode": "Markdown"}
+    return _handle_everyday_topic(key, chat_id, account)
 
 
 # ---------------------------------------------------------------------------

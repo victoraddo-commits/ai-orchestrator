@@ -318,3 +318,21 @@ def acquire_gap(gap_id, per_source=5, delay=0.5, timeout=600):
 def mark_gap_notified(gap_id, timeout=8):
     """Record the one-shot notification guard on a gap."""
     return _post(f"/gaps/{int(gap_id)}/notified", {}, timeout=timeout)
+
+
+# --- Everyday Law (Phase 7, Task 4) -----------------------------------------
+
+def everyday_topics(timeout=8):
+    """The Everyday-Law topic catalogue from the legal brain (``GET /everyday``)."""
+    return _get("/everyday", timeout=timeout).get("topics", [])
+
+
+def everyday(topic, timeout=20):
+    """One grounded plain-language explainer (``GET /everyday/{topic}``).
+
+    Returns the brain payload ``{grounded, verdict, instrument, currency,
+    explainer, sources, disclaimer, notice}``. Transport/HTTP failures raise so
+    the caller can degrade honestly rather than guess.
+    """
+    return _get(f"/everyday/{urllib.parse.quote(str(topic or ''))}",
+                timeout=timeout)

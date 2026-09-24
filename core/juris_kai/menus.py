@@ -35,6 +35,7 @@ def main_menu() -> str:
         ["📝 Practice", "🧠 Study Tools"],
         ["📄 Documents", "🎓 Progress"],
         ["⚙️ Settings", "❓ Help"],
+        ["📖 Everyday Law"],
     ])
 
 

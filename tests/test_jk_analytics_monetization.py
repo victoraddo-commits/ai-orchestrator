@@ -336,14 +336,16 @@ class TestSubscriptionTiers:
     """Tests for subscription tier definitions."""
 
     def test_all_four_tiers_defined(self):
-        """All four subscription tiers exist."""
+        """The legacy four tiers exist (plus Phase 7's Student/Institution)."""
         from core.juris_kai.accounts import SUBSCRIPTION_TIERS
 
-        assert len(SUBSCRIPTION_TIERS) == 4
+        assert len(SUBSCRIPTION_TIERS) >= 4
         assert "free_trial" in SUBSCRIPTION_TIERS
         assert "monthly_basic" in SUBSCRIPTION_TIERS
         assert "monthly_pro" in SUBSCRIPTION_TIERS
         assert "annual_pro" in SUBSCRIPTION_TIERS
+        assert "student" in SUBSCRIPTION_TIERS
+        assert "institution" in SUBSCRIPTION_TIERS
 
     def test_tiers_have_required_fields(self):
         """Each tier has all required fields."""

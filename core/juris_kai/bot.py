@@ -46,6 +46,8 @@ from core.juris_kai import cache as _cache
 from core.juris_kai import streaming as _streaming
 from core.juris_kai import grounding as _grounding
 from core.juris_kai import everyday as _everyday
+from core.juris_kai import entitlements as _entitlements
+from core.juris_kai import sponsor as _sponsor
 # Convenience aliases for frequently-used menu functions
 main_menu = _menus.main_menu
 admin_main_menu = _menus.admin_main_menu
@@ -250,7 +252,9 @@ HELP_TEXT = (
     "/statute <query> — Search enactments & instruments only\n"
     "/caselaw <query> — Case-law mode (honest when no judgment corpus)\n"
     "/forget — Delete your stored questions & answers\n"
-    "/everyday [topic] — Plain-language Everyday Law summaries\n\n"
+    "/everyday [topic] — Plain-language Everyday Law summaries\n"
+    "/seat <code> — Redeem an institutional seat code\n"
+    "/org [usage|seats] — Organisation seats & usage (org admin)\n\n"
     "_Not a substitute for professional legal advice._"
 )
 
@@ -1296,6 +1300,7 @@ def _handle_everyday_topic(topic_key: str, chat_id: int, account: dict) -> dict:
         except Exception:  # noqa: BLE001 - metering must never break a reply
             pass
 
+    text = _sponsor_attach(text, account)
     return {"chat_id": chat_id, "text": text,
             "reply_markup": _everyday.everyday_menu(),
             "parse_mode": "Markdown"}
@@ -1511,6 +1516,8 @@ def _handle_account_info(chat_id: int, account: dict) -> dict:
     mgr = get_account_manager()
     sub = mgr.get_active_subscription(account["account_id"])
     tier_info = SUBSCRIPTION_TIERS.get(sub["tier"], SUBSCRIPTION_TIERS["free_trial"])
+    meter = mgr.usage_meter(account["account_id"])
+    q, deep = meter["queries"], meter["deep_research"]
 
     from core.juris_kai.menus import settings_menu
     return {
@@ -1521,6 +1528,9 @@ def _handle_account_info(chat_id: int, account: dict) -> dict:
             f"Name: {account.get('full_name', 'Not set')}\n"
             f"Plan: {tier_info['name']}\n"
             f"Status: {'✅ Active' if sub['is_active'] else '❌ Expired'}\n"
+            f"🔍 Queries today: {q['used']}/{q['limit']}\n"
+            f"🔬 Deep Research today: {deep['used']}/{deep['limit']}\n"
+            f"🔤 Tokens today: {meter['tokens_today']}\n"
         ),
         "reply_markup": settings_menu(account),
         "parse_mode": "Markdown",
@@ -1670,6 +1680,22 @@ def _handle_admin_security(label: str, chat_id: int) -> dict:
 # Free-text handling
 # ---------------------------------------------------------------------------
 
+def _sponsor_attach(text: str, account: dict) -> str:
+    """Append the free-tier sponsor footer (never inside the answer body).
+
+    Returns ``text`` unchanged unless the sponsor slot is enabled and the
+    account is on a free tier. The footer is appended *after* the answer has
+    been recorded, so it can never leak into the stored/learning-loop answer.
+    """
+    if not text:
+        return text
+    try:
+        tier = (account or {}).get("subscription_tier") or "free_trial"
+        return _sponsor.attach(text, tier)
+    except Exception:  # noqa: BLE001 - a sponsor must never break a reply
+        return text
+
+
 def _deliver_grounded_plan(plan: dict, text: str, chat_id, account: dict,
                            reply_markup, followup_ctx: str, task_type: str,
                            started_at: float, note: str = "") -> dict:
@@ -1708,6 +1734,12 @@ def _deliver_grounded_plan(plan: dict, text: str, chat_id, account: dict,
         delivered_text = banner + response_text + footer
     else:
         delivered_text = response_text
+
+    # Free-tier contextual sponsor: appended to the delivered text only (never
+    # to the recorded answer, never on paid tiers). Streamed replies already
+    # carry their final text, so they are left untouched.
+    if not streamed:
+        delivered_text = _sponsor_attach(delivered_text, account)
 
     mgr.record_query(account["account_id"],
                      input_tokens=_estimate_tokens(prompt),
@@ -1816,7 +1848,7 @@ def _build_deep_reply(text: str, chat_id, account: dict, reply_markup=None,
         result, narrative_transform=_citation_firewall_transform())
     banner = plan["banner"]
     footer = plan["footer"]
-    delivered_text = banner + body + footer
+    delivered_text = _sponsor_attach(banner + body + footer, account)
     model = _streaming.DEFAULT_MODEL
     _latency_ms = int((time.time() - _t0) * 1000)
 
@@ -1855,7 +1887,23 @@ def _handle_deep_command(question: str, chat_id, account: dict, admin: bool) -> 
             "parse_mode": "Markdown",
         }
 
-    limit_check = get_account_manager().check_query_limit(account["account_id"])
+    mgr = get_account_manager()
+    prompt = _entitlements.check_feature(mgr, account["account_id"],
+                                         "deep_research")
+    if prompt:
+        return {"chat_id": chat_id, "text": prompt, "reply_markup": menu,
+                "parse_mode": "Markdown"}
+    deep_check = mgr.check_deep_research_limit(account["account_id"])
+    if not deep_check["allowed"]:
+        return {
+            "chat_id": chat_id,
+            "text": (
+                f"⚠️ You've reached your daily Deep Research limit "
+                f"({deep_check['limit']}/day).\nUpgrade your plan with "
+                "/subscribe for more."),
+            "reply_markup": menu,
+        }
+    limit_check = mgr.check_query_limit(account["account_id"])
     if not limit_check["allowed"]:
         return {
             "chat_id": chat_id,
@@ -1864,6 +1912,16 @@ def _handle_deep_command(question: str, chat_id, account: dict, admin: bool) -> 
                 f"({limit_check['limit']} queries/day).\n"
                 "Upgrade your plan with /subscribe for more queries."
             ),
+            "reply_markup": menu,
+        }
+    recorded = mgr.try_record_deep_research(account["account_id"])
+    if not recorded["allowed"]:
+        return {
+            "chat_id": chat_id,
+            "text": (
+                f"⚠️ You've reached your daily Deep Research limit "
+                f"({recorded['limit']}/day).\nUpgrade your plan with "
+                "/subscribe for more."),
             "reply_markup": menu,
         }
     return _build_deep_reply(q, chat_id, account, reply_markup=menu, query=q)
@@ -1973,6 +2031,29 @@ def _handle_free_text(text: str, chat_id: int, account: dict, admin: bool) -> di
 # Conversation flow handler
 # ---------------------------------------------------------------------------
 
+#: Conversation step → feature it requires. Enforced before any generation so
+#: a plan without the feature gets a clear upgrade prompt, never a crash.
+_STEP_FEATURE = {
+    "deep_research": "deep_research",
+    "contract": "practice_tools",
+    "issue_matrix": "practice_tools",
+    "chronology": "practice_tools",
+    "authority_bundle": "practice_tools",
+    "statute_search": "legal_research",
+    "case_law_search": "case_lookup",
+    "gen_questions": "mock_exams",
+    "irac": "practice_tools",
+    "essay": "practice_tools",
+    "mock_exam": "mock_exams",
+    "answer_eval": "practice_tools",
+    "flashcards": "flashcards",
+    "memory": "flashcards",
+    "quiz": "practice_tools",
+    "revision": "revision_notes",
+    "summarize": "document_analysis",
+}
+
+
 def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     """Handle multi-step conversation flows (practice, study tools, etc.)."""
     state_key = str(chat_id)
@@ -1991,11 +2072,31 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
             "reply_markup": main_menu(),
         }
 
+    # Entitlement gate: a plan without the step's feature gets an upgrade prompt.
+    required_feature = _STEP_FEATURE.get(step)
+    if required_feature:
+        prompt = _entitlements.check_feature(mgr, account["account_id"],
+                                             required_feature)
+        if prompt:
+            del _conversation_state[state_key]
+            return {"chat_id": chat_id, "text": prompt,
+                    "reply_markup": main_menu(), "parse_mode": "Markdown"}
+
     # Deep Research is an explicit 3-pass mode (never the default); the menu
     # button drops the user into this step and the next free-text question runs
     # the passes under the same strict grounding gate.
     if step == "deep_research":
         del _conversation_state[state_key]
+        deep = mgr.try_record_deep_research(account["account_id"])
+        if not deep["allowed"]:
+            return {
+                "chat_id": chat_id,
+                "text": (
+                    f"⚠️ You've reached your daily Deep Research limit "
+                    f"({deep['limit']}/day).\nUpgrade your plan with /subscribe "
+                    "for more."),
+                "reply_markup": main_menu(),
+            }
         return _build_deep_reply(text, chat_id, account,
                                  reply_markup=main_menu())
 
@@ -2151,7 +2252,7 @@ def _handle_legacy_command(text: str, chat_id: int, account: dict, admin: bool) 
             handle_help, handle_account, handle_subscribe,
             handle_learn, handle_case, handle_research,
             handle_argument, handle_flashcards, handle_progress,
-            handle_group, handle_forget,
+            handle_group, handle_forget, handle_seat, handle_org,
         )
 
         cmd_map = {
@@ -2166,6 +2267,8 @@ def _handle_legacy_command(text: str, chat_id: int, account: dict, admin: bool) 
             "progress": lambda: handle_progress({}, account),
             "forget": lambda: handle_forget(account),
             "group": lambda: handle_group(args, account, admin),
+            "seat": lambda: handle_seat(args, account),
+            "org": lambda: handle_org(args, account),
         }
 
         if command in cmd_map:

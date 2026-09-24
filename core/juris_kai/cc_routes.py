@@ -1243,3 +1243,91 @@ def cc_account_set_tier(account_id: str, body: dict = Body(...),
                {"account_id": account_id, "tier": tier})
     return {"success": True, "account_id": account_id, "tier": tier,
             "subscription": mgr.get_active_subscription(account_id)}
+
+
+# ── institutional seats + org usage (Phase 7, Task 5) ─────────────────────
+
+@router.get("/api/juris-kai/cc/org/usage")
+@router.get("/api/juris-kai/org/usage")
+def cc_org_usage(org_account_id: str = "",
+                 _: str = Depends(require_cc_read)):
+    """Seat inventory + per-member usage for an org admin (DPA-safe)."""
+    from core.juris_kai.accounts import get_account_manager
+    try:
+        return get_account_manager().org_usage(org_account_id)
+    except Exception as exc:  # noqa: BLE001 - never break the CC panel
+        return {"error": str(exc), "org_account_id": org_account_id,
+                "seats_total": 0, "seats_used": 0, "seat_codes": [],
+                "members": [], "usage": {}}
+
+
+@router.get("/api/juris-kai/cc/org/seats")
+def cc_org_seats(org_account_id: str = "",
+                 _: str = Depends(require_cc_read)):
+    from core.juris_kai.accounts import get_account_manager
+    try:
+        return {"seats": get_account_manager().list_seat_codes(org_account_id)}
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc), "seats": []}
+
+
+@router.post("/api/juris-kai/cc/org/seats")
+def cc_org_seat_create(body: dict = Body(...),
+                       operator: str = Depends(require_juris_write),
+                       request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    org = str(body.get("org_account_id") or "").strip()
+    if not org:
+        return {"success": False, "error": "org_account_id is required"}
+    result = get_account_manager().create_seat_code(
+        org, seats=body.get("seats", 1), tier=body.get("tier", "institution"),
+        expires_at=body.get("expires_at"), note=body.get("note", ""))
+    if result.get("success"):
+        _log_admin(operator, "org_seat_create",
+                   {"org_account_id": org, "seats": body.get("seats", 1)})
+    return result
+
+
+@router.post("/api/juris-kai/cc/org/seats/{code}/revoke")
+def cc_org_seat_revoke(code: str, body: dict = Body(default={}),
+                       operator: str = Depends(require_juris_write),
+                       request: Request = None):
+    from core.juris_kai.accounts import get_account_manager
+    _rate_limit(request, operator)
+    org = str((body or {}).get("org_account_id") or "").strip()
+    result = get_account_manager().revoke_seat_code(code, org)
+    if result.get("success"):
+        _log_admin(operator, "org_seat_revoke", {"code": code})
+    return result
+
+
+# ── sponsor slot settings (Phase 7, Task 6) ───────────────────────────────
+
+@router.get("/api/juris-kai/cc/sponsors")
+def cc_sponsors_get(_: str = Depends(require_cc_read)):
+    """The sponsor config + whether the slot is currently on (env-aware)."""
+    from core.juris_kai import sponsor
+    cfg = sponsor.load_config()
+    return {"success": True, "enabled": sponsor.enabled(),
+            "sponsors": cfg.get("sponsors") or [],
+            "updated_at": cfg.get("updated_at"),
+            "updated_by": cfg.get("updated_by")}
+
+
+@router.put("/api/juris-kai/cc/sponsors")
+def cc_sponsors_put(body: dict = Body(...),
+                    operator: str = Depends(require_juris_write),
+                    request: Request = None):
+    """Validate + persist the sponsor list (write-gated, audited)."""
+    from core.juris_kai import sponsor
+    _rate_limit(request, operator)
+    doc = sponsor.save_config(
+        {"enabled": bool(body.get("enabled", False)),
+         "sponsors": body.get("sponsors") or []},
+        updated_by=operator)
+    _log_admin(operator, "sponsors_update",
+               {"enabled": doc["enabled"], "count": len(doc["sponsors"])})
+    return {"success": True, "enabled": doc["enabled"],
+            "sponsors": doc["sponsors"], "updated_at": doc["updated_at"],
+            "updated_by": doc["updated_by"]}

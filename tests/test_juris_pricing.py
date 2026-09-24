@@ -69,7 +69,11 @@ class TestPricingStore:
         assert pricing.DEFAULT_TIERS["monthly_pro"]["price_ghs"] == 150
         assert pricing.DEFAULT_TIERS["annual_pro"]["price_ghs"] == 1500
         assert pricing.DEFAULT_PER_DOCUMENT_PAGE_RATE_GHS == 2.0
-        assert len(pricing.DEFAULT_TIERS) == 4
+        # Phase 7 adds the Student and Institution tiers to the legacy four.
+        assert len(pricing.DEFAULT_TIERS) >= 4
+        for key in ("free_trial", "monthly_basic", "monthly_pro", "annual_pro",
+                    "student", "institution"):
+            assert key in pricing.DEFAULT_TIERS
 
     def test_load_without_file_returns_defaults(self, pricing_path):
         doc = pricing.load_pricing()

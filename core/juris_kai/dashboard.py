@@ -91,6 +91,7 @@ def get_account_detail(account_id: str) -> Optional[Dict[str, Any]]:
     sub = mgr.get_active_subscription(account_id)
     limit = mgr.check_query_limit(account_id)
     doc_limit = mgr.check_document_limit(account_id)
+    meter = mgr.usage_meter(account_id)
 
     return {
         **account,
@@ -99,6 +100,7 @@ def get_account_detail(account_id: str) -> Optional[Dict[str, Any]]:
             "queries": limit,
             "documents": doc_limit,
         },
+        "meter": meter,
     }
 
 

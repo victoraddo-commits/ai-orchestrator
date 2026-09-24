@@ -20,6 +20,7 @@ from typing import Optional, Dict, Any, List
 import logging
 
 from core.juris_kai import pricing as _pricing
+from core.juris_kai import entitlements as _entitlements
 
 logger = logging.getLogger("juris_kai.accounts")
 
@@ -280,6 +281,32 @@ def _init_schema(conn: sqlite3.Connection):
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
+        -- Institutional seats: an org buys N seats; each redeemable seat code
+        -- grants the redeemer the org plan (per-seat quota). DPA-safe: only the
+        -- org/account ids, the seat code, a role and timestamps are stored.
+        CREATE TABLE IF NOT EXISTS juris_org_seats (
+            code TEXT PRIMARY KEY,
+            org_account_id TEXT NOT NULL,
+            tier TEXT NOT NULL DEFAULT 'institution',
+            max_uses INTEGER NOT NULL DEFAULT 1,
+            used_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'active',  -- active | revoked
+            note TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS juris_org_members (
+            org_account_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            seat_code TEXT DEFAULT '',
+            role TEXT NOT NULL DEFAULT 'member',    -- owner | member
+            status TEXT NOT NULL DEFAULT 'active',
+            prev_tier TEXT DEFAULT 'free_trial',
+            joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (org_account_id, account_id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_juris_telegram
             ON juris_accounts(telegram_id);
         CREATE INDEX IF NOT EXISTS idx_juris_payments_account
@@ -314,6 +341,10 @@ def _init_schema(conn: sqlite3.Connection):
             ON legal_group_audit(group_id);
         CREATE INDEX IF NOT EXISTS idx_legal_group_reports_group
             ON legal_group_reports(group_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_org_seats_org
+            ON juris_org_seats(org_account_id);
+        CREATE INDEX IF NOT EXISTS idx_juris_org_members_account
+            ON juris_org_members(account_id);
     """)
     # Add token-tracking columns to existing usage_log tables (WI-14).
     # Safe to run on every init — ignores duplicates.
@@ -470,11 +501,16 @@ class AccountManager:
             "end": account.get("subscription_end"),
             "is_expired": is_expired,
             "is_active": bool(account.get("is_active")) and not is_expired,
-            "features": tier_info["features"],
+            "features": _entitlements.features_for(tier),
             "limits": {
-                "max_documents_per_month": tier_info["max_documents_per_month"],
-                "max_queries_per_day": tier_info["max_queries_per_day"],
+                "max_documents_per_month": _entitlements.quota(
+                    tier, "documents_per_month"),
+                "max_queries_per_day": _entitlements.quota(
+                    tier, "queries_per_day"),
+                "max_deep_research_per_day": _entitlements.quota(
+                    tier, "deep_research_per_day"),
             },
+            "entitlements": _entitlements.entitlements_for(tier),
         }
 
     def set_subscription(self, account_id: str, tier: str) -> bool:
@@ -1557,6 +1593,343 @@ class AccountManager:
                 d["findings"] = {}
             out.append(d)
         return out
+
+    # ---- Usage metering (Phase 7, Task 6) ----
+
+    def _count_usage_today(self, account_id: str, action_type: str) -> int:
+        """Count today's usage_log rows of one action type (UTC day)."""
+        row = self.db.execute(
+            "SELECT COUNT(*) AS c FROM juris_usage_log "
+            "WHERE account_id = ? AND action_type = ? "
+            "AND date(created_at) = date('now')",
+            (account_id, action_type),
+        ).fetchone()
+        return int(row["c"]) if row else 0
+
+    def _sum_tokens_today(self, account_id: str) -> int:
+        """Sum today's input+output tokens for an account (UTC day)."""
+        row = self.db.execute(
+            "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) AS t "
+            "FROM juris_usage_log WHERE account_id = ? "
+            "AND date(created_at) = date('now')",
+            (account_id,),
+        ).fetchone()
+        return int(row["t"]) if row else 0
+
+    def record_usage(self, account_id: str, action_type: str,
+                     input_tokens: int = 0, output_tokens: int = 0,
+                     model: str = "", details: str = "") -> bool:
+        """Record one metered action (query/deep_research/...)."""
+        self.db.execute(
+            "INSERT INTO juris_usage_log (account_id, action_type, details,"
+            " input_tokens, output_tokens, model) VALUES (?, ?, ?, ?, ?, ?)",
+            (account_id, str(action_type), details or "", int(input_tokens or 0),
+             int(output_tokens or 0), model or ""),
+        )
+        self.db.commit()
+        return True
+
+    def usage_meter(self, account_id: str) -> Dict[str, Any]:
+        """Current usage vs. plan quotas for one account (never raises).
+
+        Unknown accounts are reported as free-tier with zero usage, so a
+        meter lookup can never crash an account-info or CC surface.
+        """
+        sub = None
+        try:
+            sub = self.get_active_subscription(account_id)
+        except Exception:  # noqa: BLE001
+            sub = None
+        tier = (sub or {}).get("tier") or "free_trial"
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+        q_used = docs_used = 0
+        row = self.db.execute(
+            "SELECT queries_today, queries_date, documents_this_month, "
+            "documents_month FROM juris_accounts WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        if row:
+            if row["queries_date"] == today:
+                q_used = int(row["queries_today"] or 0)
+            if row["documents_month"] == month:
+                docs_used = int(row["documents_this_month"] or 0)
+
+        deep_used = self._count_usage_today(account_id, "deep_research")
+        tokens = self._sum_tokens_today(account_id)
+
+        def _bucket(used: int, limit: int) -> Dict[str, int]:
+            return {"used": used, "limit": limit,
+                    "remaining": max(0, limit - used)}
+
+        return {
+            "plan": tier,
+            "queries": _bucket(q_used, _entitlements.quota(
+                tier, "queries_per_day")),
+            "documents": _bucket(docs_used, _entitlements.quota(
+                tier, "documents_per_month")),
+            "deep_research": _bucket(deep_used, _entitlements.quota(
+                tier, "deep_research_per_day")),
+            "tokens_today": tokens,
+        }
+
+    def check_deep_research_limit(self, account_id: str) -> Dict[str, Any]:
+        """Whether an account may run another Deep Research pass today."""
+        sub = self.get_active_subscription(account_id)
+        if not sub:
+            return {"allowed": False, "remaining": 0, "limit": 0,
+                    "used": 0, "reason": "no_account"}
+        if not sub["is_active"]:
+            return {"allowed": False, "remaining": 0,
+                    "limit": sub["limits"]["max_deep_research_per_day"],
+                    "used": 0, "reason": "expired"}
+        limit = sub["limits"]["max_deep_research_per_day"]
+        used = self._count_usage_today(account_id, "deep_research")
+        remaining = max(0, limit - used)
+        return {"allowed": remaining > 0, "remaining": remaining,
+                "limit": limit, "used": used}
+
+    def try_record_deep_research(self, account_id: str, input_tokens: int = 0,
+                                 output_tokens: int = 0,
+                                 model: str = "") -> Dict[str, Any]:
+        """Atomically check + record a Deep Research run against its daily cap."""
+        sub = self.get_active_subscription(account_id)
+        if not sub or not sub["is_active"]:
+            return {"allowed": False, "remaining": 0, "limit": 0,
+                    "reason": "inactive_account"}
+        limit = sub["limits"]["max_deep_research_per_day"]
+        # Atomic conditional insert: only succeeds while today's runs < limit.
+        cur = self.db.execute(
+            """INSERT INTO juris_usage_log
+                 (account_id, action_type, input_tokens, output_tokens, model)
+               SELECT ?, 'deep_research', ?, ?, ?
+               WHERE (SELECT COUNT(*) FROM juris_usage_log
+                      WHERE account_id = ? AND action_type = 'deep_research'
+                        AND date(created_at) = date('now')) < ?""",
+            (account_id, int(input_tokens or 0), int(output_tokens or 0),
+             model or "", account_id, limit),
+        )
+        self.db.commit()
+        used = self._count_usage_today(account_id, "deep_research")
+        if cur.rowcount == 0:
+            return {"allowed": False, "remaining": 0, "limit": limit,
+                    "used": used, "reason": "limit_exceeded"}
+        return {"allowed": True, "remaining": max(0, limit - used),
+                "limit": limit, "used": used}
+
+    # ---- Institutional seats (Phase 7, Task 5) ----
+
+    def create_seat_code(self, org_account_id: str, seats: int = 1,
+                         tier: str = "institution",
+                         expires_at: Optional[str] = None,
+                         note: str = "") -> Dict[str, Any]:
+        """Issue a redeemable seat code worth ``seats`` seats for an org."""
+        org = self.get_account(org_account_id)
+        if not org:
+            return {"success": False, "error": "org account not found"}
+        try:
+            seats = int(seats)
+        except (TypeError, ValueError):
+            return {"success": False, "error": "seats must be an integer"}
+        if seats < 1:
+            return {"success": False, "error": "seats must be >= 1"}
+        if tier not in SUBSCRIPTION_TIERS:
+            return {"success": False, "error": f"unknown tier: {tier}"}
+        code = "SEAT-" + secrets.token_hex(4).upper()
+        self.db.execute(
+            """INSERT INTO juris_org_seats
+               (code, org_account_id, tier, max_uses, note, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (code, org_account_id, tier, seats, note or "", expires_at),
+        )
+        self.db.commit()
+        self.db.execute(
+            "INSERT INTO juris_usage_log (account_id, action_type, details) "
+            "VALUES (?, 'seat_code_created', ?)",
+            (org_account_id, f"seats={seats} tier={tier} code={code}"),
+        )
+        self.db.commit()
+        return {"success": True, "code": code, "org_account_id": org_account_id,
+                "tier": tier, "seats": seats, "expires_at": expires_at}
+
+    def redeem_seat_code(self, code: str, account_id: str) -> Dict[str, Any]:
+        """Redeem a seat code: join the org plan at the seat's tier."""
+        code = str(code or "").strip().upper()
+        if not code:
+            return {"success": False, "error": "invalid seat code"}
+        row = self.db.execute(
+            "SELECT * FROM juris_org_seats WHERE code = ?", (code,)
+        ).fetchone()
+        if not row:
+            return {"success": False, "error": "invalid seat code"}
+        seat = dict(row)
+        if seat["status"] != "active":
+            return {"success": False, "error": "seat code revoked"}
+        if seat.get("expires_at"):
+            try:
+                if datetime.now(timezone.utc) > datetime.fromisoformat(
+                        seat["expires_at"]):
+                    return {"success": False, "error": "seat code expired"}
+            except (ValueError, TypeError):
+                pass
+        account = self.get_account(account_id)
+        if not account:
+            return {"success": False, "error": "account not found"}
+        org_account_id = seat["org_account_id"]
+
+        existing = self.db.execute(
+            "SELECT 1 FROM juris_org_members WHERE org_account_id = ? "
+            "AND account_id = ?", (org_account_id, account_id),
+        ).fetchone()
+        if existing:
+            return {"success": True, "already_member": True,
+                    "org_account_id": org_account_id, "tier": seat["tier"],
+                    "code": code}
+
+        # Atomic seat claim: succeeds only while used_count < max_uses.
+        cur = self.db.execute(
+            "UPDATE juris_org_seats SET used_count = used_count + 1 "
+            "WHERE code = ? AND status = 'active' AND used_count < max_uses",
+            (code,),
+        )
+        if cur.rowcount == 0:
+            return {"success": False, "error": "seat code exhausted"}
+        self.db.execute(
+            """INSERT OR REPLACE INTO juris_org_members
+               (org_account_id, account_id, seat_code, role, status, prev_tier,
+                joined_at)
+               VALUES (?, ?, ?, 'member', 'active', ?, datetime('now'))""",
+            (org_account_id, account_id, code,
+             account.get("subscription_tier") or "free_trial"),
+        )
+        self.db.commit()
+
+        self.set_subscription(account_id, seat["tier"])
+        self.db.execute(
+            "INSERT INTO juris_usage_log (account_id, action_type, details) "
+            "VALUES (?, 'seat_redeemed', ?)",
+            (account_id, f"org={org_account_id} code={code}"),
+        )
+        self.db.commit()
+        return {"success": True, "org_account_id": org_account_id,
+                "tier": seat["tier"], "code": code}
+
+    def leave_org(self, account_id: str,
+                  org_account_id: str = "") -> Dict[str, Any]:
+        """Leave an org (or every org): drop membership and restore the tier."""
+        if org_account_id:
+            rows = self.db.execute(
+                "SELECT * FROM juris_org_members WHERE account_id = ? "
+                "AND org_account_id = ?", (account_id, org_account_id),
+            ).fetchall()
+        else:
+            rows = self.db.execute(
+                "SELECT * FROM juris_org_members WHERE account_id = ?",
+                (account_id,),
+            ).fetchall()
+        if not rows:
+            return {"success": True, "removed": False, "left": 0}
+        prev_tier = "free_trial"
+        left = 0
+        for r in rows:
+            self.db.execute(
+                "DELETE FROM juris_org_members WHERE org_account_id = ? "
+                "AND account_id = ?", (r["org_account_id"], account_id),
+            )
+            prev_tier = r["prev_tier"] or "free_trial"
+            left += 1
+        self.db.commit()
+        if prev_tier in SUBSCRIPTION_TIERS:
+            self.set_subscription(account_id, prev_tier)
+        self.db.execute(
+            "INSERT INTO juris_usage_log (account_id, action_type, details) "
+            "VALUES (?, 'seat_left', ?)",
+            (account_id, f"orgs={left}"),
+        )
+        self.db.commit()
+        return {"success": True, "removed": True, "left": left,
+                "tier": prev_tier}
+
+    def list_seat_codes(self, org_account_id: str) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            "SELECT * FROM juris_org_seats WHERE org_account_id = ? "
+            "ORDER BY created_at DESC", (org_account_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def revoke_seat_code(self, code: str,
+                         org_account_id: str = "") -> Dict[str, Any]:
+        code = str(code or "").strip().upper()
+        if not code:
+            return {"success": False, "error": "invalid seat code"}
+        if org_account_id:
+            cur = self.db.execute(
+                "UPDATE juris_org_seats SET status = 'revoked' "
+                "WHERE code = ? AND org_account_id = ?", (code, org_account_id),
+            )
+        else:
+            cur = self.db.execute(
+                "UPDATE juris_org_seats SET status = 'revoked' WHERE code = ?",
+                (code,),
+            )
+        self.db.commit()
+        if cur.rowcount == 0:
+            return {"success": False, "error": "seat code not found"}
+        return {"success": True, "code": code}
+
+    def list_org_members(self, org_account_id: str) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            """SELECT m.org_account_id, m.account_id, m.seat_code, m.role,
+                      m.status, m.joined_at, a.full_name, a.email,
+                      a.subscription_tier
+               FROM juris_org_members m
+               LEFT JOIN juris_accounts a ON a.account_id = m.account_id
+               WHERE m.org_account_id = ? AND m.status = 'active'
+               ORDER BY m.joined_at""",
+            (org_account_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def orgs_for_account(self, account_id: str) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            "SELECT * FROM juris_org_members WHERE account_id = ? "
+            "AND status = 'active'", (account_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def org_usage(self, org_account_id: str) -> Dict[str, Any]:
+        """Seat inventory + per-member usage for the org admin (DPA-safe)."""
+        codes = self.list_seat_codes(org_account_id)
+        active = [c for c in codes if c.get("status") == "active"]
+        seats_total = sum(int(c.get("max_uses") or 0) for c in active)
+        seats_used = sum(int(c.get("used_count") or 0) for c in active)
+        members = self.list_org_members(org_account_id)
+        member_usage: List[Dict[str, Any]] = []
+        total_queries = total_deep = total_tokens = 0
+        for m in members:
+            meter = self.usage_meter(m["account_id"])
+            total_queries += meter["queries"]["used"]
+            total_deep += meter["deep_research"]["used"]
+            total_tokens += meter["tokens_today"]
+            member_usage.append({
+                "account_id": m["account_id"],
+                "name": m.get("full_name") or "",
+                "role": m.get("role") or "member",
+                "queries_today": meter["queries"]["used"],
+                "deep_research_today": meter["deep_research"]["used"],
+                "tokens_today": meter["tokens_today"],
+            })
+        return {
+            "org_account_id": org_account_id,
+            "seats_total": seats_total,
+            "seats_used": seats_used,
+            "seat_codes": codes,
+            "members": member_usage,
+            "usage": {"queries_today": total_queries,
+                      "deep_research_today": total_deep,
+                      "tokens_today": total_tokens},
+        }
 
 
 # Module-level convenience

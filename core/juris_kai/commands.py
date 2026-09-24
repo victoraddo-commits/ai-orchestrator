@@ -15,6 +15,7 @@ from core.juris_kai.accounts import (
     SUBSCRIPTION_TIERS,
     DISCLAIMER_TEXT,
 )
+from core.juris_kai import entitlements
 from core.juris_kai.session import get_user_session
 
 
@@ -42,6 +43,10 @@ def handle_command(text: str, update: Dict[str, Any], account: Dict[str, Any]) -
             return handle_argument(args, update, account)
         elif command == "flashcards":
             return handle_flashcards(args, update, account)
+        elif command == "seat":
+            return handle_seat(args, account)
+        elif command == "org":
+            return handle_org(args, account)
         elif command == "profile":
             return handle_profile(args, update, account)
         elif command == "document":
@@ -104,6 +109,13 @@ def handle_account(account: Dict[str, Any]) -> str:
             f"📄 Documents this month: {limits['max_documents_per_month'] - doc_check['remaining']}"
             f"/{limits['max_documents_per_month']}"
         )
+
+        meter = mgr.usage_meter(account["account_id"])
+        deep = meter["deep_research"]
+        lines.append(
+            f"🔬 Deep Research today: {deep['used']}/{deep['limit']}"
+        )
+        lines.append(f"🔤 Tokens today: {meter['tokens_today']}")
 
     return "\n".join(lines)
 
@@ -306,11 +318,12 @@ def handle_argument(topic: str, update: Dict[str, Any], account: Dict[str, Any])
     if not topic.strip():
         return "Usage: /argument <legal topic>\nExample: /argument self-defense"
 
-    # Check if feature is available in subscription
+    # Check if feature is available in subscription (entitlement-gated).
     mgr = get_account_manager()
-    sub = mgr.get_active_subscription(account["account_id"])
-    if sub and "argument_construction" not in sub.get("features", []):
-        return "⚠️ Legal argument construction requires a Basic or Professional plan.\nUpgrade with /subscribe"
+    prompt = entitlements.check_feature(mgr, account["account_id"],
+                                        "argument_construction")
+    if prompt:
+        return prompt
 
     return _grounded_command_text(
         topic, "juris_argument_construction",
@@ -323,9 +336,10 @@ def handle_flashcards(topic: str, update: Dict[str, Any], account: Dict[str, Any
         return "Usage: /flashcards <legal topic>"
 
     mgr = get_account_manager()
-    sub = mgr.get_active_subscription(account["account_id"])
-    if sub and "flashcards" not in sub.get("features", []):
-        return "⚠️ Flashcards require a Professional plan.\nUpgrade with /subscribe"
+    prompt = entitlements.check_feature(mgr, account["account_id"],
+                                        "flashcards")
+    if prompt:
+        return prompt
 
     return _grounded_command_text(
         topic, "juris_flashcards",
@@ -603,6 +617,70 @@ def handle_group(args: str, account: Dict[str, Any], is_admin: bool = False) -> 
             "/group remove <group_id> <account_id> | "
             "/group role <group_id> <account_id> <role> | "
             "/group archive <group_id>")
+
+
+# ---- Institutional seats (Phase 7, Task 5) ----
+
+def handle_seat(args: str, account: Dict[str, Any]) -> str:
+    """Redeem a seat code (``/seat <code>``) or show the user's memberships."""
+    mgr = get_account_manager()
+    code = (args or "").strip()
+    if code:
+        res = mgr.redeem_seat_code(code, account["account_id"])
+        if not res.get("success"):
+            return (f"⚠️ {res.get('error', 'could not redeem that seat code')}.\n"
+                    "Ask your institution for a valid seat code.")
+        if res.get("already_member"):
+            return "You're already on that institution's plan. ✅"
+        return (f"✅ Seat redeemed — you're now on the *{res.get('tier')}* "
+                "plan.\nYour institution's quota applies. Use /account to see "
+                "your usage.")
+    orgs = mgr.orgs_for_account(account["account_id"])
+    if not orgs:
+        return ("🎟️ *Institutional seats*\n\nYou're not on an institution "
+                "plan.\nIf your school or firm gave you a seat code, redeem it "
+                "with:\n  /seat <code>")
+    lines = ["🎟️ *Your institution plans*"]
+    for o in orgs:
+        lines.append(f"• org `{o['org_account_id']}` — "
+                     f"role: {o.get('role', 'member')}")
+    return "\n".join(lines)
+
+
+def handle_org(args: str, account: Dict[str, Any]) -> str:
+    """Show an org admin their seat inventory + per-member usage."""
+    mgr = get_account_manager()
+    parts = (args or "").strip().split()
+    action = parts[0].lower() if parts else "usage"
+    org_account_id = account["account_id"]
+    codes = mgr.list_seat_codes(org_account_id)
+    if not codes:
+        orgs = mgr.orgs_for_account(account["account_id"])
+        if orgs:
+            lines = ["🏛️ *Your institutions*"]
+            for o in orgs:
+                lines.append(f"• `{o['org_account_id']}` "
+                             f"({o.get('role', 'member')})")
+            return "\n".join(lines)
+        return ("🏛️ *Organisation*\n\nYou don't administer an organisation.\n"
+                "Institutions buy seats; users redeem them with /seat <code>.")
+    if action not in ("", "usage", "seats"):
+        return "Usage: /org usage | /org seats"
+    usage = mgr.org_usage(org_account_id)
+    lines = [f"🏛️ *Org usage* (`{org_account_id}`)",
+             f"Seats: {usage['seats_used']}/{usage['seats_total']} used",
+             f"Queries today (all members): {usage['usage']['queries_today']}"]
+    for m in usage["members"]:
+        lines.append(f"• {m.get('name') or m['account_id']} — "
+                     f"{m['queries_today']} queries, "
+                     f"{m['deep_research_today']} deep")
+    if action == "seats":
+        lines.append("")
+        lines.append("*Seat codes*")
+        for c in codes:
+            lines.append(f"• `{c['code']}` — {c['used_count']}/{c['max_uses']} "
+                         f"used ({c['status']})")
+    return "\n".join(lines)
 
 
 # This module must NEVER import:

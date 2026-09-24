@@ -3115,6 +3115,19 @@ async function loadPayments(){
         return '<span class="badge info" style="margin:1px 2px">'+esc(e[0])+': '+esc(e[1])+'</span>';}).join(' ')+'</div>';
     }
     h+='<div class="juris-sub">Pricing editor</div>'+_payPricingEditor(tiers,pr.per_document_page_rate_ghs);
+    h+='<div class="juris-sub">Sponsor slot (free tier only)</div>'
+      +'<div class="card" style="margin:0"><div class="field-hint">Off by default. Shown only to free-tier users as a footer alongside the answer — never inside it, and never on paid tiers. Non-behavioural (no tracking).</div>'
+      +'<label style="display:flex;gap:6px;align-items:center;margin:6px 0"><input type="checkbox" id="sp-enabled"> Enabled</label>'
+      +'<textarea id="sp-list" rows="3" placeholder="Ghana Law Reports|Weekly case digests|https://example.gh&#10;One sponsor per line: name|tagline|url" style="width:100%;background:var(--bg-deep);border:1px solid var(--border);color:var(--fg);font-family:var(--font-mono);font-size:0.68rem;padding:6px"></textarea>'
+      +'<div class="action-row" style="margin-top:6px"><button class="btn btn-sm btn-accent" onclick="paymentsSaveSponsors()">Save sponsors</button><span id="sp-msg" class="field-hint"></span></div></div>';
+    h+='<div class="juris-sub">Institutional seats</div>'
+      +'<div class="action-row" style="flex-wrap:wrap;align-items:flex-end">'
+      +'<input id="seat-org" class="search-input" placeholder="org account_id" style="max-width:220px">'
+      +'<input id="seat-count" type="number" min="1" value="1" class="search-input" style="max-width:90px">'
+      +'<button class="btn btn-sm btn-accent" onclick="paymentsCreateSeat()">Issue seat code</button>'
+      +'<button class="btn btn-sm" onclick="paymentsOrgUsage()">View org usage</button>'
+      +'<span id="seat-msg" class="field-hint"></span></div>'
+      +'<div id="seat-result" style="margin-top:8px"></div>';
     h+='<div class="juris-sub">Test checkout (Paystack)</div>'
       +'<div class="action-row" style="flex-wrap:wrap;align-items:flex-end">'
       +'<input id="pay-acct" class="search-input" placeholder="account_id" style="max-width:220px">'
@@ -3131,7 +3144,47 @@ async function loadPayments(){
       +pays.map(function(x){return '<tr><td>'+esc(x.account_id||'—')+'</td><td>'+esc(x.amount_ghs!=null?x.amount_ghs:'—')+'</td><td>'+esc(x.subscription_tier||'—')+'</td><td>'+esc(x.hubtel_status||'—')+'</td><td>'+esc(String(x.created_at||'').slice(0,19))+'</td></tr>';}).join('')
       +'</tbody></table></div>';
     c.innerHTML=h;
+    paymentsLoadSponsors();
   }catch(e){c.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function paymentsLoadSponsors(){
+  try{
+    const d=await api('/api/juris-kai/cc/sponsors');
+    const en=$('sp-enabled'),list=$('sp-list');
+    if(en)en.checked=!!d.enabled;
+    if(list)list.value=(d.sponsors||[]).map(function(s){return [s.name,s.tagline||'',s.url||''].join('|');}).join('\n');
+  }catch(e){}
+}
+async function paymentsSaveSponsors(){
+  const en=$('sp-enabled'),list=$('sp-list'),msg=$('sp-msg');
+  const sponsors=((list&&list.value)||'').split('\n').map(function(l){return l.trim();}).filter(Boolean).map(function(l){const p=l.split('|');return {name:(p[0]||'').trim(),tagline:(p[1]||'').trim(),url:(p[2]||'').trim()};}).filter(function(s){return s.name;});
+  try{
+    const d=await api('/api/juris-kai/cc/sponsors',{method:'PUT',body:JSON.stringify({enabled:!!(en&&en.checked),sponsors:sponsors})});
+    if(msg)msg.textContent='';
+    if(d.success){toast('Sponsors saved');paymentsLoadSponsors();}else toast('Error: '+(d.error||'failed'),'err');
+  }catch(e){if(msg)msg.textContent='';toast('Error: '+e.message,'err');}
+}
+async function paymentsCreateSeat(){
+  const org=($('seat-org')||{}).value||'',seats=parseInt(($('seat-count')||{}).value,10)||1,el=$('seat-result'),msg=$('seat-msg');
+  if(!org){toast('Enter an org account_id','err');return;}
+  try{
+    const d=await api('/api/juris-kai/cc/org/seats',{method:'POST',body:JSON.stringify({org_account_id:org,seats:seats})});
+    if(msg)msg.textContent='';
+    if(!d.success){if(el)el.innerHTML='<span class="error-text">'+esc(d.error||'failed')+'</span>';return;}
+    if(el)el.innerHTML='<div class="field-hint">Seat code: <code>'+esc(d.code)+'</code> ('+esc(d.seats)+' seat(s), '+esc(d.tier)+')</div>';
+    paymentsOrgUsage();
+  }catch(e){if(msg)msg.textContent='';if(el)el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function paymentsOrgUsage(){
+  const org=($('seat-org')||{}).value||'',el=$('seat-result');if(!org)return;
+  try{
+    const d=await api('/api/juris-kai/cc/org/usage?org_account_id='+encodeURIComponent(org));
+    let h='<div class="field-hint">Seats: '+esc(d.seats_used||0)+'/'+esc(d.seats_total||0)+' used · queries today: '+esc((d.usage||{}).queries_today||0)+'</div>';
+    const codes=d.seat_codes||[],members=d.members||[];
+    if(codes.length)h+='<div class="table-wrap"><table><thead><tr><th>Code</th><th>Used</th><th>Status</th></tr></thead><tbody>'+codes.map(function(c){return '<tr><td><code>'+esc(c.code)+'</code></td><td>'+esc(c.used_count)+'/'+esc(c.max_uses)+'</td><td>'+esc(c.status)+'</td></tr>';}).join('')+'</tbody></table></div>';
+    if(members.length)h+='<div class="table-wrap"><table><thead><tr><th>Member</th><th>Role</th><th>Queries today</th><th>Deep today</th></tr></thead><tbody>'+members.map(function(m){return '<tr><td>'+esc(m.name||m.account_id)+'</td><td>'+esc(m.role)+'</td><td>'+esc(m.queries_today)+'</td><td>'+esc(m.deep_research_today)+'</td></tr>';}).join('')+'</tbody></table></div>';
+    if(el)el.innerHTML=h;
+  }catch(e){if(el)el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 function _payPricingEditor(tiers,rate){
   let h='<div class="action-row" style="align-items:flex-end;flex-wrap:wrap">'
@@ -3141,13 +3194,16 @@ function _payPricingEditor(tiers,rate){
     +'<span class="field-hint">Write-gated · requires juris.admin</span></div>'
     +'<div class="juris-grid" style="align-items:start">';
   for(const t of tiers){
+    const pd=PAY_TIER_DATA[t.tier]||{};
     h+='<div class="card" data-ptier="'+attr(t.tier)+'" style="margin:0">'
       +'<div class="spread" style="margin-bottom:6px"><strong>'+esc(t.tier)+'</strong><span class="badge info">'+esc(t.name)+'</span></div>'
       +'<div class="juris-form">'
       +'<label>Name</label><input type="text" data-f="name" value="'+attr(t.name)+'">'
       +'<label>Price (GHS)</label><input type="number" min="0" step="0.01" data-f="price_ghs" value="'+attr(t.price_ghs)+'">'
       +'<label>Duration (days)</label><input type="number" min="1" step="1" data-f="duration_days" value="'+attr(t.duration_days)+'">'
-      +'</div></div>';
+      +'</div>'
+      +'<div class="field-hint" title="'+attr((pd.features||[]).join(', '))+'">Entitlements: '+esc((pd.features||[]).length)+' features · '+esc(pd.max_queries_per_day==null?'—':pd.max_queries_per_day)+' queries/day · '+esc(pd.max_documents_per_month==null?'—':pd.max_documents_per_month)+' docs/mo</div>'
+      +'</div>';
   }
   return h+'</div>';
 }

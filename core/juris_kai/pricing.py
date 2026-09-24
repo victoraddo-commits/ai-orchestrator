@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from core.juris_kai import entitlements as _entitlements
+
 logger = logging.getLogger("juris_kai.pricing")
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,47 +28,30 @@ DEFAULT_PATH = str(_REPO_ROOT / "memory" / "juris_pricing.json")
 PRICING_VERSION = 1
 
 # Defaults MUST stay identical to the legacy hard-coded values in accounts.py.
+# Feature lists and the query/document quotas are sourced from the entitlement
+# matrix (``entitlements.py``) so the bot and the CC Pricing tab share one
+# definition; this module only adds the commercial fields (price/period).
+def _tier(name: str, duration_days: int, price_ghs: float,
+          plan: str) -> Dict[str, Any]:
+    return {
+        "name": name,
+        "duration_days": duration_days,
+        "price_ghs": price_ghs,
+        "max_documents_per_month": _entitlements.default_quota(
+            plan, "documents_per_month"),
+        "max_queries_per_day": _entitlements.default_quota(
+            plan, "queries_per_day"),
+        "features": _entitlements.default_features(plan),
+    }
+
+
 DEFAULT_TIERS: Dict[str, Dict[str, Any]] = {
-    "free_trial": {
-        "name": "Free Trial",
-        "duration_days": 7,
-        "price_ghs": 0,
-        "max_documents_per_month": 3,
-        "max_queries_per_day": 20,
-        "features": ["basic_legal_qa", "case_lookup"],
-    },
-    "monthly_basic": {
-        "name": "Basic Monthly",
-        "duration_days": 30,
-        "price_ghs": 50,
-        "max_documents_per_month": 15,
-        "max_queries_per_day": 100,
-        "features": ["basic_legal_qa", "case_lookup", "document_analysis", "legal_research"],
-    },
-    "monthly_pro": {
-        "name": "Professional Monthly",
-        "duration_days": 30,
-        "price_ghs": 150,
-        "max_documents_per_month": 50,
-        "max_queries_per_day": 500,
-        "features": [
-            "basic_legal_qa", "case_lookup", "document_analysis",
-            "legal_research", "argument_construction", "flashcards",
-            "priority_responses", "export_reports",
-        ],
-    },
-    "annual_pro": {
-        "name": "Professional Annual",
-        "duration_days": 365,
-        "price_ghs": 1500,
-        "max_documents_per_month": 50,
-        "max_queries_per_day": 500,
-        "features": [
-            "basic_legal_qa", "case_lookup", "document_analysis",
-            "legal_research", "argument_construction", "flashcards",
-            "priority_responses", "export_reports", "api_access",
-        ],
-    },
+    "free_trial": _tier("Free Trial", 7, 0, "free_trial"),
+    "student": _tier("Student", 30, 20, "student"),
+    "monthly_basic": _tier("Basic Monthly", 30, 50, "monthly_basic"),
+    "monthly_pro": _tier("Professional Monthly", 30, 150, "monthly_pro"),
+    "annual_pro": _tier("Professional Annual", 365, 1500, "annual_pro"),
+    "institution": _tier("Institution (per seat)", 365, 1200, "institution"),
 }
 
 DEFAULT_PER_DOCUMENT_PAGE_RATE_GHS = 2.0

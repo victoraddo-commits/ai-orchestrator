@@ -62,12 +62,16 @@ def fresh_db(tmp_path, monkeypatch):
     cache.clear_caches()
 
 
-def _account(telegram_id=None):
+def _account(telegram_id=None, tier=None):
     from core.juris_kai.accounts import get_account_manager
     mgr = get_account_manager()
     tid = str(telegram_id) if telegram_id is not None else str(uuid.uuid4().int)[:9]
     acct = mgr.get_or_create(tid, "Tester")
     mgr.accept_disclaimer(acct["account_id"])
+    if tier:
+        # Feature-gated handlers (flashcards/quiz/argument) need a plan that
+        # grants the feature; these tests are about grounding, not entitlements.
+        mgr.set_subscription(acct["account_id"], tier)
     return acct
 
 
@@ -184,7 +188,7 @@ def test_case_query_searches_raw_topic_without_generic_tokens(monkeypatch):
 
 
 def test_conversation_flow_grounded_uses_step_task_type(monkeypatch):
-    acct = _account()
+    acct = _account(tier="monthly_pro")
     monkeypatch.setattr(grounding, "retrieve",
                         lambda q, limit=3: _retrieval("GROUNDED", DOCS))
     captured = _capture_reply(monkeypatch, "Flashcards.")
@@ -200,7 +204,7 @@ def test_conversation_flow_grounded_uses_step_task_type(monkeypatch):
 
 
 def test_conversation_flow_ungrounded_refuses_without_model(monkeypatch):
-    acct = _account()
+    acct = _account(tier="monthly_pro")
     monkeypatch.setattr(grounding, "retrieve",
                         lambda q, limit=3: _retrieval("UNGROUNDED"))
     monkeypatch.setattr(bot, "_generate_reply", _failing_generate)
@@ -270,7 +274,7 @@ def test_slash_commands_grounded(monkeypatch, handler, topic, task_type, respons
     monkeypatch.setattr(grounding, "retrieve",
                         lambda q, limit=3: _retrieval("GROUNDED", DOCS))
     captured = _delegate_capture(monkeypatch, response)
-    account = {"account_id": "acct-1"}
+    account = _account(tier="monthly_pro")
 
     out = handler(topic, {}, account)
 
@@ -292,7 +296,7 @@ def test_slash_commands_ungrounded_refuse_without_model(monkeypatch, handler, to
                         lambda q, limit=3: _retrieval("UNGROUNDED"))
     _delegate_must_not_run(monkeypatch)
 
-    out = handler(topic, {}, {"account_id": "acct-1"})
+    out = handler(topic, {}, _account(tier="monthly_pro"))
 
     assert out == grounding.UNGROUNDED_REPLY
 

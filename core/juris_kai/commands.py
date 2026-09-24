@@ -50,6 +50,19 @@ def handle_command(text: str, update: Dict[str, Any], account: Dict[str, Any]) -
             return handle_progress(update, account)
         elif command == "forget":
             return handle_forget(account)
+        # ---- Phase 6 practice + research tools ----
+        elif command == "contract":
+            return handle_contract(args, update, account)
+        elif command == "matrix":
+            return handle_matrix(args, update, account)
+        elif command == "chronology":
+            return handle_chronology(args, update, account)
+        elif command in ("authorities", "authority"):
+            return handle_authorities(args, update, account)
+        elif command == "statute":
+            return handle_statute(args, update, account)
+        elif command == "caselaw":
+            return handle_caselaw(args, update, account)
         else:
             return f"Unknown command: /{command}. Type /help for available commands."
 
@@ -317,6 +330,72 @@ def handle_flashcards(topic: str, update: Dict[str, Any], account: Dict[str, Any
     return _grounded_command_text(
         topic, "juris_flashcards",
         "Unable to generate flashcards. Please try again later.")
+
+
+# ---- Phase 6 practice + research tools ----
+
+def _render_tool(tool_fn, *args, **kwargs) -> str:
+    """Run a practice/research tool and return its gated rendering.
+
+    The tool itself routes its output through the AgentGuard legal output gate
+    (citation firewall + injection guard); this only surfaces a safe message if
+    the tool is unavailable.
+    """
+    try:
+        return tool_fn(*args, **kwargs)["rendered"]
+    except Exception:  # noqa: BLE001 - a command must never crash the bot
+        return "⚠️ That tool is unavailable right now. Please try again later."
+
+
+def handle_contract(args: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
+    """Analyse a pasted contract in the zero-trust workspace (never the corpus)."""
+    if not (args or "").strip():
+        return ("Usage: /contract <paste the contract text>\n"
+                "The text is analysed in the zero-trust workspace and is never "
+                "added to the authoritative knowledge base.")
+    from core.juris_kai import tools
+    return _render_tool(tools.contract_analysis, args.strip(),
+                        title="Your contract")
+
+
+def handle_matrix(args: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
+    """Render the legal issue matrix for an issue (retrieval + Deep reasoning)."""
+    if not (args or "").strip():
+        return "Usage: /matrix <legal issue> [facts]"
+    from core.juris_kai import tools
+    return _render_tool(tools.issue_matrix, args.strip())
+
+
+def handle_chronology(args: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
+    """Build a litigation-ready chronology from the supplied facts."""
+    if not (args or "").strip():
+        return "Usage: /chronology <facts containing dates>"
+    from core.juris_kai import tools
+    return _render_tool(tools.legal_chronology, args.strip())
+
+
+def handle_authorities(args: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
+    """List the retrieved authorities for an issue (retrieval only)."""
+    if not (args or "").strip():
+        return "Usage: /authorities <legal issue>"
+    from core.juris_kai import tools
+    return _render_tool(tools.authority_bundle, [args.strip()])
+
+
+def handle_statute(args: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
+    """Statute research mode (filtered to enactments/instruments)."""
+    if not (args or "").strip():
+        return "Usage: /statute <query>"
+    from core.juris_kai import tools
+    return _render_tool(tools.research, args.strip(), mode="statute")
+
+
+def handle_caselaw(args: str, update: Dict[str, Any], account: Dict[str, Any]) -> str:
+    """Case-law research mode (honest when there is no judgment corpus)."""
+    if not (args or "").strip():
+        return "Usage: /caselaw <query>"
+    from core.juris_kai import tools
+    return _render_tool(tools.research, args.strip(), mode="case_law")
 
 
 # ---- Document Analysis ----

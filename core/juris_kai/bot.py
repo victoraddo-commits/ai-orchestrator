@@ -240,6 +240,13 @@ HELP_TEXT = (
     "/subscribe — View subscription plans\n"
     "/subscribe <tier> [email] — Buy a plan (Paystack checkout)\n"
     "/deep <question> — Deep Research (3-pass, slower, with counter-authorities)\n"
+    "/contract <text> — Analyse a contract (zero-trust workspace)\n"
+    "/matrix <issue> — Legal issue matrix (Issue | Law | Authority | Facts | "
+    "Counterargument | Status)\n"
+    "/chronology <facts> — Dated timeline with sources\n"
+    "/authorities <issue> — Authorities in the database for an issue\n"
+    "/statute <query> — Search enactments & instruments only\n"
+    "/caselaw <query> — Case-law mode (honest when no judgment corpus)\n"
     "/forget — Delete your stored questions & answers\n\n"
     "_Not a substitute for professional legal advice._"
 )
@@ -1191,6 +1198,44 @@ def _handle_menu_action(
                            "📋 Access Logs"):
         return _handle_admin_security(text, chat_id)
 
+    # ---- Phase 6 practice / research tools ----
+    tool_steps = {
+        "📄 Contract Analysis": (
+            "contract",
+            "📄 *Contract Analysis*\n\nPaste the contract text and I'll extract "
+            "clauses, obligations, risks, termination and liabilities. It is "
+            "analysed in the zero-trust workspace and never added to the "
+            "knowledge base.\n\nType /menu to cancel."),
+        "🧮 Issue Matrix": (
+            "issue_matrix",
+            "🧮 *Legal Issue Matrix*\n\nSend the legal issue (and any facts) and "
+            "I'll build the Issue | Law | Authority | Facts | Counterargument | "
+            "Status matrix from retrieved authorities.\n\nType /menu to cancel."),
+        "🗓️ Legal Chronology": (
+            "chronology",
+            "🗓️ *Legal Chronology*\n\nSend the facts with dates and I'll build "
+            "a dated timeline with sources.\n\nType /menu to cancel."),
+        "📚 Authority Bundle": (
+            "authority_bundle",
+            "📚 *Authority Bundle*\n\nSend the legal issue and I'll list the "
+            "authorities in the database for it.\n\nType /menu to cancel."),
+        "📜 Statute Search": (
+            "statute_search",
+            "📜 *Statute Search*\n\nSend a query and I'll search enactments and "
+            "instruments only.\n\nType /menu to cancel."),
+        "⚖️ Case-law": (
+            "case_law_search",
+            "⚖️ *Case-law*\n\nSend a query. If there is no judgment corpus I "
+            "will say so honestly rather than invent cases.\n\n"
+            "Type /menu to cancel."),
+    }
+    if text in tool_steps:
+        step, prompt = tool_steps[text]
+        _conversation_state[str(chat_id)] = {"step": step, "data": {}}
+        return {"chat_id": chat_id, "text": prompt,
+                "reply_markup": '{"remove_keyboard": true}',
+                "parse_mode": "Markdown"}
+
     return None
 
 
@@ -1875,6 +1920,14 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
         return _build_deep_reply(text, chat_id, account,
                                  reply_markup=main_menu())
 
+    # Phase 6 practice/research tools: the next free-text message is the tool's
+    # input. Each tool gates its own output through the AgentGuard legal output
+    # gate; the user's text is never added to the corpus.
+    if step in ("contract", "issue_matrix", "chronology", "authority_bundle",
+                "statute_search", "case_law_search"):
+        del _conversation_state[state_key]
+        return _handle_tool_step(step, text, chat_id, account)
+
     from core.juris_kai.prompt import build_prompt
     from core.juris_kai.legal_context import query_knowledge_base, build_context_preamble
 
@@ -1962,6 +2015,46 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
     del _conversation_state[state_key]
     return _build_legal_reply(text, chat_id, account, reply_markup=keyboard,
                               task_type=task_type)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 practice / research tool steps
+# ---------------------------------------------------------------------------
+
+_TOOL_MAX_CHARS = 3500
+
+
+def _handle_tool_step(step: str, text: str, chat_id: int, account: dict) -> dict:
+    """Run one practice/research tool on the user's free-text input.
+
+    Every tool routes its rendered output through the AgentGuard legal output
+    gate (citation firewall + injection guard); a tool failure returns a safe
+    message rather than crashing the bot.
+    """
+    from core.juris_kai import tools
+
+    runners = {
+        "contract": lambda: tools.contract_analysis(text,
+                                                    title="Your document"),
+        "issue_matrix": lambda: tools.issue_matrix(text),
+        "chronology": lambda: tools.legal_chronology(text),
+        "authority_bundle": lambda: tools.authority_bundle([text]),
+        "statute_search": lambda: tools.research(text, mode="statute"),
+        "case_law_search": lambda: tools.research(text, mode="case_law"),
+    }
+    runner = runners.get(step)
+    if runner is None:
+        return _handle_free_text(text, chat_id, account, False)
+    try:
+        rendered = runner()["rendered"]
+    except Exception:  # noqa: BLE001 - a tool must never crash the bot
+        rendered = ("⚠️ That tool is unavailable right now. "
+                    "Please try again later.")
+    if len(rendered) > _TOOL_MAX_CHARS:
+        rendered = rendered[:_TOOL_MAX_CHARS - 1] + "…"
+    keyboard = case_law_menu() if step == "case_law_search" else practice_menu()
+    return {"chat_id": chat_id, "text": rendered,
+            "reply_markup": keyboard, "parse_mode": "Markdown"}
 
 
 # ---------------------------------------------------------------------------

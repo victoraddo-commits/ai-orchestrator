@@ -49,8 +49,8 @@ def learn_menu() -> str:
         ["🏛️ Civil Law", "📋 Contract Law"],
         ["🏠 Property Law", "👨‍👩‍👧 Family Law"],
         ["💼 Business Law", "🔍 Search Topic"],
-        ["🔬 Deep Research"],
-        ["🔙 Back to Menu"],
+        ["🔬 Deep Research", "📜 Statute Search"],
+        ["⚖️ Case-law", "🔙 Back to Menu"],
     ])
 
 
@@ -73,11 +73,13 @@ def case_law_menu() -> str:
 # ---------------------------------------------------------------------------
 
 def practice_menu() -> str:
-    """Sub-menu for exam practice and IRAC."""
+    """Sub-menu for exam practice, IRAC and the Phase 6 practice tools."""
     return _keyboard([
         ["📝 Generate Questions", "⚖️ IRAC Practice"],
         ["✍️ Essay Practice", "📋 Mock Exams"],
-        ["✅ Answer Evaluation", "🔙 Back to Menu"],
+        ["✅ Answer Evaluation", "📄 Contract Analysis"],
+        ["🧮 Issue Matrix", "🗓️ Legal Chronology"],
+        ["📚 Authority Bundle", "🔙 Back to Menu"],
     ])
 
 
@@ -279,6 +281,13 @@ def menu_for_text(text: str, is_admin: bool = False) -> str | None:
         "✍️ Essay Practice": None,
         "📋 Mock Exams": None,
         "✅ Answer Evaluation": None,
+        # Phase 6 practice / research tools (handled by bot logic)
+        "📄 Contract Analysis": None,
+        "🧮 Issue Matrix": None,
+        "🗓️ Legal Chronology": None,
+        "📚 Authority Bundle": None,
+        "📜 Statute Search": None,
+        "⚖️ Case-law": None,
         "🃏 Flashcards": None,
         "🧠 Memory Drills": None,
         "⏱️ Quick Quiz": None,

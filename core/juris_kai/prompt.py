@@ -6,6 +6,12 @@ This module builds Ghana-scoped legal prompts. Every prompt enforces:
   3. Never discuss, reference, or compare to other countries' laws
 """
 
+import json
+import logging
+import os
+
+logger = logging.getLogger("juris_kai.prompt")
+
 try:
     from core.legal.injection import fence_user_content, neutralize
 except Exception:  # noqa: BLE001 - optional guard, never block prompting
@@ -66,13 +72,68 @@ TASK_MAX_TOKENS = {
     "juris_advocate": 500,
     "juris_opponent": 500,
     "juris_judge": 800,
+    # Phase 8 Deep "fast" mode: lower per-pass budgets for the ~20s target.
+    # The fast opponent is retrieval-only (no model call); its budget is kept
+    # for symmetry and for callers that re-enable the compact model opponent.
+    "juris_advocate_fast": 300,
+    "juris_opponent_fast": 300,
+    "juris_judge_fast": 500,
 }
 DEFAULT_MAX_TOKENS = 800
+
+#: Deep fast-mode per-pass budget overrides (advocate/opponent/judge). Kept
+#: here so ``reasoning`` can read one canonical table when it reports config.
+FAST_PASS_BUDGETS = {
+    "juris_advocate": 300,
+    "juris_opponent": 300,
+    "juris_judge": 500,
+}
+
+
+def set_budget(task_type: str, tokens: int) -> int:
+    """Configure the max-token budget for one task type (>= 1). Returns it.
+
+    Lets an operator retune a pass (e.g. tighten the fast judge) without a code
+    change; ``reasoning`` and ``streaming`` both read this one table.
+    """
+    tokens = int(tokens)
+    if tokens < 1:
+        raise ValueError("budget must be >= 1 token")
+    TASK_MAX_TOKENS[str(task_type)] = tokens
+    return tokens
+
+
+def _apply_env_budget_overrides() -> None:
+    """Apply ``JURIS_KAI_TOKEN_BUDGETS`` (JSON object) over the budget table.
+
+    Configurable budgets: e.g.
+    ``JURIS_KAI_TOKEN_BUDGETS='{"juris_judge_fast": 420}'``. Invalid JSON or
+    non-numeric values are ignored (warned), never fatal.
+    """
+    raw = (os.environ.get("JURIS_KAI_TOKEN_BUDGETS") or "").strip()
+    if not raw:
+        return
+    try:
+        overrides = json.loads(raw)
+    except (ValueError, TypeError):
+        logger.warning("ignoring invalid JURIS_KAI_TOKEN_BUDGETS (not JSON)")
+        return
+    if not isinstance(overrides, dict):
+        logger.warning("ignoring JURIS_KAI_TOKEN_BUDGETS (not an object)")
+        return
+    for key, value in overrides.items():
+        try:
+            set_budget(str(key), int(value))
+        except (TypeError, ValueError):
+            logger.warning("ignoring invalid token budget for %s", key)
 
 
 def budget_for(task_type: str) -> int:
     """Return the ``num_predict``/max-token budget for a task type."""
     return TASK_MAX_TOKENS.get(task_type or "", DEFAULT_MAX_TOKENS)
+
+
+_apply_env_budget_overrides()
 
 
 def max_tokens_for(task_type: str) -> int:

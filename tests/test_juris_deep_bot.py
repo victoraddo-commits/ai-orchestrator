@@ -278,6 +278,49 @@ def test_deep_button_is_an_action_not_navigation():
     assert menus.menu_for_text("🔬 Deep Research") is None
 
 
+def test_learn_menu_exposes_deep_fast_button():
+    import json
+    keyboard = json.loads(menus.learn_menu())
+    labels = [b["text"] for row in keyboard["keyboard"] for b in row]
+    assert "⚡ Deep Fast" in labels
+    assert menus.menu_for_text("⚡ Deep Fast") is None
+
+
+def test_deepfast_slash_command_runs_fast(monkeypatch):
+    _account(910020)
+    seen = {}
+
+    def fake_deep(question, chat_id, account, admin, fast=False):
+        seen.update(question=question, fast=fast)
+        return {"chat_id": chat_id, "text": "ok"}
+
+    monkeypatch.setattr(bot, "_handle_deep_command", fake_deep)
+    resp = bot.handle_message({
+        "chat_id": 910020, "text": "/deepfast is theft an offence",
+        "from_first_name": "T"})
+    assert seen["question"] == "is theft an offence"
+    assert seen["fast"] is True
+    assert resp["text"] == "ok"
+
+
+def test_deep_fast_reply_passes_fast_to_run_deep(monkeypatch):
+    acct = _account(910021)
+    monkeypatch.setattr(
+        grounding, "retrieve",
+        lambda q, limit=3, context="": _retrieval("GROUNDED", DOCS))
+    captured = {}
+
+    def fake_run_deep(query, docs=None, context="", fast=False, **k):
+        captured["fast"] = fast
+        return _deep_result()
+
+    monkeypatch.setattr("core.juris_kai.reasoning.run_deep", fake_run_deep)
+    resp = bot._build_deep_reply("Is stealing an offence?", 910021, acct,
+                                 fast=True)
+    assert captured["fast"] is True
+    assert "IRAC" in resp["text"]
+
+
 def test_deep_menu_button_sets_state_then_runs_deep(monkeypatch):
     acct = _account(910006)
     prompt = bot._handle_menu_action("🔬 Deep Research", 910006, acct, False, {})

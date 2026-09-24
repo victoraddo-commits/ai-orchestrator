@@ -244,6 +244,7 @@ HELP_TEXT = (
     "/subscribe — View subscription plans\n"
     "/subscribe <tier> [email] — Buy a plan (Paystack checkout)\n"
     "/deep <question> — Deep Research (3-pass, slower, with counter-authorities)\n"
+    "/deepfast <question> — Deep Fast (~20s, leaner budgets, same IRAC)\n"
     "/contract <text> — Analyse a contract (zero-trust workspace)\n"
     "/matrix <issue> — Legal issue matrix (Issue | Law | Authority | Facts | "
     "Counterargument | Status)\n"
@@ -1051,6 +1052,11 @@ def handle_message(update: dict) -> dict | None:
         question = message_text[len("/deep"):].strip()
         return _handle_deep_command(question, chat_id, account, admin)
 
+    # Deep Fast — the ~20s variant (retrieval-only opponent, leaner budgets).
+    if message_text == "/deepfast" or message_text.startswith("/deepfast "):
+        question = message_text[len("/deepfast"):].strip()
+        return _handle_deep_command(question, chat_id, account, admin, fast=True)
+
     # Everyday Law — plain-language grounded summaries (Phase 7, Task 4).
     if message_text == "/everyday" or message_text.startswith("/everyday "):
         args = message_text[len("/everyday"):].strip()
@@ -1098,6 +1104,21 @@ def _handle_menu_action(
                 "authorities establish, what is disputed, and the counter-"
                 "authorities — with an explicit uncertainty assessment.\n\n"
                 "Type the question below (or /menu to cancel)."
+            ),
+            "reply_markup": '{"remove_keyboard": true}',
+            "parse_mode": "Markdown",
+        }
+
+    if text == "⚡ Deep Fast":
+        _conversation_state[str(chat_id)] = {"step": "deep_fast", "data": {}}
+        return {
+            "chat_id": chat_id,
+            "text": (
+                "⚡ *Deep Fast*\n\n"
+                "Same grounded IRAC, counter-authorities and uncertainty as "
+                "Deep Research, but tuned for ~20s: the opponent is answered "
+                "from retrieval and the passes use leaner budgets.\n\n"
+                "Type your Ghana legal question below (or /menu to cancel)."
             ),
             "reply_markup": '{"remove_keyboard": true}',
             "parse_mode": "Markdown",
@@ -1783,14 +1804,16 @@ def _deliver_grounded_plan(plan: dict, text: str, chat_id, account: dict,
     }
 
 
-def _run_deep_bounded(query: str, docs: list, context: str = ""):
+def _run_deep_bounded(query: str, docs: list, context: str = "",
+                      fast: bool = False):
     """Run the three-pass pipeline under a hard wall-clock budget.
 
     Returns ``(result, None)`` on success, else ``(None, reason)``. The passes
     run on a daemon worker so a stalled local model can never block the bot's
     synchronous polling loop: once ``DEEP_TIMEOUT`` elapses the caller returns a
     single-pass answer while the abandoned worker finishes (or its own per-pass
-    read timeout fires) on its own.
+    read timeout fires) on its own. ``fast`` selects the lower-budget,
+    retrieval-only-opponent variant.
     """
     from core.juris_kai import reasoning
 
@@ -1798,7 +1821,11 @@ def _run_deep_bounded(query: str, docs: list, context: str = ""):
 
     def _work():
         try:
-            box["result"] = reasoning.run_deep(query, docs, context)
+            if fast:
+                box["result"] = reasoning.run_deep(query, docs, context,
+                                                   fast=True)
+            else:
+                box["result"] = reasoning.run_deep(query, docs, context)
         except Exception as exc:  # noqa: BLE001 - degrade, never hang the caller
             box["error"] = exc
 
@@ -1817,7 +1844,7 @@ def _run_deep_bounded(query: str, docs: list, context: str = ""):
 
 
 def _build_deep_reply(text: str, chat_id, account: dict, reply_markup=None,
-                      query: str = None,
+                      query: str = None, fast: bool = False,
                       task_type: str = LEGAL_GROUNDING_TASK) -> dict:
     """Answer with Deep Research (retrieve → advocate → oppose → judge).
 
@@ -1862,7 +1889,8 @@ def _build_deep_reply(text: str, chat_id, account: dict, reply_markup=None,
             "parse_mode": "Markdown",
         }
 
-    result, failure = _run_deep_bounded(text, plan["docs"], context=followup_ctx)
+    result, failure = _run_deep_bounded(text, plan["docs"],
+                                        context=followup_ctx, fast=fast)
     if result is None:
         logger.warning("Deep Research degraded to single pass (%s) chat=%s",
                        failure, chat_id)
@@ -1906,18 +1934,25 @@ def _build_deep_reply(text: str, chat_id, account: dict, reply_markup=None,
     }
 
 
-def _handle_deep_command(question: str, chat_id, account: dict, admin: bool) -> dict:
-    """Handle ``/deep [question]`` — explicit Deep Research (3-pass) mode."""
+def _handle_deep_command(question: str, chat_id, account: dict, admin: bool,
+                         fast: bool = False) -> dict:
+    """Handle ``/deep [question]`` (and ``/deepfast``) — explicit Deep mode.
+
+    ``fast=True`` is the Deep Fast variant: the same grounded IRAC + counter-
+    authorities + uncertainty, with the opponent answered from retrieval and
+    leaner per-pass budgets.
+    """
     menu = admin_main_menu() if admin else main_menu()
     q = (question or "").strip()
+    label = "⚡ *Deep Fast*" if fast else "🔬 *Deep Research*"
     if not q:
         return {
             "chat_id": chat_id,
             "text": (
-                "🔬 *Deep Research*\n\n"
-                "Send a Ghana legal question to research it in three grounded "
-                "passes (Advocate → Opponent → Judge), with counter-authorities "
-                "and an explicit uncertainty assessment.\n\n"
+                f"{label}\n\n"
+                "Send a Ghana legal question to research it in grounded passes "
+                "(Advocate → Opponent → Judge), with counter-authorities and an "
+                "explicit uncertainty assessment.\n\n"
                 "Usage: `/deep <question>` — or tap 🔬 Deep Research under "
                 "📚 Learn Law. It is slower than a normal question."
             ),
@@ -1962,7 +1997,8 @@ def _handle_deep_command(question: str, chat_id, account: dict, admin: bool) -> 
                 "/subscribe for more."),
             "reply_markup": menu,
         }
-    return _build_deep_reply(q, chat_id, account, reply_markup=menu, query=q)
+    return _build_deep_reply(q, chat_id, account, reply_markup=menu, query=q,
+                             fast=fast)
 
 
 def _build_legal_reply(text: str, chat_id, account: dict,
@@ -2120,10 +2156,10 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
             return {"chat_id": chat_id, "text": prompt,
                     "reply_markup": main_menu(), "parse_mode": "Markdown"}
 
-    # Deep Research is an explicit 3-pass mode (never the default); the menu
+    # Deep Research / Deep Fast are explicit modes (never the default); the menu
     # button drops the user into this step and the next free-text question runs
     # the passes under the same strict grounding gate.
-    if step == "deep_research":
+    if step in ("deep_research", "deep_fast"):
         del _conversation_state[state_key]
         deep = mgr.try_record_deep_research(account["account_id"])
         if not deep["allowed"]:
@@ -2136,7 +2172,8 @@ def _handle_conversation_flow(text: str, chat_id: int, account: dict) -> dict:
                 "reply_markup": main_menu(),
             }
         return _build_deep_reply(text, chat_id, account,
-                                 reply_markup=main_menu())
+                                 reply_markup=main_menu(),
+                                 fast=(step == "deep_fast"))
 
     # Phase 6 practice/research tools: the next free-text message is the tool's
     # input. Each tool gates its own output through the AgentGuard legal output

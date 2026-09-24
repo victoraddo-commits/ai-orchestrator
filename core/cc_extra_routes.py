@@ -11,7 +11,12 @@ import os
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from pydantic import BaseModel
 
 cc_extra_router = APIRouter(tags=["command-center-extra"])
@@ -1154,6 +1159,8 @@ class _AskBody(BaseModel):
     query: str = ""
     task_type: str = "juris_research"
     deep: bool = False
+    fast: bool = False
+    stream: bool = False
     context: str = ""
 
 
@@ -1202,15 +1209,23 @@ def _legal_ask_quick(query: str, task_type: str, context: str) -> dict:
     }
 
 
-def _legal_ask_deep(query: str) -> dict:
+def _deep_payload(query: str, result: dict, fast: bool) -> dict:
+    """Shape a ``run_deep`` result for the Ask tab (fast or thorough)."""
     from core.juris_kai import grounding, reasoning
-    result = reasoning.run_deep(query)
     docs = result.get("docs") or []
     judge = result.get("judge") or {}
+    latency = result.get("latency") or {}
     text = (reasoning.render_deep(result)
             + grounding.build_sources_footer(docs))
+    judge_ttft = latency.get("judge_ttft")
+    ttft_ms = None
+    if judge_ttft is not None:
+        pre = latency.get("retrieve", 0.0) + latency.get(
+            "parallel", latency.get("advocate", 0.0))
+        ttft_ms = round((pre + judge_ttft) * 1000, 1)
     return {
-        "success": True, "mode": "deep", "text": text,
+        "success": True, "mode": "deep_fast" if fast else "deep",
+        "fast": bool(fast), "text": text,
         "verdict": result.get("verdict") or ("GROUNDED" if docs else "UNGROUNDED"),
         "grounded": bool(docs), "refusal": None,
         "sources": _compact_docs(docs),
@@ -1222,15 +1237,76 @@ def _legal_ask_deep(query: str) -> dict:
             "confidence": judge.get("confidence"),
         },
         "degraded": bool(result.get("degraded")),
-        "latency": result.get("latency") or {},
+        "latency": latency,
+        "ttft_ms": ttft_ms,
         "model": "deep",
     }
+
+
+def _legal_ask_deep(query: str, fast: bool = False) -> dict:
+    from core.juris_kai import reasoning
+    result = reasoning.run_deep(query, fast=fast)
+    return _deep_payload(query, result, fast)
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
+def _legal_ask_deep_stream(query: str, fast: bool = False):
+    """Stream a Deep answer as SSE: status now, judge deltas, then final.
+
+    The heavy passes run on a daemon worker; the judge's first token is relayed
+    as soon as it arrives (low TTFT) and the full, citation-firewalled answer
+    follows in the ``final`` event. The worker is bounded by the caller's
+    per-pass read timeouts, so a stalled model closes the stream rather than
+    hanging the endpoint.
+    """
+    import queue
+    import threading
+
+    from core.juris_kai import reasoning
+
+    events: "queue.Queue" = queue.Queue()
+    box: dict = {}
+
+    def _work():
+        try:
+            def _on_chunk(piece):
+                events.put(("delta", piece))
+
+            box["result"] = reasoning.run_deep(
+                query, fast=fast, stream_judge=True, on_judge_chunk=_on_chunk)
+        except Exception as exc:  # noqa: BLE001 - surface, never hang
+            box["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            events.put(("done", None))
+
+    threading.Thread(target=_work, name="juris-deep-sse", daemon=True).start()
+
+    def _gen():
+        yield _sse("status", {"mode": "deep_fast" if fast else "deep",
+                              "fast": bool(fast), "phase": "reasoning"})
+        while True:
+            kind, payload = events.get()
+            if kind == "done":
+                break
+            yield _sse("delta", {"text": payload})
+        result = box.get("result")
+        if result is None:
+            yield _sse("error", {"error": box.get("error") or "deep failed"})
+            return
+        yield _sse("final", _deep_payload(query, result, fast))
+
+    return StreamingResponse(_gen(), media_type="text/event-stream")
 
 
 @cc_extra_router.post("/api/legal/ask")
 def legal_ask(body: _AskBody, _: None = Depends(_req_op)):
     """Grounded legal answer for the Ask tab; optional deep (IRAC) reasoning.
 
+    ``deep=true&fast=true`` runs the fast 3-pass variant (retrieval-only
+    opponent, leaner budgets); ``stream=true`` streams the judge pass as SSE.
     Strict grounding: an unsupported or non-Ghana question is refused without a
     model call. Operator-gated because it invokes local generation and may
     record an Ask-to-Acquire gap.
@@ -1239,7 +1315,9 @@ def legal_ask(body: _AskBody, _: None = Depends(_req_op)):
     if not query:
         return {"success": False, "error": "query is required"}
     if body.deep:
-        return _legal_ask_deep(query)
+        if body.stream:
+            return _legal_ask_deep_stream(query, fast=body.fast)
+        return _legal_ask_deep(query, fast=body.fast)
     return _legal_ask_quick(query, body.task_type or "juris_research",
                             body.context or "")
 

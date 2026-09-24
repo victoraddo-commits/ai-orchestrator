@@ -2461,50 +2461,105 @@ function _lbStale(tab){const c=$('lbp-content');return !c||c.dataset.lb!==tab;}
 function lbAskView(){
   const c=$('lbp-content'); if(!c)return;
   c.innerHTML='<div class="card"><h3>Ask <span class="badge info">grounded</span></h3>'
-    +'<p class="field-hint">Retrieval decides whether the model may answer: an unsupported or non-Ghana question is refused, never guessed. Deep runs the Advocate ∥ Opponent → Judge IRAC pass.</p>'
+    +'<p class="field-hint">Retrieval decides whether the model may answer: an unsupported or non-Ghana question is refused, never guessed. Deep runs the Advocate ∥ Opponent → Judge IRAC pass; Deep Fast answers the opponent from retrieval and streams the judge for a ~20s, low-TTFT answer.</p>'
     +'<div class="action-row" style="flex-wrap:wrap;gap:6px;align-items:center">'
     +'<input id="lbp-q" class="search-input" style="flex:1;min-width:220px" placeholder="e.g. What are the requirements for a valid contract in Ghana?" onkeyup="if(event.key===\'Enter\')lbAskRun()">'
     +'<label style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap"><input type="checkbox" id="lbp-deep"> Deep (IRAC)</label>'
+    +'<label style="display:flex;align-items:center;gap:4px;font-size:0.65rem;color:var(--fg-muted);font-family:var(--font-mono);white-space:nowrap"><input type="checkbox" id="lbp-fast"> Deep Fast (streamed)</label>'
     +'<button class="btn btn-sm btn-accent" onclick="lbAskRun()">Ask</button></div>'
     +'<div id="lbp-ask-result" style="margin-top:10px"></div></div>';
+}
+function _lbAskRender(d,q,totalSec){
+  const out=$('lbp-ask-result'); if(!out)return;
+  if(!d.success){out.innerHTML='<span class="error-text">'+esc(d.error||'ask failed')+'</span>';return;}
+  const verdict=d.verdict||(d.grounded?'GROUNDED':'UNGROUNDED');
+  const cls=d.grounded?'ok':(verdict==='PARTIAL'?'warn':'bad');
+  const lat=d.latency||{};
+  const latBits=[];
+  if(d.ttft_ms!=null)latBits.push('TTFT '+d.ttft_ms+' ms');
+  else if(totalSec!=null)latBits.push('TTFT ~'+totalSec.toFixed(1)+' s');
+  if(lat.total!=null)latBits.push('total '+lat.total+' s');
+  if(lat.retrieve!=null)latBits.push('retrieve '+lat.retrieve+'s');
+  if(lat.parallel!=null)latBits.push('adv∥opp '+lat.parallel+'s');
+  if(lat.judge!=null)latBits.push('judge '+lat.judge+'s');
+  let h='<div class="card" style="background:var(--bg-elevated)">'
+    +'<div class="spread" style="margin-bottom:8px"><span><span class="badge '+cls+'">'+esc(verdict)+'</span> '
+    +'<span style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">'+esc(d.mode||'quick')
+    +(d.model?' · '+esc(d.model):'')+(latBits.length?' · '+esc(latBits.join(' · ')):'')+'</span></span>'
+    +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbAskExport()">Export report</button></span></div>'
+    +'<div style="white-space:pre-wrap;word-break:break-word;font-size:0.74rem;line-height:1.55;color:var(--fg)">'+esc(d.text||'')+'</div>';
+  if(d.uncertainty){
+    const u=d.uncertainty;
+    h+='<div class="metric-row" style="margin-top:10px">'
+      +_lbMetric('Established',u.established,'ok')+_lbMetric('Disputed',u.disputed,'warn')
+      +_lbMetric('Unresolved',u.unresolved,'bad')+_lbMetric('Confidence',u.confidence,'info')+'</div>';
+  }
+  h+='<div id="lbp-ask-export" style="margin-top:8px"></div>';
+  if(d.sources&&d.sources.length){
+    h+='<h4 style="font-size:0.68rem;margin-top:10px">📚 Sources</h4><div class="table-wrap"><table><thead><tr><th>Title</th><th>Citation</th><th>Year</th><th>Mode</th><th>Authority</th></tr></thead><tbody>';
+    for(const s of d.sources){
+      h+='<tr><td>'+esc(s.title||'—')+'</td><td>'+esc(s.citation||'—')+'</td><td>'+esc(s.year||'—')+'</td><td>'+esc(s.store_mode||'—')+'</td><td>'+esc(s.authority_level||'—')+'</td></tr>';
+    }
+    h+='</tbody></table></div>';
+  }
+  if(d.degraded)h+='<p class="field-hint">⚠️ Some reasoning passes degraded; the answer is bounded to the retrieved sources.</p>';
+  h+='</div>';
+  out.innerHTML=h;
+  out.dataset.query=q;
 }
 async function lbAskRun(){
   const q=(($('lbp-q')||{}).value||'').trim();
   if(!q){toast('Enter a question first','err');return;}
-  const deep=!!(($('lbp-deep')||{}).checked);
+  const fast=!!(($('lbp-fast')||{}).checked);
+  const deep=!!(($('lbp-deep')||{}).checked)||fast;
   const out=$('lbp-ask-result');
-  if(out)out.innerHTML='<span class="loading">'+(deep?'running deep reasoning (IRAC)…':'retrieving grounded sources…')+'</span>';
   try{
+    if(fast){ await lbAskStream(q,true); return; }
+    if(out)out.innerHTML='<span class="loading">'+(deep?'running deep reasoning (IRAC)…':'retrieving grounded sources…')+'</span>';
+    const t0=Date.now();
     const d=await apiT('/api/legal/ask',180000,{method:'POST',body:JSON.stringify({query:q,deep:deep})});
     if(_lbStale('ask'))return;
-    if(!d.success){out.innerHTML='<span class="error-text">'+esc(d.error||'ask failed')+'</span>';return;}
-    const verdict=d.verdict||(d.grounded?'GROUNDED':'UNGROUNDED');
-    const cls=d.grounded?'ok':(verdict==='PARTIAL'?'warn':'bad');
-    let h='<div class="card" style="background:var(--bg-elevated)">'
-      +'<div class="spread" style="margin-bottom:8px"><span><span class="badge '+cls+'">'+esc(verdict)+'</span> '
-      +'<span style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">'+esc(d.mode||'quick')
-      +(d.model?' · '+esc(d.model):'')+(d.latency_ms?' · '+d.latency_ms+' ms':'')+'</span></span>'
-      +'<span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="lbAskExport()">Export report</button></span></div>'
-      +'<div style="white-space:pre-wrap;word-break:break-word;font-size:0.74rem;line-height:1.55;color:var(--fg)">'+esc(d.text||'')+'</div>';
-    if(d.uncertainty){
-      const u=d.uncertainty;
-      h+='<div class="metric-row" style="margin-top:10px">'
-        +_lbMetric('Established',u.established,'ok')+_lbMetric('Disputed',u.disputed,'warn')
-        +_lbMetric('Unresolved',u.unresolved,'bad')+_lbMetric('Confidence',u.confidence,'info')+'</div>';
-    }
-    h+='<div id="lbp-ask-export" style="margin-top:8px"></div>';
-    if(d.sources&&d.sources.length){
-      h+='<h4 style="font-size:0.68rem;margin-top:10px">📚 Sources</h4><div class="table-wrap"><table><thead><tr><th>Title</th><th>Citation</th><th>Year</th><th>Mode</th><th>Authority</th></tr></thead><tbody>';
-      for(const s of d.sources){
-        h+='<tr><td>'+esc(s.title||'—')+'</td><td>'+esc(s.citation||'—')+'</td><td>'+esc(s.year||'—')+'</td><td>'+esc(s.store_mode||'—')+'</td><td>'+esc(s.authority_level||'—')+'</td></tr>';
-      }
-      h+='</tbody></table></div>';
-    }
-    if(d.degraded)h+='<p class="field-hint">⚠️ Some reasoning passes degraded; the answer is bounded to the retrieved sources.</p>';
-    h+='</div>';
-    out.innerHTML=h;
-    out.dataset.query=q;
+    _lbAskRender(d,q,(Date.now()-t0)/1000);
   }catch(e){ if(out)out.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+// Deep Fast: consume the SSE stream so judge text appears as soon as it is
+// generated (low TTFT), then swap in the full firewalled answer.
+async function lbAskStream(q){
+  const out=$('lbp-ask-result'); if(!out)return;
+  out.innerHTML='<span class="loading">starting Deep Fast (streamed judge)…</span>';
+  const h={'Content-Type':'application/json'}; if(S.token)h['X-Kai-Session']=S.token;
+  const res=await fetch('/api/legal/ask',{method:'POST',headers:h,
+    body:JSON.stringify({query:q,deep:true,fast:true,stream:true})});
+  if(res.status===401){clearToken();showLogin();throw new Error('Session expired');}
+  if(!res.ok||!res.body)throw new Error('HTTP '+res.status);
+  const reader=res.body.getReader(),dec=new TextDecoder();
+  const t0=Date.now();
+  let buf='',delta='',final=null;
+  const flush=()=>{
+    if(_lbStale('ask'))return;
+    if(!$('lbp-stream')){
+      out.innerHTML='<div class="card" style="background:var(--bg-elevated)"><div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono)">streaming judge… '+((Date.now()-t0)/1000).toFixed(1)+'s</div><div id="lbp-stream" style="white-space:pre-wrap;word-break:break-word;font-size:0.74rem;line-height:1.55;margin-top:6px;color:var(--fg)"></div></div>';
+    }
+    $('lbp-stream').textContent=delta;
+  };
+  for(;;){
+    const {done,value}=await reader.read(); if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    let idx;
+    while((idx=buf.indexOf('\n\n'))>=0){
+      const block=buf.slice(0,idx); buf=buf.slice(idx+2);
+      const em=/^event:\s*(.*)$/m.exec(block),dm=/^data:\s*(.*)$/m.exec(block);
+      const name=em?em[1].trim():'message';
+      let payload={}; if(dm){try{payload=JSON.parse(dm[1]);}catch{}}
+      if(name==='delta'){delta+=(payload.text||''); flush();}
+      else if(name==='final'){final=payload;}
+      else if(name==='error'){throw new Error(payload.error||'deep fast failed');}
+    }
+  }
+  const secs=(Date.now()-t0)/1000;
+  if(final){ final.ttft_ms=final.ttft_ms!=null?final.ttft_ms:null;
+    _lbAskRender(final,q,final.ttft_ms==null?secs:null); }
+  else if(delta){ out.innerHTML='<div class="card" style="background:var(--bg-elevated)"><div style="white-space:pre-wrap;font-size:0.74rem;line-height:1.55">'+esc(delta)+'</div></div>'; }
 }
 function lbAskExport(){
   const box=$('lbp-ask-result');
@@ -2610,10 +2665,21 @@ function lbGapAcquire(id){
       lbGapsView();
       try{
         const d=await apiT('/api/legal/gaps/'+encodeURIComponent(id)+'/acquire',180000,{method:'POST',body:JSON.stringify({})});
-        const ok=!!d.ok;
-        LB_GAP_MSG='<div class="card" style="background:var(--bg-surface)"><h4 style="font-size:0.7rem">Gap '+esc(id)+' — <span class="badge '+(ok?'ok':'bad')+'">'+esc(ok?'filled / progressed':'not found / no new source')+'</span></h4>'
-          +'<div style="font-size:0.6rem;color:var(--fg-muted);font-family:var(--font-mono);word-break:break-word">'+esc(JSON.stringify(d))+'</div></div>';
-        toast(ok?'Gap '+id+' progressed':'Gap '+id+' not filled');
+        const st=String(d.status||'').toLowerCase();
+        const ok=(st==='filled');
+        const bc=ok?'ok':(st==='not_found'?'bad':(st==='needs_review'?'warn':'info'));
+        const tried=(d.sources_tried||[]).join(', ')||'(none)';
+        const ids=(d.doc_ids||[]).join(', ')||'—';
+        const ev=d.evidence?JSON.stringify(d.evidence):'';
+        LB_GAP_MSG='<div class="card" style="background:var(--bg-surface)"><h4 style="font-size:0.7rem">Gap '+esc(id)+' — <span class="badge '+bc+'">'+esc(d.status||d.error||'no result')+'</span></h4>'
+          +'<div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);word-break:break-word;margin-top:4px">'
+          +'sources_tried: '+esc(tried)+'<br>doc_ids: '+esc(ids)
+          +(d.candidates!=null?'<br>candidates: '+esc(d.candidates):'')
+          +(d.reason?'<br>reason: '+esc(d.reason):'')
+          +(d.error?'<br>error: '+esc(d.error):'')
+          +(ev?'<br>evidence: '+esc(ev):'')+'</div>'
+          +'<details style="margin-top:6px"><summary style="font-size:0.6rem;color:var(--fg-muted);cursor:pointer">raw JSON</summary><div style="font-size:0.6rem;color:var(--fg-muted);font-family:var(--font-mono);word-break:break-word;white-space:pre-wrap">'+esc(JSON.stringify(d,null,1))+'</div></details></div>';
+        toast(ok?'Gap '+id+' filled':(st==='needs_review'?'Gap '+id+' needs review':'Gap '+id+' not filled'));
       }catch(e){LB_GAP_MSG='<span class="error-text">'+esc(e.message)+'</span>';}
       lbGapsView();
     });

@@ -50,8 +50,9 @@ def learn_menu() -> str:
         ["🏛️ Civil Law", "📋 Contract Law"],
         ["🏠 Property Law", "👨‍👩‍👧 Family Law"],
         ["💼 Business Law", "🔍 Search Topic"],
-        ["🔬 Deep Research", "📜 Statute Search"],
-        ["⚖️ Case-law", "🔙 Back to Menu"],
+        ["🔬 Deep Research", "⚡ Deep Fast"],
+        ["📜 Statute Search", "⚖️ Case-law"],
+        ["🔙 Back to Menu"],
     ])
 
 
@@ -271,6 +272,7 @@ def menu_for_text(text: str, is_admin: bool = False) -> str | None:
         "💼 Business Law": None,
         "🔍 Search Topic": None,
         "🔬 Deep Research": None,  # handled by bot logic (3-pass mode)
+        "⚡ Deep Fast": None,  # handled by bot logic (fast 3-pass mode)
         "📋 Case Summaries": None,
         "⚡ Legal Principles": None,
         "📜 Precedents": None,

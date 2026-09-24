@@ -93,6 +93,24 @@ def test_acquire_delegates(client, monkeypatch):
     assert body["ok"] is True and body["id"] == 7
 
 
+def test_acquire_surfaces_filled_result(client, monkeypatch):
+    """The Gaps tab must receive status/doc_ids/sources_tried/evidence."""
+    monkeypatch.setattr(
+        "core.legal_brain_client.acquire_gap",
+        lambda gap_id, per_source=5, delay=0.5: {
+            "ok": True, "gap_id": gap_id, "status": "filled",
+            "doc_ids": [77], "sources_tried": ["parliament-dspace"],
+            "evidence": [{"source": "parliament-dspace", "found": 1,
+                          "enactments": 1, "skipped_non_enactment": 0,
+                          "ingested": [77]}]})
+    body = client.post("/api/legal/gaps/9/acquire", headers=IDENT,
+                       json={}).json()
+    assert body["status"] == "filled"
+    assert body["doc_ids"] == [77]
+    assert body["sources_tried"] == ["parliament-dspace"]
+    assert body["evidence"][0]["ingested"] == [77]
+
+
 def test_everyday_topics_delegates(client, monkeypatch):
     monkeypatch.setattr("core.legal_brain_client.everyday_topics",
                         lambda: [{"key": "tenancy-rent"}])
@@ -194,10 +212,59 @@ def test_ask_deep_uses_run_deep(client, monkeypatch):
         "authorities": [], "degraded": False, "latency": {"total": 21.0},
     }
     monkeypatch.setattr("core.juris_kai.reasoning.run_deep",
-                        lambda q, docs=None, context="": result)
+                        lambda q, docs=None, context="", **k: result)
     body = client.post("/api/legal/ask", headers=IDENT,
                        json={"query": "land", "deep": True}).json()
     assert body["mode"] == "deep" and body["grounded"] is True
+    assert body["fast"] is False
     assert body["uncertainty"] == {"established": 1, "disputed": 0,
                                    "unresolved": 1, "confidence": 0.7}
     assert body["sources"][0]["title"] == "Land Act 2020"
+
+
+def test_ask_deep_fast_passes_fast_flag(client, monkeypatch):
+    captured = {}
+    result = {"query": "land", "verdict": "GROUNDED",
+              "docs": [{"id": 2, "title": "Land Act 2020", "citation": "Act 1036",
+                        "year": 2020, "store_mode": "full"}],
+              "judge": {"established": [], "disputed": [], "unresolved": [],
+                        "confidence": 0.5},
+              "authorities": [], "degraded": False,
+              "latency": {"total": 19.0, "judge_ttft": 0.4}}
+
+    def fake(q, docs=None, context="", fast=False, **k):
+        captured["fast"] = fast
+        return result
+
+    monkeypatch.setattr("core.juris_kai.reasoning.run_deep", fake)
+    body = client.post("/api/legal/ask", headers=IDENT,
+                       json={"query": "land", "deep": True, "fast": True}).json()
+    assert captured["fast"] is True
+    assert body["mode"] == "deep_fast" and body["fast"] is True
+    assert body["ttft_ms"] is not None
+
+
+def test_ask_deep_stream_emits_sse_events(client, monkeypatch):
+    def fake(q, docs=None, context="", fast=False, stream_judge=False,
+             on_judge_chunk=None, **k):
+        if on_judge_chunk:
+            on_judge_chunk("ISSUE: land\n")
+            on_judge_chunk("RULE: Act 1036\n")
+        return {"query": q, "verdict": "GROUNDED",
+                "docs": [{"id": 2, "title": "Land Act 2020", "year": 2020}],
+                "judge": {"established": [], "disputed": [], "unresolved": [],
+                          "confidence": 0.5, "irac": {}},
+                "authorities": [], "degraded": False,
+                "latency": {"total": 5.0, "judge_ttft": 0.2}}
+
+    monkeypatch.setattr("core.juris_kai.reasoning.run_deep", fake)
+    with client.stream("POST", "/api/legal/ask", headers=IDENT,
+                       json={"query": "land", "deep": True, "fast": True,
+                             "stream": True}) as r:
+        assert r.status_code == 200
+        assert "text/event-stream" in r.headers["content-type"]
+        body = "".join(r.iter_text())
+    assert "event: status" in body
+    assert "event: delta" in body and "ISSUE: land" in body
+    assert "event: final" in body
+    assert "deep_fast" in body

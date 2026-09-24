@@ -34,6 +34,19 @@ PASS_TASK_TYPE = {
     JUDGE: "juris_judge",
 }
 
+# Deep "fast" mode uses the lower-budget variants of the same passes.
+PASS_TASK_TYPE_FAST = {
+    ADVOCATE: "juris_advocate_fast",
+    OPPONENT: "juris_opponent_fast",
+    JUDGE: "juris_judge_fast",
+}
+
+
+def pass_task_type(pass_name: str, fast: bool = False) -> str:
+    """Return the generation task type (and thus token budget) for a pass."""
+    table = PASS_TASK_TYPE_FAST if fast else PASS_TASK_TYPE
+    return table[pass_name]
+
 
 def _sources_block(docs: list) -> str:
     """Fenced, neutralized list of retrieved sources (never citable otherwise)."""

@@ -17,6 +17,7 @@ is the legal brain (CT100). Both are injectable seams for tests.
 from __future__ import annotations
 
 import concurrent.futures
+import functools
 import logging
 import re
 import time
@@ -32,6 +33,7 @@ from core.juris_kai.prompts_reasoning import (
     build_advocate_prompt,
     build_judge_prompt,
     build_opponent_prompt,
+    pass_task_type,
 )
 from core.juris_kai.uncertainty import _identity, _norm
 
@@ -71,6 +73,38 @@ def _generate(prompt: str, task_type: str) -> str:
     """Local-only generation seam (VM104 ``qwen3-coder:kai``)."""
     from core.juris_kai import streaming
     return streaming.generate(prompt, task_type=task_type)
+
+
+def _stream_generate(prompt: str, task_type: str):
+    """Local-only streaming seam; yields incremental text chunks."""
+    from core.juris_kai import streaming
+    return streaming.stream_chat(prompt, task_type=task_type)
+
+
+def _noop_generate(prompt: str, task_type: str) -> str:
+    """Model-free generation seam: the retrieval-only (compact) opponent.
+
+    Fast mode scans the retrieved sources for contrary authority in-process and
+    never spends a GPU pass on the opponent narrative, so the one GPU is used
+    only by the advocate and the judge — the root cause of the old contention.
+    """
+    return ""
+
+
+def _budget_generate(pass_name: str, fast: bool):
+    """Return a ``generate`` wrapper pinning a pass to its (fast) budget.
+
+    ``None`` for the thorough mode, so ``run_deep`` keeps calling the passes
+    with exactly the arguments it always did.
+    """
+    if not fast:
+        return None
+    task_type = pass_task_type(pass_name, fast=True)
+
+    def _gen(prompt: str, _task_type: str) -> str:
+        return _generate(prompt, task_type)
+
+    return _gen
 
 
 def _verify(text: str) -> dict:
@@ -350,8 +384,38 @@ def _build_judgement(query, adv, opp, narrative: str = "") -> dict:
     }
 
 
-def judge(query: str, advocate: dict, opponent: dict, generate=None) -> dict:
-    """Judge pass: decide established / disputed / unresolved, in IRAC."""
+def _collect_judge_stream(stream, on_chunk=None, on_ttft=None) -> tuple[str, float | None]:
+    """Iterate a judge stream to completion; report first-token latency.
+
+    Returns ``(text, ttft_seconds)``. ``on_chunk`` receives each piece as it
+    arrives (the Command Center SSE bridge relays them), ``on_ttft`` receives
+    the seconds-to-first-token once. The stream is fully collected before the
+    citation firewall runs, so a streamed judge is never less verified than the
+    blocking one; the streaming only changes *when* the user sees text.
+    """
+    t0 = time.perf_counter()
+    ttft = None
+    parts: list[str] = []
+    for piece in stream:
+        if ttft is None:
+            ttft = round(time.perf_counter() - t0, 3)
+            if on_ttft:
+                on_ttft(ttft)
+        parts.append(piece)
+        if on_chunk:
+            on_chunk(piece)
+    return "".join(parts), ttft
+
+
+def judge(query: str, advocate: dict, opponent: dict, generate=None,
+          stream=None, on_chunk=None, on_ttft=None) -> dict:
+    """Judge pass: decide established / disputed / unresolved, in IRAC.
+
+    ``stream`` (a chunk iterator or a callable returning one) streams the final
+    pass for low time-to-first-token; the collected text is still firewalled
+    exactly as in the blocking path. A streaming failure falls back to the
+    blocking ``generate`` seam, so the judge is never blank.
+    """
     gen = generate or _generate
     adv = advocate or {}
     opp = opponent or {}
@@ -359,7 +423,18 @@ def judge(query: str, advocate: dict, opponent: dict, generate=None) -> dict:
 
     prompt = build_judge_prompt(query, adv.get("argument", ""),
                                 opp.get("argument", ""), docs)
-    raw = gen(prompt, PASS_TASK_TYPE[JUDGE])
+    ttft = None
+    raw = ""
+    if stream is not None:
+        try:
+            chunks = stream(prompt) if callable(stream) else stream
+            raw, ttft = _collect_judge_stream(chunks, on_chunk=on_chunk,
+                                              on_ttft=on_ttft)
+        except Exception as exc:  # noqa: BLE001 - stream failure degrades
+            logger.warning("judge stream failed -> blocking judge: %s", exc)
+            raw = ""
+    if not raw:
+        raw = gen(prompt, PASS_TASK_TYPE[JUDGE])
     fw = _firewall(raw)
     narrative = (fw.get("text") or raw or "").strip()
 
@@ -368,6 +443,7 @@ def judge(query: str, advocate: dict, opponent: dict, generate=None) -> dict:
     out["citations"] = (fw.get("report") or {}).get("citations", [])
     out["firewall_error"] = fw.get("error")
     out["error"] = None
+    out["ttft"] = ttft
     return out
 
 
@@ -549,19 +625,31 @@ def _apply_pass_outcomes(q, docs, adv, adv_err, opp, opp_err):
     return adv, opp, degraded
 
 
-def _run_passes_parallel(q, docs):
+def _with_generate(fn, generate):
+    """Bind a ``generate`` seam to a pass function, or return it unchanged.
+
+    ``None`` (thorough mode) preserves the exact legacy call signature, which
+    is what keeps the existing pass-level tests and injection seams valid.
+    """
+    return fn if generate is None else functools.partial(fn, generate=generate)
+
+
+def _run_passes_parallel(q, docs, adv_generate=None, opp_generate=None):
     """Run advocate ∥ opponent concurrently, then settle each outcome.
 
     ``oppose`` is called with no advocate argument: both passes depend only on
-    retrieval, which is what makes them independent. Returns
-    ``(adv, opp, degraded, timings)``; a pool failure propagates so the caller
-    can fall back to the sequential path.
+    retrieval, which is what makes them independent. In fast mode
+    ``opp_generate`` is the model-free seam, so the pool's two jobs no longer
+    contend for the single GPU. Returns ``(adv, opp, degraded, timings)``; a
+    pool failure propagates so the caller can fall back to the sequential path.
     """
     t0 = time.perf_counter()
+    adv_fn = _with_generate(advocate, adv_generate)
+    opp_fn = _with_generate(oppose, opp_generate)
     with _ThreadPoolExecutor(max_workers=_PASS_POOL_SIZE,
                              thread_name_prefix="juris-pass") as pool:
-        fut_adv = pool.submit(_timed_call, advocate, q, docs)
-        fut_opp = pool.submit(_timed_call, oppose, q, docs, "")
+        fut_adv = pool.submit(_timed_call, adv_fn, q, docs)
+        fut_opp = pool.submit(_timed_call, opp_fn, q, docs, "")
         adv, adv_dur, adv_err = fut_adv.result()
         opp, opp_dur, opp_err = fut_opp.result()
     wall = round(time.perf_counter() - t0, 3)
@@ -571,22 +659,56 @@ def _run_passes_parallel(q, docs):
                                 "parallel": wall}
 
 
-def _run_passes_sequential(q, docs):
+def _run_passes_sequential(q, docs, adv_generate=None, opp_generate=None):
     """Sequential fallback used when the thread pool cannot be used."""
-    adv, adv_dur, adv_err = _timed_call(advocate, q, docs)
-    opp, opp_dur, opp_err = _timed_call(oppose, q, docs, "")
+    adv_fn = _with_generate(advocate, adv_generate)
+    opp_fn = _with_generate(oppose, opp_generate)
+    adv, adv_dur, adv_err = _timed_call(adv_fn, q, docs)
+    opp, opp_dur, opp_err = _timed_call(opp_fn, q, docs, "")
     adv, opp, degraded = _apply_pass_outcomes(q, docs, adv, adv_err,
                                               opp, opp_err)
     return adv, opp, degraded, {"advocate": adv_dur, "opponent": opp_dur}
 
 
-def run_deep(query: str, docs: list | None = None, context: str = "") -> dict:
+def _judge_call_kwargs(fast, stream_judge, on_judge_chunk, on_judge_ttft):
+    """Build the judge kwargs for the selected mode.
+
+    Thorough + blocking returns ``{}`` so ``judge`` is called exactly as before
+    (preserving the existing seams/tests). Fast mode pins the judge to its lower
+    budget; ``stream_judge`` wires the streaming seam and its callbacks.
+    """
+    kwargs: dict = {}
+    gen = _budget_generate(JUDGE, fast)
+    if gen is not None:
+        kwargs["generate"] = gen
+    if stream_judge:
+        task_type = pass_task_type(JUDGE, fast)
+
+        def _stream(prompt):
+            return _stream_generate(prompt, task_type)
+
+        kwargs["stream"] = _stream
+        kwargs["on_chunk"] = on_judge_chunk
+        kwargs["on_ttft"] = on_judge_ttft
+    return kwargs
+
+
+def run_deep(query: str, docs: list | None = None, context: str = "",
+             fast: bool = False, stream_judge: bool = False,
+             on_judge_chunk=None, on_judge_ttft=None) -> dict:
     """Orchestrate retrieve → (advocate ∥ opponent) → judge.
 
     A missing/ungrounded result returns an honest unresolved judgement without
     calling the model. A failed pass degrades to a single grounded pass or a
     deterministic judgement — the result is never blank. If the thread pool is
     unavailable the passes run sequentially instead.
+
+    ``fast`` is the Deep "fast" mode: the advocate runs on its reduced budget,
+    the opponent is retrieval-only (no GPU pass — the single-GPU contention was
+    the root cause of the 31–34s thorough latency), and the judge runs leaner.
+    ``stream_judge`` streams the final pass for low time-to-first-token; the
+    collected text is still citation-firewalled, so streaming never weakens the
+    no-ungrounded guarantee.
     """
     q = (query or "").strip()
     timings: dict = {}
@@ -608,22 +730,34 @@ def run_deep(query: str, docs: list | None = None, context: str = "") -> dict:
         return _result(q, [], verdict or "UNGROUNDED", None, None,
                        _empty_judge(q), False, timings)
 
+    if fast:
+        adv_gen = _budget_generate(ADVOCATE, fast=True)
+        opp_gen = _noop_generate
+    else:
+        adv_gen = opp_gen = None
+
     try:
-        adv, opp, degraded, pass_timings = _run_passes_parallel(q, docs)
+        adv, opp, degraded, pass_timings = _run_passes_parallel(
+            q, docs, adv_gen, opp_gen)
     except Exception as exc:  # noqa: BLE001 - pool unavailable -> sequential
         logger.warning("parallel passes unavailable, running sequentially: %s",
                        exc)
-        adv, opp, degraded, pass_timings = _run_passes_sequential(q, docs)
+        adv, opp, degraded, pass_timings = _run_passes_sequential(
+            q, docs, adv_gen, opp_gen)
     timings.update(pass_timings)
+    timings["mode"] = "fast" if fast else "thorough"
 
     t0 = time.perf_counter()
     try:
-        judgement = judge(q, adv, opp)
+        judgement = judge(q, adv, opp, **_judge_call_kwargs(
+            fast, stream_judge, on_judge_chunk, on_judge_ttft))
     except Exception as exc:  # noqa: BLE001 - deterministic judgement
         logger.warning("judge pass failed -> deterministic judgement: %s", exc)
         degraded = True
         judgement = _deterministic_judge(q, adv, opp)
     timings["judge"] = round(time.perf_counter() - t0, 3)
+    if judgement.get("ttft") is not None:
+        timings["judge_ttft"] = judgement["ttft"]
 
     if "parallel" in timings:
         phase = timings.get("retrieve", 0.0) + timings["parallel"] + timings["judge"]
@@ -632,4 +766,6 @@ def run_deep(query: str, docs: list | None = None, context: str = "") -> dict:
                  + timings.get("opponent", 0.0) + timings.get("judge", 0.0))
     timings["total"] = round(phase, 3)
 
-    return _result(q, docs, verdict, adv, opp, judgement, degraded, timings)
+    result = _result(q, docs, verdict, adv, opp, judgement, degraded, timings)
+    result["fast"] = bool(fast)
+    return result

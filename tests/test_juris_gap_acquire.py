@@ -170,3 +170,89 @@ def test_run_pass_acquires_pending_then_notifies(monkeypatch):
     assert calls["notify"] == [1]
     assert report["counts"] == {"filled": 1}
     assert report["notified"]
+
+
+# ---------------------------------------------------------------------------
+# filled path, end-to-end at the acquire boundary (controlled fixture)
+# ---------------------------------------------------------------------------
+# Nothing on the live parliament-dspace lane was genuinely fillable at
+# validation time (gap #3 returned needs_review: "only pre-existing documents
+# matched"), so the `filled` path is proven here with a controlled fixture:
+# a fake brain whose acquire genuinely "ingests" a lawfully-found enactment,
+# then marks the gap filled and exposes the document for the notification.
+
+class FilledBrain:
+    """Fake brain that simulates ingest + mark_filled for one temp gap."""
+
+    def __init__(self):
+        self.corpus = {}
+        self._next_doc = 100
+        self.gaps = {
+            9: {"id": 9, "question": "Electronic Communications Act, 2008",
+                "asked_by": "42", "notified_at": None, "status": "pending",
+                "filled_doc_ids": [], "sources_tried": []},
+        }
+        self.notified = []
+
+    def list_gaps(self, status=None, limit=50):
+        return [g for g in self.gaps.values()
+                if status is None or g["status"] == status][:limit]
+
+    def acquire_gap(self, gap_id, per_source=5, delay=0.5):
+        gap = self.gaps[int(gap_id)]
+        doc_id = self._next_doc
+        self._next_doc += 1
+        # Simulated ingest of the enactment the fixture source returned.
+        self.corpus[doc_id] = {
+            "title": "Electronic Communications Act, 2008 (Act 775)"}
+        gap.update(status="filled", filled_doc_ids=[doc_id],
+                   sources_tried=["parliament-dspace"])
+        return {"ok": True, "gap_id": int(gap_id), "status": "filled",
+                "doc_ids": [doc_id], "sources_tried": ["parliament-dspace"],
+                "evidence": [{"source": "parliament-dspace", "found": 1,
+                              "enactments": 1, "skipped_non_enactment": 0,
+                              "ingested": [doc_id]}]}
+
+    def get_document(self, doc_id):
+        return self.corpus.get(int(doc_id), {})
+
+    def mark_gap_notified(self, gap_id):
+        self.notified.append(int(gap_id))
+        self.gaps[int(gap_id)]["notified_at"] = "2026-09-24T17:00:00Z"
+        return {"ok": True}
+
+
+def test_filled_path_ingests_marks_filled_and_notifies(monkeypatch):
+    brain = FilledBrain()
+    monkeypatch.setattr(ga, "lb", brain)
+    sent = []
+
+    report = ga.run_pass(limit=3, per_source=2, delay=0.5,
+                         send=_send_recorder(sent))
+
+    # Ingest happened (doc now available) and the gap was marked filled.
+    assert brain.corpus and brain.gaps[9]["status"] == "filled"
+    assert brain.gaps[9]["filled_doc_ids"]
+    # The pass reported the filled outcome with its evidence.
+    assert report["counts"] == {"filled": 1}
+    assert report["acquired"][0]["status"] == "filled"
+    assert report["acquired"][0]["sources_tried"] == ["parliament-dspace"]
+    # The notification fired (one-shot guard set) and names the instrument.
+    assert brain.notified == [9]
+    assert report["notified"][0]["notified"] is True
+    assert any(chat == "42" for chat, _ in sent)
+    assert "Act 775" in " ".join(t for _, t in sent)
+
+
+def test_filled_path_does_not_notify_twice(monkeypatch):
+    brain = FilledBrain()
+    brain.gaps[9]["notified_at"] = "2026-09-24T17:00:00Z"
+    monkeypatch.setattr(ga, "lb", brain)
+    sent = []
+
+    report = ga.run_pass(limit=3, per_source=2, delay=0.5,
+                         send=_send_recorder(sent))
+
+    assert brain.notified == []
+    assert sent == []
+    assert report["notified"] == []

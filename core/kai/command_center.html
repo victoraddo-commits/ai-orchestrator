@@ -4889,6 +4889,25 @@ async function loadCompletedDirectives(){
   html+='</div>';
   el.innerHTML=_dirTabbar('completed')+html;
 }
+async function docView(path){
+  try{
+    const h={}; if(S.token)h['X-Kai-Session']=S.token;
+    const url='/api/directives/docs/download/'+String(path).split('/').map(encodeURIComponent).join('/');
+    const res=await fetch(url,{headers:h});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    let ov=document.getElementById('doc-view-overlay');
+    if(!ov){ ov=document.createElement('div'); ov.id='doc-view-overlay'; ov.className='modal-overlay';
+      ov.onclick=function(e){ if(e.target===ov) docViewClose(); }; document.body.appendChild(ov); }
+    ov.innerHTML='<div class="modal-box" style="width:min(920px,93vw);max-height:88vh;overflow:auto">'
+      +'<h2>'+esc(String(path).split('/').pop())+'</h2>'
+      +'<pre style="white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:0.72rem;line-height:1.55;color:var(--fg)">'+esc(text)+'</pre>'
+      +'<div class="btn-row"><button class="btn btn-xs" onclick="docViewClose()">Close</button></div>'
+      +'</div>';
+    ov.classList.add('visible');
+  }catch(e){ alert('Could not open file: '+e.message); }
+}
+function docViewClose(){ const ov=document.getElementById('doc-view-overlay'); if(ov) ov.classList.remove('visible'); }
 async function loadDocsFiles(){
   const el=$('directives-content'); if(!el) return; el.innerHTML=_dirTabbar('docs')+'<span class="loading">loading…</span>';
   const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
@@ -4904,7 +4923,7 @@ async function loadDocsFiles(){
       html+='<div class="table-wrap"><table><thead><tr><th>File</th><th>Size</th><th>Modified</th><th>Actions</th></tr></thead><tbody>';
       for(const r of rows){
         html+='<tr><td><code>'+esc(r.path)+'</code></td><td>'+esc(r.size)+' B</td><td>'+esc(r.mtime||'')+'</td>'
-          +'<td class="action-row"><button class="btn btn-xs" onclick="docDownload(\''+esc(r.path)+'\')">Download</button></td></tr>';
+          +'<td class="action-row"><button class="btn btn-xs" onclick="docView(\''+esc(r.path)+'\')">View</button> <button class="btn btn-xs" onclick="docDownload(\''+esc(r.path)+'\')">Download</button></td></tr>';
       }
       html+='</tbody></table></div>';
     }

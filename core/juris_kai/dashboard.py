@@ -105,46 +105,51 @@ def get_account_detail(account_id: str) -> Optional[Dict[str, Any]]:
 
 
 def get_payment_history(account_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
-    """Get payment history, optionally filtered by account."""
-    import sqlite3
-    from core.juris_kai.accounts import DB_PATH
+    """Get payment history, optionally filtered by account.
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    Reads through :func:`core.juris_kai.accounts.connect` so the directory and
+    schema are created/initialized on demand and this reader always agrees with
+    the account manager about which database exists.
+    """
+    from core.juris_kai.accounts import connect
 
-    if account_id:
-        rows = conn.execute(
-            "SELECT * FROM juris_payments WHERE account_id = ? ORDER BY created_at DESC LIMIT ?",
-            (account_id, limit),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM juris_payments ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-
-    conn.close()
+    conn = connect()
+    try:
+        if account_id:
+            rows = conn.execute(
+                "SELECT * FROM juris_payments WHERE account_id = ? ORDER BY created_at DESC LIMIT ?",
+                (account_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM juris_payments ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    finally:
+        conn.close()
     return [dict(r) for r in rows]
 
 
 def get_usage_log(account_id: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-    """Get usage log, optionally filtered by account."""
-    import sqlite3
-    from core.juris_kai.accounts import DB_PATH
+    """Get usage log, optionally filtered by account.
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    Reads through :func:`core.juris_kai.accounts.connect` (see
+    :func:`get_payment_history`).
+    """
+    from core.juris_kai.accounts import connect
 
-    if account_id:
-        rows = conn.execute(
-            "SELECT * FROM juris_usage_log WHERE account_id = ? ORDER BY created_at DESC LIMIT ?",
-            (account_id, limit),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM juris_usage_log ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-
-    conn.close()
+    conn = connect()
+    try:
+        if account_id:
+            rows = conn.execute(
+                "SELECT * FROM juris_usage_log WHERE account_id = ? ORDER BY created_at DESC LIMIT ?",
+                (account_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM juris_usage_log ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+    finally:
+        conn.close()
     return [dict(r) for r in rows]

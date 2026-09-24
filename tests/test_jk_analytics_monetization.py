@@ -727,3 +727,58 @@ class TestAccountManagerAdmin:
         assert stats["total_queries"] >= 0
         assert stats["total_revenue_ghs"] >= 0
         assert "free_trial" in stats["by_tier"]
+
+
+class TestDashboardReadersDoNotLeakDbPath:
+    """Regression: payment-history / usage-log readers are DB-path safe.
+
+    The order-dependent failures were a stale AccountManager singleton bound to
+    an earlier path while ``accounts.DB_PATH`` had moved to an uncreated one:
+    ``get_payment_history``/``get_usage_log`` connected directly and raised
+    ``OperationalError``. Readings must go through the accounts connection
+    helper, which creates + initializes whatever ``DB_PATH`` points at.
+    """
+
+    def test_payment_history_and_usage_log_survive_db_path_move(
+            self, tmp_path, monkeypatch):
+        import core.juris_kai.accounts as accts
+        from core.juris_kai import dashboard
+
+        # A singleton bound to an earlier DB (as a reverted monkeypatch leaves).
+        stale_dir = tmp_path / "stale"
+        stale_dir.mkdir()
+        monkeypatch.setattr(accts, "DB_DIR", str(stale_dir))
+        monkeypatch.setattr(accts, "DB_PATH",
+                            str(stale_dir / "juris_kai_accounts.db"))
+        accts._account_manager = None
+        accts.get_account_manager()
+
+        # DB_PATH now points into a directory that does not exist yet.
+        fresh_dir = tmp_path / "fresh" / "nested"
+        monkeypatch.setattr(accts, "DB_DIR", str(fresh_dir))
+        monkeypatch.setattr(accts, "DB_PATH",
+                            str(fresh_dir / "juris_kai_accounts.db"))
+
+        assert dashboard.get_payment_history() == []
+        assert dashboard.get_usage_log() == []
+        assert (fresh_dir / "juris_kai_accounts.db").exists()
+
+    def test_account_manager_rebuilds_when_db_path_changes(
+            self, tmp_path, monkeypatch):
+        import core.juris_kai.accounts as accts
+
+        first = tmp_path / "one"
+        first.mkdir()
+        monkeypatch.setattr(accts, "DB_DIR", str(first))
+        monkeypatch.setattr(accts, "DB_PATH", str(first / "a.db"))
+        accts._account_manager = None
+        mgr_one = accts.get_account_manager()
+
+        second = tmp_path / "two"
+        second.mkdir()
+        monkeypatch.setattr(accts, "DB_DIR", str(second))
+        monkeypatch.setattr(accts, "DB_PATH", str(second / "b.db"))
+        mgr_two = accts.get_account_manager()
+
+        assert mgr_two is not mgr_one
+        assert mgr_two._db_path == str(second / "b.db")

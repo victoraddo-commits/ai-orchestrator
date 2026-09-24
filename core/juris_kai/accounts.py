@@ -96,6 +96,20 @@ def _get_db() -> sqlite3.Connection:
     return conn
 
 
+def connect() -> sqlite3.Connection:
+    """Open the accounts DB, creating the directory and schema if needed.
+
+    Single source of truth for admin/read paths (dashboard payment history and
+    usage log). Unlike an ad-hoc ``sqlite3.connect(DB_PATH)`` it reads
+    ``DB_PATH`` at call time, creates the parent directory, and applies the
+    schema, so a reader can never disagree with :func:`get_account_manager`
+    about which database exists. That divergence is exactly what made
+    ``test_jk_analytics_monetization`` order-dependent: a stale manager bound
+    to an earlier path left ``DB_PATH`` pointing at an uncreated file.
+    """
+    return _get_db()
+
+
 def _init_schema(conn: sqlite3.Connection):
     """Initialize database schema."""
     conn.executescript("""
@@ -385,6 +399,10 @@ class AccountManager:
 
     def __init__(self):
         self.db = _get_db()
+        # Remember which path this manager was built for so a stale singleton
+        # can be detected and rebuilt when DB_PATH changes (test isolation, or
+        # an operator repointing the DB).
+        self._db_path = DB_PATH
 
     # ---- Account CRUD ----
 
@@ -1939,8 +1957,15 @@ _account_manager: Optional[AccountManager] = None
 
 
 def get_account_manager() -> AccountManager:
-    """Get or create the singleton AccountManager."""
+    """Get or create the singleton AccountManager.
+
+    The singleton is rebuilt when the module-level ``DB_PATH`` no longer
+    matches the path it was built for. Without this a test (or any caller) that
+    repoints ``DB_PATH`` could leave the singleton bound to an earlier database
+    while other readers resolve the new path.
+    """
     global _account_manager
-    if _account_manager is None:
+    if (_account_manager is None
+            or getattr(_account_manager, "_db_path", DB_PATH) != DB_PATH):
         _account_manager = AccountManager()
     return _account_manager

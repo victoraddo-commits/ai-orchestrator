@@ -64,14 +64,67 @@ def test_hybrid_dense_only_without_bm25_is_partial(monkeypatch):
     assert r["verdict"] == "PARTIAL" and r["stage"] == 1
 
 
-def test_hybrid_ocr_noise_lexical_hit_with_low_dense_is_partial(monkeypatch):
-    # A single junk token matched OCR noise (bm25 rank 1) but the semantic
-    # match is weak: this must not become GROUNDED.
+def test_hybrid_ocr_noise_lexical_hit_with_low_dense_is_ungrounded(monkeypatch):
+    # A junk token matched OCR noise (bm25 rank 1) but the semantic match is
+    # weak: with no on-topic source this is dense/lexical noise, not a source.
     _fake_search(monkeypatch, {"hybrid": [
         _hybrid_doc(bm25_rank=1, dense_sim=0.45,
-                    score=0.82, confidence=0.71)]})
+                    score=0.82, confidence=0.71,
+                    chunk_content="appropriation zzz'9 line item. " * 20)]})
     r = grounding.retrieve("xylophone zzz")
-    assert r["verdict"] == "PARTIAL" and r["stage"] == 1
+    assert r["verdict"] == "UNGROUNDED" and r["docs"] == []
+
+
+def test_hybrid_off_topic_dense_noise_is_ungrounded(monkeypatch):
+    # "what % tint is allowed on cars?" -- the corpus has no tint law, but a
+    # Customs Bill shares "cars" (dense ~0.55). The verdict must be UNGROUNDED,
+    # and the permissive OR/LIKE stages must not re-admit the same doc.
+    off = _hybrid_doc(
+        title="Customs (Amendment) Bill,2020", citation="",
+        authority_level="secondary", score=0.62, confidence=0.52,
+        bm25_rank=2, dense_sim=0.554,
+        chunk_content=("motor cars and other motor vehicles principally "
+                       "designed for the transport of persons. " * 10))
+    seen = []
+
+    def fake(query, limit=3, mode="or"):
+        seen.append(mode)
+        return [off] if mode in ("hybrid", "or", "like") else []
+
+    monkeypatch.setattr(grounding, "_search", fake)
+    r = grounding.retrieve("what % tint is allowed on cars?")
+    assert r["verdict"] == "UNGROUNDED" and r["docs"] == []
+    assert "or" not in seen and "like" not in seen
+
+
+def test_hybrid_on_topic_lexical_anchor_grounds(monkeypatch):
+    # A doc sharing a significant query token that is also semantically close.
+    _fake_search(monkeypatch, {"hybrid": [
+        _hybrid_doc(title="Criminal Offences Act, 1960", citation="Act 29",
+                    authority_level="act", score=0.87, confidence=0.80,
+                    bm25_rank=1, dense_sim=0.66,
+                    chunk_content="section 97 rape is defined here. " * 20)]})
+    r = grounding.retrieve("rape")
+    assert r["verdict"] == "GROUNDED" and r["stage"] == 1
+
+
+def test_hybrid_semantic_paraphrase_without_literal_token_grounds(monkeypatch):
+    # "theft" does not occur in the Criminal Offences Act (it defines
+    # "stealing"), so a literal anchor is impossible; strong semantics ground it.
+    _fake_search(monkeypatch, {"hybrid": [
+        _hybrid_doc(title="Criminal Offences Act,1960 Act 29 (Revised)",
+                    citation="Act 29", authority_level="act", score=0.87,
+                    confidence=0.79, bm25_rank=1, dense_sim=0.637,
+                    chunk_content="stealing is defined in section 124. " * 20)]})
+    r = grounding.retrieve("theft")
+    assert r["verdict"] == "GROUNDED" and r["stage"] == 1
+
+
+def test_lexical_anchor_is_whole_word_not_substring():
+    doc = {"title": "Practice Direction", "chunk_content": "practice only"}
+    assert grounding._has_lexical_anchor(doc, ["act"]) is False
+    assert grounding._has_lexical_anchor(doc, ["practice"]) is True
+    assert grounding._has_lexical_anchor(doc, []) is False
 
 
 def test_hybrid_strong_dense_match_grounds_despite_weak_bm25_rank(monkeypatch):
@@ -148,9 +201,26 @@ def test_partial_when_only_or_hits(monkeypatch):
 
 
 def test_grounded_when_and_hits(monkeypatch):
-    _fake_search(monkeypatch, {"and": [{"title": "Some Act", "chunk_content": "y"*500}]})
+    _fake_search(monkeypatch, {"and": [
+        {"title": "Some Act", "chunk_content": "bail pending appeal. " * 20}]})
     r = grounding.retrieve("bail pending appeal")
     assert r["verdict"] == "GROUNDED" and r["stage"] == 3
+
+
+def test_and_stage_rejects_or_fallback_noise(monkeypatch):
+    # The brain retries a failed AND as OR, so a doc holding only one query
+    # token must not ground as though it were a real AND match.
+    _fake_search(monkeypatch, {"and": [
+        {"title": "Weather Act", "chunk_content": "weather conditions. " * 30}]})
+    r = grounding.retrieve("weather london")
+    assert r["verdict"] == "UNGROUNDED"
+
+
+def test_contains_all_tokens_is_whole_word():
+    doc = {"title": "Act", "chunk_content": "bail pending appeal hearing"}
+    assert grounding._contains_all_tokens(doc, ["bail", "pending", "appeal"])
+    assert grounding._contains_all_tokens(doc, ["bail", "pending", "absent"]) is False
+    assert grounding._contains_all_tokens(doc, []) is False
 
 
 def test_partial_when_only_like_hits(monkeypatch):

@@ -326,6 +326,26 @@ HYBRID_MAX_BM25_RANK = 3
 PRIMARY_AUTHORITY = frozenset(
     {"constitution", "act", "instrument", "judgment"})
 
+# --- On-topic anchor (grounding calibration) --------------------------------
+# Dense retrieval is permissive: an unrelated secondary Bill can sit at ~0.55
+# cosine, and an *incidental* shared word ("cars" in a Customs Bill) lets a
+# window-tint question ("what % tint is allowed on cars?") reach PARTIAL even
+# though no retrieved document is about tinting. The hybrid verdict therefore
+# only counts when at least one usable document is actually on-topic, judged on
+# two explicit bars (calibrated against a live 40-query sweep on 2026-09-24):
+#
+#   * ``HYBRID_ON_TOPIC_DENSE`` — strong semantic similarity. The document
+#     paraphrases the query even with no shared token, e.g. "theft" -> the
+#     Criminal Offences Act's "stealing"; a literal anchor is NOT required.
+#   * ``HYBRID_ANCHOR_DENSE`` — a literal lexical anchor (a significant query
+#     token present in the title/content) with a moderate semantic score.
+#
+# Below ``HYBRID_ANCHOR_DENSE`` a match is dense adjacency noise, not a source.
+# Live off-topic top hits scored <=0.594 (car-engine aside), live on-topic hits
+# >=0.587; the bars sit in that gap.
+HYBRID_ON_TOPIC_DENSE = 0.60
+HYBRID_ANCHOR_DENSE = 0.58
+
 
 def _as_float(value):
     try:
@@ -367,6 +387,64 @@ def _hybrid_verdict(docs: list[dict]):
     return "GROUNDED" if strong else "PARTIAL"
 
 
+def _has_lexical_anchor(doc: dict, tokens: list[str]) -> bool:
+    """True when ``doc`` contains a significant query token as a whole word.
+
+    The anchor may be in the title or the hydrated content. Word-boundary
+    matching keeps a query token from anchoring on a substring ("act" does not
+    anchor on "practice"), so the anchor is real topical overlap rather than an
+    artefact of concatenation.
+    """
+    if not tokens:
+        return False
+    haystack = ((doc.get("title") or "") + "\n"
+                + (doc.get("chunk_content") or "")).lower()
+    for tok in tokens:
+        if re.search(r"\b" + re.escape(tok) + r"\b", haystack):
+            return True
+    return False
+
+
+def _contains_all_tokens(doc: dict, tokens: list[str]) -> bool:
+    """True when ``doc`` contains every significant query token as a word.
+
+    The brain's AND stage silently retries a failed AND as OR
+    (``core.legal.hybrid._safe_bm25``), so a result from that stage can be an
+    OR hit missing most of the query. Verifying the AND contract client-side
+    keeps the stage authoritative without letting the OR fallback ground a doc
+    that shares only one incidental token.
+    """
+    if not tokens:
+        return False
+    haystack = ((doc.get("title") or "") + "\n"
+                + (doc.get("chunk_content") or "")).lower()
+    return all(re.search(r"\b" + re.escape(tok) + r"\b", haystack)
+               for tok in tokens)
+
+
+def _is_on_topic(docs: list[dict], tokens: list[str]):
+    """Whether a hybrid result set is actually about the query.
+
+    Returns ``True`` / ``False``, or ``None`` when the response predates the
+    ``dense_sim`` field (the legacy calibration then stands unchanged). A doc is
+    on-topic when it clears :data:`HYBRID_ON_TOPIC_DENSE` on semantics alone, or
+    clears :data:`HYBRID_ANCHOR_DENSE` *and* shares a significant query token.
+    ``False`` means every dense signal is adjacency noise: the caller must not
+    ground, and must not let the permissive OR/LIKE stages re-admit the docs.
+    """
+    judged = False
+    for doc in docs:
+        dense = _as_float(doc.get("dense_sim"))
+        if dense is None:
+            continue
+        judged = True
+        if dense >= HYBRID_ON_TOPIC_DENSE:
+            return True
+        if dense >= HYBRID_ANCHOR_DENSE and _has_lexical_anchor(doc, tokens):
+            return True
+    return False if judged else None
+
+
 def retrieve(query: str, limit: int = 3, context: str = "",
              commercial: bool = False) -> dict:
     """Progressive retrieval. Returns {docs, verdict, stage}.
@@ -380,6 +458,13 @@ def retrieve(query: str, limit: int = 3, context: str = "",
     "and the penalty?" searches the topic under discussion. An empty
     significant-token set is UNGROUNDED and never searches.
 
+    A hybrid result only grounds when at least one retrieved doc is on-topic
+    (see :func:`_is_on_topic`); an off-topic dense hit is replaced by
+    UNGROUNDED rather than PARTIAL, and the permissive OR/LIKE fallback is
+    skipped so it cannot re-admit the same noise. Phrase stays authoritative;
+    AND is trusted only when the doc really contains every significant token
+    (the brain retries a failed AND as OR, which must not ground).
+
     ``commercial=True`` applies the commercial-use gate at every stage: the
     company arm only ever grounds on commercially-licensed content.
     """
@@ -390,31 +475,46 @@ def retrieve(query: str, limit: int = 3, context: str = "",
     q = " ".join(tokens)
 
     # Stage 1 (primary): authority-aware hybrid retrieval.
+    hybrid_off_topic = False
     docs = _stage(q, limit, "hybrid", commercial=commercial)
     if docs:
         verdict = _hybrid_verdict(docs)
         if verdict:
-            return {"docs": docs, "verdict": verdict, "stage": 1}
+            if _is_on_topic(docs, tokens) is not False:
+                return {"docs": docs, "verdict": verdict, "stage": 1}
+            # Dense adjacency with no on-topic source (an incidental shared
+            # word or a semantically-close-but-wrong Bill). Do not ground, and
+            # do not let OR/LIKE re-admit the same off-topic docs.
+            hybrid_off_topic = True
+            logger.info(
+                "grounding: hybrid result for %r downgraded to UNGROUNDED "
+                "(off-topic: tokens=%s, top dense=%s)",
+                q, tokens, _as_float(docs[0].get("dense_sim")))
 
     # Stage 2 (fallback): exact phrase (server builds the FTS phrase query)
     docs = _stage(q, limit, "phrase", commercial=commercial)
     if docs:
         return {"docs": docs, "verdict": "GROUNDED", "stage": 2}
 
-    # Stage 3: AND of tokens
-    docs = _stage(q, limit, "and", commercial=commercial)
-    if docs:
-        return {"docs": docs, "verdict": "GROUNDED", "stage": 3}
+    # Stage 3: AND of tokens. The brain retries a failed AND as OR
+    # (``core.legal.hybrid._safe_bm25``), so verify the AND contract
+    # client-side -- every significant token must be present -- before trusting
+    # the match. Phrase stays authoritative (the server builds a real phrase).
+    and_docs = [d for d in _stage(q, limit, "and", commercial=commercial)
+                if _contains_all_tokens(d, tokens)]
+    if and_docs:
+        return {"docs": and_docs, "verdict": "GROUNDED", "stage": 3}
 
-    # Stage 4: OR of tokens
-    docs = _stage(q, limit, "or", commercial=commercial)
-    if docs:
-        return {"docs": docs, "verdict": "PARTIAL", "stage": 4}
+    if not hybrid_off_topic:
+        # Stage 4: OR of tokens
+        docs = _stage(q, limit, "or", commercial=commercial)
+        if docs:
+            return {"docs": docs, "verdict": "PARTIAL", "stage": 4}
 
-    # Stage 5: raw keyword fallback (title/citation LIKE)
-    docs = _stage(q, limit, "like", commercial=commercial)
-    if docs:
-        return {"docs": docs, "verdict": "PARTIAL", "stage": 5}
+        # Stage 5: raw keyword fallback (title/citation LIKE)
+        docs = _stage(q, limit, "like", commercial=commercial)
+        if docs:
+            return {"docs": docs, "verdict": "PARTIAL", "stage": 5}
 
     return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
 

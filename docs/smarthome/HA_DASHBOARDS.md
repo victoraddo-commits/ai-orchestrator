@@ -26,3 +26,14 @@
 ## Note
 `/api/lovelace/dashboards` is not exposed on this HA build (websocket-only);
 dashboard registration was verified in `.storage/lovelace_dashboards`.
+
+## Mushroom dashboard rebuild (2026-09-25)
+The KAI Command Deck uses real **Mushroom cards** (`custom:mushroom-*`):
+title cards, chips, entity cards, and a media-player card. 5 views
+(Overview / Power·UPS / Tuya / eWeLink / Cameras·Media), **13 entity
+references, 0 missing** (validated against `/api/states`).
+
+Verified: `/local/mushroom.js` → 200 (666 KB bundle); HA 200; zero startup errors.
+Note: the HA frontend cannot be screenshot from this harness because HA 2026.9
+requires the interactive OAuth login (no raw-token localStorage); verification was
+done via the HA API + storage, which is authoritative.

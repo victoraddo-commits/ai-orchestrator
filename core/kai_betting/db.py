@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 from contextlib import contextmanager
 
+from core.kai_betting import scope
+
 DB_PATH = os.environ.get("KAI_BETTING_DB", os.path.join(
     os.path.dirname(__file__), "..", "..", "memory", "kai_betting.db"
 ))
@@ -448,6 +450,13 @@ SPORT_SEEDS = [
     ("volleyball", "🏐 Volleyball", 8),
     ("handball", "🤾 Handball", 9),
     ("cricket", "🏏 Cricket", 10),
+    ("esports", "🎮 Esports", 11),
+    ("darts", "🎯 Darts", 12),
+    ("mma", "🥋 MMA", 13),
+    ("boxing", "🥊 Boxing", 14),
+    ("table_tennis", "🏓 Table Tennis", 15),
+    ("snooker", "🎱 Snooker", 16),
+    ("horse_racing", "🏇 Horse Racing", 17),
 ]
 
 MARKET_SEEDS = [
@@ -476,6 +485,30 @@ MARKET_SEEDS = [
     ("ice_hockey", "over_under", "Over/Under Goals", "Total Goals"),
     ("american_football", "match_result", "Match Result", "Moneyline"),
     ("american_football", "over_under", "Over/Under Points", "Total Points"),
+    ("rugby", "match_result", "Match Result", "1X2"),
+    ("rugby", "over_under", "Over/Under Points", "Total Points"),
+    ("volleyball", "match_result", "Match Result", "1X2"),
+    ("volleyball", "over_under", "Over/Under Sets", "Total Sets"),
+    ("handball", "match_result", "Match Result", "1X2"),
+    ("handball", "over_under", "Over/Under Goals", "Total Goals"),
+    ("cricket", "match_result", "Match Result", "Winner"),
+    ("cricket", "over_under", "Over/Under Runs", "Total Runs"),
+    ("esports", "match_result", "Match Result", "Winner"),
+    ("esports", "over_under", "Over/Under Maps", "Total Maps"),
+    ("darts", "match_result", "Match Result", "Winner"),
+    ("darts", "over_under", "Over/Under Legs", "Total Legs"),
+    ("mma", "match_result", "Match Result", "Winner"),
+    ("mma", "over_under", "Over/Under Rounds", "Total Rounds"),
+    ("boxing", "match_result", "Match Result", "Winner"),
+    ("boxing", "over_under", "Over/Under Rounds", "Total Rounds"),
+    ("table_tennis", "match_result", "Match Result", "Winner"),
+    ("table_tennis", "over_under", "Over/Under Sets", "Total Sets"),
+    ("snooker", "match_result", "Match Result", "Winner"),
+    ("snooker", "over_under", "Over/Under Frames", "Total Frames"),
+    # Horse racing — market taxonomy is declared for completeness, but there
+    # is no odds provider wired in yet (see data_sources/horse_racing.py).
+    ("horse_racing", "match_result", "Race Winner", "Win"),
+    ("horse_racing", "place", "Place", "Place"),
 ]
 
 DEFAULT_SUBSCRIPTION_PLANS = [
@@ -502,8 +535,12 @@ DEFAULT_CONFIG = {
     "last_odds_refresh": "",
     "last_results_refresh": "",
     "last_rate_limit_reset": "",
-    "active_sports_for_sync": "football,basketball,tennis",
+    "active_sports_for_sync": ",".join(scope.DEFAULT_SYNC_SPORTS),
 }
+
+# The pre-broadening default; migrated in _migrate_schema so an existing DB
+# picks up the newly-approved sports without clobbering an operator's custom list.
+_LEGACY_ACTIVE_SPORTS = "football,basketball,tennis"
 
 
 # ── Connection Management ───────────────────────────────────────────────────
@@ -573,6 +610,26 @@ def _migrate_schema(conn):
     existing = {row["name"] for row in conn.execute("PRAGMA table_info(predictions)").fetchall()}
     if "line" not in existing:
         conn.execute("ALTER TABLE predictions ADD COLUMN line REAL")
+
+    # Ensure newly-approved sports exist in an already-seeded DB (INSERT OR
+    # IGNORE is safe for pre-existing rows).
+    for key, name, sort_order in SPORT_SEEDS:
+        conn.execute(
+            "INSERT OR IGNORE INTO sports (key, name, sort_order) VALUES (?, ?, ?)",
+            (key, name, sort_order),
+        )
+
+    # Widen the default sync list only when it is still the legacy default —
+    # an operator-customised value is left untouched.
+    row = conn.execute(
+        "SELECT value FROM betting_config WHERE key = 'active_sports_for_sync'"
+    ).fetchone()
+    if row and row["value"] == _LEGACY_ACTIVE_SPORTS:
+        conn.execute(
+            "UPDATE betting_config SET value = ?, updated_at = datetime('now') "
+            "WHERE key = 'active_sports_for_sync'",
+            (",".join(scope.DEFAULT_SYNC_SPORTS),),
+        )
 
 
 def parse_event_time(value) -> Optional[datetime]:

@@ -7158,18 +7158,58 @@ async function arbTActivity(){
 
 // ===== KAI Bet dashboard (KAI Bet 2026) =====
 const BET='/api/betting';
+const BET_SPORT_KEY='kai_bet_sport';
+let BET_SPORT='';          // selected sport_key; '' = all sports
+let BET_CURRENT='overview';
+let BET_SPORTS=null;
 async function betG(p){return api(BET+p);}
 async function betP(p,b){return api(BET+p,{method:'POST',body:JSON.stringify(b||{})});}
+// /api/betting/* returns the APIResponse envelope {success,data,error,meta}.
+function betData(d){return (d&&typeof d==='object'&&'data' in d)?d.data:d;}
 const BET_TABS=[['overview','Overview'],['predictions','Predictions'],['events','Events'],['gate','Value Gate'],['paper','Paper Bets'],['oddsgroups','Odds Groups']];
+async function betSports(){
+  if(BET_SPORTS)return BET_SPORTS;
+  try{const d=betData(await betG('/sports'));BET_SPORTS=Array.isArray(d)?d:[];}catch(e){BET_SPORTS=[];}
+  return BET_SPORTS;
+}
+function betSportName(k){
+  const s=(BET_SPORTS||[]).find(x=>x.key===k);
+  return s?(s.name||s.key):(k||'unknown');
+}
+function betSportBar(){
+  if(!BET_SPORTS||!BET_SPORTS.length)return '<div class="muted" style="font-size:0.62rem">sport list unavailable</div>';
+  const btn=(k,label)=>'<button class="btn btn-xs'+(BET_SPORT===k?' btn-accent':'')+'" onclick="betSetSport(\''+k+'\')">'+esc(label)+'</button>';
+  return '<div class="action-row" style="flex-wrap:wrap;gap:6px;margin-top:6px">'
+    +btn('','All sports')+BET_SPORTS.map(s=>btn(s.key,s.name||s.key)).join('')+'</div>';
+}
+function betSetSport(k){
+  BET_SPORT=k||'';
+  try{localStorage.setItem(BET_SPORT_KEY,BET_SPORT);}catch(e){}
+  const sb=$('bet-sportbar'); if(sb)sb.innerHTML=betSportBar();
+  betTab(BET_CURRENT);
+}
+function betSportSummary(arr){
+  const by={};arr.forEach(x=>{const k=x.sport_key||'';by[k]=(by[k]||0)+1;});
+  const keys=Object.keys(by).sort((a,b)=>by[b]-by[a]);
+  if(!keys.length)return '';
+  const chips=keys.map(k=>'<span class="badge info" style="margin:2px">'+esc(betSportName(k))+' '+by[k]+'</span>').join(' ');
+  return '<div class="muted" style="font-size:0.62rem;margin:4px 0">By sport: '+chips
+    +(BET_SPORT?' · filtered to '+esc(betSportName(BET_SPORT)):'')+'</div>';
+}
 async function loadBet(){
   const el=$('bet-content'); if(!el) return;
   el.innerHTML='<div class="card"><h3>KAI Bet <span class="badge info">KAI-only · paper default</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadBet()">Refresh</button></span></h3>'
     +'<div class="muted" style="font-size:0.62rem">KAI is the only intelligence authority (local model fabric, cost 0). Real-money execution is gated OFF.</div>'
-    +'<div class="action-row" style="flex-wrap:wrap;gap:6px;margin-top:8px">'+BET_TABS.map(t=>'<button class="btn btn-xs" data-bettab="'+t[0]+'" onclick="betTab(\''+t[0]+'\')">'+t[1]+'</button>').join('')+'</div></div>'
+    +'<div class="action-row" style="flex-wrap:wrap;gap:6px;margin-top:8px">'+BET_TABS.map(t=>'<button class="btn btn-xs" data-bettab="'+t[0]+'" onclick="betTab(\''+t[0]+'\')">'+t[1]+'</button>').join('')+'</div>'
+    +'<div id="bet-sportbar"><span class="loading">loading sports…</span></div></div>'
     +'<div id="bet-body"><span class="loading">loading…</span></div>';
+  try{BET_SPORT=localStorage.getItem(BET_SPORT_KEY)||'';}catch(e){BET_SPORT='';}
+  await betSports();
+  const sb=$('bet-sportbar'); if(sb)sb.innerHTML=betSportBar();
   betTab('overview');
 }
 function betTab(n){
+  BET_CURRENT=n;
   document.querySelectorAll('[data-bettab]').forEach(b=>b.classList.toggle('btn-accent',b.getAttribute('data-bettab')===n));
   const m={overview:betTOverview,predictions:betTPredictions,events:betTEvents,gate:betTGate,paper:betTPaper,oddsgroups:betTOddsGroups};
   (m[n]||betTOverview)();
@@ -7180,35 +7220,61 @@ function betJson(title,data){
 }
 async function betTOverview(){
   betBody('<span class="loading">loading…</span>');
-  const g=async p=>{try{return await betG(p);}catch(e){return {error:e.message};}};
-  const [dash,perf,pp]=await Promise.all([g('/dashboard'),g('/performance'),g('/paper/performance')]);
+  const g=async p=>{try{return betData(await betG(p));}catch(e){return {error:e.message};}};
+  const [dash,perf,pp,src]=await Promise.all([g('/dashboard'),g('/performance'),g('/paper/performance'),g('/sources')]);
   let h='';
   h+='<div class="card"><h3>Paper performance</h3>';
   if(pp.error) h+='<span class="error-text">'+esc(pp.error)+'</span>';
   else h+='<div class="metric-row">'+arbMetric('Bets',pp.bets)+arbMetric('Open',pp.open)+arbMetric('Won',pp.won)+arbMetric('Lost',pp.lost)+arbMetric('Staked',pp.staked)+arbMetric('P/L',pp.profit_loss)+arbMetric('ROI',pp.roi==null?'—':pp.roi)+arbMetric('Win rate',pp.win_rate==null?'—':pp.win_rate)+'</div>';
   h+='</div>';
+  // Multi-sport coverage summary — makes non-tennis coverage visible and
+  // clickable. Tennis-only cannot silently return: every active sport is listed.
+  const cov=(dash&&Array.isArray(dash.sports_coverage))?dash.sports_coverage:[];
+  if(cov.length){
+    const total=cov.reduce((a,c)=>a+(c.count||0),0);
+    h+='<div class="card"><h3>Sports coverage <span class="badge info">'+cov.length+' sports</span></h3>'
+      +'<div class="muted" style="font-size:0.62rem;margin-bottom:6px">'+total+' predictions across '+cov.length+' sports. Click a sport to filter Predictions/Events.</div>'
+      +'<div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +cov.map(c=>'<button class="btn btn-xs" onclick="betSetSport(\''+esc(c.key)+'\')">'+esc((c.icon||'')+' '+(c.name||c.key))+' <b>'+(c.count||0)+'</b></button>').join('')
+      +'</div></div>';
+  }
+  // Provider gaps — e.g. horse_racing is approved but has no feed.
+  const sportSrc=(src&&src.sports&&typeof src.sports==='object')?src.sports:{};
+  const noSrc=Object.keys(sportSrc).filter(k=>sportSrc[k]!=='available');
+  if(noSrc.length){
+    h+='<div class="card"><h3>Provider gaps <span class="badge warn">'+noSrc.length+'</span></h3>'
+      +'<div class="muted" style="font-size:0.62rem">Approved sports with no odds feed: '
+      +noSrc.map(k=>'<span class="badge warn" style="margin:2px">'+esc(k)+' · '+esc(sportSrc[k])+'</span>').join(' ')
+      +'</div></div>';
+  }
   h+=betJson('Ecosystem dashboard', dash.error?dash:dash);
   h+=betJson('Performance metrics', perf.error?perf:perf);
   betBody(h);
 }
 async function betTPredictions(){
   betBody('<span class="loading">loading…</span>');
-  try{const d=await betG('/predictions?limit=100');
+  try{const q='/predictions?limit=100'+(BET_SPORT?'&sport_key='+encodeURIComponent(BET_SPORT):'');
+    const d=betData(await betG(q));
     const arr=Array.isArray(d)?d:(d.predictions||d.items||d.results||[]);
     if(!Array.isArray(arr)||!arr.length){betBody(betJson('Predictions',d));return;}
     const cols=Object.keys(arr[0]).slice(0,10);
     const rows=arr.map(p=>'<tr>'+cols.map(c=>'<td>'+esc(p[c])+'</td>').join('')+'</tr>').join('');
-    betBody('<div class="card"><h3>Predictions <span class="badge info">'+arr.length+'</span></h3>'+arbTbl(cols,rows)+'</div>');
+    betBody('<div class="card"><h3>Predictions <span class="badge info">'+arr.length+'</span>'
+      +(BET_SPORT?' <span class="badge">'+esc(betSportName(BET_SPORT))+'</span>':'')+'</h3>'
+      +betSportSummary(arr)+arbTbl(cols,rows)+'</div>');
   }catch(e){betBody('<span class="error-text">'+esc(e.message)+'</span>');}
 }
 async function betTEvents(){
   betBody('<span class="loading">loading…</span>');
-  try{const d=await betG('/events?limit=100');
+  try{const q='/events?limit=100'+(BET_SPORT?'&sport_key='+encodeURIComponent(BET_SPORT):'');
+    const d=betData(await betG(q));
     const arr=Array.isArray(d)?d:(d.events||d.items||d.results||[]);
     if(!Array.isArray(arr)||!arr.length){betBody(betJson('Events',d));return;}
     const cols=Object.keys(arr[0]).slice(0,10);
     const rows=arr.map(p=>'<tr>'+cols.map(c=>'<td>'+esc(p[c])+'</td>').join('')+'</tr>').join('');
-    betBody('<div class="card"><h3>Events <span class="badge info">'+arr.length+'</span></h3>'+arbTbl(cols,rows)+'</div>');
+    betBody('<div class="card"><h3>Events <span class="badge info">'+arr.length+'</span>'
+      +(BET_SPORT?' <span class="badge">'+esc(betSportName(BET_SPORT))+'</span>':'')+'</h3>'
+      +betSportSummary(arr)+arbTbl(cols,rows)+'</div>');
   }catch(e){betBody('<span class="error-text">'+esc(e.message)+'</span>');}
 }
 function betTGate(){

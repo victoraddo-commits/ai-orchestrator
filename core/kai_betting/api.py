@@ -213,6 +213,17 @@ async def list_sports():
         return APIResponse(success=True, data=[dict(r) for r in rows])
 
 
+@router.get("/sources", response_model=APIResponse)
+async def list_sources():
+    """Provider readiness plus per-sport source coverage.
+
+    The per-sport map is the honest answer to "which sports can actually sync?":
+    horse_racing is APPROVED but reports ``no_source`` until a feed is wired in.
+    """
+    from core.kai_betting.data_ingestion import source_status
+    return APIResponse(success=True, data=source_status())
+
+
 @router.get("/sports/{sport_key}/leagues", response_model=APIResponse)
 async def list_leagues(sport_key: str):
     """List leagues for a sport."""

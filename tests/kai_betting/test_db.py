@@ -4,6 +4,7 @@ import pytest
 import os
 import tempfile
 from core.kai_betting.db import init_db, get_db, DB_PATH, SCHEMA_SQL
+from core.kai_betting import scope
 
 
 @pytest.fixture
@@ -54,10 +55,11 @@ class TestDatabaseSchema:
         with get_db() as db:
             sports = db.execute("SELECT key, name, sort_order FROM sports ORDER BY sort_order").fetchall()
 
-        assert len(sports) == 10
+        assert len(sports) == len(scope.APPROVED_SPORTS)
         assert sports[0]["key"] == "football"
         assert sports[0]["name"] == "⚽ Football"
-        assert sports[-1]["key"] == "cricket"
+        assert sports[-1]["key"] == "horse_racing"
+        assert {s["key"] for s in sports} == set(scope.APPROVED_SPORTS)
 
     def test_subscription_plans_seeded(self, fresh_db):
         with get_db() as db:
@@ -95,7 +97,7 @@ class TestDatabaseSchema:
         with get_db() as db:
             sports = db.execute("SELECT COUNT(*) as cnt FROM sports").fetchone()
             plans = db.execute("SELECT COUNT(*) as cnt FROM subscription_plans").fetchone()
-        assert sports["cnt"] == 10  # No duplicates
+        assert sports["cnt"] == len(scope.APPROVED_SPORTS)  # No duplicates
         assert plans["cnt"] == 3
 
 

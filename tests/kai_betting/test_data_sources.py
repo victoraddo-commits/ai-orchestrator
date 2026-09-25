@@ -241,9 +241,9 @@ class TestDataIngestionManager:
             )
             db.commit()
         sports = mgr._get_active_sports()
-        # Scope reset: baseball is out of scope and filtered out, even if the
-        # config still lists it.
-        assert sports == ["football"]
+        # Multi-sport scope: baseball is now approved, so it survives the
+        # config while an out-of-scope sport would still be filtered out.
+        assert sports == ["football", "baseball"]
 
     def test_should_run_never_run_before(self, temp_db):
         from core.kai_betting.data_ingestion import DataIngestionManager

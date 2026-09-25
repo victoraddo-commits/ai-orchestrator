@@ -8,15 +8,21 @@ manager can discover active sources at runtime.
 from core.kai_betting.data_sources.odds_api_io import OddsAPIioSource
 from core.kai_betting.data_sources.odds_api import OddsAPISource  # legacy
 from core.kai_betting.data_sources.sportsgameodds import SportsGameOddsSource  # supplemental
+from core.kai_betting.data_sources.horse_racing import HorseRacingSource  # no_source
 
-__all__ = ["OddsAPIioSource", "OddsAPISource", "SportsGameOddsSource"]
+__all__ = [
+    "OddsAPIioSource", "OddsAPISource", "SportsGameOddsSource", "HorseRacingSource",
+]
 
 # Registry of available data sources (keyed by provider name)
 # odds_api_io is the PRIMARY provider. odds_api is the legacy fallback
 # (also the sole source of settlement scores). sportsgameodds is a
 # supplemental, independently-gated source (own quota, own sync interval).
+# horse_racing is a registered placeholder that reports `no_source` until a
+# racing feed is wired in.
 DATA_SOURCES = {
     "odds_api_io": OddsAPIioSource,
     "odds_api": OddsAPISource,
     "sportsgameodds": SportsGameOddsSource,
+    "horse_racing": HorseRacingSource,
 }

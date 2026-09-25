@@ -210,6 +210,136 @@ MARKET_TEMPLATES: Dict[str, Dict[str, Any]] = {
             "description": "Total Points",
         },
     },
+    "rugby": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "draw", "away"],
+            "description": "1X2",
+        },
+        "over_under": {
+            "name": "Over/Under Points",
+            "selections": ["over", "under"],
+            "description": "Total Points",
+        },
+        "handicap": {
+            "name": "Handicap",
+            "selections": ["home", "away"],
+            "description": "Spread",
+        },
+    },
+    "handball": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "draw", "away"],
+            "description": "1X2",
+        },
+        "over_under": {
+            "name": "Over/Under Goals",
+            "selections": ["over", "under"],
+            "description": "Total Goals",
+        },
+        "handicap": {
+            "name": "Handicap",
+            "selections": ["home", "away"],
+            "description": "Spread",
+        },
+    },
+    "volleyball": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Sets",
+            "selections": ["over", "under"],
+            "description": "Total Sets",
+        },
+    },
+    "cricket": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Runs",
+            "selections": ["over", "under"],
+            "description": "Total Runs",
+        },
+    },
+    "esports": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Maps",
+            "selections": ["over", "under"],
+            "description": "Total Maps",
+        },
+    },
+    "darts": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Legs",
+            "selections": ["over", "under"],
+            "description": "Total Legs",
+        },
+    },
+    "mma": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Rounds",
+            "selections": ["over", "under"],
+            "description": "Total Rounds",
+        },
+    },
+    "boxing": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Rounds",
+            "selections": ["over", "under"],
+            "description": "Total Rounds",
+        },
+    },
+    "table_tennis": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Sets",
+            "selections": ["over", "under"],
+            "description": "Total Sets",
+        },
+    },
+    "snooker": {
+        "match_result": {
+            "name": "Match Result",
+            "selections": ["home", "away"],
+            "description": "Winner",
+        },
+        "over_under": {
+            "name": "Over/Under Frames",
+            "selections": ["over", "under"],
+            "description": "Total Frames",
+        },
+    },
 }
 
 
@@ -680,6 +810,16 @@ class PredictionEngine:
             "ice_hockey": 0.10,
             "american_football": 0.12,
             "tennis": 0.05,
+            "rugby": 0.10,
+            "handball": 0.10,
+            "volleyball": 0.07,
+            "cricket": 0.06,
+            "esports": 0.05,
+            "darts": 0.04,
+            "mma": 0.05,
+            "boxing": 0.04,
+            "table_tennis": 0.04,
+            "snooker": 0.04,
         }.get(sport_key, 0.08)
 
         if market_type == "match_result":

@@ -1,7 +1,8 @@
 """Covers the one-time scope migration deactivating out-of-scope data."""
 
+from core.kai_betting import scope
 from core.kai_betting.scope_migration import apply_scope
-from core.kai_betting.db import get_db, upsert_league
+from core.kai_betting.db import get_db, SPORT_SEEDS, upsert_league
 
 
 def _seed_leagues(db):
@@ -24,7 +25,7 @@ def test_apply_scope_disables_out_of_scope_sports_and_leagues(fresh_db):
         active_sports = {
             r["key"] for r in db.execute("SELECT key FROM sports WHERE is_active = 1")
         }
-        assert active_sports == {"football", "tennis", "basketball"}
+        assert active_sports == set(scope.APPROVED_SPORTS)
 
         # Approved leagues remain active; out-of-scope leagues are deactivated.
         def active(key):
@@ -37,7 +38,10 @@ def test_apply_scope_disables_out_of_scope_sports_and_leagues(fresh_db):
         assert active("usa-mls") == 0
         assert active("itf-tianjin") == 0
 
-        assert result["sports_disabled"] == 7  # the 7 non-approved SPORT_SEEDS
+        # Every seeded sport is approved (SPORT_SEEDS mirrors the registry), so
+        # none are disabled; the count is derived rather than hard-coded.
+        seeded = {key for key, _name, _order in SPORT_SEEDS}
+        assert result["sports_disabled"] == len(seeded - set(scope.APPROVED_SPORTS))
         assert result["leagues_disabled"] == 2
 
 

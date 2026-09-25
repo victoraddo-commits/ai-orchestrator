@@ -48,13 +48,24 @@ FREE_TIER_BOOKMAKERS = "Bet365,1xbet"
 # football leagues × 2 divisions + major tournaments, elite tennis, elite
 # basketball). Unmatched leagues are excluded (fail closed).
 
+# Odds-API.io reuses league slugs across sports (e.g. "italy-serie-a" is both
+# football's Serie A and basketball's Serie A), so the sport-agnostic
+# leagues.tier column resolves ties with an explicit preference order: the
+# original core sports first, then the rest alphabetically.
+_TIER_SPORT_PREFERENCE = ("football", "basketball", "tennis")
+
+
 def _league_tier(league_name: str, league_slug: str = "") -> Optional[int]:
     """Resolve a league to its DB tier, or None if out of scope.
 
     Kept for backward compatibility with the leagues.tier column. Iterates the
-    approved sports (their whitelists are disjoint) and returns the first match.
+    approved sports and returns the first match, using ``_TIER_SPORT_PREFERENCE``
+    to disambiguate slugs shared by more than one sport.
     """
-    for sport in ("football", "tennis", "basketball"):
+    ordered = list(_TIER_SPORT_PREFERENCE) + sorted(
+        scope.APPROVED_SPORTS - set(_TIER_SPORT_PREFERENCE)
+    )
+    for sport in ordered:
         c = scope.classify_competition(sport, league_name, league_slug)
         if c.allowed:
             return scope.db_tier(c.tier)
@@ -70,6 +81,56 @@ def _is_live_data_mode(db) -> bool:
         return row and row["value"] == "true"
     except Exception:
         return True  # default to real-data-only
+
+
+# ── Provider / sport source status ───────────────────────────────────────────
+
+def source_status() -> Dict[str, Any]:
+    """Readiness of every registered provider plus per-sport source coverage.
+
+    horse_racing is APPROVED at the scope layer but has no feed, so it reports
+    ``no_source`` here rather than silently contributing zero synced events.
+    """
+    from core.kai_betting.data_sources import DATA_SOURCES
+
+    providers: Dict[str, Any] = {}
+    for name, cls in DATA_SOURCES.items():
+        try:
+            src = cls()
+        except Exception as e:  # pragma: no cover - defensive
+            providers[name] = {"connected": False, "status": "error",
+                               "detail": str(e)[:200]}
+            continue
+        # odds_api_io and horse_racing expose ``provider_status``; the legacy
+        # odds_api and supplemental sportsgameodds only expose ``is_configured``.
+        # Normalise both so /api/betting/sources always carries a ``status`` and
+        # never leaks an AttributeError as a fake provider fault.
+        try:
+            raw = getattr(src, "provider_status", None)
+        except Exception as e:  # pragma: no cover - defensive
+            raw = None
+            configured_error = str(e)[:200]
+        else:
+            configured_error = None
+        entry = dict(raw) if isinstance(raw, dict) else {}
+        if "connected" not in entry:
+            entry["connected"] = bool(getattr(src, "is_configured", False))
+        if "status" not in entry:
+            if entry["connected"]:
+                entry["status"] = "available"
+            elif getattr(src, "is_configured", False):
+                entry["status"] = "configured"
+            else:
+                entry["status"] = "unconfigured"
+        if configured_error:
+            entry.setdefault("detail", configured_error)
+        providers[name] = entry
+
+    sports = {
+        s: ("available" if slug_for_kai(s) else "no_source")
+        for s in sorted(scope.APPROVED_SPORTS)
+    }
+    return {"providers": providers, "sports": sports}
 
 
 class DataIngestionManager:
@@ -1214,10 +1275,9 @@ class DataIngestionManager:
             if row and row["value"]:
                 active = [s.strip() for s in row["value"].split(",") if s.strip()]
             else:
-                active = ["football", "basketball", "tennis"]
-        # Hard scope: only football/tennis/basketball are ever processed, even
-        # if the config is broadened. Everything else is rejected before any
-        # API call.
+                active = list(scope.DEFAULT_SYNC_SPORTS)
+        # Hard scope: only APPROVED_SPORTS are ever processed, even if the
+        # config is broadened. Everything else is rejected before any API call.
         return [s for s in active if scope.sport_allowed(s)]
 
     def _sports_to_slugs(self, kai_sports: List[str]) -> List[str]:

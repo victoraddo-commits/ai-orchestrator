@@ -14,6 +14,7 @@ JSON events follow the 10-event vocabulary in events.py.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import signal
@@ -126,11 +127,98 @@ async def health():
 # Standalone aiohttp runner (used by systemd service)
 # ---------------------------------------------------------------------------
 
+
+
+# ---------------------------------------------------------------------------
+# HTTP TTS/STT endpoints for the standalone runner.
+# voice_router (used by /kai/voice/speak|transcribe) expects these on :8130.
+# They return real audio/transcripts or a typed error — never fabricated output.
+# ---------------------------------------------------------------------------
+
+def _wav_to_pcm16(data: bytes) -> bytes:
+    """If data is a RIFF/WAVE container, return its PCM frames; else pass through."""
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        import io as _io
+        import wave
+        try:
+            with wave.open(_io.BytesIO(data), "rb") as w:
+                return w.readframes(w.getnframes())
+        except Exception:  # noqa: BLE001
+            return data
+    return data
+
+
+def _wav_bytes(pcm16: bytes, sample_rate: int = 22050) -> bytes:
+    import struct, wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sample_rate)
+        w.writeframes(pcm16)
+    return buf.getvalue()
+
+
+async def _aio_speak(request: web.Request) -> web.Response:
+    """GET/POST /speak?text=... -> WAV audio via piper (real synthesis)."""
+    text = request.query.get("text", "")
+    if not text and request.can_read_body:
+        try:
+            body = await request.json()
+            text = (body or {}).get("text", "")
+        except Exception:  # noqa: BLE001
+            pass
+    if not text:
+        return web.json_response({"ok": False, "error": "text required"}, status=400)
+    try:
+        from core.voice_gateway.piper_client import synthesize_stream
+        pcm = bytearray()
+        async for chunk in synthesize_stream(text):
+            pcm.extend(chunk)
+        if not pcm:
+            return web.json_response({"ok": False, "error": "no audio produced"}, status=503)
+        return web.Response(body=_wav_bytes(bytes(pcm)), content_type="audio/wav")
+    except FileNotFoundError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=503)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"ok": False, "error": f"{type(e).__name__}: {e}"}, status=503)
+
+
+async def _aio_transcribe(request: web.Request) -> web.Response:
+    """POST /transcribe (raw PCM16 or multipart) -> text via whisper (real STT)."""
+    raw = b""
+    try:
+        if (request.content_type or "").startswith("multipart/"):
+            reader = await request.multipart()
+            part = await reader.next()
+            while part is not None:
+                if part.name in ("file", "audio", "upload") or part.filename:
+                    raw = await part.read(decode=False)
+                    break
+                part = await reader.next()
+        else:
+            raw = await request.read()
+    except Exception:  # noqa: BLE001
+        raw = b""
+    if not raw:
+        return web.json_response({"ok": False, "error": "audio required"}, status=400)
+    raw = _wav_to_pcm16(raw)
+    try:
+        from core.voice_gateway.whisper_client import quick_transcribe
+        text = quick_transcribe(raw)
+        return web.json_response({"ok": True, "text": text})
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"ok": False, "error": f"{type(e).__name__}: {e}"}, status=503)
+
+
 async def run_standalone() -> None:
     """Run the gateway as a standalone aiohttp service."""
     app = web.Application()
     app.router.add_get("/health", _aio_health)
     app.router.add_get("/ws", _aio_wss)
+    app.router.add_get("/speak", _aio_speak)
+    app.router.add_post("/speak", _aio_speak)
+    app.router.add_post("/transcribe", _aio_transcribe)
 
     if not _port_available(BIND_HOST, BIND_PORT):
         _log("critical", f"Port {BIND_PORT} is already in use. Exiting.")
@@ -145,7 +233,11 @@ async def run_standalone() -> None:
     ssl_context: Optional[ssl.SSLContext] = None
     cert_path = Path(__file__).resolve().parents[2] / "certs" / "cert.pem"
     key_path = Path(__file__).resolve().parents[2] / "certs" / "key.pem"
-    if cert_path.exists() and key_path.exists():
+    tls_env = os.environ.get("KAI_VOICE_TLS", "auto").strip().lower()
+    use_tls = (tls_env == "on") or (tls_env == "auto" and cert_path.exists() and key_path.exists())
+    if tls_env in ("off", "0", "false", "no"):
+        use_tls = False
+    if use_tls and cert_path.exists() and key_path.exists():
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(str(cert_path), str(key_path))
         _log("info", f"TLS enabled on port {BIND_PORT}")

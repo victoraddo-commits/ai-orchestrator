@@ -21,7 +21,7 @@ from pathlib import Path
 # Updated: point to local gateway (ZT-only) instead of dead 192.168.1.109
 _VOICE_WS_URL = os.environ.get("KAI_VOICE_WS_URL", "ws://127.0.0.1:8130")
 _VOICE_HTTP_URL = os.environ.get("KAI_VOICE_URL", "http://127.0.0.1:8130")
-_TIMEOUT = 30
+_TIMEOUT = 120
 
 
 def _probe_local() -> bool:

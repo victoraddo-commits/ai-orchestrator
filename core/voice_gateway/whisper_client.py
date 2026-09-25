@@ -10,8 +10,13 @@ import io
 import time
 from typing import Generator, Optional
 
-# faster-whisper is installed system-wide
-from faster_whisper import WhisperModel
+# faster-whisper is an optional local STT dependency. Import lazily so the
+# voice gateway (and piper TTS) can run without STT installed — a missing STT
+# provider must degrade honestly (typed error), never fabricate a transcript.
+try:
+    from faster_whisper import WhisperModel  # type: ignore
+except Exception:  # noqa: BLE001
+    WhisperModel = None  # type: ignore
 
 
 # Model size: small.en is ~500MB and accurate for English homelab use.
@@ -21,6 +26,11 @@ _MODEL: Optional[WhisperModel] = None
 
 def _load_model() -> WhisperModel:
     global _MODEL
+    if WhisperModel is None:
+        raise RuntimeError(
+            "faster-whisper is not installed on this host; speech-to-text is "
+            "unavailable (text-to-speech still works). Install faster-whisper "
+            "to enable STT.")
     if _MODEL is None:
         # Download + load small.en on first use (~500MB, cached by huggingface)
         _MODEL = WhisperModel(

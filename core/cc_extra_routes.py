@@ -1766,3 +1766,23 @@ def sh_automation_run(automation_id: str, _: None = Depends(_req_op)):
         return JSONResponse(content=_a.run(a, _sh_state_provider, _sh_act))
     except Exception as e:  # noqa: BLE001
         return _sh_err(e)
+
+
+# ---------------------------------------------------------------------------
+# Sollatek UPS (Proxmox B) — authoritative power telemetry (directive §44-54).
+# Read-only: no power actions are exposed here (those require the sensitive
+# action pipeline + operator approval).
+# ---------------------------------------------------------------------------
+
+@cc_extra_router.get("/api/power/ups")
+def power_ups(_: None = Depends(_req_op)):
+    """Normalized Sollatek UPS status from NUT on Proxmox B (never fabricated)."""
+    from core.smarthome import ups as _ups
+    try:
+        return JSONResponse(content=_ups.status(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"reachable": False,
+                             "states": ["COMMUNICATION LOST"],
+                             "error": f"{type(e).__name__}: {e}"},
+                            status_code=200)

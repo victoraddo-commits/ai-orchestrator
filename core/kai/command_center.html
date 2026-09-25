@@ -1307,6 +1307,9 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
           <div class="card"><h3>Security events</h3><div id="sec-events"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Login History</h3><div id="sec-logins"><span class="loading">loading…</span></div></div>
         </div>
+      
+        <div class="card" style="margin-top:10px"><h3>Sensitive-action pipeline <span class="badge info">authorize &rarr; duo &rarr; lease &rarr; audit</span></h3><div id="sec-pipeline"><span class="loading">checking…</span></div></div>
+        <div class="card" style="margin-top:10px"><h3>Audit trail <span class="badge info">recent</span></h3><div id="sec-audit"><span class="loading">loading…</span></div></div>
       </section>
 
       <!-- SETTINGS -->
@@ -4970,6 +4973,7 @@ async function loadInfraUsage(force){
 // PANEL: SECURITY
 // ═══════════════════════════════════════════════════════════════════
 async function loadSecurity(){
+  loadSecPipeline(); loadSecAudit();
   const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
   const [ov,st]=await Promise.all([g('/api/security/overview'),g('/auth/status')]);
   // AgentGuard
@@ -7896,6 +7900,42 @@ async function loadCommand(){
   if(inv.length) h+='<div class="field-hint" style="margin-top:8px">Guardian inventory: '+inv.length+' services tracked</div>';
   h+='</div>';
 
+  el.innerHTML=h;
+}
+
+
+// ── Phase D: sensitive-action pipeline + audit trail (reuse existing systems) ──
+async function loadSecPipeline(){
+  const el=$('sec-pipeline'); if(!el) return;
+  const g=async p=>{try{return await apiT(p,12000);}catch(e){return {error:e.message};}};
+  const [duo,vault]=await Promise.all([g('/auth/duo/status'),g('/kai/vault/metadata')]);
+  const ok=duo&&!duo.error;
+  let h='<div class="metric-row">'
+    +'<div class="metric"><span class="val '+(ok?'ok':'warn')+'">'+esc(ok&&duo.enabled?'enabled':'off')+'</span><span class="lbl">Duo step-up</span></div>'
+    +'<div class="metric"><span class="val '+((duo&&duo.configured)?'ok':'warn')+'">'+esc((duo&&duo.configured)?'configured':'not set')+'</span><span class="lbl">Duo account</span></div>'
+    +'<div class="metric"><span class="val '+((vault&&vault.reachable)?'ok':'warn')+'">'+esc((vault&&vault.reachable)?'reachable':'down')+'</span><span class="lbl">Vault plane</span></div>'
+    +'<div class="metric"><span class="val">'+esc((vault&&vault.count!=null)?vault.count:'—')+'</span><span class="lbl">Vault entries</span></div>'
+    +'</div>';
+  h+='<div class="field-hint" style="margin-top:8px">High-risk vault reveals require a Duo-approved, time-boxed lease '
+    +'(<code>POST /vault/highrisk/authorize</code> &rarr; <code>duo</code> &rarr; lease TTL 300s). This panel is read-only; '
+    +'authorization is never performed implicitly.</div>';
+  el.innerHTML=h;
+}
+async function loadSecAudit(){
+  const el=$('sec-audit'); if(!el) return;
+  const g=async p=>{try{return await apiT(p,12000);}catch(e){return {error:e.message};}};
+  const a=await g('/kai/audit');
+  const entries=(a&&a.entries)||[];
+  if(!entries.length){ el.innerHTML='<p class="empty">No audit entries.</p>'; return; }
+  let h='<div class="metric-row"><div class="metric"><span class="val nw-tnum">'+esc(a.total==null?'—':a.total)+'</span><span class="lbl">Total logged</span></div>'
+    +'<div class="metric"><span class="val nw-tnum">'+esc(entries.length)+'</span><span class="lbl">Shown</span></div></div>';
+  h+='<div class="table-wrap"><table><thead><tr><th>When</th><th>Event</th><th>Detail</th></tr></thead><tbody>';
+  for(const e of entries.slice(0,20)){
+    const when=String(e.timestamp||'').replace('T',' ').slice(0,19);
+    h+='<tr><td style="font-size:0.58rem">'+esc(when)+'</td><td style="font-size:0.6rem">'+esc(e.event||e.action||e.type||'-')+'</td>'
+      +'<td style="font-size:0.58rem">'+esc((function(v){try{return v==null?'':(typeof v==='string'?v:JSON.stringify(v));}catch(_){return String(v);}})(e.detail||e.reason||e.actor||e.username||'')).slice(0,90))+'</td></tr>';
+  }
+  h+='</tbody></table></div>';
   el.innerHTML=h;
 }
 

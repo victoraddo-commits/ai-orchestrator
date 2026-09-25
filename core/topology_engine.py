@@ -49,6 +49,7 @@ def _build_sites(ts_data: dict, px_data: dict) -> dict:
             "proxmox_name": "pve",
             "tailscale_ip": "100.83.4.27",
             "hostname": "pve",
+            "node_host": "192.168.99.2",
         },
         "SITE-B": {
             "lan_subnet": "192.168.1.0/24",
@@ -81,7 +82,7 @@ def _build_sites(ts_data: dict, px_data: dict) -> dict:
             "gateway": defs["gateway"],
             "proxmox": {
                 "name": px_name,
-                "proxmox_ip": net_info.get("lan_ip", ""),
+                "proxmox_ip": defs.get("node_host") or net_info.get("lan_ip", ""),
                 "tailscale_ip": defs["tailscale_ip"],
                 "online": online,
                 "ssh_reachable": bool(net_info.get("reachable")),
@@ -226,11 +227,49 @@ def get_natural_summary(graph: dict) -> str:
 
 
 # -------------------------------------------------------------------
+# Site identity integrity
+# -------------------------------------------------------------------
+
+def sites_consistent(graph: dict) -> tuple[bool, str]:
+    """Detect a corrupted graph where distinct sites share one identity.
+
+    SITE-A (Proxmox A, `pve`) and SITE-B (Proxmox B, `pve-b`) are separate
+    nodes. A stale/aliased discovery can persist SITE-A carrying SITE-B's LAN
+    IP *and* NIC MACs, which makes the NIC inventory show one device twice.
+    Returns ``(ok, reason)``; ``ok=False`` names the collision so a caller can
+    refuse to persist/serve the bad graph instead of silently showing it.
+    """
+    sites = (graph or {}).get("sites") or {}
+    if len(sites) < 2:
+        return True, ""
+    seen_lan: dict[str, str] = {}
+    seen_macs: dict[str, str] = {}
+    for key, site in sites.items():
+        px = site.get("proxmox") or {}
+        lan = str(px.get("lan_ip") or "").strip()
+        if lan:
+            if lan in seen_lan:
+                return False, (f"{key} and {seen_lan[lan]} share LAN IP {lan}")
+            seen_lan[lan] = key
+        for nic in px.get("nics") or []:
+            mac = str(nic.get("mac") or "").strip().lower()
+            if not mac:
+                continue
+            if mac in seen_macs:
+                return False, (f"{key} and {seen_macs[mac]} share NIC MAC {mac}")
+            seen_macs[mac] = key
+    return True, ""
+
+
+# -------------------------------------------------------------------
 # Save helper
 # -------------------------------------------------------------------
 
 def save(graph: dict) -> None:
     """Save graph and update last_change timestamp if changes detected."""
+    ok, reason = sites_consistent(graph)
+    if not ok:
+        raise ValueError(f"refusing to persist inconsistent topology: {reason}")
     prior = load_prior()
     if prior:
         changes = detect_changes(prior, graph)

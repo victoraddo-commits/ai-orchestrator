@@ -1781,6 +1781,20 @@ def power_ups_events(limit: int = 100, _: None = Depends(_req_op)):
                         headers={"Cache-Control": "no-store"})
 
 
+@cc_extra_router.get("/api/voice/status")
+def voice_status(_: None = Depends(_req_op)):
+    """Voice readiness — probes the real gateway, never assumes."""
+    from core import voice_router as _vr
+    gateway = _vr._probe_local()
+    return JSONResponse(content={
+        "gateway_url": _vr._VOICE_HTTP_URL,
+        "gateway_up": gateway,
+        "stt": gateway, "tts": gateway,
+        "available": gateway,
+        "routes": ["/kai/voice/transcribe", "/kai/voice/speak", "/kai/voice/chat"],
+    }, headers={"Cache-Control": "no-store"})
+
+
 @cc_extra_router.get("/api/power/ups")
 def power_ups(_: None = Depends(_req_op)):
     """Normalized Sollatek UPS status from NUT on Proxmox B (never fabricated)."""

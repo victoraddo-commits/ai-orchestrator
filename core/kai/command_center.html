@@ -1079,6 +1079,8 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <div class="sidebar-section-label">Overview</div>
       <a class="nav-item active" href="#home" data-hash="home"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Home</span></a>
       <a class="nav-item" href="#command" data-hash="command"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg></span><span class="label">Command</span></a>
+      <a class="nav-item" href="#voice" data-hash="voice"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg></span><span class="label">Voice</span></a>
+      <a class="nav-item" href="#activity" data-hash="activity"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="label">Activity</span></a>
       <div class="sidebar-section-label">Management</div>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal Brain</span></a>
@@ -1241,6 +1243,8 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
 
       <!-- MODULES -->
       <section class="panel" id="panel-command"><div id="command-content"><span class="loading">loading command view…</span></div></section>
+      <section class="panel" id="panel-voice"><div id="voice-content"><span class="loading">loading voice…</span></div></section>
+      <section class="panel" id="panel-activity"><div id="activity-content"><span class="loading">loading activity…</span></div></section>
       <section class="panel" id="panel-modules"><div id="modules-content"><span class="loading">loading…</span></div></section>
 
       <!-- LEGAL -->
@@ -1493,7 +1497,7 @@ const SK = 'kai_command_session_v3';
 // Per-model dedicated pages, registered at runtime from /api/models/catalog.
 window.MODEL_PAGES = {};   // slug -> {id, title}
 const PANEL_TITLES = {
-  command:'Command',
+  command:'Command', voice:'Voice', activity:'Activity',
   home:'home', modules:'modules', legal:'Legal Brain', 'ai-workforce':'workforce', arbitra:'Arbitra', bet:'KAI Bet',
   payments:'Pricing & Payments',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
@@ -1793,7 +1797,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,command:loadCommand,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
+  const fns={home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
   if(fns[name])fns[name]();
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
@@ -7937,6 +7941,60 @@ async function loadSecAudit(){
       +'<td style="font-size:0.58rem">'+esc(secStr(e.detail||e.reason||e.actor||e.username)).slice(0,90)+'</td></tr>';
   }
   h+='</tbody></table></div>';
+  el.innerHTML=h;
+}
+
+
+// ═══ Phase G: Voice + Activity (reuse voice_router + audit/event feeds) ═══
+async function loadVoice(){
+  const el=$('voice-content'); if(!el) return;
+  const g=async p=>{try{return await apiT(p,12000);}catch(e){return {error:e.message};}};
+  const v=await g('/api/voice/status');
+  const ok=v&&!v.error;
+  let h='<div class="card"><h3>Voice <span class="badge '+(ok&&v.available?'ok':'warn')+'">'+(ok&&v.available?'available':'not configured')+'</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadVoice()">Refresh</button></span></h3>';
+  h+='<div class="metric-row">'
+    +'<div class="metric"><span class="val '+(v&&v.stt?'ok':'warn')+'">'+esc(v&&v.stt?'ready':'gateway down')+'</span><span class="lbl">Speech→text</span></div>'
+    +'<div class="metric"><span class="val '+(v&&v.tts?'ok':'warn')+'">'+esc(v&&v.tts?'ready':'gateway down')+'</span><span class="lbl">Text→speech</span></div>'
+    +'</div>';
+  h+='<div class="muted" style="font-size:0.62rem;margin-top:6px">Routes: '+((v&&v.routes)||[]).map(r=>'<code style="font-size:0.6rem">'+esc(r)+'</code>').join(' ')+'</div>';
+  if(ok&&!v.available) h+='<div class="field-hint" style="margin-top:8px">The local voice gateway (:8130) is not responding, so voice is honestly reported unavailable (nothing is faked). Start the voice gateway service to enable.</div>';
+  h+='<div class="card" style="margin-top:8px;background:var(--bg-deep)"><h3 style="font-size:0.72rem">Try text → speech</h3>'
+    +'<div style="display:flex;gap:6px;flex-wrap:wrap"><input id="voice-txt" class="search-input" placeholder="type something to speak" style="min-width:240px"><button class="btn btn-xs btn-accent" onclick="voiceSpeak()">Speak</button></div>'
+    +'<div id="voice-out" style="margin-top:8px"></div></div>';
+  h+='</div>';
+  el.innerHTML=h;
+}
+async function voiceSpeak(){
+  const t=(($('voice-txt')||{}).value||'').trim(); const el=$('voice-out'); if(!t){toast('text required','err');return;}
+  el.innerHTML='<span class="loading">synthesising…</span>';
+  try{
+    const r=await fetch('/kai/voice/speak',{method:'POST',headers:{'Content-Type':'application/json','X-Kai-Session':(S.token||'')},body:JSON.stringify({text:t})});
+    if(!r.ok){ el.innerHTML='<span class="error-text">HTTP '+r.status+' (voice unavailable)</span>'; return; }
+    const blob=await r.blob(); const url=URL.createObjectURL(blob);
+    el.innerHTML='<audio controls autoplay src="'+url+'" style="width:100%"></audio>';
+  }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
+}
+function actBadge(s){const m={ok:'ok',healthy:'ok',success:'ok',completed:'ok',warn:'warn',degraded:'warn',pending:'warn',error:'bad',failed:'bad',critical:'bad'};
+  return '<span class="badge '+(m[String(s).toLowerCase()]||'info')+'">'+esc(s)+'</span>';}
+async function loadActivity(){
+  const el=$('activity-content'); if(!el) return; el.innerHTML='<span class="loading">loading activity…</span>';
+  const g=async p=>{try{return await apiT(p,15000);}catch(e){return {error:e.message};}};
+  const [audit,appr]=await Promise.all([g('/kai/audit'),g('/approvals')]);
+  const ents=(audit&&audit.entries)||[];
+  let h='<div class="card"><h3>Activity <span class="badge '+(audit&&!audit.error?'ok':'warn')+'">'+(audit&&!audit.error?'live':'unknown')+'</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadActivity()">Refresh</button></span></h3>';
+  h+='<div class="metric-row"><div class="metric"><span class="val nw-tnum">'+esc(audit&&audit.total!=null?audit.total:'—')+'</span><span class="lbl">Audit events</span></div>'
+    +'<div class="metric"><span class="val nw-tnum">'+esc(ents.length)+'</span><span class="lbl">Recent</span></div></div>';
+  h+='<div class="table-wrap"><table><thead><tr><th>When</th><th>Event</th><th>Actor</th></tr></thead><tbody>';
+  if(!ents.length) h+='<tr><td colspan="3" class="empty">no activity</td></tr>';
+  for(const e of ents.slice(0,30)){const when=String(e.timestamp||'').replace('T',' ').slice(0,19);
+    h+='<tr><td style="font-size:0.58rem">'+esc(when)+'</td><td style="font-size:0.6rem">'+esc(e.event||e.action||e.type||'-')+'</td><td style="font-size:0.58rem">'+esc(secStr(e.actor||e.username||''))+'</td></tr>';}
+  h+='</tbody></table></div></div>';
+  const ap=Array.isArray(appr)?appr:(appr&&appr.approvals)||[];
+  h+='<div class="card"><h3>Approvals <span class="badge info">'+ap.length+'</span></h3>';
+  if(ap.length){h+='<div class="table-wrap"><table><thead><tr><th>ID</th><th>Status</th><th>Created</th></tr></thead><tbody>';
+    for(const a of ap.slice(0,15)) h+='<tr><td style="font-size:0.58rem">'+esc(String(a.id).slice(0,10))+'</td><td>'+actBadge(a.status||'—')+'</td><td style="font-size:0.58rem">'+esc(String(a.created||'').slice(0,19))+'</td></tr>';
+    h+='</tbody></table></div>';} else h+='<p class="empty">No approvals.</p>';
+  h+='</div>';
   el.innerHTML=h;
 }
 

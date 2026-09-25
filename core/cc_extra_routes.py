@@ -1439,6 +1439,8 @@ class WgAddDevice(BaseModel):
     endpoint: str | None = None
     keepalive: int | None = None
     mtu: int | None = None
+    mode: str | None = None            # "client" (full tunnel) | "site-to-site"
+    peer_lans: list[str] | None = None # remote LAN CIDRs for site-to-site
 
 
 @cc_extra_router.get("/api/wg/peers")

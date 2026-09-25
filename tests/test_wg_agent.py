@@ -279,3 +279,52 @@ def test_audit_log_written(agent):
     agent.add_device("Phone")
     lines = Path(agent.audit).read_text().strip().splitlines()
     assert any(json.loads(l)["action"] == "add" for l in lines)
+
+
+# ── site-to-site mode ─────────────────────────────────────────────────────
+
+def test_s2s_mode_emits_peer_lans_and_keepalive(agent):
+    r = agent.add_device("Site Router", mode="site-to-site",
+                         peer_lans=["192.168.50.0/24", "10.20.0.0/16"])
+    cfg = r["config"]
+    assert "AllowedIPs = 192.168.50.0/24, 10.20.0.0/16" in cfg
+    assert "0.0.0.0/0" not in cfg
+    assert "PersistentKeepalive = 25" in cfg
+    assert r["mode"] == "site-to-site"
+    # server-side peer routes the client's /32 *plus* the remote LANs
+    assert ["wg", "set", "wg0", "peer", PUB_NEW, "allowed-ips",
+            "10.6.0.8/32,192.168.50.0/24,10.20.0.0/16"] in agent._fake.calls
+    text = Path(agent.conf).read_text()
+    assert "AllowedIPs = 10.6.0.8/32, 192.168.50.0/24, 10.20.0.0/16" in text
+
+
+def test_s2s_mode_accepts_comma_string_lans(agent):
+    r = agent.add_device("Site 2", mode="s2s",
+                         peer_lans="10.30.0.0/24, 10.40.0.0/24")
+    assert "AllowedIPs = 10.30.0.0/24, 10.40.0.0/24" in r["config"]
+    assert r["mode"] == "site-to-site"
+
+
+def test_s2s_mode_requires_peer_lans(agent):
+    with pytest.raises(A.AgentError):
+        agent.add_device("Site", mode="site-to-site")
+
+
+def test_peer_lans_rejected_in_client_mode(agent):
+    with pytest.raises(A.AgentError):
+        agent.add_device("Phone", peer_lans=["192.168.50.0/24"])
+
+
+def test_invalid_mode_and_invalid_lan_rejected(agent):
+    with pytest.raises(A.AgentError):
+        agent.add_device("X", mode="bogus")
+    with pytest.raises(A.AgentError):
+        agent.add_device("Y", mode="site-to-site", peer_lans=["not-a-cidr"])
+
+
+def test_client_mode_default_still_full_tunnel(agent):
+    r = agent.add_device("RoadWarrior")
+    assert "AllowedIPs = 0.0.0.0/0, ::/0" in r["config"]
+    assert r["mode"] == "client"
+    assert ["wg", "set", "wg0", "peer", PUB_NEW, "allowed-ips",
+            "10.6.0.8/32"] in agent._fake.calls

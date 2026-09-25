@@ -48,6 +48,10 @@ WG_SERVER_IP = os.environ.get("WG_SERVER_IP", "10.6.0.1")
 WG_REMOTE_ENDPOINT = os.environ.get("WG_REMOTE_ENDPOINT", "162.195.35.152:51860")
 WG_DNS = os.environ.get("WG_DNS", "1.1.1.1, 8.8.8.8")
 WG_ALLOWED_IPS = os.environ.get("WG_ALLOWED_IPS", "0.0.0.0/0, ::/0")
+WG_MODE_CLIENT = "client"
+WG_MODE_SITE_TO_SITE = "site-to-site"
+_S2S_MODES = {"site-to-site", "site_to_site", "s2s", "site2site"}
+_CLIENT_MODES = {"", "client", "full-tunnel", "full_tunnel", "roadwarrior", "road-warrior"}
 WG_MTU = os.environ.get("WG_MTU", "1420")
 WG_KEEPALIVE = os.environ.get("WG_KEEPALIVE", "25")
 WG_WGD_DB = os.environ.get(
@@ -189,6 +193,34 @@ def allocate_ip(used: set, pool: str = WG_POOL,
 
 def _split_csv(value: str):
     return [v.strip() for v in value.split(",") if v.strip()]
+
+
+def normalize_mode(mode) -> str:
+    """Map a user/API mode string to ``client`` or ``site-to-site``."""
+    m = (mode or "").strip().lower()
+    if m in _S2S_MODES:
+        return WG_MODE_SITE_TO_SITE
+    if m in _CLIENT_MODES:
+        return WG_MODE_CLIENT
+    raise AgentError(f"unsupported mode: {mode!r} (use client|site-to-site)")
+
+
+def parse_lans(value):
+    """Validate/normalise remote LAN CIDRs (comma string or list) -> list."""
+    if value is None:
+        items = []
+    elif isinstance(value, str):
+        items = _split_csv(value)
+    else:
+        items = [str(v).strip() for v in value if str(v).strip()]
+    out = []
+    for item in items:
+        try:
+            net = ipaddress.ip_network(item, strict=False)
+        except ValueError:
+            raise AgentError(f"invalid peer LAN CIDR: {item!r}")
+        out.append(str(net))
+    return out
 
 
 def render_wg_config(private_key: str, address: str, server_pubkey: str,
@@ -524,6 +556,8 @@ class Agent:
                 "tx_bytes": livep.get("tx_bytes", 0),
                 "paused": bool(m.get("paused", False)),
                 "managed": pub in meta,
+                "mode": m.get("mode", WG_MODE_CLIENT),
+                "peer_lans": m.get("peer_lans", []),
                 "created_at": m.get("created_at"),
             })
         # paused peers live only in metadata (removed from conf)
@@ -551,11 +585,24 @@ class Agent:
             "peers": out,
         }
 
-    def add_device(self, name: str, ip=None, dns=WG_DNS, allowed_ips=WG_ALLOWED_IPS,
+    def add_device(self, name: str, ip=None, dns=WG_DNS, allowed_ips=None,
                    endpoint=WG_REMOTE_ENDPOINT, mtu=WG_MTU,
-                   keepalive=WG_KEEPALIVE, created_by="operator") -> dict:
+                   keepalive=WG_KEEPALIVE, created_by="operator",
+                   mode=WG_MODE_CLIENT, peer_lans=None) -> dict:
         if not name or not _NAME_RE.match(name):
             raise AgentError("name must be 1-64 chars [A-Za-z0-9 space . _ ( ) -]")
+        mode = normalize_mode(mode)
+        lans = parse_lans(peer_lans)
+        if mode == WG_MODE_SITE_TO_SITE:
+            if not lans:
+                raise AgentError(
+                    "site-to-site mode requires peer_lans "
+                    "(comma-separated remote LAN CIDRs)")
+            allowed_ips = ", ".join(lans)
+        else:
+            if lans:
+                raise AgentError("peer_lans is only valid in site-to-site mode")
+            allowed_ips = allowed_ips or WG_ALLOWED_IPS
         text = self._read_conf()
         parsed = parse_conf(text)
         meta = self._load_meta()
@@ -574,13 +621,16 @@ class Agent:
             raise AgentError(f"ip {address} already in use")
         priv, pub = self._keygen()
 
+        server_allowed_list = [address] + (
+            lans if mode == WG_MODE_SITE_TO_SITE else [])
+        server_allowed = ", ".join(server_allowed_list)
         block = (f"# kai-device: {name}\n[Peer]\n"
-                 f"PublicKey = {pub}\nAllowedIPs = {address}\n")
+                 f"PublicKey = {pub}\nAllowedIPs = {server_allowed}\n")
         blocks = _split_blocks(text)
         # drop any trailing non-header block artifacts, then append
         blocks.append({"header": "[Peer]", "pre": [f"# kai-device: {name}\n"],
                        "lines": [f"[Peer]\n", f"PublicKey = {pub}\n",
-                                 f"AllowedIPs = {address}\n"]})
+                                 f"AllowedIPs = {server_allowed}\n"]})
 
         backup = self._backup()
         self._write_conf(blocks, text)
@@ -590,10 +640,12 @@ class Agent:
             "dns": dns, "allowed_ips": allowed_ips, "endpoint": endpoint,
             "mtu": mtu, "keepalive": keepalive, "created_at": self._now(),
             "created_by": created_by, "paused": False,
+            "mode": mode, "peer_lans": lans,
         }
         # apply live without restarting the interface (existing peers untouched)
         try:
-            self._wg("set", self.iface, "peer", pub, "allowed-ips", address)
+            self._wg("set", self.iface, "peer", pub, "allowed-ips",
+                     ",".join(server_allowed_list))
         except AgentError:
             # roll back the config change if the live apply failed
             shutil.copy2(backup, self.conf)
@@ -609,7 +661,8 @@ class Agent:
                                   endpoint, dns, allowed_ips, mtu, keepalive, name)
         self._audit("add", name=name, pubkey=pub, address=address, backup=backup)
         return {"name": name, "pubkey": pub, "ip": address.split("/")[0],
-                "address": address, "config": config,
+                "address": address, "config": config, "mode": mode,
+                "peer_lans": lans,
                 "interface_public_key": interface_pub, "backup": backup}
 
     def _render_for(self, meta, fmt, name):
@@ -719,11 +772,13 @@ def dispatch(agent: Agent, payload: dict) -> dict:
     if op == "add":
         return agent.add_device(payload["name"], payload.get("ip"),
                                 payload.get("dns", WG_DNS),
-                                payload.get("allowed_ips", WG_ALLOWED_IPS),
+                                payload.get("allowed_ips"),
                                 payload.get("endpoint", WG_REMOTE_ENDPOINT),
                                 payload.get("mtu", WG_MTU),
                                 payload.get("keepalive", WG_KEEPALIVE),
-                                payload.get("created_by", "operator"))
+                                payload.get("created_by", "operator"),
+                                payload.get("mode", WG_MODE_CLIENT),
+                                payload.get("peer_lans"))
     if op == "pause":
         return agent.pause_device(payload["pubkey"], payload.get("by", "operator"))
     if op == "resume":

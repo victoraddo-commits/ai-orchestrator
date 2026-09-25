@@ -157,6 +157,11 @@ def delete_peer(pubkey: str) -> dict:
     return _call({"op": "delete", "pubkey": pubkey})
 
 
+def rename_peer(pubkey: str, **opts) -> dict:
+    """Update a managed peer's metadata (name/DNS/keepalive/MTU/allowed IPs)."""
+    return _call({"op": "rename", "pubkey": pubkey, **opts})
+
+
 def peer_config(pubkey: str, fmt: str = "wg") -> dict:
     return _call({"op": "config", "pubkey": pubkey, "type": fmt})
 

@@ -4335,8 +4335,8 @@ function renderProxmoxGuests(u){
   const hosts=(u&&u.hosts)||[];
   const guests=[];
   hosts.forEach(function(h){
-    (h.containers||[]).forEach(function(c){guests.push({kind:'CT',vmid:c.vmid,name:c.name,status:c.status,host:h.name,disk:c.disk,net:c.net});});
-    (h.vms||[]).forEach(function(v){guests.push({kind:'VM',vmid:v.vmid,name:v.name,status:v.status,host:h.name,mem:v.mem_mb,disk_gb:v.bootdisk_gb});});
+    (h.containers||[]).forEach(function(c){guests.push({kind:'CT',vmid:c.vmid,name:c.name,status:c.status,host:h.name,site:h.site,label:c.label,disk:c.disk,net:c.net});});
+    (h.vms||[]).forEach(function(v){guests.push({kind:'VM',vmid:v.vmid,name:v.name,status:v.status,host:h.name,site:h.site,label:v.label,mem:v.mem_mb,disk_gb:v.bootdisk_gb});});
   });
   if(!guests.length) return '<p class="empty">No Proxmox guests found.</p>';
   let html='<div style="margin-bottom:10px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">'+guests.length+' Proxmox guest(s) · Docker not present on this host — showing CTs + VMs</div>';
@@ -4345,7 +4345,7 @@ function renderProxmoxGuests(u){
     const bdg=g.status==='running'?'ok':(g.status==='stopped'?'bad':'warn');
     const disk=g.kind==='CT'?(g.disk&&g.disk.pct!=null?g.disk.pct+'%':(g.disk?fmtBytes(g.disk.used)+' / '+fmtBytes(g.disk.total):'—')):(g.disk_gb!=null?g.disk_gb+' GB':'—');
     const net=(g.kind==='CT'&&g.net)?('rx '+fmtBytes(g.net.rx_total)+' · tx '+fmtBytes(g.net.tx_total)):'—';
-    html+='<tr><td><span class="badge info">'+esc(g.kind)+'</span></td><td>'+esc(g.vmid)+'</td><td>'+esc(g.name)+'</td><td style="font-size:0.62rem">'+esc(g.host)+'</td><td><span class="badge '+bdg+'">'+esc(g.status)+'</span></td><td style="font-size:0.62rem">'+esc(disk)+'</td><td style="font-size:0.6rem">'+esc(net)+'</td></tr>';
+    html+='<tr><td><span class="badge info">'+esc(g.kind)+'</span></td><td><b>'+esc(g.label||guestLabel(g.kind,g.vmid,g.host))+'</b></td><td>'+esc(g.name)+'</td><td style="font-size:0.62rem">'+esc(g.host)+' · '+esc(guestSiteName(_siteSuffix(g.host)))+'</td><td><span class="badge '+bdg+'">'+esc(g.status)+'</span></td><td style="font-size:0.62rem">'+esc(disk)+'</td><td style="font-size:0.6rem">'+esc(net)+'</td></tr>';
   });
   return html+'</tbody></table></div>';
 }
@@ -4904,7 +4904,7 @@ async function loadInfraUsage(force){
       if(cts.length){
         html+='<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>CT</th><th>Name</th><th>Disk</th><th>Usage</th><th>RX</th><th>TX</th></tr></thead><tbody>';
         for(const ct of cts){ const dk=ct.disk||{};
-          html+='<tr><td>'+esc(ct.vmid)+'</td><td>'+esc(ct.name)+'</td>'
+          html+='<tr><td><b>'+esc(ct.label||guestLabel('CT',ct.vmid,h.name))+'</b></td><td>'+esc(ct.name)+'</td>'
             +'<td>'+esc(fmtBytes(dk.used))+' / '+esc(fmtBytes(dk.total))+'</td>'
             +'<td>'+diskBar(dk.pct)+'</td>'
             +'<td>'+esc(fmtBytes(ct.net.rx_total))+'</td><td>'+esc(fmtBytes(ct.net.tx_total))+'</td></tr>';
@@ -4914,7 +4914,7 @@ async function loadInfraUsage(force){
       const vms=h.vms||[];
       if(vms.length){
         html+='<div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>VM</th><th>Name</th><th>Status</th><th>Memory</th><th>Boot disk</th></tr></thead><tbody>';
-        for(const vm of vms){ html+='<tr><td>'+esc(vm.vmid)+'</td><td>'+esc(vm.name)+'</td>'
+        for(const vm of vms){ html+='<tr><td><b>'+esc(vm.label||guestLabel('VM',vm.vmid,h.name))+'</b></td><td>'+esc(vm.name)+'</td>'
           +'<td><span class="badge '+(vm.status==='running'?'ok':'bad')+'">'+esc(vm.status)+'</span></td>'
           +'<td>'+esc(vm.mem_mb)+' MB</td><td>'+esc(vm.bootdisk_gb)+' GB</td></tr>'; }
         html+='</tbody></table></div>';
@@ -5568,7 +5568,35 @@ function nwAccess(){
   html+=svc.length?_autoTable(svc):'<p class="empty">none recorded</p>';
   html+='</div>';return html;
 }
+// ── Host-qualified guest labels ──────────────────────────────────────
+// VMIDs are only unique per Proxmox host, so IDs are shown as
+// <KIND><vmid>-<SITE> (CT102-PA/PB/PC). Mirrors core/host_labels.py.
+function _siteSuffix(){
+  for(const a of arguments){
+    const s=String(a==null?'':a).toLowerCase(); if(!s) continue;
+    if(/(^|[^a-z0-9])(pve-b|proxmox-b)([^a-z0-9]|$)|192\.168\.1\.110|100\.122\.38\.118/.test(s)) return 'PB';
+    if(/(^|[^a-z0-9])(pve-a|proxmox-a)([^a-z0-9]|$)|192\.168\.99\.2|100\.83\.4\.27/.test(s)) return 'PA';
+    if(/(^|[^a-z0-9])(pve-c|proxmox-c)([^a-z0-9]|$)|100\.116\.165\.100/.test(s)) return 'PC';
+  }
+  return 'PX';
+}
+function guestLabel(kind,vmid,host){
+  const raw=String(vmid==null?'':vmid).trim();
+  if(/-(PA|PB|PC|PX)$/.test(raw)) return raw;
+  let k=String(kind||'').toUpperCase().replace(/\s+/g,'');
+  if(k==='LXC'||k==='CONTAINER') k='CT';
+  return (k||'GUEST')+raw+'-'+_siteSuffix(host);
+}
+function guestSiteName(site){return {PA:'Proxmox A',PB:'Proxmox B',PC:'Proxmox C'}[site]||'Proxmox ?';}
+
 let wgTimer=null;
+const WG_STATE={peers:[], query:'', auto:false};
+async function wgCopy(text,label){
+  try{ await navigator.clipboard.writeText(text||''); toast((label||'copied')+' copied'); return; }catch(e){}
+  const ta=document.createElement('textarea'); ta.value=text||''; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); toast((label||'copied')+' copied'); }catch(_){ toast('copy failed'); }
+  ta.remove();
+}
 // URL-safe opaque form of a WireGuard pubkey (may contain '/' and '+').
 function wgEnc(pk){try{return btoa(String(pk)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}catch(e){return String(pk);}}
 function wgSafe(s){return String(s||'').replace(/[^A-Za-z0-9 ._()\-]/g,'').slice(0,64);}
@@ -5583,25 +5611,29 @@ function wgDetail(title,bodyHtml){
 function wgDevRow(p){
   const up=(Number(p.latest_handshake)||0)>0, paused=!!p.paused;
   const badge=paused?'<span class="badge warn">PAUSED</span>':(up?'<span class="badge ok">UP</span>':'<span class="badge bad">DOWN</span>');
+  const mode=p.mode==='site-to-site'?'<span class="badge info">SITE-TO-SITE</span>':'<span class="badge info">FULL-TUNNEL</span>';
   const border=paused?'var(--warn,#D29922)':(up?'var(--ok,#27c93f)':'var(--bad,#e5484d)');
   const enc=wgEnc(p.pubkey);
+  const extra=(p.mode==='site-to-site'&&(p.peer_lans||[]).length)?' · peer LANs <b>'+esc((p.peer_lans||[]).join(', '))+'</b>':'';
   let acts;
   if(p.managed){
     acts=(paused?`<button class="btn btn-xs btn-accent" onclick="wgResume('${enc}')">Resume</button>`
                 :`<button class="btn btn-xs" onclick="wgPause('${enc}')">Pause</button>`)
-      +` <button class="btn btn-xs" onclick="wgExport('${enc}','wg')">WG</button>`
+      +` <button class="btn btn-xs btn-accent" onclick="wgShowQR('${enc}')">QR / scan</button>`
+      +` <button class="btn btn-xs" onclick="wgCopyConfig('${enc}')">Copy</button>`
+      +` <button class="btn btn-xs" onclick="wgDownload('${enc}','wg')">.conf</button>`
       +` <button class="btn btn-xs" onclick="wgExport('${enc}','ddwrt')">DD-WRT</button>`
       +` <button class="btn btn-xs" onclick="wgExport('${enc}','openwrt')">OpenWRT</button>`
-      +` <button class="btn btn-xs" onclick="wgShowQR('${enc}')">QR</button>`
+      +` <button class="btn btn-xs" onclick="wgRename('${enc}','${wgSafe(p.name)}')">Rename</button>`
       +` <button class="btn btn-xs" onclick="wgDelete('${enc}','${wgSafe(p.name)}')">Delete</button>`;
   } else {
     acts='<span style="color:var(--fg-muted);font-size:0.6rem">external peer — no Kai client key to export</span>';
   }
   return `<div style="padding:8px 10px;border:1px solid var(--border);border-left:3px solid ${border};font-family:var(--font-mono);font-size:0.65rem;margin-bottom:6px;border-radius:4px">
-<b>${esc(p.name||('device '+String(p.pubkey||'').slice(0,8)))}</b> ${badge} <span style="color:var(--fg-muted)">${esc(p.address||'')}</span>
-<div style="margin-top:3px;color:var(--fg-muted)">endpoint <b>${esc(p.endpoint||'-')}</b> · allowed <b>${esc((p.allowed_ips||[]).join(', '))}</b></div>
+<b>${esc(p.name||('device '+String(p.pubkey||'').slice(0,8)))}</b> ${badge} ${mode} <span style="color:var(--fg-muted)">${esc(p.address||'')}</span>
+<div style="margin-top:3px;color:var(--fg-muted)">endpoint <b>${esc(p.endpoint||'-')}</b> · allowed <b>${esc((p.allowed_ips||[]).join(', '))}</b>${extra}</div>
 <div>handshake <b>${esc(wgAgo(p.latest_handshake))}</b> · rx <b>${wgFmtBytes(p.rx_bytes)}</b> · tx <b>${wgFmtBytes(p.tx_bytes)}</b></div>
-<div class="action-row" style="margin-top:6px">${acts}</div></div>`;
+<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:5px">${acts}</div></div>`;
 }
 function wgMeshNodeRow(n){
   const st=n.status||'unknown';
@@ -5633,32 +5665,83 @@ function wgMeshCard(m){
 }
 async function loadWireguard(){
   const el=$('wireguard-content'); if(!el) return;
-  el.innerHTML='<span class="loading">loading…</span>';
-  const g=async(p)=>{try{return await api(p);}catch(e){return {error:e.message};}};
-  const [d,m]=await Promise.all([g('/api/wg/peers'),g('/api/wg/mesh')]);
-  const peers=(d&&Array.isArray(d.peers))?d.peers:[];
-  const live=d&&!d.error;
-  let html=wgMeshCard(m);
-  html+='<div class="card"><h3>WireGuard Devices &middot; CT102 pool (10.6.0.0/24) <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span></h3>';
-  html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="wgAddForm()">Add device</button><button class="btn btn-xs" onclick="loadWireguard()">Refresh</button><button class="btn btn-xs" onclick="wgExitNode()">Exit node (CT103)</button><button class="btn btn-xs" onclick="wgRaw()">Raw</button></div>';
-  html+='<div id="wg-last" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px">'
-    +(d&&d.interface_public_key?('server pub '+esc(String(d.interface_public_key).slice(0,10))+'&hellip; · port '+esc(String(d.listen_port||''))+' · '+peers.length+' devices'):'')
-    +(d&&d.error?' <span class="error-text">'+esc(d.error)+'</span>':'')+'</div>';
+  el.innerHTML='<span class="loading">loading connections…</span>';
+  // Peers first and bounded: the A/B/C mesh probe SSHes three nodes and can
+  // take 30s+. It must never block the connection manager from rendering.
+  let d=null;
+  try{ d=await apiT('/api/wg/peers',12000); }catch(e){ d={error:e.message}; }
+  WG_STATE.peers=(d&&Array.isArray(d.peers))?d.peers:[];
+  renderWgManager(d);
+  wgMeshLoad();          // fire-and-forget; fills #wg-mesh when it resolves
+  wgAutoRefresh();
+}
+function renderWgManager(d){
+  const el=$('wireguard-content'); if(!el) return;
+  window._wgLast=d;
+  const peers=WG_STATE.peers, live=d&&!d.error;
+  const managed=peers.filter(p=>p.managed);
+  let html='<div id="wg-mesh"><div class="card" style="margin-bottom:10px"><h3>Full Mesh &middot; wg-kai <span class="badge info">loading…</span></h3><div class="muted" style="font-size:0.62rem">A&harr;B&harr;C probe running — the connection list below is already live.</div></div></div>';
+  html+='<div class="card"><h3>WireGuard Connections &middot; CT102-PA pool <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span></h3>';
+  html+='<div style="font-size:0.64rem;color:var(--fg-muted)">'+(d&&d.interface_public_key?('server pub <code>'+esc(String(d.interface_public_key).slice(0,12))+'&hellip;</code> · port <b>'+esc(String(d.listen_port||''))+'</b> · pool <b>'+esc(d.pool||'')+'</b> · '+peers.length+' connection(s), '+managed.length+' managed'):'')+(d&&d.error?' <span class="error-text">'+esc(d.error)+'</span>':'')+'</div>';
+  html+='<div class="action-row" style="margin:8px 0;flex-wrap:wrap;gap:6px">'
+    +'<button class="btn btn-xs btn-accent" onclick="wgAddForm()">+ Add connection</button>'
+    +'<input class="search-input" placeholder="filter connections…" oninput="wgFilterRows(this.value)" style="max-width:180px">'
+    +'<button class="btn btn-xs" onclick="wgToggleAuto()">'+(WG_STATE.auto?'Auto-refresh: on':'Auto-refresh: off')+'</button>'
+    +'<button class="btn btn-xs" onclick="loadWireguard()">Refresh</button>'
+    +'<button class="btn btn-xs" onclick="wgDownloadAll()">Download all</button>'
+    +'<button class="btn btn-xs" onclick="wgExitNode()">Exit node (CT103)</button>'
+    +'<button class="btn btn-xs" onclick="wgRaw()">Raw</button></div>';
   html+='<div id="wg-add"></div><div id="wg-msg"></div>';
-  if(!peers.length){html+='<p class="empty">no devices yet — use “Add device”.</p>';}
-  for(const p of peers) html+=wgDevRow(p);
+  if(!peers.length){html+='<p class="empty">no connections yet — use “Add connection”.</p>';}
+  for(const p of peers){
+    const hay=((p.name||'')+' '+(p.address||'')+' '+(p.mode||'')+' '+(p.pubkey||'')).toLowerCase();
+    html+='<div data-wgrow="'+esc(hay)+'">'+wgDevRow(p)+'</div>';
+  }
   html+='</div>'; el.innerHTML=html;
+}
+function wgFilterRows(v){
+  WG_STATE.query=v||'';
+  const q=(v||'').toLowerCase();
+  document.querySelectorAll('[data-wgrow]').forEach(function(r){
+    const hay=r.getAttribute('data-wgrow')||'';
+    r.style.display=(!q||hay.indexOf(q)>=0)?'':'none';
+  });
+}
+async function wgMeshLoad(){
+  const el=$('wg-mesh'); if(!el) return;
+  try{ const m=await apiT('/api/wg/mesh',75000); el.innerHTML=wgMeshCard(m); }
+  catch(e){ el.innerHTML='<div class="card" style="margin-bottom:10px"><h3>Full Mesh &middot; wg-kai <span class="badge warn">UNKNOWN</span></h3><div class="error-text">'+esc(e.message)+'</div><div class="action-row" style="margin-top:6px"><button class="btn btn-xs" onclick="wgMeshLoad()">Retry</button></div></div>'; }
+}
+function wgToggleAuto(){WG_STATE.auto=!WG_STATE.auto;wgAutoRefresh();renderWgManager(window._wgLast);}
+function wgAutoRefresh(){
+  if(wgTimer){clearInterval(wgTimer);wgTimer=null;}
+  if(!WG_STATE.auto) return;
+  wgTimer=setInterval(async()=>{
+    if(window.location.hash!=='#wireguard') return;
+    try{const d=await apiT('/api/wg/peers',12000);WG_STATE.peers=(d&&d.peers)||[];renderWgManager(d);}catch(e){}
+  },15000);
 }
 function wgAddCancel(){const el=$('wg-add'); if(el) el.innerHTML='';}
 function wgAddForm(){
   const el=$('wg-add'); if(!el) return;
-  el.innerHTML='<div class="card" style="margin-bottom:8px"><h4 style="font-size:0.7rem">Add WireGuard device</h4>'
+  el.innerHTML='<div class="card" style="margin-bottom:8px"><h4 style="font-size:0.7rem">New WireGuard connection</h4>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
-    +'<input id="wg-name" placeholder="device name (e.g. Pixel 9)" style="flex:1;min-width:160px">'
-    +'<input id="wg-ip" placeholder="IP (optional)" style="width:150px">'
+    +'<input id="wg-name" placeholder="device name (e.g. Pixel 9 / Home router)" style="flex:1;min-width:180px">'
+    +'<input id="wg-ip" placeholder="IP (optional, auto)" style="width:150px">'
     +'<input id="wg-dns" placeholder="DNS (optional)" style="width:150px">'
+    +'<select id="wg-mode" class="search-input" onchange="wgModeChange()" style="max-width:190px">'
+    +'<option value="client">client — full tunnel (0.0.0.0/0)</option>'
+    +'<option value="site-to-site">site-to-site (peer LANs)</option></select>'
+    +'<input id="wg-lans" placeholder="peer LANs e.g. 192.168.50.0/24,10.20.0.0/16" style="display:none;min-width:250px">'
+    +'<input id="wg-keepalive" type="number" placeholder="keepalive 25" style="width:130px">'
+    +'<input id="wg-mtu" type="number" placeholder="MTU (optional)" style="width:130px">'
     +'<button class="btn btn-xs btn-accent" onclick="wgAdd()">Create</button>'
-    +'<button class="btn btn-xs" onclick="wgAddCancel()">Cancel</button></div></div>';
+    +'<button class="btn btn-xs" onclick="wgAddCancel()">Cancel</button></div>'
+    +'<div class="muted" style="font-size:0.6rem;margin-top:6px">Client = all traffic exits through Proxmox A. Site-to-site routes only the peer LANs you list.</div></div>';
+}
+function wgModeChange(){
+  const s=$('wg-mode'), l=$('wg-lans');
+  if(l) l.style.display=(s&&s.value==='site-to-site')?'':'none';
 }
 async function wgAdd(){
   const name=(($('wg-name')||{}).value||'').trim();
@@ -5666,39 +5749,94 @@ async function wgAdd(){
   const body={name:name};
   const ip=(($('wg-ip')||{}).value||'').trim(); if(ip)body.ip=ip;
   const dns=(($('wg-dns')||{}).value||'').trim(); if(dns)body.dns=dns;
+  const mode=($('wg-mode')||{}).value||'client';
+  if(mode==='site-to-site'){
+    const lans=(($('wg-lans')||{}).value||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(!lans.length){wgMsg('site-to-site needs at least one peer LAN CIDR',false);return;}
+    body.mode='site-to-site'; body.peer_lans=lans;
+  }
+  const ka=($('wg-keepalive')||{}).value; if(ka)body.keepalive=Number(ka);
+  const mtu=($('wg-mtu')||{}).value; if(mtu)body.mtu=Number(mtu);
   wgMsg('creating '+name+'…',true);
   try{
     const d=await api('/api/wg/peers',{method:'POST',body:JSON.stringify(body)});
-    wgShowResult('Device created — '+esc(d.name)+' ('+esc(d.ip)+')',d.config,d.qr_png_base64,wgEnc(d.pubkey));
+    wgShowResult('Connection created — '+esc(d.name)+' ('+esc(d.ip)+')',d.config,d.qr_png_base64,wgEnc(d.pubkey));
   }catch(e){wgMsg('create failed: '+e.message,false);}
 }
 function wgShowResult(title,config,qr,enc){
+  window._wgLastConfig=config||'';
   wgDetail(title,
     (qr?'<div style="text-align:center;margin:10px 0"><img alt="WireGuard QR" style="width:220px;height:220px;background:#fff;padding:8px;border-radius:6px" src="data:image/png;base64,'+qr+'"></div>':'')
     +'<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">client config — contains this device&rsquo;s private key; share only with the device owner.</div>'
     +'<textarea readonly style="width:100%;height:220px;font-family:var(--font-mono);font-size:0.62rem;white-space:pre">'+esc(config||'')+'</textarea>'
-    +'<div class="action-row" style="margin-top:6px">'
+    +'<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:6px">'
+    +'<button class="btn btn-xs" onclick="wgCopy(window._wgLastConfig,\'config\')">Copy config</button>'
     +'<button class="btn btn-xs" onclick="wgDownload(\''+enc+'\',\'wg\')">Download .conf</button>'
     +'<button class="btn btn-xs" onclick="wgExport(\''+enc+'\',\'ddwrt\')">DD-WRT</button>'
-    +'<button class="btn btn-xs" onclick="wgExport(\''+enc+'\',\'openwrt\')">OpenWRT</button></div>');
+    +'<button class="btn btn-xs" onclick="wgExport(\''+enc+'\',\'openwrt\')">OpenWRT</button>'
+    +'<button class="btn btn-xs" onclick="wgShowQR(\''+enc+'\')">QR / scan</button></div>');
 }
 async function wgExport(enc,fmt){
   try{
     const d=await api('/api/wg/peers/'+enc+'/config?type='+encodeURIComponent(fmt));
+    window._wgLastConfig=d.config||'';
     wgDetail(esc(d.name||'device')+' &middot; '+esc(fmt)+' export',
       '<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">'+esc(fmt)+' config — contains this device&rsquo;s private key.</div>'
       +'<textarea readonly style="width:100%;height:280px;font-family:var(--font-mono);font-size:0.62rem;white-space:pre">'+esc(d.config||'')+'</textarea>'
-      +'<div class="action-row" style="margin-top:6px"><button class="btn btn-xs" onclick="wgDownload(\''+enc+'\',\''+fmt+'\')">Download</button>'
-      +(fmt==='wg'?'<button class="btn btn-xs" onclick="wgShowQR(\''+enc+'\')">QR</button>':'')+'</div>');
+      +'<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:6px">'
+      +'<button class="btn btn-xs" onclick="wgCopy(window._wgLastConfig,\''+fmt+' config\')">Copy</button>'
+      +'<button class="btn btn-xs" onclick="wgDownload(\''+enc+'\',\''+fmt+'\')">Download</button>'
+      +(fmt==='wg'?'<button class="btn btn-xs" onclick="wgShowQR(\''+enc+'\')">QR / scan</button>':'')+'</div>');
   }catch(e){toast('export failed: '+e.message);}
 }
 async function wgShowQR(enc){
   try{
     const d=await api('/api/wg/peers/'+enc+'/qr?type=wg');
-    wgDetail('Device QR',
+    window._wgLastConfig=d.config||window._wgLastConfig||'';
+    wgDetail('Connection QR &middot; scan to add',
       '<div style="text-align:center;margin:10px 0"><img alt="WireGuard QR" style="width:240px;height:240px;background:#fff;padding:10px;border-radius:6px" src="data:image/png;base64,'+esc(d.qr_png_base64||'')+'"></div>'
-      +'<p style="font-size:0.64rem;color:var(--fg-muted)">Scan with the WireGuard app. The QR encodes the full client config (private key included).</p>');
+      +'<p style="font-size:0.64rem;color:var(--fg-muted)">Open the WireGuard app &rarr; <b>+</b> &rarr; <b>Scan from QR code</b>. The QR encodes the full client config (private key included).</p>'
+      +'<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:6px">'
+      +'<button class="btn btn-xs btn-accent" onclick="wgDownloadQR(\''+enc+'\')">Download PNG</button>'
+      +'<button class="btn btn-xs" onclick="wgCopyConfig(\''+enc+'\')">Copy config</button></div>');
   }catch(e){toast('QR failed: '+e.message);}
+}
+async function wgDownloadQR(enc){
+  try{
+    const r=await fetch('/api/wg/peers/'+enc+'/qr?raw=1',{headers:(S.token?{'X-Kai-Session':S.token}:{})});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const blob=await r.blob();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='kai-wg-'+(wgSafe(enc).slice(0,12)||'device')+'-qr.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){toast('QR download failed: '+e.message);}
+}
+async function wgCopyConfig(enc){
+  try{ const d=await api('/api/wg/peers/'+enc+'/config?type=wg'); await wgCopy(d.config||'',(d.name||'config')); }
+  catch(e){toast('copy failed: '+e.message);}
+}
+async function wgRename(enc,current){
+  const name=prompt('New name for this connection:',current||'');
+  if(name==null) return;
+  const clean=name.trim(); if(!clean) return;
+  try{ await api('/api/wg/peers/'+enc,{method:'PATCH',body:JSON.stringify({name:clean})}); toast('renamed'); loadWireguard(); }
+  catch(e){toast('rename failed: '+e.message);}
+}
+async function wgDownloadAll(){
+  try{
+    const peers=(WG_STATE.peers||[]).filter(p=>p.managed);
+    if(!peers.length){toast('no managed connections to export');return;}
+    let out='';
+    for(const p of peers){
+      try{ const d=await api('/api/wg/peers/'+wgEnc(p.pubkey)+'/config?type=wg');
+        out+='# ===== '+p.name+' ('+p.address+') =====\n'+(d.config||'')+'\n\n';
+      }catch(e){ out+='# '+p.name+': ERROR '+e.message+'\n\n'; }
+    }
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([out],{type:'text/plain'}));
+    a.download='kai-wireguard-connections.conf';
+    document.body.appendChild(a); a.click(); a.remove();
+  }catch(e){toast('download all failed: '+e.message);}
 }
 async function wgDownload(enc,fmt){
   try{

@@ -328,3 +328,42 @@ def test_client_mode_default_still_full_tunnel(agent):
     assert r["mode"] == "client"
     assert ["wg", "set", "wg0", "peer", PUB_NEW, "allowed-ips",
             "10.6.0.8/32"] in agent._fake.calls
+
+
+# ── rename / retune ───────────────────────────────────────────────────────
+
+def test_rename_updates_meta_conf_and_audit(agent):
+    agent.add_device("Phone")
+    r = agent.rename_device(PUB_NEW, name="Pixel 9")
+    assert r["name"] == "Pixel 9"
+    meta = json.loads(Path(agent.meta).read_text())
+    assert meta[PUB_NEW]["name"] == "Pixel 9"
+    text = Path(agent.conf).read_text()
+    assert "# kai-device: Pixel 9" in text
+    assert "# kai-device: Phone" not in text
+    for pub in (PUB_A, PUB_B, PUB_C):
+        assert pub in text
+    lines = Path(agent.audit).read_text().strip().splitlines()
+    assert any(json.loads(l)["action"] == "rename" for l in lines)
+
+
+def test_rename_rejects_unmanaged_and_bad_name(agent):
+    with pytest.raises(A.AgentError):
+        agent.rename_device(PUB_A, name="nope")
+    agent.add_device("Phone")
+    with pytest.raises(A.AgentError):
+        agent.rename_device(PUB_NEW, name="bad/name")
+
+
+def test_rename_updates_tunables(agent):
+    agent.add_device("Phone")
+    r = agent.rename_device(PUB_NEW, dns="1.1.1.1", keepalive=15, mtu=1400)
+    assert r["dns"] == "1.1.1.1" and r["keepalive"] == 15 and r["mtu"] == 1400
+    meta = json.loads(Path(agent.meta).read_text())
+    assert meta[PUB_NEW]["keepalive"] == 15
+
+
+def test_dispatch_rename(agent):
+    agent.add_device("Phone")
+    r = A.dispatch(agent, {"op": "rename", "pubkey": PUB_NEW, "name": "Tablet"})
+    assert r["name"] == "Tablet"

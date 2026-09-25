@@ -18,11 +18,13 @@ import subprocess
 import threading
 import time
 
+from core.host_labels import label_guest, site_label
+
 SSH_KEY = os.environ.get("KAI_USAGE_SSH_KEY", "/root/.ssh/kai_pve_usage")
 PVE_B_HOST = os.environ.get("KAI_USAGE_PVE_B", "192.168.1.110")
 PVE_C_HOST = os.environ.get("KAI_USAGE_PVE_C", "100.116.165.100")
 SSH_CONNECT_TIMEOUT = int(os.environ.get("KAI_USAGE_SSH_CONNECT_TIMEOUT", "6"))
-COLLECT_TIMEOUT = float(os.environ.get("KAI_USAGE_TIMEOUT", "25"))
+COLLECT_TIMEOUT = float(os.environ.get("KAI_USAGE_TIMEOUT", "45"))
 TTL = float(os.environ.get("KAI_USAGE_TTL", "8"))
 
 _PHYSICAL_IFACE = re.compile(r"^(eth|en|nic|wl|bond|em)")
@@ -259,19 +261,27 @@ def build_usage(pveb_text: str, prev: dict | None = None, now: float | None = No
             "disk": root, "net": net_block(blk.get("net") or {}, f"ct:{vmid}"),
         })
 
+    # Host-qualified labels: CTs here live on Proxmox B, so CT100 -> CT100-PB.
+    containers = [label_guest({**ct, "kind": "CT", "host": "pve-b"})
+                  for ct in containers]
+    vms = [label_guest({**vm, "kind": "VM", "host": "pve-b"})
+           for vm in parse_qm(sections.get("QM", ""))]
+
     pveb_disks = parse_df(sections.get("DF", ""))
     pveb_net = parse_netdev(sections.get("NET", ""))
     pvec = parse_pvec(sections.get("PVEC", ""))
 
     hosts = [
         {"name": "pve-b", "host": PVE_B_HOST, "reachable": True, "error": None,
+         "site": "PB", "site_label": site_label("PB"),
          "disks": pveb_disks, "mounts": _mounts(pveb_disks),
          "net": net_block(pveb_net, "host:pve-b:"),
          "containers": containers,
-         "vms": parse_qm(sections.get("QM", ""))},
+         "vms": vms},
         {"name": "pve-c", "host": PVE_C_HOST,
          "reachable": bool(pvec["disks"] or pvec["net"]),
          "error": None if (pvec["disks"] or pvec["net"]) else "unreachable",
+         "site": "PC", "site_label": site_label("PC"),
          "disks": pvec["disks"], "mounts": _mounts(pvec["disks"]),
          "net": net_block(pvec["net"], "host:pve-c:"),
          "containers": [], "vms": []},
@@ -348,7 +358,7 @@ echo '===QM==='
 timeout 5 qm list 2>/dev/null
 echo '===PVEC==='
 echo DF
-timeout 16 ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 "root@$PVEC" 'df -P -B1; echo NET; cat /proc/net/dev' 2>&1 </dev/null || true
+timeout 30 ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 "root@$PVEC" 'df -P -B1; echo NET; cat /proc/net/dev' 2>&1 </dev/null || true
 echo '===CTSTART==='
 D=$(mktemp -d)
 ids=$(timeout 5 pct list 2>/dev/null | awk 'NR>1 && $2=="running"{print $1}')

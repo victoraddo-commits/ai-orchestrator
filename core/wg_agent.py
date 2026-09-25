@@ -685,6 +685,51 @@ class Agent:
         return {"pubkey": pubkey, "type": fmt, "config": text,
                 "name": name, "address": (meta or {}).get("address", "")}
 
+    def rename_device(self, pubkey: str, name=None, dns=None, keepalive=None,
+                      mtu=None, allowed_ips=None, by="operator") -> dict:
+        """Update a managed device's metadata (name/DNS/keepalive/MTU/allowed).
+
+        Only peers created by Kai carry metadata; external peers are rejected.
+        The on-disk ``# kai-device:`` comment is kept in sync so
+        ``wg-quick strip`` and operators see the same label.
+        """
+        pubkey = self._require_pubkey(pubkey)
+        meta = self._load_meta()
+        m = meta.get(pubkey)
+        if not m:
+            raise AgentError(
+                "no stored metadata for this peer (managed peers only)")
+        if name is not None:
+            if not _NAME_RE.match(name):
+                raise AgentError(
+                    "name must be 1-64 chars [A-Za-z0-9 space . _ ( ) -]")
+            m["name"] = name
+        if dns is not None:
+            m["dns"] = dns
+        if keepalive is not None:
+            m["keepalive"] = int(keepalive)
+        if mtu is not None:
+            m["mtu"] = int(mtu)
+        if allowed_ips is not None:
+            m["allowed_ips"] = allowed_ips
+        m["updated_at"] = self._now()
+
+        if name is not None:
+            text = self._read_conf()
+            blocks = parse_conf(text)["blocks"]
+            idx = self._find_block_index(blocks, pubkey)
+            if idx >= 0:
+                blocks[idx]["pre"] = [f"# kai-device: {m['name']}\n"]
+                self._backup()
+                self._write_conf(blocks, text)
+        self._save_meta(meta)
+        self._audit("rename", pubkey=pubkey, name=m.get("name"), by=by)
+        return {"pubkey": pubkey, "name": m.get("name"),
+                "address": m.get("address"), "dns": m.get("dns"),
+                "keepalive": m.get("keepalive"), "mtu": m.get("mtu"),
+                "allowed_ips": m.get("allowed_ips"), "mode": m.get("mode"),
+                "peer_lans": m.get("peer_lans", [])}
+
     def pause_device(self, pubkey: str, by="operator") -> dict:
         pubkey = self._require_pubkey(pubkey)
         text = self._read_conf()
@@ -785,6 +830,11 @@ def dispatch(agent: Agent, payload: dict) -> dict:
         return agent.resume_device(payload["pubkey"], payload.get("by", "operator"))
     if op == "delete":
         return agent.delete_device(payload["pubkey"], payload.get("by", "operator"))
+    if op == "rename":
+        return agent.rename_device(payload["pubkey"], payload.get("name"),
+                                   payload.get("dns"), payload.get("keepalive"),
+                                   payload.get("mtu"), payload.get("allowed_ips"),
+                                   payload.get("by", "operator"))
     if op == "config":
         return agent.peer_config(payload["pubkey"], payload.get("type", "wg"))
     if op == "ping":

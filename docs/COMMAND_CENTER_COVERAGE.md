@@ -418,7 +418,7 @@ auth (29 sources, 1 commercial-cleared).
   topics; health docs=1445; 29 licence sources). Deep ask + report export
   verified end-to-end (PDF `%PDF-`, DOCX `PK`).
 
-## WireGuard device management (2026-09-24)
+## WireGuard device management (2026-09-24, upgraded 2026-09-25)
 
 The `wireguard` panel is now a **device management** surface for the CT102
 "device pool" (`wireguard` CT, `10.6.0.1/24`, UDP 51860), not just a read-only
@@ -459,6 +459,7 @@ Every write backs up `wg0.conf` first and is audit-logged.
 | POST | `/api/wg/peers/{pubkey}/resume` | `.resume_peer` |
 | DELETE | `/api/wg/peers/{pubkey}` | `.delete_peer` |
 | GET | `/api/wg/peers/{pubkey}/config?type=wg\|ddwrt\|openwrt` | `.peer_config` |
+| PATCH | `/api/wg/peers/{pubkey}` | `.rename_peer` (name/DNS/keepalive/MTU/allowed) |
 | GET | `/api/wg/peers/{pubkey}/qr?type=wg[&raw=1]` | `.peer_qr` (segno PNG) |
 
 `{pubkey}` path segments use a URL-safe opaque encoding (WireGuard pubkeys may
@@ -468,9 +469,35 @@ optional `WG_CTL_TOKEN` service token (`X-Kai-WG-Token`). The server private
 key is never returned; a client's private key appears only in that client's own
 config/QR. Peer list responses never include private keys.
 
+### 2026-09-25 upgrade — visible, complete connection manager
+
+Operators reported not seeing add/manage/export/QR. Root cause: `loadWireguard()`
+awaited `/api/wg/mesh` (~33s SSH fan-out to A/B/C), so the tab sat on `loading…`.
+Fixes and additions:
+
+- **Non-blocking load**: peers render first via `apiT('/api/wg/peers',12000)`;
+  the mesh card loads fire-and-forget (`wgMeshLoad()`) with its own timeout and
+  a Retry. A slow read can never blank the panel again.
+- **Add connection**: name, optional static IP, DNS, **mode** (`client`
+  full-tunnel | `site-to-site` + `peer_lans`), keepalive, MTU.
+- **Manage**: pause/resume, **rename/retune** (`PATCH`), delete; text filter;
+  15s auto-refresh toggle; bulk **Download all**.
+- **Export**: WireGuard `.conf`, **DD-WRT**, **OpenWRT** UCI — each with Copy
+  and Download. **QR**: large scannable code, Download PNG (`?raw=1`), copy
+  config, and scan-to-connect guidance.
+- **Host-qualified labels** (new estate rule): every CT/VM renders as
+  `<KIND><vmid>-<SITE>` — `CT102-PA`, `CT102-PB`, `VM112-PB`.
+  `core/host_labels.py` resolves the site from hostname/IP; `core/infra_usage.py`
+  emits `site`/`site_label`/`label` and the CC mirrors it with `guestLabel()`.
+- `infra_usage` collection budget raised 25s→45s (Proxmox C hop 16s→30s) so one
+  slow node no longer drops the whole snapshot.
+
+The `wireguard` panel title now reads **WireGuard Connections · CT102-PA pool**
+(the pool host is the `wireguard` CT on Proxmox A).
+
 ### Tests
 
-`tests/test_wg_agent.py` (22), `tests/test_wg_peer_service.py` (9),
+`tests/test_wg_agent.py`, `tests/test_wg_peer_service.py`,
 `tests/test_cc_wg_routes.py` (14): IP allocation, keygen/rollback, pause/resume/
 delete, all three export formats, no-key-leak in list, auth gates (401), error
 mapping (400/502), URL-safe pubkey routing, backup-on-write.

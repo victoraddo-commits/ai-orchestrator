@@ -1443,6 +1443,14 @@ class WgAddDevice(BaseModel):
     peer_lans: list[str] | None = None # remote LAN CIDRs for site-to-site
 
 
+class WgUpdateDevice(BaseModel):
+    name: str | None = None
+    dns: str | None = None
+    allowed_ips: str | None = None
+    keepalive: int | None = None
+    mtu: int | None = None
+
+
 @cc_extra_router.get("/api/wg/peers")
 def wg_devices(_: None = Depends(_req_wg_op)):
     """List devices in the WireGuard pool (private keys are never included)."""
@@ -1487,6 +1495,19 @@ def wg_device_delete(pubkey: str, _: None = Depends(_req_wg_op)):
     try:
         pubkey = _decode_pubkey_param(pubkey)
         return JSONResponse(content=_wg_svc().delete_peer(pubkey))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.patch("/api/wg/peers/{pubkey}")
+def wg_device_update(pubkey: str, body: WgUpdateDevice,
+                     _: None = Depends(_req_wg_op)):
+    """Rename / retune a managed device (managed peers only)."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(
+            content=_wg_svc().rename_peer(
+                pubkey, **body.model_dump(exclude_none=True)))
     except Exception as e:  # noqa: BLE001
         return _wg_err(e)
 

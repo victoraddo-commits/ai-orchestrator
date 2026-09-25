@@ -991,6 +991,25 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .nw-linkdot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; vertical-align:middle; }
 .nw-rangebtn { font-size:0.62rem; }
 @media (max-width:640px){ .nw-svg{height:96px;} }
+
+/* Phase A shell */
+.cmd-bar{display:flex;gap:6px;align-items:center;background:var(--bg-deep);border:1px solid var(--border);border-radius:var(--radius);padding:3px 4px 3px 10px}
+.cmd-bar input{flex:1;background:transparent;border:0;color:var(--fg);font-family:var(--font-mono);font-size:0.72rem;outline:none;min-width:0}
+.cmd-bar:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.kpi-strip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(120px,1fr);gap:8px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px}
+.kpi{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;min-width:0}
+.kpi .k{font-size:0.56rem;text-transform:uppercase;letter-spacing:.5px;color:var(--fg-muted);display:block;white-space:nowrap}
+.kpi .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:1.05rem;color:var(--fg)}
+.kpi .v.ok{color:var(--accent-bright)} .kpi .v.warn{color:var(--warn)} .kpi .v.bad{color:var(--destructive)}
+.kai-banner{padding:6px 14px;font-family:var(--font-mono);font-size:0.68rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.kai-banner.warn{background:rgba(210,153,34,.12);color:var(--warn)}
+.kai-banner.bad{background:rgba(220,38,38,.12);color:var(--destructive)}
+.kai-banner.info{background:rgba(59,130,246,.12);color:var(--info)}
+.palette-item.sel{background:var(--bg-elevated);outline:1px solid var(--accent)}
+body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
+@media (max-width:768px){ .topbar-center{display:none} .kpi-strip{grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(130px,1fr))} }
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
 </style>
 </head>
 <body>
@@ -1049,6 +1068,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
      APP SHELL
      ═══════════════════════════════════════════════════════════════════ -->
 <div id="app-wrap" class="app-wrap">
+  <div id="kai-banner" class="kai-banner" role="status" aria-live="polite" style="display:none"></div>
 
   <nav class="sidebar" id="sidebar">
     <a class="sidebar-brand" href="/command-center" title="Kai Command Center">
@@ -1150,6 +1170,15 @@ html, body { max-width: 100%; overflow-x: hidden; }
     <h1 class="sr-only">Kai Command Center</h1>
     <header class="topbar">
       <div class="topbar-left" id="topbar-title">home</div>
+      <div class="topbar-center" style="flex:1;max-width:520px;margin:0 12px">
+        <div class="cmd-bar" role="search">
+          <input id="cmd-bar-input" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Ask KAI or type a command…  (Ctrl+K)"
+                 aria-label="Ask KAI or type a command"
+                 onkeydown="if(event.key===\'Enter\'){cmdBarSubmit();}">
+          <button class="btn btn-xs btn-accent" onclick="cmdBarSubmit()">Send</button>
+        </div>
+      </div>
       <div class="topbar-right">
         <span id="user-display"></span>
         <button class="btn btn-sm" onclick="showChangePassword()">password</button>
@@ -1161,6 +1190,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
 
       <!-- HOME -->
       <section class="panel active" id="panel-home">
+        <div id="kpi-strip" class="kpi-strip" aria-label="Key indicators"><span class="loading">loading vital signs…</span></div>
         <div class="metric-row">
           <div class="metric"><span class="val" id="home-health">-</span><span class="lbl">System Health</span></div>
           <div class="metric"><span class="val" id="home-modules">-</span><span class="lbl">Modules</span></div>
@@ -2182,6 +2212,8 @@ async function loadHome() {
     }
     $('home-launcher').innerHTML=tiles||'<p class="empty">No modules registered</p>';
   }catch{$('home-launcher').innerHTML='<p class="empty">Module registry unavailable</p>';}
+  // Phase A: KPI strip (independent; never blocks the rest of HOME).
+  loadKpiStrip();
   // Data Usage card + 24h graph (independent; never blocks the rest of HOME).
   loadHomeUsage();
 }
@@ -7741,6 +7773,57 @@ async function loadPower(){
   html+='</div>';
   el.innerHTML=html;
 }
+
+
+// ═══ Phase A: global command bar / KPI strip / banner / wall mode ═══
+async function cmdBarSubmit(){
+  const i=$('cmd-bar-input'); if(!i) return;
+  const q=(i.value||'').trim(); if(!q) return;
+  i.value='';
+  try{
+    const r=await apiT('/kai/chat',90000,{method:'POST',body:JSON.stringify({text:q})});
+    toast('KAI: '+(r.reply||r.response||r.text||r.message||JSON.stringify(r)).toString().slice(0,160));
+    if(r.panel){ location.hash=r.panel; }
+  }catch(e){ toast('command failed: '+e.message,'err'); }
+}
+function kpiCard(k,v,cls){
+  return '<div class="kpi"><span class="k">'+esc(k)+'</span><span class="v '+(cls||'')+'">'+esc(v==null?'—':String(v))+'</span></div>';
+}
+async function loadKpiStrip(){
+  const el=$('kpi-strip'); if(!el) return;
+  const g=async p=>{try{return await apiT(p,12000);}catch(e){return null;}};
+  const [h,w,a,ups]=await Promise.all([g('/health'),g('/kai/world'),g('/approvals'),g('/api/power/ups')]);
+  const ent=(w&&w.entities)?(Array.isArray(w.entities)?w.entities.length:Object.keys(w.entities).length):null;
+  const appr=(a&&(a.pending||a.approvals))?((a.pending||a.approvals).length):null;
+  const health=h?(h.status||h.health||(h.ok?'ok':'?')):null;
+  const hcls=health==null?'':(/ok|healthy|pass/i.test(String(health))?'ok':'warn');
+  const upss=ups&&ups.states?ups.states.join(', '):null;
+  const upscls=ups?(ups.states&&/ONLINE/.test(ups.states.join(' '))?'ok':'warn'):'';
+  el.innerHTML=kpiCard('Health',health,hcls)+kpiCard('World entities',ent)+
+    kpiCard('Pending approvals',appr,appr>0?'warn':'')+
+    kpiCard('Power / UPS',upss,upscls)+kpiCard('Battery',(ups&&ups.battery_charge_pct!=null)?ups.battery_charge_pct+'%':null);
+}
+function kaiBanner(text,kind){
+  const b=$('kai-banner'); if(!b) return;
+  if(!text){ b.style.display='none'; b.innerHTML=''; return; }
+  b.className='kai-banner '+(kind||'info'); b.style.display='flex'; b.innerHTML=esc(text);
+}
+function toggleWallMode(){ document.body.classList.toggle('wall-mode');
+  toast('wall mode '+(document.body.classList.contains('wall-mode')?'on':'off')); }
+(function(){
+  const pi=$('palette-input'); if(!pi) return;
+  pi.addEventListener('keydown',function(e){
+    const items=[].slice.call(document.querySelectorAll('#palette-results .palette-item'));
+    if(!items.length) return;
+    var i=items.findIndex(function(x){return x.classList.contains('sel');});
+    if(e.key==='ArrowDown'){e.preventDefault();i=Math.min(items.length-1,i+1);}
+    else if(e.key==='ArrowUp'){e.preventDefault();i=Math.max(0,i-1);}
+    else if(e.key==='Enter'){e.preventDefault();var s=items[i>=0?i:0];if(s)s.click();return;}
+    else return;
+    items.forEach(function(x){x.classList.remove('sel');});
+    if(i<0)i=0; items[i].classList.add('sel'); items[i].scrollIntoView({block:'nearest'});
+  });
+})();
 
 </script>
 <div class="modal-overlay" id="palette" style="display:none;align-items:flex-start;justify-content:center">

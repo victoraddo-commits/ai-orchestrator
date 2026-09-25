@@ -1078,6 +1078,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span><span class="label">Airdrop</span></a>
       <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span class="label">Infra</span></a>
       <a class="nav-item" href="#wireguard" data-hash="wireguard"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">WireGuard</span></a>
+      <a class="nav-item" href="#smarthome" data-hash="smarthome"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span><span class="label">Smart Home</span></a>
       <a class="nav-item" href="#directives" data-hash="directives"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span><span class="label">Directives</span></a>
       <a class="nav-item" href="#directory" data-hash="directory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Directory</span></a>
       <div class="sidebar-section-label">System</div>
@@ -1350,6 +1351,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
       <section class="panel" id="panel-learning"><div id="learning-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-enterprise"><div id="enterprise-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-wireguard"><div id="wireguard-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-smarthome"><div id="smarthome-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-directives"><div id="directives-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-directory"><div id="directory-content"><span class="loading">loading…</span></div></section>
 
@@ -1459,7 +1461,7 @@ const PANEL_TITLES = {
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
   security:'security', settings:'settings', logs:'logs', telegram:'Telegram',
   'kai-chat':'Kai Chat', devices:'Devices', talent:'Talent', android:'Android', docs:'Documents', hubtel:'Hubtel',
-  wireguard:'WireGuard', directives:'Directives', directory:'Service Directory',
+  wireguard:'WireGuard', smarthome:'Smart Home', directives:'Directives', directory:'Service Directory',
   missions:'Missions', executive:'Executive', enhancements:'Enhancements', factory:'Factory',
   evolution:'Evolution', network:'Network', models:'Model Fabric', vault:'Vault', secondbrain:'2nd Brain',
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
@@ -1753,7 +1755,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
+  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
   if(fns[name])fns[name]();
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
@@ -7574,6 +7576,81 @@ document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPalette();}
   else if(e.key==='Escape'){closePalette();}
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: SMART HOME (Phase E2) — KAI-authoritative; HA is a provider
+// ═══════════════════════════════════════════════════════════════════
+function shKindBadge(k){
+  const b={light:'info',switch:'info',sensor:'',climate:'warn',lock:'bad',camera:'bad',cover:'warn',media:'info'}[k]||'';
+  return '<span class="badge '+b+'">'+esc(k)+'</span>';
+}
+function shStateText(d){
+  if(d.stale) return '<span class="badge warn">STALE</span>';
+  const s=d.state||{};
+  if(!Object.keys(s).length) return '<span class="badge">UNKNOWN</span>';
+  if('state' in s){
+    const on=String(s.state)==='on';
+    return '<span class="badge '+(on?'ok':(String(s.state)==='unavailable'?'bad':''))+'">'+esc(String(s.state))+'</span>';
+  }
+  return '<span class="badge">UNKNOWN</span>';
+}
+function shDeviceCard(d){
+  const ctrl=(d.kind==='light'||d.kind==='switch');
+  const on=d.state && String(d.state.state)==='on';
+  let acts='';
+  if(ctrl && !d.stale){
+    acts='<button class="btn btn-xs '+(on?'btn-warn':'btn-accent')+'" onclick="shControl(\''+esc(d.id)+'\','+(on?'false':'true')+')">'+(on?'Turn off':'Turn on')+'</button>';
+  } else if(d.kind==='lock'||d.kind==='camera'||d.kind==='cover'){
+    acts='<span style="font-size:0.6rem;color:var(--fg-muted)">sensitive — via approvals</span>';
+  }
+  return '<div style="padding:8px 10px;border:1px solid var(--border);border-left:3px solid '+(d.stale?'var(--warn,#D29922)':'var(--ok,#27c93f)')+';font-family:var(--font-mono);font-size:0.65rem;margin-bottom:6px;border-radius:4px">'
+    +'<b>'+esc(d.name||d.provider_id)+'</b> '+shKindBadge(d.kind)+' '+shStateText(d)
+    +'<div style="margin-top:3px;color:var(--fg-muted)">'+esc(d.provider)+' · '+esc(d.provider_id||'')+(d.room?' · room <b>'+esc(d.room)+'</b>':' · <i>unassigned</i>')+(d.vendor?' · '+esc(d.vendor):'')+'</div>'
+    +(d.address?'<div style="color:var(--fg-muted)">'+esc(d.address)+(d.mac?' · '+esc(d.mac):'')+'</div>':'')
+    +(acts?'<div class="action-row" style="margin-top:6px">'+acts+'</div>':'')+'</div>';
+}
+async function shControl(id,on){
+  try{ const d=await api('/api/smarthome/devices/'+encodeURIComponent(id)+'/control',{method:'POST',body:JSON.stringify({changes:{on:on}})});
+    toast(d.verified?'command verified ('+JSON.stringify(d.observed)+')':'commanded but NOT verified', d.verified?'ok':'err');
+    loadSmartHome(); }catch(e){toast('control failed: '+e.message,'err');}
+}
+async function loadSmartHome(){
+  const el=$('smarthome-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading devices…</span>';
+  const g=async(p,m)=>{try{return await apiT(p,15000,m);}catch(e){return {error:e.message};}};
+  const [devs,provs]=await Promise.all([g('/api/smarthome/devices'),g('/api/smarthome/providers')]);
+  const list=(devs&&devs.devices)||[];
+  const live=devs&&!devs.error;
+  let html='<div class="card"><h3>Smart Home <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span>'
+    +'<span class="card-header-actions">'
+    +'<button class="btn btn-xs btn-accent" onclick="shRefresh()">Refresh from providers</button>'
+    +'<button class="btn btn-xs" onclick="loadSmartHome()">Reload</button></span></h3>'
+    +'<div class="muted" style="font-size:0.62rem">KAI is authoritative · devices come from registered providers (Home Assistant, …). Unknown state shows UNKNOWN; stale state shows STALE — never invented.</div>'
+    +(devs&&devs.error?'<div class="error-text">'+esc(devs.error)+'</div>':'')
+    +'<div class="metric-row" style="margin-top:8px">'
+    +'<div class="metric"><span class="val">'+list.length+'</span><span class="lbl">Devices</span></div>'
+    +'<div class="metric"><span class="val">'+list.filter(d=>!d.stale).length+'</span><span class="lbl">Fresh</span></div>'
+    +'<div class="metric"><span class="val">'+new Set(list.map(d=>d.room||'')).size+'</span><span class="lbl">Rooms</span></div>'
+    +'</div></div>';
+  if(provs&&provs.providers){
+    html+='<div class="card"><h3>Providers</h3><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Devices</th><th>Adapter</th></tr></thead><tbody>';
+    for(const k of Object.keys(provs.providers)){const p=provs.providers[k];
+      html+='<tr><td>'+esc(k)+'</td><td>'+esc(String(p.devices))+'</td><td>'+(p.reachable?'<span class="badge ok">ready</span>':'<span class="badge warn">not configured</span>')+'</td></tr>';}
+    html+='</tbody></table></div></div>';
+  }
+  html+='<div class="card"><h3>Devices <span class="badge info">'+list.length+'</span></h3>';
+  if(!list.length) html+='<p class="empty">No smart-home devices registered yet — run discovery or refresh a provider.</p>';
+  for(const d of list) html+=shDeviceCard(d);
+  html+='</div>';
+  el.innerHTML=html;
+}
+async function shRefresh(){
+  toast('refreshing providers…');
+  try{ const d=await apiT('/api/smarthome/refresh',40000,{method:'POST'});
+    toast('refreshed '+d.refreshed+' device(s), '+d.errors+' error(s)'); loadSmartHome(); }
+  catch(e){toast('refresh failed: '+e.message,'err');}
+}
+
 </script>
 <div class="modal-overlay" id="palette" style="display:none;align-items:flex-start;justify-content:center">
   <div class="modal-box" style="max-width:560px;width:92%;margin-top:10vh;padding:0">

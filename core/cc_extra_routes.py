@@ -1560,3 +1560,99 @@ def wg_mesh_status(_: None = Depends(_req_wg_op)):
         return JSONResponse({"error": f"{type(e).__name__}: {e}"},
                             status_code=getattr(e, "status", 502))
 
+
+
+# ---------------------------------------------------------------------------
+# Smart Home fabric (Phase E2) — registry view, live refresh, control.
+#
+# KAI is authoritative; Home Assistant is just a provider. Reads are operator
+# gated like the rest of the CC; control dispatches through the Command Bus
+# (AgentGuard + audit) and is verified by read-back. Nothing is fabricated:
+# unknown state stays unknown and stale state is labelled.
+# ---------------------------------------------------------------------------
+
+class ShControlBody(BaseModel):
+    changes: dict
+
+
+def _sh_svc():
+    from core.smarthome import service as _s
+    return _s
+
+
+def _sh_err(exc):
+    from core.smarthome.adapters.base import AdapterError
+    status = getattr(exc, "status", None)
+    if not isinstance(status, int) or status < 400:
+        status = 502 if not isinstance(exc, AdapterError) else 400
+    return JSONResponse({"error": str(exc)}, status_code=status)
+
+
+@cc_extra_router.get("/api/smarthome/devices")
+def sh_devices(_: None = Depends(_req_op)):
+    """All registered smart-home devices, with freshness (never invented state)."""
+    from core.smarthome import registry as _reg
+    try:
+        devices = [_sh_svc().device_view(d.to_dict()) for d in _reg.list_devices()]
+        return JSONResponse(content={"count": len(devices), "devices": devices},
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.get("/api/smarthome/rooms")
+def sh_rooms(_: None = Depends(_req_op)):
+    """Rooms plus devices grouped by room (unassigned devices are explicit)."""
+    from core.smarthome import registry as _reg
+    from core.smarthome import rooms as _rooms
+    try:
+        devices = [_sh_svc().device_view(d.to_dict()) for d in _reg.list_devices()]
+        grouped: dict[str, list] = {}
+        for d in devices:
+            grouped.setdefault(d.get("room") or "__unassigned", []).append(d)
+        return JSONResponse(content={
+            "rooms": [r.to_dict() for r in _rooms.list_rooms()],
+            "by_room": grouped,
+        }, headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/refresh")
+def sh_refresh(provider: str | None = None, _: None = Depends(_req_op)):
+    """Pull live state from the provider(s) into the registry."""
+    try:
+        return JSONResponse(content=_sh_svc().refresh(provider))
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/devices/{device_id}/control")
+def sh_control(device_id: str, body: ShControlBody,
+               _: None = Depends(_req_op)):
+    """Control a device via the Command Bus; verified by read-back."""
+    try:
+        return JSONResponse(content=_sh_svc().control(device_id, body.changes))
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.get("/api/smarthome/providers")
+def sh_providers(_: None = Depends(_req_op)):
+    """Registered providers and whether their adapter is configured/reachable."""
+    from core.smarthome import registry as _reg
+    try:
+        provs: dict[str, dict] = {}
+        for d in _reg.list_devices():
+            p = provs.setdefault(d.provider, {"devices": 0, "reachable": None})
+            p["devices"] += 1
+        for name in list(provs):
+            try:
+                _sh_svc().get_adapter(name)
+                provs[name]["reachable"] = True
+            except Exception:  # noqa: BLE001
+                provs[name]["reachable"] = False
+        return JSONResponse(content={"providers": provs},
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)

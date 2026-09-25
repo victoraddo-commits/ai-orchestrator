@@ -687,7 +687,8 @@ def _citation_firewall_transform():
 
 
 def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
-                        prefix="", suffix="", answer_transform=None):
+                        prefix="", suffix="", answer_transform=None,
+                        query=None):
     """Stream a local generation into Telegram, editing as tokens arrive.
 
     ``prefix`` (e.g. a PARTIAL banner) and ``suffix`` (e.g. the deterministic
@@ -695,6 +696,11 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
     finished message; the streamed pieces themselves stay verbatim and the
     returned text excludes both (the caller owns them and the cache stores the
     raw answer only).
+
+    ``query`` is the raw user question, used only by the routing heuristic (not
+    by the grounded prompt itself): a simple/short lookup streams from the small
+    resident model, a hard ask from the 30B. The chosen model is returned so the
+    Q&A log and cache record which model actually answered.
 
     Returns (text, model, delivered):
       * delivered=True  — the full text is already in the chat; the caller
@@ -709,8 +715,10 @@ def _stream_to_telegram(prompt, task_type, chat_id, reply_markup=None,
     acc = ""
     last_edit = 0.0
     last_len = 0
-    model = _streaming.DEFAULT_MODEL
-    stream = _streaming.stream_chat(prompt, task_type=task_type)
+    route = _streaming.select_route(prompt, task_type=task_type, query=query)
+    model = route.model
+    stream = _streaming.stream_chat(prompt, task_type=task_type,
+                                    model=route.model, query=query)
     try:
         for piece in stream:
             acc += piece
@@ -829,7 +837,7 @@ def _generate_reply(prompt, task_type, query, fallback_label, account_id="",
     if chat_id and _stream_enabled():
         text, model, delivered = _stream_to_telegram(
             prompt, task_type, chat_id, reply_markup, prefix=prefix, suffix=suffix,
-            answer_transform=answer_transform)
+            answer_transform=answer_transform, query=query)
         if delivered and text:
             _cache.GENERATION_CACHE.set(
                 key, {"text": text, "model": model, "corpus_version": corpus_ver})

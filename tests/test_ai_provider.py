@@ -10,7 +10,8 @@ import pytest
 import core.ai_provider as ai_provider
 
 LOCAL_PROVIDERS = {
-    "kai_brain", "kai_coder", "kai_deep", "llama_coder_cpu", "local",
+    "kai_brain", "kai_coder", "kai_deep", "kai_small", "llama_coder_cpu",
+    "local",
 }
 
 
@@ -69,6 +70,51 @@ def test_every_registered_provider_has_a_valid_cost_tier():
 def test_every_local_provider_is_free():
     for name, info in ai_provider.list_providers().items():
         assert info["cost_tier"] == "free", name
+
+
+def test_kai_small_is_local_text_only_and_availability_gated(monkeypatch):
+    """kai_small accelerates grounded text; it is never a coding agent, and it
+    is only available while ollama actually serves qwen2.5:1.5b.
+
+    The suite-wide ``disable_slow_local_providers`` fixture swaps each local
+    provider's ``available_fn`` for a false stub, so the gating is asserted on
+    the named module function (same pattern as ``_local_available``).
+    """
+    provider = ai_provider.get_provider("kai_small")
+
+    assert provider["kind"] == "local"
+    assert provider["run_text_task"] is not None
+    assert provider["run_coding_task"] is None
+    assert provider["cost_tier"] == "free"
+    assert callable(ai_provider._kai_small_available)
+
+    monkeypatch.setattr(
+        ai_provider, "_ollama_model_present",
+        lambda model=ai_provider._SMALL_MODEL, timeout=2: False,
+    )
+    assert ai_provider._kai_small_available() is False
+
+    monkeypatch.setattr(
+        ai_provider, "_ollama_model_present",
+        lambda model=ai_provider._SMALL_MODEL, timeout=2: True,
+    )
+    assert ai_provider._kai_small_available() is True
+
+
+def test_kai_small_run_text_task_uses_the_small_model(monkeypatch):
+    captured = {}
+
+    def fake(prompt, timeout=240, project_path=None, model=ai_provider._KAI_MODEL):
+        captured["model"] = model
+        captured["prompt"] = prompt
+        return "ok"
+
+    monkeypatch.setattr(ai_provider, "_kai_ollama_run_text_task", fake)
+
+    assert ai_provider._kai_small_run_text_task("hi", timeout=5) == "ok"
+    assert ai_provider._SMALL_MODEL == "qwen2.5:1.5b"
+    assert captured["model"] == "qwen2.5:1.5b"
+    assert captured["prompt"] == "hi"
 
 
 def test_register_provider_adds_a_new_entry():

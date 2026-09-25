@@ -70,15 +70,20 @@ _ENUM_RE = re.compile(r"(?<!\d)\s(\d{1,2}[.)]\s)")
 # ---------------------------------------------------------------------------
 
 def _generate(prompt: str, task_type: str) -> str:
-    """Local-only generation seam (VM104 ``qwen3-coder:kai``)."""
+    """Local-only generation seam (VM104 ``qwen3-coder:kai``).
+
+    ``deep=True`` pins every Deep pass to the 30B: the complexity router must
+    never downshift an advocate/opponent/judge pass even if its prompt happened
+    to look short.
+    """
     from core.juris_kai import streaming
-    return streaming.generate(prompt, task_type=task_type)
+    return streaming.generate(prompt, task_type=task_type, deep=True)
 
 
 def _stream_generate(prompt: str, task_type: str):
-    """Local-only streaming seam; yields incremental text chunks."""
+    """Local-only streaming seam; yields incremental text chunks (30B-pinned)."""
     from core.juris_kai import streaming
-    return streaming.stream_chat(prompt, task_type=task_type)
+    return streaming.stream_chat(prompt, task_type=task_type, deep=True)
 
 
 def _noop_generate(prompt: str, task_type: str) -> str:

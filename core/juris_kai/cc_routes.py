@@ -225,12 +225,33 @@ def _juris_routing() -> dict:
         budgets["_default"] = DEFAULT_MAX_TOKENS
     except Exception:
         pass
+
+    # Phase E Task 2: expose the small-vs-30B complexity router, its operator
+    # override and the most recent decisions. Read-only and best-effort.
+    model_routing = {}
+    try:
+        from core.juris_kai import routing as jrouting
+        model_routing = {
+            "mode": jrouting.routing_mode(),
+            "small_model": jrouting.small_model(),
+            "strong_model": jrouting.strong_model(),
+            "small_viable": jrouting.small_model_viable(),
+            "small_fallback": jrouting.small_fallback_enabled(),
+            "max_simple_words": jrouting.MAX_SIMPLE_WORDS,
+            "max_simple_chars": jrouting.MAX_SIMPLE_CHARS,
+            "deep_task_types": sorted(jrouting.DEEP_TASK_TYPES),
+            "recent": jrouting.recent_routes(10),
+        }
+    except Exception as exc:  # noqa: BLE001 - routing view must never 500
+        model_routing = {"error": str(exc)}
+
     return {
         "chains": chains,
         "default_chains": defaults,
         "providers": providers,
         "provider_state": rep.get("provider_state") or {},
         "task_budgets": budgets,
+        "model_routing": model_routing,
     }
 
 

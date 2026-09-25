@@ -26,6 +26,7 @@ import os
 
 import requests
 
+from core.juris_kai import routing as _routing
 from core.juris_kai.prompt import budget_for
 
 logger = logging.getLogger("juris_kai.streaming")
@@ -35,6 +36,11 @@ DEFAULT_MODEL = os.environ.get("JURIS_KAI_MODEL", "qwen3-coder:kai")
 CONNECT_TIMEOUT = float(os.environ.get("JURIS_KAI_STREAM_CONNECT_TIMEOUT", "3"))
 READ_TIMEOUT = float(os.environ.get("JURIS_KAI_STREAM_READ_TIMEOUT", "300"))
 TEMPERATURE = float(os.environ.get("JURIS_KAI_TEMPERATURE", "0.7"))
+# Keep whichever model just answered resident between sparse calls. Without an
+# explicit keep_alive ollama unloads a model after its default 5-min idle; a
+# cold 30B reload is ~50s. This also keeps the routed small model warm so the
+# routing win is not paid back on every idle gap.
+KEEP_ALIVE = os.environ.get("JURIS_KAI_KEEP_ALIVE", "30m")
 
 
 class StreamGuardAbort(RuntimeError):
@@ -120,6 +126,7 @@ def _raw_stream_chat(prompt: str, model: str, read_timeout: float,
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": True,
+        "keep_alive": KEEP_ALIVE,
         "options": {
             "temperature": TEMPERATURE,
             "top_p": 0.9,
@@ -149,10 +156,26 @@ def _raw_stream_chat(prompt: str, model: str, read_timeout: float,
 # Guarded public API
 # ---------------------------------------------------------------------------
 
+def select_route(prompt: str, task_type: str = "legal_research",
+                 query: str | None = None, deep: bool = False):
+    """Route + record, returning the decision (for display/caching callers)."""
+    decision = _routing.route(query, task_type=task_type, prompt=prompt,
+                              deep=deep)
+    _routing.record(decision, task_type=task_type, query=query, prompt=prompt)
+    return decision
+
+
 def stream_chat(prompt: str, task_type: str = "legal_research",
                 model: str | None = None, timeout: float | None = None,
-                guard: bool = True, source: str = "juris_kai_stream"):
+                guard: bool = True, source: str = "juris_kai_stream",
+                query: str | None = None, deep: bool = False):
     """Yield incremental text chunks from the local model.
+
+    When ``model`` is not pinned, a zero-call complexity heuristic picks the
+    small resident model for simple lookups and the 30B for hard asks (see
+    :mod:`core.juris_kai.routing`). If the small model's transport fails before
+    any chunk is produced, the request transparently retries once on the 30B —
+    so routing can never make an answer worse than the pre-routing behaviour.
 
     With ``guard`` (default) the inbound prompt is neutralized first, and after
     every chunk the accumulated prefix is scanned -- so a marker split across a
@@ -160,7 +183,9 @@ def stream_chat(prompt: str, task_type: str = "legal_research",
     the suspicious span can be yielded. Raises on any transport/parse failure so
     callers can fall back.
     """
-    model = model or DEFAULT_MODEL
+    if model is None:
+        model = _routing.select_model(query, task_type=task_type,
+                                      prompt=prompt, deep=deep)
     read_timeout = timeout or READ_TIMEOUT
     if guard:
         prompt = _guard_prompt(prompt, source)
@@ -173,17 +198,41 @@ def stream_chat(prompt: str, task_type: str = "legal_research",
         except Exception as exc:  # noqa: BLE001 - degrade to unguarded transport
             logger.warning("injection stream guard unavailable: %s", exc)
 
-    if guard_prefix is None:
-        yield from _raw_stream_chat(prompt, model, read_timeout, task_type)
-        return
+    # Small-model resilience: if the accelerator is unreachable, retry once on
+    # the strong model *before* anything has been yielded.
+    fallback = None
+    if _routing.small_fallback_enabled() and _routing.is_small(model):
+        fallback = _routing.strong_model()
 
-    acc = ""
-    for piece in _raw_stream_chat(prompt, model, read_timeout, task_type):
-        acc += piece
-        verdict = guard_prefix(acc, source=source)
-        if verdict.get("abort"):
-            raise StreamGuardAbort(verdict.get("markers"), source)
-        yield piece
+    attempts = [model] + ([fallback] if fallback else [])
+    last_exc = None
+    for attempt_index, attempt_model in enumerate(attempts):
+        acc = ""
+        yielded = False
+        try:
+            for piece in _raw_stream_chat(prompt, attempt_model, read_timeout,
+                                          task_type):
+                yielded = True
+                if guard_prefix is None:
+                    yield piece
+                    continue
+                acc += piece
+                verdict = guard_prefix(acc, source=source)
+                if verdict.get("abort"):
+                    raise StreamGuardAbort(verdict.get("markers"), source)
+                yield piece
+            return
+        except StreamGuardAbort:
+            raise
+        except Exception as exc:  # noqa: BLE001 - retry on strong, else bubble
+            last_exc = exc
+            if yielded or attempt_index + 1 >= len(attempts):
+                raise
+            logger.warning(
+                "small model %s failed before any output (%s); retrying on %s",
+                attempt_model, exc, attempts[attempt_index + 1])
+    if last_exc is not None:  # pragma: no cover - defensive
+        raise last_exc
 
 
 def collect(chunks, source: str = "juris_kai_stream", guard: bool = True) -> str:
@@ -199,11 +248,13 @@ def collect(chunks, source: str = "juris_kai_stream", guard: bool = True) -> str
 
 def generate(prompt: str, task_type: str = "legal_research",
              model: str | None = None, timeout: float | None = None,
-             guard: bool = True, source: str = "juris_kai_stream") -> str:
+             guard: bool = True, source: str = "juris_kai_stream",
+             query: str | None = None, deep: bool = False) -> str:
     """Non-streamed local generation (same model/options as stream_chat).
 
     Used for latency comparisons and the Command Center test-query box.
     """
     return collect(stream_chat(prompt, task_type=task_type, model=model,
-                               timeout=timeout, guard=guard, source=source),
+                               timeout=timeout, guard=guard, source=source,
+                               query=query, deep=deep),
                    source=source, guard=guard)

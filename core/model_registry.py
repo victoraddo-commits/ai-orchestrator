@@ -25,6 +25,7 @@ LOCAL_MODELS = {
     "kai_brain": "qwen3-coder:kai",
     "kai_coder": "qwen3-coder:kai",
     "kai_deep": "qwen3-coder:kai",
+    "kai_small": "qwen2.5:1.5b",
     "local": "qwen3-coder:kai",
     "llama_coder_cpu": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
     "koboldcpp_cpu": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
@@ -37,6 +38,7 @@ LOCAL_MODELS = {
 # that ai_provider derives: coding_agent / text_task / file_access).
 MODEL_CAPABILITIES = {
     "qwen3-coder:kai": ["coding", "reasoning", "tool_use", "long_context", "architecture"],
+    "qwen2.5:1.5b": ["fast", "lookup", "grounded"],
     "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf": ["coding", "fast", "cpu"],
     "qwen2.5:7b": ["classification", "reasoning", "fast"],
 }
@@ -45,6 +47,7 @@ _ENDPOINTS = {
     "kai_brain": "http://localhost:11434",
     "kai_coder": "http://localhost:11434",
     "kai_deep": "http://localhost:11434",
+    "kai_small": "http://localhost:11434",
     "local": "http://localhost:11434",
     "llama_coder_cpu": "http://192.168.1.242:5001",
     "koboldcpp_cpu": "http://192.168.1.242:5001",

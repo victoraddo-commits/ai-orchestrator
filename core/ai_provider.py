@@ -144,6 +144,11 @@ def get_provider_enabled(name: str) -> bool:
 # :5001). These registrations back the primary local route and the
 # VM104→VM112 node failover (§7 model diversity). 100% local — no cloud.
 _KAI_MODEL = "qwen3-coder:kai"
+# Fast grounded-lookup accelerator for Juris Kai simple queries. 1.0GB, served
+# by the same VM104 ollama. Kept in the registry so the fabric inventory,
+# health surface and Command Center see it as a first-class local model; the
+# Juris streaming path routes to it by name (see core/juris_kai/routing.py).
+_SMALL_MODEL = os.environ.get("JURIS_KAI_SMALL_MODEL", "qwen2.5:1.5b")
 _OLLAMA_BASE_URL = "http://localhost:11434"
 # Keep the P40 brain resident between sparse calls. Without an explicit
 # keep_alive, ollama unloads the ~18.5GB model after its default 5-min idle,
@@ -200,6 +205,21 @@ def _kai_coder_run_text_task(prompt, timeout=120, project_path=None):
 
 def _kai_deep_run_text_task(prompt, timeout=240, project_path=None):
     return _kai_ollama_run_text_task(prompt, timeout=timeout)
+
+
+def _kai_small_run_text_task(prompt, timeout=120, project_path=None):
+    """qwen2.5:1.5b via the VM104 ollama fabric — fast grounded lookups.
+
+    Text-only: the small model accelerates wording of an already-grounded
+    prompt, it is never a coding agent.
+    """
+    return _kai_ollama_run_text_task(prompt, timeout=timeout,
+                                     model=_SMALL_MODEL)
+
+
+def _kai_small_available():
+    """True only when ollama serves the small model (qwen2.5:1.5b)."""
+    return _ollama_model_present(_SMALL_MODEL)
 
 
 def _kai_brain_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
@@ -313,6 +333,15 @@ register_provider(
     available_fn=lambda: _ollama_model_present(_KAI_MODEL),
     kind="local",
     description="qwen3-coder:kai via ollama on VM104 P40 — kai.deep: deep-reasoning escalation for difficult architecture/reasoning/investigation tasks.",
+    cost_tier="free",
+)
+
+register_provider(
+    "kai_small",
+    run_text_task=_kai_small_run_text_task,
+    available_fn=_kai_small_available,
+    kind="local",
+    description="qwen2.5:1.5b via ollama on VM104 P40 — kai.small: fast grounded-lookup accelerator for simple Juris Kai questions; text-only, availability-gated on the model actually being served.",
     cost_tier="free",
 )
 

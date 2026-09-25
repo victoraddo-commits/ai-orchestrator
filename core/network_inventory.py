@@ -44,7 +44,10 @@ def _hosts_from_graph(graph: dict) -> list[dict]:
         hosts.append({
             "site": key,
             "node": px.get("name"),
-            "host": px.get("lan_ip") or site.get("gateway"),
+            # Prefer the node's own LAN IP. Never fall back to the *site*
+            # gateway: a gateway is a router, not the node, and borrowing it
+            # makes distinct sites look like one device.
+            "host": px.get("lan_ip") or px.get("proxmox_ip") or "",
             "tailscale_ip": px.get("tailscale_ip"),
             "online": bool(px.get("online")),
             "ssh_reachable": bool(px.get("ssh_reachable") or px.get("reachable")),
@@ -64,13 +67,16 @@ def collect_nic_inventory(refresh: bool = False) -> dict:
         graph = run_network_discovery_cycle()
     hosts = _hosts_from_graph(graph)
     has_nics = any(h["nics"] for h in hosts)
+    from core.topology_engine import sites_consistent
+    consistent, reason = sites_consistent(graph)
     return {
         "hosts": hosts,
         "generated_at": graph.get("generated_at"),
         "last_discovery": graph.get("last_discovery"),
         "source": "topology graph",
-        "note": None if has_nics else (
-            "no NIC inventory persisted yet — run discovery"),
+        "consistent": consistent,
+        "note": reason or (None if has_nics else (
+            "no NIC inventory persisted yet — run discovery")),
     }
 
 

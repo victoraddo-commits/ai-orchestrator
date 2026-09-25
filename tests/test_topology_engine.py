@@ -93,3 +93,37 @@ def test_save_only_stamps_when_changes():
                 g["tailscale"]["subnet_routes"] = {}
                 save(g)
                 assert "last_change" not in g or g.get("last_change") is None
+
+
+class TestSitesConsistent:
+    def test_allows_bridge_and_slave_sharing_mac(self):
+        from core.topology_engine import sites_consistent
+        graph = {"sites": {
+            "SITE-A": {"proxmox": {"lan_ip": "192.168.1.2", "nics": [
+                {"name": "nic0", "mac": "aa:bb:cc:dd:ee:01"},
+                {"name": "vmbr0", "mac": "aa:bb:cc:dd:ee:01"}]}},
+            "SITE-B": {"proxmox": {"lan_ip": "192.168.1.110", "nics": [
+                {"name": "nic0", "mac": "aa:bb:cc:dd:ee:02"}]}},
+        }}
+        ok, reason = sites_consistent(graph)
+        assert ok, reason
+
+    def test_flags_cross_site_mac_collision(self):
+        from core.topology_engine import sites_consistent
+        graph = {"sites": {
+            "SITE-A": {"proxmox": {"lan_ip": "192.168.1.2", "nics": [
+                {"name": "nic0", "mac": "aa:bb:cc:dd:ee:01"}]}},
+            "SITE-B": {"proxmox": {"lan_ip": "192.168.1.110", "nics": [
+                {"name": "nic0", "mac": "aa:bb:cc:dd:ee:01"}]}},
+        }}
+        ok, reason = sites_consistent(graph)
+        assert not ok and "MAC" in reason
+
+    def test_flags_cross_site_lan_ip_collision(self):
+        from core.topology_engine import sites_consistent
+        graph = {"sites": {
+            "SITE-A": {"proxmox": {"lan_ip": "192.168.1.2", "nics": []}},
+            "SITE-B": {"proxmox": {"lan_ip": "192.168.1.2", "nics": []}},
+        }}
+        ok, reason = sites_consistent(graph)
+        assert not ok and "LAN IP" in reason

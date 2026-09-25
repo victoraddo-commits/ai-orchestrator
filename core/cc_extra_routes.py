@@ -1516,3 +1516,24 @@ def wg_device_qr(pubkey: str, type: str = "wg", raw: int = 0,
     except Exception as e:  # noqa: BLE001
         return _wg_err(e)
 
+
+# ---------------------------------------------------------------------------
+# A/B/C full-mesh WireGuard (wg-kai) — Proxmox A <-> B <-> C over the tailnet.
+#
+# Read-only. Live status is read over the existing key-based SSH chain
+# (CT111 -> PVE-B -> {PVE-A, PVE-C}) by ``core.wg_mesh``; the interface private
+# key is never returned and public keys are masked. Operator-gated like the
+# device-pool routes above.
+# ---------------------------------------------------------------------------
+
+@cc_extra_router.get("/api/wg/mesh")
+def wg_mesh_status(_: None = Depends(_req_wg_op)):
+    """Full-mesh snapshot: per-node reachability, peer count and handshakes."""
+    from core import wg_mesh as _mesh
+    try:
+        return JSONResponse(content=_mesh.mesh_status(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"},
+                            status_code=getattr(e, "status", 502))
+

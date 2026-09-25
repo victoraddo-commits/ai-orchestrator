@@ -31,15 +31,34 @@ def _default_ssh_key() -> str:
     return os.environ.get("PROXMOX_SSH_KEY", "/root/.ssh/id_rsa")
 
 
-def _ssh(node: dict, cmd: str) -> tuple[str, str, int]:
+def build_ssh_command(node: dict, cmd: str) -> list:
+    """Build the ``ssh`` argv for one discovery command on ``node``.
+
+    SITE-A (Proxmox A) is only reachable from the runner through Proxmox B, so
+    such nodes set ``proxy_jump``: the jump authenticates with ``proxy_key``
+    (defaulting to the node key) and forwards the channel with ``-W %h:%p``.
+    The same authorised key then authenticates the final hop. ``BatchMode=yes``
+    is always set so discovery never blocks on an interactive prompt.
+    """
     key = node.get("ssh_key") or _default_ssh_key()
     full_cmd = [
         "ssh", "-i", key,
         "-o", "StrictHostKeyChecking=no",
+        "-o", "BatchMode=yes",
         "-o", "ConnectTimeout=6",
-        f"root@{node['host']}",
-        cmd,
     ]
+    jump = node.get("proxy_jump")
+    if jump:
+        proxy_key = node.get("proxy_key") or key
+        proxy = (f"ssh -i {proxy_key} -o StrictHostKeyChecking=no "
+                 f"-o BatchMode=yes -o ConnectTimeout=6 -W %h:%p {jump}")
+        full_cmd += ["-o", f"ProxyCommand={proxy}"]
+    full_cmd += [f"root@{node['host']}", cmd]
+    return full_cmd
+
+
+def _ssh(node: dict, cmd: str) -> tuple[str, str, int]:
+    full_cmd = build_ssh_command(node, cmd)
     try:
         r = subprocess.run(full_cmd, capture_output=True, text=True, timeout=30)
         return r.stdout, r.stderr, r.returncode
@@ -335,16 +354,28 @@ def discover_all_nodes() -> dict:
     """Full network-aware Proxmox discovery across all configured nodes.
 
     Hosts are corrected to the verified live estate: Proxmox B (the reachable
-    node that hosts LXC 100-114) is ``192.168.1.110``. An env override
-    (``KAI_NETWORK_PVE_B_HOST``) wins when present.
+    node that hosts LXC 100-114) is ``192.168.1.110``. Proxmox A is reached via
+    a ProxyCommand jump through Proxmox B on the tailnet address, using the key
+    that is authorised on both. Env overrides win when present.
     """
     overrides = {
-        "pve-b": os.environ.get("KAI_NETWORK_PVE_B_HOST", "192.168.1.110"),
+        # SITE-A (Proxmox A, node "pve"): the runner cannot route to its LAN
+        # address, so dial its tailnet IP through Proxmox B.
+        "pve": {
+            "host": os.environ.get("KAI_NETWORK_PVE_A_HOST", "100.83.4.27"),
+            "proxy_jump": os.environ.get(
+                "KAI_NETWORK_PVE_A_JUMP",
+                os.environ.get("KAI_NETWORK_PVE_B_HOST", "192.168.1.110")),
+        },
+        "pve-b": {
+            "host": os.environ.get("KAI_NETWORK_PVE_B_HOST", "192.168.1.110"),
+        },
     }
     results = {}
     for node in _get_node_configs():
         node = dict(node)
-        if node["name"] in overrides:
-            node["host"] = overrides[node["name"]]
+        override = overrides.get(node["name"])
+        if override:
+            node.update({k: v for k, v in override.items() if v})
         results[node["name"]] = discover_node_networking(node)
     return results

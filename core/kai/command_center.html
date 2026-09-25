@@ -5528,14 +5528,43 @@ function wgDevRow(p){
 <div>handshake <b>${esc(wgAgo(p.latest_handshake))}</b> · rx <b>${wgFmtBytes(p.rx_bytes)}</b> · tx <b>${wgFmtBytes(p.tx_bytes)}</b></div>
 <div class="action-row" style="margin-top:6px">${acts}</div></div>`;
 }
+function wgMeshNodeRow(n){
+  const st=n.status||'unknown';
+  const badge=st==='up'?'ok':(st==='degraded'?'warn':'bad');
+  const border=st==='up'?'var(--ok,#27c93f)':'var(--bad,#e5484d)';
+  const upPeers=(n.peers||[]).filter(p=>p.up).length;
+  let peers='';
+  for(const p of (n.peers||[])){
+    const hup=!!p.up;
+    peers+='<div style="color:var(--fg-muted)">peer '+esc(p.public_key||'')+' &middot; ep '+esc(p.endpoint||'-')+' &middot; allowed '+esc((p.allowed_ips||[]).join(','))+' &middot; handshake '+(hup?'<span style="color:var(--ok,#27c93f)">':'<span style="color:var(--bad,#e5484d)">')+esc(wgAgo(p.latest_handshake))+'</span></div>';
+  }
+  if(n.error) peers+='<div class="error-text">'+esc(n.error)+'</div>';
+  return '<div style="padding:7px 9px;border:1px solid var(--border);border-left:3px solid '+border+';font-family:var(--font-mono);font-size:0.65rem;margin-bottom:5px;border-radius:4px">'
+    +'<b>'+esc(n.role||'')+' &middot; '+esc(n.name||'')+'</b> <span class="badge '+badge+'">'+esc(String(st).toUpperCase())+'</span>'
+    +' <span style="color:var(--fg-muted)">'+esc(n.mesh_ip||'')+' &harr; tailnet '+esc(n.tailnet_ip||'')+'</span>'
+    +'<div>peers <b>'+upPeers+'/'+esc(String(n.peer_count||0))+'</b> (expected '+esc(String(n.expected_peers||0))+') &middot; port '+esc(String(n.listen_port||'-'))+'</div>'
+    +peers+'</div>';
+}
+function wgMeshCard(m){
+  if(!m||m.error){
+    return '<div class="card" style="margin-bottom:10px"><h3>Full Mesh &middot; wg-kai <span class="badge bad">UNKNOWN</span></h3><div class="error-text">'+esc((m&&m.error)||'mesh status unavailable')+'</div></div>';
+  }
+  const ok=!!m.mesh_ok;
+  let html='<div class="card" style="margin-bottom:10px"><h3>Full Mesh &middot; wg-kai (A&harr;B&harr;C) <span class="badge '+(ok?'ok':'warn')+'">'+(ok?'MESH UP':'DEGRADED')+'</span></h3>';
+  html+='<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:8px">'+esc(m.subnet||'')+' &middot; UDP '+esc(String(m.port||''))+' &middot; '+esc(m.transport||'')+'</div>';
+  for(const n of (m.nodes||[])) html+=wgMeshNodeRow(n);
+  html+='<div class="action-row" style="margin-top:6px"><button class="btn btn-xs" onclick="loadWireguard()">Refresh</button></div></div>';
+  return html;
+}
 async function loadWireguard(){
   const el=$('wireguard-content'); if(!el) return;
   el.innerHTML='<span class="loading">loading…</span>';
   const g=async(p)=>{try{return await api(p);}catch(e){return {error:e.message};}};
-  const d=await g('/api/wg/peers');
+  const [d,m]=await Promise.all([g('/api/wg/peers'),g('/api/wg/mesh')]);
   const peers=(d&&Array.isArray(d.peers))?d.peers:[];
   const live=d&&!d.error;
-  let html='<div class="card"><h3>WireGuard Devices &middot; CT102 pool (10.6.0.0/24) <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span></h3>';
+  let html=wgMeshCard(m);
+  html+='<div class="card"><h3>WireGuard Devices &middot; CT102 pool (10.6.0.0/24) <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span></h3>';
   html+='<div class="action-row" style="margin-bottom:8px"><button class="btn btn-xs btn-accent" onclick="wgAddForm()">Add device</button><button class="btn btn-xs" onclick="loadWireguard()">Refresh</button><button class="btn btn-xs" onclick="wgExitNode()">Exit node (CT103)</button><button class="btn btn-xs" onclick="wgRaw()">Raw</button></div>';
   html+='<div id="wg-last" style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:10px">'
     +(d&&d.interface_public_key?('server pub '+esc(String(d.interface_public_key).slice(0,10))+'&hellip; · port '+esc(String(d.listen_port||''))+' · '+peers.length+' devices'):'')

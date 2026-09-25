@@ -108,8 +108,16 @@ def _world_changes() -> list:
         for eid, e in (snap.get("entities") or {}).items():
             st = str(e.get("status", "")).lower()
             if e.get("type") in ("proxmox_node", "lxc", "vm") and st not in ("online", "running"):
-                out.append({"entity": eid, "label": e.get("label"), "status": st,
-                            "severity": "critical" if st == "unreachable" else "warn"})
+                # Only a *confirmed* outage is critical. A transient `unknown`
+                # (e.g. a node being re-discovered) is worth watching, not an
+                # alarm — otherwise the Executive over-reports and loses trust.
+                if st in ("unreachable", "down", "offline", "failed", "stopped"):
+                    severity = "critical" if st in ("unreachable", "down", "offline", "failed") else "warn"
+                    out.append({"entity": eid, "label": e.get("label"), "status": st,
+                                "severity": severity})
+                else:
+                    out.append({"entity": eid, "label": e.get("label"), "status": st,
+                                "severity": "warn"})
         return out[:15]
     except Exception:
         return []

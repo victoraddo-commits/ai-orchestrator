@@ -248,15 +248,20 @@ def sites_consistent(graph: dict) -> tuple[bool, str]:
         px = site.get("proxmox") or {}
         lan = str(px.get("lan_ip") or "").strip()
         if lan:
-            if lan in seen_lan:
-                return False, (f"{key} and {seen_lan[lan]} share LAN IP {lan}")
+            owner = seen_lan.get(lan)
+            if owner is not None and owner != key:
+                return False, (f"{key} and {owner} share LAN IP {lan}")
             seen_lan[lan] = key
         for nic in px.get("nics") or []:
             mac = str(nic.get("mac") or "").strip().lower()
             if not mac:
                 continue
-            if mac in seen_macs:
-                return False, (f"{key} and {seen_macs[mac]} share NIC MAC {mac}")
+            # A bridge and the NIC it enslaves share a MAC within one site —
+            # that is normal. Only a MAC seen on *two different* sites means
+            # one node's inventory was aliased onto another.
+            owner = seen_macs.get(mac)
+            if owner is not None and owner != key:
+                return False, (f"{key} and {owner} share NIC MAC {mac}")
             seen_macs[mac] = key
     return True, ""
 

@@ -1858,7 +1858,7 @@
       "id": "15C",
       "name": "Kai platform audit log",
       "description": "Aggregation layer, not new infrastructure: memory/build_history.json, memory/approval_queue.json's history[] entries, memory/decision_history.json, and memory/incidents.json already capture most of what an audit log needs (action, timestamp, status, operator/approved_by where set). This phase adds a single read endpoint (GET /audit) that merges these existing sources into one chronological, filterable view (by user, action type, project, date range) with CSV/JSON export -- explicitly not a new logging system or a new place actions get recorded. Device/IP capture requires 15A's session mechanism to exist first (the current single bridge-token model has no per-request client identity to log).",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [
         "15A"
       ],
@@ -1876,7 +1876,9 @@
       "completion_note": "core/audit_logger.py (290 lines) JSONL audit with HMAC-SHA256 integrity. GET /audit endpoint merging 4 sources. Completed 2026-08-08.",
       "completed": "2026-08-08",
       "build_id": "73c93e97",
-      "completion_correction": "Status corrected 2026-08-23: deliverables verified in code (completion note + date intact); the only failure_reason was a stale build_id reference to the purged 2026-08-07 build records."
+      "completion_correction": "Status corrected 2026-08-23: deliverables verified in code (completion note + date intact); the only failure_reason was a stale build_id reference to the purged 2026-08-07 build records.",
+      "failure_reason": "Roadmap/build reconciliation: linked build 73c93e97 is FAILED",
+      "reconciled_at": "2026-09-21T21:16:07.005558+00:00"
     },
     {
       "id": "15D",
@@ -1963,7 +1965,7 @@
       "id": "17N",
       "name": "Voice/phone AI capability (MiniMax) \u2014 customer-facing voice assistant / phone agent",
       "description": "User shared an AI-provider strength comparison 2026-07-31 rating MiniMax highly for natural conversation, voice generation, character/role-play, multilingual support, and speech understanding, with a suggested role of customer-facing AI / voice assistant / phone agent. This system has no telephony or voice pipeline today -- every existing task_type in core.ai.ai_router.ROLE_PROVIDERS is text/code only (planning, architecture, coding, review, documentation, log_analysis). There is no inbound/outbound calling integration, no speech-to-text or text-to-speech pipeline, and no telephony provider account of any kind connected to this system. Placed last deliberately -- this is a real, separate capability area, not a routing tweak, and the user explicitly asked for a detailed roadmap to be produced later rather than scoped now. Do not begin implementation from this entry alone: the first deliverable is a concrete design proposal (telephony provider options and their tradeoffs, speech pipeline architecture, which of this system's existing apps if any it should connect to, realistic use cases such as an AI receptionist or voice-driven status checks) for the user to review and approve before any code is written.\n\nRESET 2026-08-02 (operator directive, 'assign failed jobs to fable now'): this build failed on the exact gemini(429)+openrouter(402) quota-exhaustion wall that took out 18 of 21 currently-failed phases tonight -- confirmed by reading each build's failure_reason, not assumed. Now that deepseek_native_flash is hardwired as 'planning' role's primary (core.ai.ai_router.ROLE_PROVIDERS, see 17R's own amendment), with no shared-quota exposure to either exhausted provider, this class of failure should no longer recur. Reset to pending for retry. Per operator directive: implemented by Kai/Fable, not Claude Code directly.",
-      "status": "completed",
+      "status": "failed",
       "dependencies": [],
       "priority": 60,
       "completion_criteria": [
@@ -1974,8 +1976,9 @@
       "note": "[2026-09-01 reconciliation] Queued 2026-07-31 directly from the user's Telegram request ('add it as last on roadmap, kai can give me a roadmap later'). Intentionally placed at the lowest priority in the queue and intentionally light on specifics -- the detailed plan is the deliverable, not a prerequisite for adding this entry.",
       "assigned_provider": null,
       "build_id": "d5c03c15",
-      "failure_reason": null,
-      "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note"
+      "failure_reason": "Roadmap/build reconciliation: linked build d5c03c15 is FAILED",
+      "completion_note": "Option C: Telegram voice messages \u2014 transcribe via voice_router, respond via TTS, reply as voice note",
+      "reconciled_at": "2026-09-21T21:16:07.005558+00:00"
     },
     {
       "id": "17Q",
@@ -2900,6 +2903,28 @@
       "completed": "2026-08-11",
       "build_id": "d5450269",
       "completion_correction": "Status corrected 2026-08-23: deliverables verified in code (completion note + date intact); the only failure_reason was a stale build_id reference to the purged 2026-08-07 build records."
+    },
+    {
+      "id": "18J",
+      "name": "Proxmox A/B/C full-mesh WireGuard (wg-kai) over the tailnet",
+      "description": "Build a dedicated full-mesh WireGuard fabric between Proxmox A, B and C on subnet 10.10.10.0/24, UDP 51900, interface wg-kai, endpoints on the stable tailnet IPs (A=100.83.4.27, B=100.122.38.118, C=100.116.165.100). Each node lists the other two as peers with PersistentKeepalive=25 and AllowedIPs peer /32 (LAN subnet routing intentionally omitted: A, B and C share 192.168.1.0/24). wg-quick@wg-kai enabled onboot; ip_forward=1. Tailscale double-encapsulation loop (tailscaled advertising the mesh address as an endpoint) neutralised by dropping Tailscale disco UDP/41641 on wg-kai only. Exposed in the Command Center at GET /api/wg/mesh (core.wg_mesh.py) and documented in docs/networking/ab_c_wireguard_mesh.md.",
+      "status": "completed",
+      "dependencies": [],
+      "completion_criteria": "All three nodes show 2 wg-kai peers with recent handshakes; A->B, A->C, B->C and reverse pings succeed on 10.10.10.x; existing Tailscale/SSH/CT102/CT103 WG untouched; CC /api/wg/mesh reports mesh_ok=true.",
+      "tests_required": [
+        "tests/test_wg_mesh.py (dump parsing, mesh_status, CC route gate)"
+      ],
+      "priority": "high",
+      "created_at": "2026-09-25T05:19:35.953574+00:00",
+      "completed_at": "2026-09-25T05:19:35.953574+00:00",
+      "related_files": [
+        "core/wg_mesh.py",
+        "core/cc_extra_routes.py",
+        "core/kai/command_center.html",
+        "docs/networking/ab_c_wireguard_mesh.md",
+        "tests/test_wg_mesh.py"
+      ],
+      "notes": "Owner-approved 2026-09-24. Keys stored 0600 under /etc/wireguard; private keys never exported. Pre-change backups in /root/wg-kai-backup/ on each node."
     }
   ],
   "_audit": {
@@ -2916,8 +2941,8 @@
       "17R (retry routing)"
     ]
   },
-  "updated_at": "2026-08-07T03:29:24.711749+00:00",
-  "last_updated": "2026-08-08T08:00:00Z",
-  "last_reconciled": "2026-09-01",
-  "reconciliation_note": "All 170 phases were marked completed. Audit found: 17N has design doc only (no impl), 25 phases are aspirational (TK-/SUSU/external), 4 phases have no name. 17N marked pending; others left as-is pending manual review."
+  "updated_at": "2026-09-25T05:19:35.953574+00:00",
+  "last_updated": "2026-09-25T05:19:35.953574+00:00",
+  "last_reconciled": "2026-09-21T21:16:07.005558+00:00",
+  "reconciliation_note": "Reopened 2 phase(s) whose linked build is FAILED; see reports/ for the full reconciliation report."
 }

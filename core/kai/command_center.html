@@ -1078,6 +1078,7 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
     <div class="sidebar-nav" id="sidebar-nav">
       <div class="sidebar-section-label">Overview</div>
       <a class="nav-item active" href="#home" data-hash="home"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Home</span></a>
+      <a class="nav-item" href="#command" data-hash="command"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg></span><span class="label">Command</span></a>
       <div class="sidebar-section-label">Management</div>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal Brain</span></a>
@@ -1239,6 +1240,7 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       </section>
 
       <!-- MODULES -->
+      <section class="panel" id="panel-command"><div id="command-content"><span class="loading">loading command view…</span></div></section>
       <section class="panel" id="panel-modules"><div id="modules-content"><span class="loading">loading…</span></div></section>
 
       <!-- LEGAL -->
@@ -1488,6 +1490,7 @@ const SK = 'kai_command_session_v3';
 // Per-model dedicated pages, registered at runtime from /api/models/catalog.
 window.MODEL_PAGES = {};   // slug -> {id, title}
 const PANEL_TITLES = {
+  command:'Command',
   home:'home', modules:'modules', legal:'Legal Brain', 'ai-workforce':'workforce', arbitra:'Arbitra', bet:'KAI Bet',
   payments:'Pricing & Payments',
   docker:'docker', airdrop:'airdrop', infrastructure:'infra',
@@ -1787,7 +1790,7 @@ function navigateTo(hash) {
   _syncMobileNav(hash);
 }
 function loadPanel(name) {
-  const fns={home:loadHome,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
+  const fns={home:loadHome,command:loadCommand,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
   if(fns[name])fns[name]();
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
@@ -7824,6 +7827,77 @@ function toggleWallMode(){ document.body.classList.toggle('wall-mode');
     if(i<0)i=0; items[i].classList.add('sel'); items[i].scrollIntoView({block:'nearest'});
   });
 })();
+
+
+// ═══ Phase B: Command surface (Brain / Missions / Workforce / needs-decision) ═══
+function cmdBadge(s){const m={healthy:'ok',ok:'ok',active:'ok',running:'ok',degraded:'warn',pending:'warn',warning:'warn',failed:'bad',error:'bad',down:'bad',unhealthy:'bad'};
+  return '<span class="badge '+(m[String(s).toLowerCase()]||'info')+'">'+esc(s)+'</span>';}
+async function loadCommand(){
+  const el=$('command-content'); if(!el) return;
+  el.innerHTML='<span class="loading">assembling command view…</span>';
+  const g=async p=>{try{return await apiT(p,15000);}catch(e){return {error:e.message};}};
+  const [world,missions,agents,doctor,guardian,approvals,stores]=await Promise.all([
+    g('/kai/world'),g('/kai/missions'),g('/kai/agents'),g('/kai/doctor'),g('/kai/guardian'),g('/approvals'),g('/kai/brain/stores')]);
+  let h='';
+
+  // Needs your decision
+  const appr=Array.isArray(approvals)?approvals:(approvals&&approvals.approvals)||[];
+  const pending=appr.filter(a=>/pending|await/i.test(String(a.status||'')));
+  h+='<div class="card"><h3>Needs your decision '+(pending.length?'<span class="badge warn">'+pending.length+'</span>':'<span class="badge ok">none</span>')+'</h3>';
+  if(pending.length){ h+='<div class="table-wrap"><table><thead><tr><th>ID</th><th>Status</th><th>Created</th></tr></thead><tbody>';
+    for(const a of pending.slice(0,10)) h+='<tr><td style="font-size:0.6rem">'+esc(String(a.id).slice(0,10))+'</td><td>'+cmdBadge(a.status)+'</td><td style="font-size:0.6rem">'+esc(a.created||'')+'</td></tr>';
+    h+='</tbody></table></div>'; }
+  else h+='<p class="empty">Nothing awaiting approval.</p>';
+  h+='</div>';
+
+  // Brain / World
+  const c=(world&&world.counts)||{}; const byType=(c.by_type)||{};
+  h+='<div class="card"><h3>Brain &amp; World Model '+(world&&!world.error?'<span class="badge ok">live</span>':'<span class="badge warn">unknown</span>')+'</h3>';
+  if(world&&!world.error){
+    h+='<div class="metric-row">'
+      +'<div class="metric"><span class="val nw-tnum">'+esc(c.entities==null?'—':c.entities)+'</span><span class="lbl">Entities</span></div>'
+      +'<div class="metric"><span class="val nw-tnum">'+esc(c.edges==null?'—':c.edges)+'</span><span class="lbl">Edges</span></div>'
+      +'<div class="metric"><span class="val nw-tnum">'+esc(c.changes==null?'—':c.changes)+'</span><span class="lbl">Changes</span></div>'
+      +'<div class="metric"><span class="val nw-tnum">'+esc(String(world.updated_at||'—').replace('T',' ').slice(0,19))+'</span><span class="lbl">Updated</span></div>'
+      +'</div>';
+    const types=Object.keys(byType);
+    if(types.length){ h+='<div style="margin-top:8px">'+types.map(t=>'<span class="badge info" style="margin:2px">'+esc(t)+' '+esc(byType[t])+'</span>').join(' ')+'</div>'; }
+  } else h+='<div class="error-text">'+esc((world&&world.error)||'unavailable')+'</div>';
+  if(stores&&!stores.error){ const ks=Object.keys(stores);
+    h+='<div class="field-hint" style="margin-top:8px">Memory stores: '+ks.map(k=>esc(k)+' '+(stores[k].record_count||0)).join(' · ')+'</div>'; }
+  h+='</div>';
+
+  // Missions
+  const ms=(missions&&missions.missions)||[];
+  h+='<div class="card"><h3>Missions <span class="badge info">'+ms.length+'</span></h3>';
+  if(ms.length){ h+='<div class="table-wrap"><table><thead><tr><th>Objective</th><th>Status</th><th>Deadline</th></tr></thead><tbody>';
+    for(const m of ms.slice(0,12)) h+='<tr><td>'+esc(m.objective||m.id)+'</td><td>'+cmdBadge(m.status||'—')+'</td><td style="font-size:0.6rem">'+esc(m.deadline||'—')+'</td></tr>';
+    h+='</tbody></table></div>'; }
+  else h+='<p class="empty">No missions.</p>';
+  h+='</div>';
+
+  // Workforce (agents)
+  const ag=(agents&&agents.agents)||[];
+  h+='<div class="card"><h3>Workforce <span class="badge info">'+ag.length+'</span></h3>';
+  if(ag.length){ h+='<div class="table-wrap"><table><thead><tr><th>Name</th><th>Model</th><th>Provider</th></tr></thead><tbody>';
+    for(const a of ag.slice(0,15)) h+='<tr><td>'+esc(a.name||a.id)+'</td><td style="font-size:0.6rem">'+esc(a.model_name||'—')+'</td><td style="font-size:0.6rem">'+esc(a.provider_key||'—')+'</td></tr>';
+    h+='</tbody></table></div>'; }
+  else h+='<p class="empty">No agents registered.</p>';
+  h+='</div>';
+
+  // Self-healing (doctor + guardian)
+  const checks=(doctor&&doctor.checks)||[];
+  const bad=checks.filter(c=>!/healthy|ok/i.test(String(c.status||'')));
+  h+='<div class="card"><h3>Self-healing '+(bad.length?'<span class="badge warn">'+bad.length+'</span>':'<span class="badge ok">all healthy</span>')+'</h3>';
+  if(checks.length){ h+='<div class="table-wrap"><table><thead><tr><th>Component</th><th>Status</th><th>Detail</th></tr></thead><tbody>';
+    for(const c of checks.slice(0,15)) h+='<tr><td>'+esc(c.component)+'</td><td>'+cmdBadge(c.status)+'</td><td style="font-size:0.6rem">'+esc(c.detail||'')+'</td></tr>';
+    h+='</tbody></table></div>'; }
+  const inv=(guardian&&guardian.inventory)||[];
+  if(inv.length) h+='<div class="field-hint" style="margin-top:8px">Guardian inventory: '+inv.length+' services tracked</div>';
+  h+='</div>';
+
+  el.innerHTML=h;
+}
 
 </script>
 <div class="modal-overlay" id="palette" style="display:none;align-items:flex-start;justify-content:center">

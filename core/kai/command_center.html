@@ -7921,6 +7921,7 @@ async function loadSecPipeline(){
     +'authorization is never performed implicitly.</div>';
   el.innerHTML=h;
 }
+function secStr(v){try{return v==null?'':(typeof v==='string'?v:JSON.stringify(v));}catch(_){return String(v);}}
 async function loadSecAudit(){
   const el=$('sec-audit'); if(!el) return;
   const g=async p=>{try{return await apiT(p,12000);}catch(e){return {error:e.message};}};
@@ -7933,7 +7934,7 @@ async function loadSecAudit(){
   for(const e of entries.slice(0,20)){
     const when=String(e.timestamp||'').replace('T',' ').slice(0,19);
     h+='<tr><td style="font-size:0.58rem">'+esc(when)+'</td><td style="font-size:0.6rem">'+esc(e.event||e.action||e.type||'-')+'</td>'
-      +'<td style="font-size:0.58rem">'+esc((function(v){try{return v==null?'':(typeof v==='string'?v:JSON.stringify(v));}catch(_){return String(v);}})(e.detail||e.reason||e.actor||e.username||'')).slice(0,90))+'</td></tr>';
+      +'<td style="font-size:0.58rem">'+esc(secStr(e.detail||e.reason||e.actor||e.username)).slice(0,90)+'</td></tr>';
   }
   h+='</tbody></table></div>';
   el.innerHTML=h;

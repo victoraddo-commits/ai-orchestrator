@@ -35,6 +35,11 @@ def get_adapter(provider: str):
         adapter = HomeAssistantAdapter()
         _ADAPTERS[provider] = adapter
         return adapter
+    if provider == "tuya_cloud":
+        from core.smarthome.adapters.tuya_cloud import TuyaCloudAdapter
+        adapter = TuyaCloudAdapter()
+        _ADAPTERS[provider] = adapter
+        return adapter
     if provider == "tuya":
         from core.smarthome.adapters.tuya import TuyaAdapter
         # Devices are registered in the canonical registry; the adapter resolves

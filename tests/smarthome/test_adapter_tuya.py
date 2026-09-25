@@ -18,13 +18,18 @@ def test_identify_lists_configured_devices():
     assert ids[0]["provider_id"] == "bf123"
 
 
-def test_control_without_key_is_typed_error():
-    a = T.TuyaAdapter({"bf123": {"ip": "192.168.1.16"}})
+def test_control_without_key_or_cloud_is_typed_error(monkeypatch):
+    """With no local key and no cloud session, control must raise a typed error.
+
+    The cloud fallback is stubbed so the test never touches live credentials.
+    """
+    a = T.TuyaAdapter({"bf123": {"ip": "169.155.1.2"}})  # not a local IP
+    monkeypatch.setattr(a, "_cloud", lambda: None)
     try:
         a.set_state("bf123", {"on": True})
         assert False
     except AdapterError as e:
-        assert "not configured" in str(e)
+        assert "not controllable" in str(e)
 
 
 def test_no_fabrication_in_normalise():

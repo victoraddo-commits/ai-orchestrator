@@ -63,6 +63,26 @@ class TuyaAdapter(ProviderAdapter):
         dev.set_version(float(d.get("version", "3.3")))
         return dev
 
+    def _cloud(self):
+        """Lazily build the cloud fallback adapter (for devices off this LAN)."""
+        try:
+            from core.smarthome.adapters.tuya_cloud import TuyaCloudAdapter
+        except Exception:  # noqa: BLE001
+            return None
+        try:
+            return TuyaCloudAdapter()
+        except Exception:  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _is_local_ip(ip: str | None) -> bool:
+        return bool(ip) and (ip.startswith("192.168.") or ip.startswith("10.")
+                             or ip.startswith("172.")) and not ip.startswith("169.155")
+
+    def _local_works(self, provider_id: str) -> bool:
+        d = self._device(provider_id)
+        return bool(d.get("local_key")) and self._is_local_ip(d.get("ip"))
+
     def identify(self) -> list[dict]:
         out = []
         for gw in self._devices:
@@ -84,27 +104,36 @@ class TuyaAdapter(ProviderAdapter):
         return state
 
     def get_state(self, provider_id: str) -> dict:
-        dev = self._client(provider_id)
-        try:
-            st = dev.status()
-        except Exception as e:  # noqa: BLE001
-            raise AdapterError(f"Tuya status failed for {provider_id}: {e}")
-        if isinstance(st, dict) and st.get("Error"):
-            raise AdapterError(st.get("Error"))
-        return self._normalise(st)
+        # Local-first when the device is on this LAN; otherwise cloud.
+        if self._local_works(provider_id):
+            try:
+                return self._normalise(self._client(provider_id).status())
+            except Exception as e:  # noqa: BLE001
+                logger.warning("tuya local status failed for %s: %s", provider_id, e)
+        cloud = self._cloud()
+        if cloud is not None:
+            return cloud.get_state(provider_id)
+        raise AdapterError(f"Tuya device {provider_id} unreachable (no local path, no cloud session)")
 
     def set_state(self, provider_id: str, changes: dict) -> dict:
-        dev = self._client(provider_id)
-        dps: dict = {}
-        if "on" in changes:
-            dps["1"] = bool(changes["on"])
-        if "brightness" in changes:
-            dps["2"] = int(changes["brightness"])
-        if not dps:
-            raise AdapterError("no controllable Tuya fields in request")
-        try:
-            dev.set_multiple_values(dps) if len(dps) > 1 else dev.set_value(
-                next(iter(dps)), next(iter(dps.values())))
-        except Exception as e:  # noqa: BLE001
-            raise AdapterError(f"Tuya control failed for {provider_id}: {e}")
-        return self.get_state(provider_id)  # read-back
+        if self._local_works(provider_id):
+            try:
+                dev = self._client(provider_id)
+                dps: dict = {}
+                if "on" in changes:
+                    dps["1"] = bool(changes["on"])
+                if "brightness" in changes:
+                    dps["2"] = int(changes["brightness"])
+                if not dps:
+                    raise AdapterError("no controllable Tuya fields in request")
+                if len(dps) > 1:
+                    dev.set_multiple_values(dps)
+                else:
+                    dev.set_value(next(iter(dps)), next(iter(dps.values())))
+                return self._normalise(dev.status())  # read-back
+            except Exception as e:  # noqa: BLE001
+                logger.warning("tuya local control failed for %s: %s", provider_id, e)
+        cloud = self._cloud()
+        if cloud is not None:
+            return cloud.set_state(provider_id, changes)
+        raise AdapterError(f"Tuya device {provider_id} not controllable (no local path, no cloud session)")

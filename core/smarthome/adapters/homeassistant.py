@@ -110,4 +110,22 @@ class HomeAssistantAdapter(ProviderAdapter):
                               headers=self._headers(), json=body, timeout=10)
         if r.status_code >= 400:
             raise AdapterError(f"HA control {provider_id} -> {r.status_code}")
-        return self.get_state(provider_id)  # read-back
+        # Read-back with a short settle poll: HA updates its state machine a beat
+        # after the service call returns, so an immediate single read is stale and
+        # would falsely report the command as unverified.
+        return self._readback(provider_id, changes)
+
+    def _readback(self, provider_id: str, changes: dict,
+                  attempts: int = 6, delay: float = 0.5) -> dict:
+        import time
+        want = changes.get("on")
+        last: dict = {}
+        for i in range(attempts):
+            last = self.get_state(provider_id)
+            if want is None:
+                return last
+            if (last.get("state") == "on") == bool(want):
+                return last
+            if i < attempts - 1:
+                time.sleep(delay)
+        return last

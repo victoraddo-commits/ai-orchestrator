@@ -1,6 +1,6 @@
 # Command Center — Module ↔ Full Page Coverage
 
-**Updated**: 2026-09-16
+**Updated**: 2026-09-25
 
 Source of truth for "every app/module has a full page inside the Command
 Center". A module counts as *wired* when all four exist and match:
@@ -11,7 +11,7 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 
 | Panel key | Title | Loader | Backend (main feeder) |
 |---|---|---|---|
-| `home` | Home | loadHome | /api/status, /api/summary |
+| `home` | Home | loadHome | /api/status, /api/summary, /api/infra/usage (+ /history?range=24h) |
 | `modules` | Modules | loadModules | /kai/modules |
 | `legal` | Legal Brain | loadLegal | /api/legal/* (brain proxy), /api/juris-kai/reports, /cc/legal |
 | `payments` | Pricing & Payments | loadPayments | /api/juris-kai/cc/plans, /cc/pricing, /cc/payments |
@@ -21,7 +21,7 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 | `android` | Android | loadAndroid | /kai/android* |
 | `docs` | Documents | loadDocs | /kai/knowledge, /kai/secondbrain |
 | `hubtel` | Hubtel | loadHubtel | /kai/hubtel* |
-| `docker` | Docker | loadDocker | /api/docker |
+| `docker` | Docker | loadDocker | /api/docker, /api/infra/usage (Proxmox CTs + VMs) |
 | `telegram` | Telegram | loadTelegram | /kai/telegram* |
 | `airdrop` | Airdrop | loadAirdrop | /kai/airdrop* |
 | `infrastructure` | Infra | loadInfra | /kai/infra*, /api/infra/usage |
@@ -145,6 +145,33 @@ the node (`100.116.165.100`). Units are pure functions (`parse_df`,
 background thread; `?refresh=1` does a synchronous refresh (Refresh button).
 Mounts `/mnt/wd`, `/mnt/evo`, `/mnt/vm104-nvme`, `/mnt/kai-c` plus the new
 `/mnt/sandisk128` are surfaced automatically from the host `df`.
+
+### CC panel fixes (2026-09-25)
+
+- **Kai Control — Quick Actions** (`kaiCtl()` on HOME): no longer dumps raw
+  JSON in a `<pre>`. Responses are rendered through `ccStructured()` — labelled
+  metric cards, key/value tables and badges — for `status · network · vpn ·
+  missions · approvals · health · doctor · guardian`.
+- **HOME Data Usage card**: `loadHomeUsage()` adds a full Data Usage card to
+  the HOME page with KPI metrics (current throughput, estate disk %, RX/TX
+  totals, 24h samples) and an SVG **Bandwidth RX/TX (24h)** area/line graph
+  (`nwChart`), sourced from `GET /api/infra/usage` +
+  `GET /api/infra/usage/history?range=24h`.
+- **Containers tab** (`docker`): when the host has no Docker engine it now
+  lists the real guests — Proxmox B LXC CTs + QEMU VMs — via
+  `renderProxmoxGuests()` from `GET /api/infra/usage`. Docker containers are
+  still shown (with lifecycle actions) on hosts that run Docker. The
+  Infrastructure "Containers & VMs" card uses the same renderer.
+- **Diagnostics honesty**: `/health` no longer reports Docker-unavailable as a
+  *critical* degradation on hosts that do not run Docker
+  (`core/health.py::_docker_expected`); it is informational, so Diagnostics
+  shows an honest `ok`.
+- **World Model**: the Command Center inline script had a fatal syntax error in
+  `ccTgBots()` that aborted the whole script (World Model stuck on
+  "loading…"/fetch failure). Fixed; the panel renders the snapshot again.
+- **Server**: Docker UDS client now uses `httpx.AsyncHTTPTransport` (the sync
+  `HTTPTransport` lacks `handle_async_request`); Proxmox B default host
+  corrected to `192.168.1.110`.
 
 ### New/extended endpoints
 

@@ -1167,6 +1167,14 @@ html, body { max-width: 100%; overflow-x: hidden; }
         </div>
 
         <div class="card" style="margin-bottom:12px">
+          <div class="spread" style="margin-bottom:10px">
+            <h3 style="margin-bottom:0">Data Usage <span class="badge info" id="home-usage-at">&mdash;</span></h3>
+            <button class="btn btn-xs" onclick="loadHomeUsage()">Refresh</button>
+          </div>
+          <div id="home-usage"><span class="loading">loading&hellip;</span></div>
+        </div>
+
+        <div class="card" style="margin-bottom:12px">
           <h2>Kai Control &mdash; Quick Actions <span class="badge info">Telegram parity</span></h2>
           <div class="action-row" style="flex-wrap:wrap;gap:6px">
             <button class="btn btn-xs btn-accent" onclick="kaiCtl('status')">Status</button>
@@ -1245,7 +1253,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
           <div class="card"><h3>Network Topology</h3><div id="infra-network"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Proxmox Nodes</h3><div id="infra-proxmox"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Proxmox Inventory (VMs / CTs / storage)</h3><div id="infra-registry"><span class="loading">loading…</span></div></div>
-          <div class="card"><h3>Containers (Docker)</h3><div id="infra-containers"><span class="loading">loading…</span></div></div>
+          <div class="card"><h3>Containers &amp; VMs (Proxmox / Docker)</h3><div id="infra-containers"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Services</h3><div id="infra-services"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>Model Fabric utilization</h3><div id="infra-util"><span class="loading">loading…</span></div></div>
           <div class="card"><h3>GPU Providers</h3><div id="infra-gpu"><span class="loading">loading…</span></div></div>
@@ -2170,6 +2178,40 @@ async function loadHome() {
     }
     $('home-launcher').innerHTML=tiles||'<p class="empty">No modules registered</p>';
   }catch{$('home-launcher').innerHTML='<p class="empty">Module registry unavailable</p>';}
+  // Data Usage card + 24h graph (independent; never blocks the rest of HOME).
+  loadHomeUsage();
+}
+
+// HOME Data Usage — live KPI from /api/infra/usage + the 24h bandwidth series.
+async function loadHomeUsage(){
+  const el=$('home-usage'); if(!el) return;
+  el.innerHTML='<span class="loading">collecting data usage…</span>';
+  const g=async p=>{try{return await apiT(p,30000);}catch(e){return {error:e.message};}};
+  try{
+    const [u,h]=await Promise.all([g('/api/infra/usage'),g('/api/infra/usage/history?range=24h')]);
+    const tot=(u&&u.totals)||{};
+    const pts=(h&&h.points)||[];
+    const last=pts.length?pts[pts.length-1]:null;
+    const curRate=last?((Number(last.rx_rate)||0)+(Number(last.tx_rate)||0)):(tot.rx_rate!=null?(tot.rx_rate+tot.tx_rate):null);
+    let html='<div class="nw-kpi">'
+      +'<div class="metric"><span class="val info nw-tnum">'+esc(fmtRate(curRate))+'</span><span class="lbl">Current throughput</span></div>'
+      +'<div class="metric"><span class="val'+(tot.disk_pct>=85?' warn':'')+' nw-tnum">'+esc(tot.disk_pct==null?'—':tot.disk_pct+'%')+'</span><span class="lbl">Estate disk</span></div>'
+      +'<div class="metric"><span class="val nw-tnum">'+esc(fmtBytes(tot.rx_total))+'</span><span class="lbl">Net RX</span></div>'
+      +'<div class="metric"><span class="val nw-tnum">'+esc(fmtBytes(tot.tx_total))+'</span><span class="lbl">Net TX</span></div>'
+      +'<div class="metric"><span class="val nw-tnum">'+esc((h&&h.sample_count)||0)+'</span><span class="lbl">24h samples</span></div>'
+      +'</div>';
+    if(pts.length>=2){
+      html+=nwChart('Bandwidth RX / TX (24h)',[
+        {label:'RX',color:'var(--info)',points:pts.map(p=>({t:p.t,y:Number(p.rx_rate)||0}))},
+        {label:'TX',color:'var(--warn)',points:pts.map(p=>({t:p.t,y:Number(p.tx_rate)||0}))}
+      ],fmtRate);
+    } else {
+      html+='<p class="empty">History is still building — the collector samples on read (need ≥2 points in 24h).</p>';
+    }
+    if(u&&u.error) html+='<div class="field-hint">live snapshot: '+esc(u.error)+'</div>';
+    el.innerHTML=html;
+    if($('home-usage-at')) $('home-usage-at').textContent=(u&&u.generated_at)?String(u.generated_at).replace('T',' ').replace('Z',''):'—';
+  }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
 }
 
 function getModuleIcon(name){
@@ -4256,27 +4298,56 @@ function closeRouting(){ $('routing-modal').classList.remove('visible'); }
 // PANEL: DOCKER
 // ═══════════════════════════════════════════════════════════════════
 async function loadDocker(){
-  try{const data=await api('/api/docker/containers');const cs=data.containers||[];
-    if(!cs.length){$('docker-content').innerHTML='<p class="empty">No containers found</p>';return;}
-    let html=`<div style="margin-bottom:10px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">${cs.length} container(s)</div><div class="container-grid">`;
-    for(const c of cs){const s=c.state||'unknown',bdg=s==='running'?'ok':s==='exited'?'bad':s==='paused'?'warn':'info';
-      html+=`<div class="container-card"><div class="container-card-header"><span class="container-card-name">${esc(c.name)}</span><span class="badge ${bdg}">${esc(s)}</span></div>
-        <div class="container-card-body">
-        <span class="cl">Image</span><span>${esc(c.image||'-')}</span>
-        <span class="cl">ID</span><span style="font-size:0.62rem">${esc(c.id||'-')}</span>
-        <span class="cl">Status</span><span style="font-size:0.62rem">${esc(c.status||'-')}</span>
-        <span class="cl">Ports</span><span>${(c.ports||[]).join(', ')||'-'}</span>
-        </div>
-        <div class="container-card-actions">
-          <button class="btn btn-xs btn-accent" onclick="dockerAction('${esc(c.name)}','start')" ${s==='running'?'disabled':''}>start</button>
-          <button class="btn btn-xs btn-warn" onclick="dockerAction('${esc(c.name)}','stop')" ${s!=='running'?'disabled':''}>stop</button>
-          <button class="btn btn-xs" onclick="dockerAction('${esc(c.name)}','restart')" ${s!=='running'?'disabled':''}>restart</button>
-          <button class="btn btn-xs" onclick="dockerLogs('${esc(c.name)}')">logs</button>
-        </div>
-        <div class="log-viewer" id="docker-log-${esc(c.name)}" style="display:none;margin-top:6px;max-height:160px"></div>
-      </div>`;}
-    html+='</div>';$('docker-content').innerHTML=html;}
-  catch(e){$('docker-content').innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
+  const el=$('docker-content'); if(!el) return;
+  el.innerHTML='<span class="loading">loading containers…</span>';
+  // Docker containers when this host actually runs Docker…
+  let docker=[];
+  try{const data=await api('/api/docker/containers');docker=(data&&data.containers)||[];}catch(e){}
+  if(docker.length){el.innerHTML=_dockerGrid(docker);return;}
+  // …otherwise the real guests on this estate: Proxmox B CTs + VMs.
+  try{
+    const u=await apiT('/api/infra/usage',30000);
+    el.innerHTML=renderProxmoxGuests(u);
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+function _dockerGrid(cs){
+  let html=`<div style="margin-bottom:10px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">${cs.length} docker container(s)</div><div class="container-grid">`;
+  for(const c of cs){const s=c.state||'unknown',bdg=s==='running'?'ok':s==='exited'?'bad':s==='paused'?'warn':'info';
+    html+=`<div class="container-card"><div class="container-card-header"><span class="container-card-name">${esc(c.name)}</span><span class="badge ${bdg}">${esc(s)}</span></div>
+      <div class="container-card-body">
+      <span class="cl">Image</span><span>${esc(c.image||'-')}</span>
+      <span class="cl">ID</span><span style="font-size:0.62rem">${esc(c.id||'-')}</span>
+      <span class="cl">Status</span><span style="font-size:0.62rem">${esc(c.status||'-')}</span>
+      <span class="cl">Ports</span><span>${(c.ports||[]).join(', ')||'-'}</span>
+      </div>
+      <div class="container-card-actions">
+        <button class="btn btn-xs btn-accent" onclick="dockerAction('${esc(c.name)}','start')" ${s==='running'?'disabled':''}>start</button>
+        <button class="btn btn-xs btn-warn" onclick="dockerAction('${esc(c.name)}','stop')" ${s!=='running'?'disabled':''}>stop</button>
+        <button class="btn btn-xs" onclick="dockerAction('${esc(c.name)}','restart')" ${s!=='running'?'disabled':''}>restart</button>
+        <button class="btn btn-xs" onclick="dockerLogs('${esc(c.name)}')">logs</button>
+      </div>
+      <div class="log-viewer" id="docker-log-${esc(c.name)}" style="display:none;margin-top:6px;max-height:160px"></div>
+    </div>`;}
+  return html+'</div>';
+}
+// Real Proxmox B guests (LXC CTs + QEMU VMs) from the SSH-based usage collector.
+function renderProxmoxGuests(u){
+  const hosts=(u&&u.hosts)||[];
+  const guests=[];
+  hosts.forEach(function(h){
+    (h.containers||[]).forEach(function(c){guests.push({kind:'CT',vmid:c.vmid,name:c.name,status:c.status,host:h.name,disk:c.disk,net:c.net});});
+    (h.vms||[]).forEach(function(v){guests.push({kind:'VM',vmid:v.vmid,name:v.name,status:v.status,host:h.name,mem:v.mem_mb,disk_gb:v.bootdisk_gb});});
+  });
+  if(!guests.length) return '<p class="empty">No Proxmox guests found.</p>';
+  let html='<div style="margin-bottom:10px;font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono)">'+guests.length+' Proxmox guest(s) · Docker not present on this host — showing CTs + VMs</div>';
+  html+='<div class="table-wrap"><table><thead><tr><th>Type</th><th>ID</th><th>Name</th><th>Host</th><th>Status</th><th>Disk</th><th>Network</th></tr></thead><tbody>';
+  guests.forEach(function(g){
+    const bdg=g.status==='running'?'ok':(g.status==='stopped'?'bad':'warn');
+    const disk=g.kind==='CT'?(g.disk&&g.disk.pct!=null?g.disk.pct+'%':(g.disk?fmtBytes(g.disk.used)+' / '+fmtBytes(g.disk.total):'—')):(g.disk_gb!=null?g.disk_gb+' GB':'—');
+    const net=(g.kind==='CT'&&g.net)?('rx '+fmtBytes(g.net.rx_total)+' · tx '+fmtBytes(g.net.tx_total)):'—';
+    html+='<tr><td><span class="badge info">'+esc(g.kind)+'</span></td><td>'+esc(g.vmid)+'</td><td>'+esc(g.name)+'</td><td style="font-size:0.62rem">'+esc(g.host)+'</td><td><span class="badge '+bdg+'">'+esc(g.status)+'</span></td><td style="font-size:0.62rem">'+esc(disk)+'</td><td style="font-size:0.6rem">'+esc(net)+'</td></tr>';
+  });
+  return html+'</tbody></table></div>';
 }
 async function dockerAction(name,action){
   try{
@@ -4671,12 +4742,16 @@ async function loadInfra(){
     else { $('infra-proxmox').innerHTML='<p class="empty">No nodes discovered</p>'; $('infra-registry').innerHTML='<p class="empty">No inventory</p>'; }
   }).catch(function(e){$('infra-proxmox').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';$('infra-registry').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
   apiT('/api/docker/containers', 7000).then(function(d){
-    const cs=d.containers||[];
-    if(!cs.length){ $('infra-containers').innerHTML='<p class="empty">No containers</p>'; return; }
-    let html='<div class="table-wrap"><table><thead><tr><th>Name</th><th>State</th><th>Image</th></tr></thead><tbody>';
-    for(const c of cs){const s=c.state||'unknown',bdg=s==='running'?'ok':s==='exited'?'bad':'warn';
-      html+='<tr><td>'+esc(c.name)+'</td><td><span class="badge '+bdg+'">'+esc(s)+'</span></td><td style="font-size:0.6rem">'+esc(c.image||'-')+'</td></tr>';}
-    html+='</tbody></table></div>';$('infra-containers').innerHTML=html;
+    const cs=(d&&d.containers)||[];
+    if(cs.length){
+      let html='<div class="table-wrap"><table><thead><tr><th>Name</th><th>State</th><th>Image</th></tr></thead><tbody>';
+      for(const c of cs){const s=c.state||'unknown',bdg=s==='running'?'ok':s==='exited'?'bad':'warn';
+        html+='<tr><td>'+esc(c.name)+'</td><td><span class="badge '+bdg+'">'+esc(s)+'</span></td><td style="font-size:0.6rem">'+esc(c.image||'-')+'</td></tr>';}
+      html+='</tbody></table></div>';$('infra-containers').innerHTML=html;return;
+    }
+    // No Docker on this host — show the real Proxmox guests instead.
+    return apiT('/api/infra/usage',30000).then(function(u){ $('infra-containers').innerHTML=renderProxmoxGuests(u); })
+      .catch(function(e){ $('infra-containers').innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; });
   }).catch(function(e){$('infra-containers').innerHTML='<span class="error-text">'+esc(e.message)+'</span>';});
   apiT('/api/directory/services', 7000).then(function(s){
     const items=s.services||s.items||s||[];
@@ -7195,16 +7270,79 @@ async function betTOddsGroups(){
   try{const d=await betG('/odds-groups'); betBody(betJson('Odds groups',d));}
   catch(e){betBody('<span class="error-text">'+esc(e.message)+'</span>');}
 }
-async function ccTgBots(){const el=$('cc-tg-result');try{const d=await api('/api/cc/telegram/bots');const rows=Array.isArray(d)?d:(d.bots||d.items||Object.values(d||{}).find(v=>Array.isArray(v))||[]);if(!rows.length){el.innerHTML='<p class="empty">No bots configured.</p>';return;}let h='<table><thead><tr><th>Bot</th><th>Username</th><th>Status</th><th>Token</th></tr></thead><tbody>';for(const b of rows){const name=b.name||b.label||b.id||'-';const un=b.username?('@'+String(b.username).replace(/^@/,''):''):'-';const st=b.status||b.state||(b.enabled===false?'disabled':(b.enabled?'enabled':'-'));const sb=String(st).toLowerCase().includes('dis')?'warn':String(st).toLowerCase().includes('off')?'bad':'ok';const tok=b.has_token===false?'not set':(b.token_masked||b.token_set===false?'not set':(b.has_token||b.token_masked?'set':'set'));h+='<tr><td>'+esc(name)+'</td><td>'+esc(un)+'</td><td><span class="badge '+sb+'">'+esc(st)+'</span></td><td>'+esc(tok)+'</td></tr>';}h+='</tbody></table>';el.innerHTML=h;}catch(e){el.textContent=e.message;}}
+async function ccTgBots(){const el=$('cc-tg-result');try{const d=await api('/api/cc/telegram/bots');const rows=Array.isArray(d)?d:(d.bots||d.items||Object.values(d||{}).find(v=>Array.isArray(v))||[]);if(!rows.length){el.innerHTML='<p class="empty">No bots configured.</p>';return;}let h='<table><thead><tr><th>Bot</th><th>Username</th><th>Status</th><th>Token</th></tr></thead><tbody>';for(const b of rows){const name=b.name||b.label||b.id||'-';const un=b.username?('@'+String(b.username).replace(/^@/,'')):'-';const st=b.status||b.state||(b.enabled===false?'disabled':(b.enabled?'enabled':'-'));const sb=String(st).toLowerCase().includes('dis')?'warn':String(st).toLowerCase().includes('off')?'bad':'ok';const tok=b.has_token===false?'not set':(b.token_masked||b.token_set===false?'not set':(b.has_token||b.token_masked?'set':'set'));h+='<tr><td>'+esc(name)+'</td><td>'+esc(un)+'</td><td><span class="badge '+sb+'">'+esc(st)+'</span></td><td>'+esc(tok)+'</td></tr>';}h+='</tbody></table>';el.innerHTML=h;}catch(e){el.textContent=e.message;}}
 async function ccTgSetCmds(){const el=$('cc-tg-result');el.textContent='setting…';try{const d=await api('/api/cc/telegram/set-commands',{method:'POST',body:JSON.stringify({bot_id:'kai-enzo-bot'})});el.textContent='set-commands → '+JSON.stringify(d);}catch(e){el.textContent='error: '+e.message;}}
 async function ccTgSend(){const el=$('cc-tg-result');const c=($('cc-tg-chat')||{}).value,t=($('cc-tg-text')||{}).value;el.textContent='sending…';try{const d=await api('/api/cc/telegram/send',{method:'POST',body:JSON.stringify({bot_id:'kai-enzo-bot',chat_id:c,text:t})});el.textContent='send → '+JSON.stringify(d);}catch(e){el.textContent='error: '+e.message;}}
+// ── Kai Control: structured renderer (no raw JSON dumps) ───────────
+function _ccScalar(v){
+  if(v===null||v===undefined) return '<span style="color:var(--fg-muted)">—</span>';
+  if(typeof v==='boolean') return '<span class="badge '+(v?'ok':'warn')+'">'+esc(v)+'</span>';
+  if(typeof v==='number') return '<span class="nw-tnum">'+esc(v)+'</span>';
+  return esc(String(v));
+}
+function _ccFlatten(obj,prefix,out,depth){
+  out=out||[]; depth=depth||0;
+  Object.keys(obj||{}).forEach(function(k){
+    const v=obj[k], key=prefix?prefix+'.'+k:k;
+    if(v&&typeof v==='object'){
+      if(Array.isArray(v)){
+        out.push({key:key,value:v.length+' item(s)'+(v.length&&typeof v[0]==='object'?' ('+Object.keys(v[0]).slice(0,6).join(', ')+')':'')});
+      }else if(depth<2){
+        _ccFlatten(v,key,out,depth+1);
+      }else{
+        out.push({key:key,value:Object.keys(v).length+' field(s)'});
+      }
+    }else out.push({key:key,value:v});
+  });
+  return out;
+}
+function _ccTable(rows,maxRows){
+  rows=(rows||[]).filter(function(r){return r&&typeof r==='object';});
+  if(!rows.length) return '<p class="empty">none</p>';
+  const keys=[];rows.forEach(function(r){Object.keys(r).forEach(function(k){if(keys.indexOf(k)<0)keys.push(k);});});
+  const cols=keys.slice(0,12);
+  let h='<div class="table-wrap"><table><thead><tr>'+cols.map(function(k){return '<th>'+esc(k)+'</th>';}).join('')+'</tr></thead><tbody>';
+  rows.slice(0,maxRows||50).forEach(function(r){
+    h+='<tr>'+cols.map(function(k){const v=r[k];
+      if(v&&typeof v==='object') return '<td style="font-size:0.6rem;color:var(--fg-muted)">'+(Array.isArray(v)?v.length+' item(s)':Object.keys(v).length+' field(s)')+'</td>';
+      return '<td>'+_ccScalar(v)+'</td>';}).join('')+'</tr>';
+  });
+  h+='</tbody></table></div>';
+  if(rows.length>(maxRows||50)) h+='<div class="field-hint">showing first '+(maxRows||50)+' of '+rows.length+'</div>';
+  return h;
+}
+function ccStructured(d){
+  if(d===null||d===undefined) return '<p class="empty">no data</p>';
+  if(Array.isArray(d)) return _ccTable(d,100);
+  if(typeof d!=='object') return '<p>'+_ccScalar(d)+'</p>';
+  let html='';
+  const scalars=Object.keys(d).filter(function(k){return d[k]===null||typeof d[k]!=='object';});
+  if(scalars.length){
+    html+='<div class="metric-row" style="flex-wrap:wrap;gap:8px;margin-bottom:8px">';
+    scalars.forEach(function(k){html+='<div class="metric" style="padding:6px 10px;min-width:110px"><span class="val" style="font-size:0.9rem">'+_ccScalar(d[k])+'</span><span class="lbl">'+esc(k)+'</span></div>';});
+    html+='</div>';
+  }
+  Object.keys(d).forEach(function(k){
+    const v=d[k];
+    if(v===null||typeof v!=='object') return;
+    if(Array.isArray(v)){
+      if(!v.length) return;
+      if(typeof v[0]==='object'){html+='<div class="card" style="margin-bottom:8px"><h3 style="font-size:0.72rem">'+esc(k)+' <span class="badge info">'+v.length+'</span></h3>'+_ccTable(v,50)+'</div>';}
+      else html+='<div class="card" style="margin-bottom:8px"><h3 style="font-size:0.72rem">'+esc(k)+'</h3>'+v.map(function(x){return '<span class="badge info" style="margin:2px">'+_ccScalar(x)+'</span>';}).join(' ')+'</div>';
+      return;
+    }
+    html+='<div class="card" style="margin-bottom:8px"><h3 style="font-size:0.72rem">'+esc(k)+' <span class="badge info">'+Object.keys(v).length+'</span></h3>'+_ccTable(_ccFlatten(v,k),80)+'</div>';
+  });
+  return html||'<p class="empty">no data</p>';
+}
 async function kaiCtl(a){
   const el=$('kai-ctl-result'); if(!el) return;
   const map={status:'/api/command-center/summary',network:'/api/network/overview',vpn:'/api/vpn/status',missions:'/kai/missions',approvals:'/approvals',health:'/health',doctor:'/kai/doctor',guardian:'/kai/guardian'};
   if(a==='help'){ el.innerHTML='Same commands as the Telegram menu: <b>status &middot; network &middot; vpn &middot; missions &middot; approvals &middot; health</b>'; return; }
-  el.textContent='running '+a+'…';
-  try{const d=await api(map[a]); el.innerHTML='<pre style="font-size:0.6rem;white-space:pre-wrap;max-height:260px;overflow:auto">'+esc(JSON.stringify(d,null,1))+'</pre>';}
-  catch(e){ el.textContent=a+' → error: '+e.message; }
+  if(!map[a]){ el.innerHTML='<span class="error-text">unknown action: '+esc(a)+'</span>'; return; }
+  el.innerHTML='<span class="loading">running '+esc(a)+'…</span>';
+  try{const d=await api(map[a]); el.innerHTML=ccStructured(d);}
+  catch(e){ el.innerHTML='<span class="error-text">'+esc(a)+' → error: '+esc(e.message)+'</span>'; }
 }
 // ── Command Palette (§9) ──────────────────────────────────────────
 function paletteCommands(){

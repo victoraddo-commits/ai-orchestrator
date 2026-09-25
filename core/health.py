@@ -1,7 +1,35 @@
+import os
+import shutil
+
 from core.memory import load
 from core.docker_analyzer import analyze_docker
 from core.service_monitor import check_services
 from core.proxmox_health import analyze_proxmox_cluster
+
+
+_DOCKER_SOCK_PATHS = (
+    "/var/run/docker.sock",
+    "/run/docker.sock",
+    os.environ.get("DOCKER_HOST", ""),
+)
+
+
+def _docker_expected() -> bool:
+    """Whether Docker is part of *this* host.
+
+    The runner (LXC 111) does not run Docker — its only container runtime is
+    Proxmox (LXC/VM). Reporting "Docker unavailable" as a **critical**
+    degradation there is a false positive: there is nothing to degrade. Docker
+    is only expected when a Docker socket exists or the ``docker`` CLI is
+    installed, so we do not paper over a real Docker outage on hosts that do
+    run it.
+    """
+    for path in _DOCKER_SOCK_PATHS:
+        if path and os.path.exists(path):
+            return True
+    if shutil.which("docker"):
+        return True
+    return False
 
 
 EXPECTED_SERVICES = (
@@ -33,10 +61,21 @@ def analyze():
 
     if not docker.get("available"):
 
+        if _docker_expected():
+
+            findings.append({
+                "severity": "critical",
+                "service": "docker",
+                "issue": "Docker unavailable"
+            })
+
+            return findings
+
+        # Docker is not part of this host — informational, never critical.
         findings.append({
-            "severity": "critical",
+            "severity": "info",
             "service": "docker",
-            "issue": "Docker unavailable"
+            "issue": "Docker not installed on this host (not expected)"
         })
 
         return findings

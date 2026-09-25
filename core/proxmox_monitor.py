@@ -41,7 +41,7 @@ def _get_node_configs():
         },
         {
             "name": "pve-b",
-            "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.109"),
+            "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.110"),
             "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
             "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
             "token_secret": retrieve_api_key("proxmox_b_secret") or os.environ.get("PROXMOX_B_TOKEN_SECRET", ""),
@@ -51,7 +51,7 @@ def _get_node_configs():
 
 # Module-level config for non-secret fields only — used for discovery/shell commands
 _PROXMOX_HOST = os.environ.get("PROXMOX_HOST", "192.168.99.2")
-_PROXMOX_B_HOST = os.environ.get("PROXMOX_B_HOST", "192.168.1.109")
+_PROXMOX_B_HOST = os.environ.get("PROXMOX_B_HOST", "192.168.1.110")
 
 # TK-176d6efe: retry constants
 _MAX_RETRIES = int(os.environ.get("PROXMOX_RETRY_COUNT", "3"))

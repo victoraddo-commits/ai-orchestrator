@@ -2071,7 +2071,7 @@ def _get_docker_client() -> httpx.AsyncClient:
     global _docker_client
     if _docker_client is None:
         _docker_client = httpx.AsyncClient(
-            transport=httpx.HTTPTransport(uds=DOCKER_SOCK),
+            transport=httpx.AsyncHTTPTransport(uds=DOCKER_SOCK),
             base_url="http://localhost",
             timeout=10.0,
         )

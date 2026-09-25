@@ -95,7 +95,10 @@ BOTS: dict[str, Bot] = {
         owner_module="agent_notify",
         capabilities=frozenset({"notify.send"}),
         host="ct113", env_file="",
-        enabled=True,
+        # Disabled 2026-09-25: no token_env/env_file and the on-host raw token
+        # (/etc/kai/deerude_bot_token) returns 401. Re-enable once a valid token
+        # is provisioned (token_env or raw file).
+        enabled=False,
     ),
     "akush233-bot": Bot(
         bot_id="akush233-bot",
@@ -106,7 +109,9 @@ BOTS: dict[str, Bot] = {
         capabilities=frozenset({"money.notify", "crypto.notify"}),
         host="ct108",
         env_file="/opt/kai-money/secrets/telegram_bot_token.txt",
-        enabled=True,
+        # Disabled 2026-09-25: CT108 (kai-money) no longer exists on Proxmox B
+        # (verified absent from `pct list`); its token file cannot be read.
+        enabled=False,
     ),
 }
 

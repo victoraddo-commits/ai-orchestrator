@@ -1656,3 +1656,113 @@ def sh_providers(_: None = Depends(_req_op)):
                             headers={"Cache-Control": "no-store"})
     except Exception as e:  # noqa: BLE001
         return _sh_err(e)
+
+
+class ShRoomBody(BaseModel):
+    room: str | None = None
+    name: str | None = None
+    area: str | None = None
+
+
+@cc_extra_router.patch("/api/smarthome/devices/{device_id}")
+def sh_set_room(device_id: str, body: ShRoomBody, _: None = Depends(_req_op)):
+    """Assign/clear a device's room (creating the room record when named)."""
+    from core.smarthome import registry as _reg
+    from core.smarthome import rooms as _rooms
+    from core.smarthome.models import Room
+    try:
+        if body.name:
+            rid = body.room or body.name.strip().lower().replace(" ", "-")
+            _rooms.upsert_room(Room(id=rid, name=body.name, area=body.area))
+        else:
+            rid = body.room
+        rec = _reg.set_room(device_id, rid)
+        if rec is None:
+            return JSONResponse({"error": "unknown device"}, status_code=404)
+        return JSONResponse({"device": device_id, "room": rec.room})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+# ---------------------------------------------------------------------------
+# Smart Home automations (Phase F) — trigger/condition/action, audited.
+# ---------------------------------------------------------------------------
+
+class ShAutomationBody(BaseModel):
+    name: str
+    trigger: dict
+    conditions: list[dict] | None = None
+    actions: list[dict] | None = None
+    enabled: bool | None = True
+
+
+class ShAutomationToggle(BaseModel):
+    enabled: bool
+
+
+def _sh_act(action: dict):
+    """Execute one automation action through the service (Command Bus + audit)."""
+    from core.smarthome import service as _s
+    return _s.control(action.get("device_id"), action.get("changes", {}))
+
+
+def _sh_state_provider(device_id: str):
+    from core.smarthome import registry as _reg
+    rec = _reg.get(device_id) if device_id else None
+    return (rec.state if rec else None)
+
+
+@cc_extra_router.get("/api/smarthome/automations")
+def sh_automations(_: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        return JSONResponse(content={"automations": [x.to_dict() for x in _a.list_automations()]},
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/automations")
+def sh_automation_create(body: ShAutomationBody, _: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        a = _a.Automation.new(body.name, body.trigger, body.conditions,
+                              body.actions, bool(body.enabled))
+        return JSONResponse(content=_a.add(a).to_dict(), status_code=201)
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.delete("/api/smarthome/automations/{automation_id}")
+def sh_automation_delete(automation_id: str, _: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        return JSONResponse(content={"deleted": _a.delete(automation_id)})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/automations/{automation_id}/enable")
+def sh_automation_enable(automation_id: str, body: ShAutomationToggle,
+                         _: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        a = _a.set_enabled(automation_id, body.enabled)
+        if a is None:
+            return JSONResponse({"error": "unknown automation"}, status_code=404)
+        return JSONResponse(content=a.to_dict())
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/automations/{automation_id}/run")
+def sh_automation_run(automation_id: str, _: None = Depends(_req_op)):
+    """Manually run an automation (conditions still enforced)."""
+    from core.smarthome import automations as _a
+    try:
+        a = _a.get(automation_id)
+        if a is None:
+            return JSONResponse({"error": "unknown automation"}, status_code=404)
+        return JSONResponse(content=_a.run(a, _sh_state_provider, _sh_act))
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)

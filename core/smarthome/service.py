@@ -35,6 +35,19 @@ def get_adapter(provider: str):
         adapter = HomeAssistantAdapter()
         _ADAPTERS[provider] = adapter
         return adapter
+    if provider == "tuya":
+        from core.smarthome.adapters.tuya import TuyaAdapter
+        # Devices are registered in the canonical registry; the adapter resolves
+        # each device's IP/key at call time (key from the encrypted vault).
+        devices = {}
+        for d in reg.list_devices():
+            if d.provider == "tuya":
+                devices[d.provider_id] = {"ip": d.address or d.provider_id,
+                                          "name": d.name,
+                                          "kind": d.kind.value}
+        adapter = TuyaAdapter(devices)
+        _ADAPTERS[provider] = adapter
+        return adapter
     raise AdapterError(f"no adapter registered for provider {provider!r}")
 
 
@@ -107,4 +120,49 @@ def _verify(requested: dict, observed: dict) -> bool:
                 return False
         elif observed.get(k) != v:
             return False
+    return True
+
+
+# ── Background refresh (bounded, opt-in, never fabricates) ──────────────────
+
+_REFRESH_INTERVAL_S = 120
+_STOP = None
+
+
+def refresh_loop(interval_s: int = _REFRESH_INTERVAL_S) -> None:
+    """Refresh provider state on an interval until stopped. Safe to run in a thread.
+
+    Disabled unless SMARTHOME_REFRESH=1 so tests and one-shot calls are unaffected.
+    """
+    import os
+    import threading
+    import time
+
+    global _STOP
+    if os.environ.get("SMARTHOME_REFRESH") != "1":
+        return
+    _STOP = threading.Event()
+    while not _STOP.is_set():
+        try:
+            refresh()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("smarthome refresh loop error: %s", e)
+        _STOP.wait(interval_s)
+
+
+def stop_refresh_loop() -> None:
+    if _STOP is not None:
+        _STOP.set()
+
+
+def start_background_refresh(interval_s: int = _REFRESH_INTERVAL_S) -> bool:
+    """Start the refresh loop in a daemon thread; returns True if started."""
+    import os
+    import threading
+
+    if os.environ.get("SMARTHOME_REFRESH") != "1":
+        return False
+    t = threading.Thread(target=refresh_loop, args=(interval_s,), daemon=True,
+                         name="smarthome-refresh")
+    t.start()
     return True

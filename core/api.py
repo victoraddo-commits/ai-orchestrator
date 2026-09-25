@@ -148,6 +148,13 @@ async def lifespan(app: FastAPI):
     nm.register_event_subscriptions()
     # Start KLAUS legal acquisition scheduler
     start_klaus_scheduler()
+    # Smart Home: optional bounded provider-state refresh loop (SMARTHOME_REFRESH=1).
+    try:
+        from core.smarthome.service import start_background_refresh as _sh_refresh
+        if _sh_refresh():
+            import logging as _shl; _shl.getLogger(__name__).info("smarthome background refresh started")
+    except Exception as _sh_exc:
+        import logging as _shl2; _shl2.getLogger(__name__).warning("smarthome refresh not started: %s", _sh_exc)
     yield
 
 

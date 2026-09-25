@@ -143,6 +143,22 @@ def set_state(device_id: str, state: dict, fresh: bool = True) -> DeviceRecord |
     return _with_lock(_do)
 
 
+def set_room(device_id: str, room: str | None) -> DeviceRecord | None:
+    """Assign or clear a device's room. Never invents a room."""
+    def _do():
+        data = _load()
+        if device_id not in data["devices"]:
+            return None
+        rec = DeviceRecord.from_dict(data["devices"][device_id])
+        rec.room = room
+        rec.updated_at = _now_iso()
+        data["devices"][device_id] = rec.to_dict()
+        _save(data)
+        _fire("on_update", rec)
+        return rec
+    return _with_lock(_do)
+
+
 def delete(device_id: str) -> bool:
     def _do():
         data = _load()

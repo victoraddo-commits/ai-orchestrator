@@ -35,6 +35,11 @@ def get_adapter(provider: str):
         adapter = HomeAssistantAdapter()
         _ADAPTERS[provider] = adapter
         return adapter
+    if provider == "ewelink":
+        from core.smarthome.adapters.ewelink import EWeLinkAdapter
+        adapter = EWeLinkAdapter()
+        _ADAPTERS[provider] = adapter
+        return adapter
     if provider == "tuya_cloud":
         from core.smarthome.adapters.tuya_cloud import TuyaCloudAdapter
         adapter = TuyaCloudAdapter()

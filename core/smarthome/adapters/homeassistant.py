@@ -17,6 +17,18 @@ _SERVICE_DOMAINS = {"light", "switch", "climate", "lock", "cover", "media_player
 
 
 def _vault_token() -> str:
+    """Read the HA long-lived token from KAI's credential vault.
+
+    Order: the encrypted provider store (``core.ai.credential_vault``) first,
+    then any generic vault KV accessor. Never env, never the frontend.
+    """
+    try:
+        from core.ai.credential_vault import retrieve_api_key
+        key = retrieve_api_key("homeassistant")
+        if key:
+            return key
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from core import vault as _vault  # type: ignore
         for fn_name in ("get_secret", "read_secret", "get"):
@@ -26,7 +38,16 @@ def _vault_token() -> str:
                     return fn("homeassistant", "token") or ""
                 except Exception:  # noqa: BLE001
                     continue
-        return ""
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def _vault_base_url() -> str:
+    try:
+        from core.ai.credential_vault import retrieve_credential
+        cred = retrieve_credential("homeassistant") or {}
+        return cred.get("api_base") or ""
     except Exception:  # noqa: BLE001
         return ""
 
@@ -34,8 +55,11 @@ def _vault_token() -> str:
 class HomeAssistantAdapter(ProviderAdapter):
     name = "homeassistant"
 
-    def __init__(self, base_url: str, token: str | None = None, session=None):
-        self.base_url = base_url.rstrip("/")
+    DEFAULT_URL = "http://192.168.1.115:8123"
+
+    def __init__(self, base_url: str | None = None, token: str | None = None,
+                 session=None):
+        self.base_url = (base_url or _vault_base_url() or self.DEFAULT_URL).rstrip("/")
         self.token = token if token is not None else _vault_token()
         if session is None:
             import requests

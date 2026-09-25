@@ -1774,12 +1774,19 @@ def sh_automation_run(automation_id: str, _: None = Depends(_req_op)):
 # action pipeline + operator approval).
 # ---------------------------------------------------------------------------
 
+@cc_extra_router.get("/api/power/ups/events")
+def power_ups_events(limit: int = 100, _: None = Depends(_req_op)):
+    from core.smarthome import ups_state as _us
+    return JSONResponse(content={"events": _us.read_events(limit)},
+                        headers={"Cache-Control": "no-store"})
+
+
 @cc_extra_router.get("/api/power/ups")
 def power_ups(_: None = Depends(_req_op)):
     """Normalized Sollatek UPS status from NUT on Proxmox B (never fabricated)."""
     from core.smarthome import ups as _ups
     try:
-        return JSONResponse(content=_ups.status(),
+        return JSONResponse(content=_ups.status_with_state(),
                             headers={"Cache-Control": "no-store"})
     except Exception as e:  # noqa: BLE001
         return JSONResponse({"reachable": False,

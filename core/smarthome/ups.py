@@ -113,3 +113,32 @@ def status() -> dict:
         "ups_type": r.get("ups.type"),
         "beeper": r.get("ups.beeper.status"),
     }
+
+
+def status_with_state() -> dict:
+    """Snapshot + normalized state-machine state and transition history.
+
+    The state machine persists transitions to memory/ups_events.jsonl and emits
+    them on the Event Bus. Communication loss is tracked as its own state and is
+    never reported as a utility failure.
+    """
+    from core.smarthome import ups_state
+    snap = status()
+    m = ups_state.init()
+    m.update(snap.get("status_flags", ""), bool(snap.get("reachable")))
+    snap["state"] = m.state
+    snap["state_since"] = m.since
+    snap["events"] = ups_state.read_events(limit=200)
+    return snap
+
+
+def status_with_state() -> dict:
+    """Snapshot + normalized state-machine state and transition history."""
+    from core.smarthome import ups_state
+    snap = status()
+    m = ups_state.init()
+    m.update(snap.get("status_flags", ""), bool(snap.get("reachable")))
+    snap["state"] = m.state
+    snap["state_since"] = m.since
+    snap["events"] = ups_state.read_events(limit=200)
+    return snap

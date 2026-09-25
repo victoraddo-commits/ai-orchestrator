@@ -125,14 +125,14 @@ def test_render_wg_config_has_required_directives():
     assert "Address = 10.6.0.8/32" in c
     assert "PublicKey = S.PUB=" in c
     assert "AllowedIPs = 0.0.0.0/0, ::/0" in c
-    assert "Endpoint = 162.195.35.152:51860" in c
+    assert "Endpoint = 104.231.148.231:51860" in c
     assert "PersistentKeepalive = 25" in c
 
 
 def test_render_ddwrt_config_has_ui_values_and_commands():
     c = A.render_ddwrt_config("PVK=", "10.6.0.8", "S.PUB=")
     assert "DD-WRT" in c
-    assert "Peer/Endpoint: 162.195.35.152:51860" in c
+    assert "Peer/Endpoint: 104.231.148.231:51860" in c
     assert "Peer/PersistentKeepalive: 25" in c
     assert "AllowedIPs: 0.0.0.0/0, ::/0" in c
     assert "wg set wg0 peer S.PUB=" in c
@@ -144,7 +144,7 @@ def test_render_openwrt_config_has_uci_and_snippet():
     assert "option proto 'wireguard'" in c
     assert "option private_key 'PVK='" in c
     assert "list addresses '10.6.0.8/32'" in c
-    assert "option endpoint_host '162.195.35.152'" in c
+    assert "option endpoint_host '104.231.148.231'" in c
     assert "option endpoint_port '51860'" in c
     assert "list allowed_ips '0.0.0.0/0'" in c
     assert "list allowed_ips '::/0'" in c

@@ -45,7 +45,8 @@ WG_AUDIT = os.environ.get("WG_AUDIT", "/var/log/kai-wg-agent-audit.log")
 WG_LOCK = os.environ.get("WG_LOCK", "/etc/wireguard/.kai-wg-agent.lock")
 WG_POOL = os.environ.get("WG_POOL", "10.6.0.0/24")
 WG_SERVER_IP = os.environ.get("WG_SERVER_IP", "10.6.0.1")
-WG_REMOTE_ENDPOINT = os.environ.get("WG_REMOTE_ENDPOINT", "162.195.35.152:51860")
+WG_REMOTE_ENDPOINT = os.environ.get(
+    "WG_REMOTE_ENDPOINT", "104.231.148.231:51860")
 WG_DNS = os.environ.get("WG_DNS", "1.1.1.1, 8.8.8.8")
 WG_ALLOWED_IPS = os.environ.get("WG_ALLOWED_IPS", "0.0.0.0/0, ::/0")
 WG_MODE_CLIENT = "client"

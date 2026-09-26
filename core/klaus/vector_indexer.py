@@ -92,31 +92,53 @@ def _gpu_embed(texts: List[str]) -> Optional[List[List[float]]]:
         cap = int(os.environ.get("KLAUS_EMBED_MAX_CHARS", "900"))
         safe_texts = [(t or "")[:cap] for t in texts]
 
-        def _one(t: str) -> List[float]:
-            last = None
-            for attempt in range(3):
+        def _one(t: str) -> Optional[List[float]]:
+            # Returns None for THIS text on persistent failure so the caller
+            # can fall back per-item rather than discarding a whole document's
+            # GPU work when one request trips.
+            for attempt in range(4):
                 try:
                     r = requests.post(
                         url, json={"model": GPU_MODEL_NAME, "prompt": t},
                         timeout=120)
                     r.raise_for_status()
                     return r.json()["embedding"]
-                except Exception as e:  # noqa: BLE001
-                    last = e
-                    sleep(0.5 * (attempt + 1))
-            raise last  # type: ignore[misc]
+                except Exception:  # noqa: BLE001
+                    sleep(0.4 * (attempt + 1) + 0.1 * attempt)
+            return None
 
-        out: List[List[float]] = []
-        BATCH = 64
+        out: List[Optional[List[float]]] = []
+        # Ollama serialises on the GPU; a smaller concurrent fan-out (4) with
+        # modest batches avoids the 500/HTTPError bursts that used to force a
+        # full local fallback on large documents.
+        BATCH = 32
+        WORKERS = int(os.environ.get("KLAUS_EMBED_WORKERS", "4"))
         for i in range(0, len(safe_texts), BATCH):
             batch = safe_texts[i:i + BATCH]
-            with ThreadPoolExecutor(max_workers=8) as pool:
+            with ThreadPoolExecutor(max_workers=WORKERS) as pool:
                 out.extend(pool.map(_one, batch))
-        if out and len(out[0]) != EMBEDDING_DIM:
-            logger.warning("KLAUS: GPU embedding dim %d != configured %d; use local",
-                           len(out[0]), EMBEDDING_DIM)
+        # require at least half to succeed on the GPU
+        good = [e for e in out if e]
+        if not good:
             return None
-        return out
+        if len(good) < max(1, len(out) // 2):
+            logger.warning("KLAUS: GPU embeddings mostly failed (%d/%d) — local",
+                           len(good), len(out))
+            return None
+        if len(good[0]) != EMBEDDING_DIM:
+            logger.warning("KLAUS: GPU embedding dim %d != configured %d; use local",
+                           len(good[0]), EMBEDDING_DIM)
+            return None
+        # fill any per-item failures locally
+        if len(good) != len(out):
+            bad_idx = [i for i, e in enumerate(out) if not e]
+            model = _get_model()
+            logger.info("KLAUS: backfilling %d/%d embeddings locally",
+                        len(bad_idx), len(out))
+            for i in bad_idx:
+                out[i] = model.encode(safe_texts[i],
+                                      normalize_embeddings=True).tolist()
+        return [e for e in out if e]  # type: ignore[misc]
     except Exception as e:  # noqa: BLE001
         logger.warning("KLAUS: GPU embedding unavailable (%s) — local fallback",
                        type(e).__name__)

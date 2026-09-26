@@ -573,6 +573,16 @@ def download_document_content(url: str) -> Optional[Tuple[bytes, str]]:
     never bypasses TLS for non-government hosts.
     """
     from urllib.parse import unquote
+    # Blocklist choke point: never fetch from a blocked domain even if a
+    # caller passes a direct URL (the discovery-level guard is not enough —
+    # the harvest path and page links can surface such URLs).
+    try:
+        from core.klaus.source_registry import is_blocked_domain
+        if is_blocked_domain(urlparse(url).hostname or ""):
+            logger.info("Download skipped: %s is a blocked domain", url)
+            return None
+    except Exception:  # noqa: BLE001
+        pass
     # Some servers 406 when Accept only advertises HTML; send a browser-like
     # binary Accept and a same-origin Referer for the download.
     dl_headers = {
@@ -680,13 +690,16 @@ def process_discovered_documents(
                 except Exception as e:
                     logger.warning(f"Authority Record creation skipped: {e}")
 
-                # Index chunks if approved
-                if document_approved:
-                    try:
-                        index_count = index_document_chunks(result["document_id"])
-                        logger.info(f"Indexed {index_count} chunks for document {result['document_id']}")
-                    except Exception as e:
-                        logger.error(f"Failed to index document {result['document_id']}: {e}")
+                # Embed chunks for ANY status that landed text (approved,
+                # pending, flagged). Previously this ran only for approved, so
+                # flagged/pending docs were permanently unretrievable and no
+                # retry existed (1,750 chunks left NULL). Embedding is cheap on
+                # the GPU and search already filters by review_status.
+                try:
+                    index_count = index_document_chunks(result["document_id"])
+                    logger.info(f"Indexed {index_count} chunks for document {result['document_id']}")
+                except Exception as e:
+                    logger.error(f"Failed to index document {result['document_id']}: {e}")
                         
                 processed += 1
                 logger.info(f"Successfully processed document: {doc_info['title']}")
@@ -856,9 +869,22 @@ def run_ingestion_worker():
             
             for doc in flagged_docs:
                 try:
-                    # Process with quality control
+                    # Read the ACTUAL stored file. The previous version passed
+                    # content=b"" ("will be populated from file" — it never
+                    # was), which inserted empty-hash garbage documents and
+                    # never re-processed the real flagged file.
+                    from pathlib import Path as _P
+                    fp = doc.get("file_path") or ""
+                    if not fp or not _P(fp).exists():
+                        logger.warning("Ingestion: no file for doc %s (%s)",
+                                       doc["id"], fp or "no path")
+                        continue
+                    content = _P(fp).read_bytes()
+                    if not content:
+                        logger.warning("Ingestion: empty file for doc %s", doc["id"])
+                        continue
                     result = process_document(
-                        content=b"",  # Will be populated from file
+                        content=content,
                         filename=doc["title"],
                         source_id=doc["source_id"],
                         source_url="",

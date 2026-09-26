@@ -214,25 +214,77 @@ def classify_copyright(text: str, source_url: str) -> Tuple[str, str]:
     return "unknown", "metadata_only"
 
 
+def _hard_split(text: str, chunk_size: int, overlap: int) -> List[str]:
+    """Split an oversized block into overlapping windows.
+
+    Cuts prefer a sentence boundary, then whitespace, then a hard cut, so a
+    chunk is never larger than ``chunk_size``. This is the guarantee the
+    previous implementation lacked: a single huge paragraph/line was emitted
+    whole (observed up to 1.18M chars), which then embedded only its first
+    900 chars and was useless for retrieval.
+    """
+    pieces: List[str] = []
+    step = max(1, chunk_size - max(0, overlap))
+    i = 0
+    n = len(text)
+    while i < n:
+        end = min(i + chunk_size, n)
+        if end < n:
+            window = text[i:end]
+            # prefer the last sentence terminator, else last whitespace
+            cut = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+            if cut > chunk_size // 2:
+                end = i + cut + 1
+            else:
+                ws = window.rfind(" ")
+                if ws > chunk_size // 2:
+                    end = i + ws
+        piece = text[i:end].strip()
+        if piece:
+            pieces.append(piece)
+        if end >= n:
+            break
+        i = max(end - overlap, i + 1)
+    return pieces
+
+
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> List[str]:
+    """Split text into paragraph-aware, hard-bounded chunks.
+
+    Packs paragraphs up to ``chunk_size``; any single block larger than
+    ``chunk_size`` is split with ``overlap`` so no chunk exceeds the bound.
+    """
+    if not text:
+        return []
     paragraphs = text.split("\n\n")
-    chunks = []
+    chunks: List[str] = []
     current = ""
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            if len(current) > chunk_size:
+                chunks.extend(_hard_split(current, chunk_size, overlap))
+            else:
+                chunks.append(current)
+            current = ""
 
     for para in paragraphs:
         para = para.strip()
         if not para:
             continue
+        # a single paragraph bigger than a chunk is split on its own
+        if len(para) > chunk_size:
+            flush()
+            chunks.extend(_hard_split(para, chunk_size, overlap))
+            continue
         if len(current) + len(para) + 2 <= chunk_size:
             current = (current + "\n\n" + para) if current else para
         else:
-            if current:
-                chunks.append(current)
+            flush()
             current = para
 
-    if current:
-        chunks.append(current)
-
+    flush()
     return chunks
 
 
@@ -274,14 +326,36 @@ def process_document(
     raw_path = RAW_DIR / f"{timestamp}_{file_hash[:12]}_{filename}"
     raw_path.write_bytes(content)
 
+    # Decide PDF-vs-text by content sniffing, not just the filename. DSpace
+    # bitstream URLs end in "/content", so several real PDFs arrived with an
+    # extension-less name and were UTF-8-decoded as text — storing raw
+    # "%PDF-1.4 /endobj /FlateDecode" garbage as searchable content.
     suffix = Path(filename).suffix.lower()
-    if suffix == ".pdf":
+    is_pdf = suffix == ".pdf" or content[:5] == b"%PDF-"
+    if is_pdf:
         text, used_ocr = extract_text_from_pdf(content)
     else:
         text = extract_text_from_txt(content)
         used_ocr = False
 
     text = clean_text(text)
+
+    # Defence in depth: never store binary/PDF garbage as searchable text.
+    # Even with content sniffing, a mis-decoded or corrupt file can slip
+    # through; flag it instead of inserting it as a real document.
+    _sample = text[:2000]
+    if _sample:
+        _binary_markers = ("%PDF-", "endobj", "FlateDecode", "/MediaBox",
+                           "xref", "obj", "stream\n")
+        _hits = sum(_sample.count(m) for m in _binary_markers)
+        _nonprint = sum(1 for ch in _sample[:400]
+                        if not ch.isprintable() and ch not in "\n\r\t")
+        if _hits >= 5 or (_nonprint / max(1, len(_sample[:400]))) > 0.15:
+            log_audit_event("review", "warning",
+                            f"Rejected binary/garbage content for {filename}",
+                            existing["id"] if existing else None)
+            return {"status": "rejected_binary", "file_hash": file_hash,
+                    "reason": "content is not extractable text"}
     jur = jurisdiction or detect_jurisdiction(text)
     category = classify_document_by_keywords(text)
     copyright_cls, access_level = classify_copyright(text, source_url)

@@ -103,6 +103,49 @@ def test_name_only_failed_without_reconciliation_is_still_proposed():
     assert [c["phase_id"] for c in changes["proposed"]] == ["P1"]
 
 
+def test_completion_correction_phase_not_reflagged():
+    # 15C: a human recorded a completion_correction ("deliverables verified in
+    # code") but the phase still carries a stale build_id whose purged build
+    # record is FAILED. Reconciliation must respect the human adjudication and
+    # not re-flip the phase to failed every cycle.
+    roadmap = _roadmap([_phase(
+        "15C",
+        completion_correction="deliverables verified in code 2026-08-23",
+        completion_note="core/audit_logger.py + GET /audit",
+    )])
+    builds = [_build("73c93e97", "15C", "FAILED")]
+
+    changes = rr.compute_reconciliation(roadmap["phases"], builds)
+
+    assert changes["certain"] == []
+    assert changes["proposed"] == []
+
+
+def test_completion_correction_alone_exempts_without_build_id_recon():
+    # The completion_correction exemption must work independently of the
+    # build_id_reconciliation shape (that is the regression this locks in).
+    roadmap = _roadmap([_phase(
+        "X",
+        completion_correction="verified",
+    )])
+    builds = [_build("b1", "X", "FAILED")]
+
+    changes = rr.compute_reconciliation(roadmap["phases"], builds)
+
+    assert changes["certain"] == []
+    assert changes["proposed"] == []
+
+
+def test_name_only_failed_without_any_note_still_proposed():
+    # Guard narrowness: no adjudication note at all -> still human-review.
+    roadmap = _roadmap([_phase("P2")])
+    builds = [_build("b2", "P2", "ROLLED_BACK")]
+
+    changes = rr.compute_reconciliation(roadmap["phases"], builds)
+
+    assert [c["phase_id"] for c in changes["proposed"]] == ["P2"]
+
+
 def test_stale_build_id_without_reconciliation_note_is_still_proposed():
     # Marking a build stale without documenting the verification is not
     # enough -- the note is the evidence, so its absence keeps the phase in

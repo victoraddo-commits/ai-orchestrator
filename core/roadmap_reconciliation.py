@@ -79,16 +79,20 @@ def compute_reconciliation(phases: list, builds: list) -> dict:
             # only the false "completed" bookkeeping is reconciled here.
             continue
 
-        # A phase whose stale build link has been explicitly cleared AND the
-        # verification evidence recorded (build_id_reconciliation note) has
-        # already been adjudicated by a human -- do not re-propose it. This
-        # must not weaken the strong signal below: a phase that still carries
-        # an explicit build_id is always reconciled.
-        if (
-            not phase.get("build_id")
-            and phase.get("build_id_reconciliation")
-            and phase.get("stale_build_id")
-        ):
+        # A phase that a human has already adjudicated must not be re-proposed.
+        # Two shapes count as adjudication:
+        #   * build_id_reconciliation + stale_build_id (stale link cleared), or
+        #   * completion_correction (an explicit status correction recorded on
+        #     the phase, e.g. 15C "deliverables verified in code").
+        # Without the completion_correction case a recurring reconciliation run
+        # re-flips such a phase to "failed" every cycle, overwriting the human
+        # decision. The strong signal below is preserved for phases with NO
+        # adjudication note: an explicit build_id still reconciles.
+        adjudicated = bool(
+            (phase.get("build_id_reconciliation") and phase.get("stale_build_id"))
+            or phase.get("completion_correction")
+        )
+        if adjudicated:
             continue
 
         phase_id = phase.get("id")

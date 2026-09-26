@@ -245,34 +245,155 @@ def search_dispatch(query, mode="or", limit=_LIMIT_DEFAULT, *,
         from core.legal.hybrid import hybrid_search
         results = hybrid_search(query, limit=limit, storage=storage,
                                 embed_index=embed_index, commercial=commercial)
+        conn = getattr(storage, "conn", None)
         for d in results:
             d["status"] = infer_status(d)
+            d["provenance"] = _provenance(d, query, conn)
         return _annotate_temporal(storage, results), "hybrid"
-    if mode not in _SEARCH_MODES:
-        logger.warning("unknown /search mode %r; falling back to 'or'", mode)
-        mode = "or"
-    results = storage.search(query, limit=limit, mode=mode,
-                             commercial=commercial)
+
+    # Default for everything that is not an exact citation: hybrid
+    # (BM25 + dense + authority). Plain FTS bm25() ranks by term density, so a
+    # long Act scores below short unrelated Acts for a two-word keyword query
+    # ("director duties" -> Internal Audit Agency Act, not the Companies Act).
+    # Hybrid fixes relevance; `keyword` remains available for a fast, lexical
+    # only lookup when latency matters.
+    if mode == "keyword":
+        results = _keyword_search(query, limit, storage, commercial,
+                                  k_mode="and")
+        conn = getattr(storage, "conn", None)
+        return _finish_keyword(results, query, conn, storage,
+                               _annotate_temporal), "keyword"
+    if mode in ("or", "and", "phrase", "like"):
+        # honour an explicit lexical mode when asked for, but as a first-class
+        # keyword search (wider fetch + relevance ranking + provenance)
+        results = _keyword_search(query, limit, storage, commercial,
+                                  k_mode=mode)
+        conn = getattr(storage, "conn", None)
+        return _finish_keyword(results, query, conn, storage,
+                               _annotate_temporal), mode
+
+    # unknown mode -> hybrid (the safe, relevant default)
+    from core.legal.hybrid import hybrid_search
+    results = hybrid_search(query, limit=limit, storage=storage,
+                            embed_index=embed_index, commercial=commercial)
     conn = getattr(storage, "conn", None)
     for d in results:
         d["status"] = infer_status(d)
+        d["provenance"] = _provenance(d, query, conn)
+    return _annotate_temporal(storage, results), "hybrid"
+
+
+def _keyword_search(query, limit, storage, commercial, k_mode="and"):
+    """Lexical retrieval with a wider fetch then relevance ranking.
+
+    Falls back phrase -> and -> or so a phrase search never returns nothing.
+    """
+    fetch = max(limit, 40)
+    if k_mode == "phrase":
+        rows = storage.search(query, limit=fetch, mode="phrase",
+                              commercial=commercial)
+        if not rows:
+            rows = storage.search(query, limit=fetch, mode="and",
+                                  commercial=commercial)
+            if not rows:
+                rows = storage.search(query, limit=fetch, mode="or",
+                                      commercial=commercial)
+        return rows
+    return storage.search(query, limit=fetch, mode=k_mode,
+                          commercial=commercial)
+
+
+def _finish_keyword(results, query, conn, storage, annotate_fn):
+    """Rank, annotate and add provenance to a keyword result set."""
+    ranked = _rank_keyword_results(results, conn)
+    for d in ranked:
+        d["status"] = infer_status(d)
         d.update(_authority_fields(d, conn))
-    return _annotate_temporal(storage, results), mode
+        d["provenance"] = _provenance(d, query, conn)
+    return annotate_fn(storage, ranked)
+
+
+def _provenance(result: dict, query: str, conn) -> dict:
+    """Where an answer came from — for auditing that sources are genuine.
+
+    Returns the document identity, the exact matching sentence (with the
+    keyword/phrase highlighted position), and the corpus URL so an operator can
+    verify every answer traces to a real, held document.
+    """
+    title = result.get("title") or ""
+    text = (result.get("snippet") or result.get("content") or "")
+    hit = ""
+    try:
+        from core.legal.query_normalize import tokens as _toks
+        kws = _toks(query) or []
+    except Exception:  # noqa: BLE001
+        kws = []
+    # pick the sentence containing the most query terms
+    best, best_n = "", -1
+    for sent in __import__("re").split(r"(?<=[.;])\s+", text):
+        s = sent.strip()
+        if not s:
+            continue
+        n = sum(1 for k in kws if k in s.lower())
+        if n > best_n:
+            best, best_n = s, n
+    hit = best[:400]
+    return {
+        "document_id": result.get("id") or result.get("doc_id"),
+        "title": title,
+        "citation": result.get("citation") or "",
+        "year": result.get("year"),
+        "store_mode": result.get("store_mode") or "",
+        "match_strategy": result.get("match_strategy") or "",
+        "matched_text": hit,
+    }
+
+
+def _rank_keyword_results(results, conn):
+    """Order keyword/FTS results by relevance then authority.
+
+    The keyword path returned rows in FTS/date order, so "director duties"
+    surfaced the Internal Audit Agency Act ahead of the Companies Act. Reuse
+    the same blend as hybrid so keyword and semantic paths agree on what is
+    most relevant.
+    """
+    if not results:
+        return results
+    try:
+        from core.legal import ranking
+        from core.legal import document_meta
+        out = []
+        for r in results:
+            d = dict(r)
+            if "authority_score" not in d:
+                d.update(ranking.annotate(d, None))
+            # give the BM25 path an rrf-like signal so relevance_score works
+            d.setdefault("rrf_score", 1.0)
+            if "bm25_rank" not in d:
+                d["bm25_rank"] = 1
+            out.append(d)
+        return ranking.rank_results(out)
+    except Exception:  # noqa: BLE001 - never break search on ranking failure
+        return results
 
 
 def _citation_lookup(query, storage, *, commercial=False):
     """Resolve an exact citation for EVERY mode.
 
     Covers ``Article N`` (via the article window) and instruments
-    (Act / L.I. / C.I. / P.N.D.C.L.) via ``citations.make_lookup``. Returns a
+    (Act / L.I. / C.I. / P.N.D.C.L.) via ``citations.lookup_all``. Returns a
     result list shaped like ``/search`` rows, or ``None`` when the query is not
     an exact citation (so normal lexical/semantic search runs unchanged).
+
+    When MORE THAN ONE distinct instrument matches, the first result carries a
+    ``disambiguation`` block listing the alternatives so the caller (Juris Kai)
+    can ask the user which one they mean instead of guessing or giving up.
     """
     # 1) article window ("Article 24")
     art = _article_lookup(query, storage, commercial=commercial)
     if art is not None:
         return art
-    # 2) instrument lookup ("Act 843", "L.I. 2377", …)
+    # 2) instrument lookup ("Act 992", "L.I. 2377", …)
     if storage is None:
         return None
     conn = getattr(storage, "conn", None)
@@ -284,18 +405,62 @@ def _citation_lookup(query, storage, *, commercial=False):
         if not parsed:
             return None
         ctype, number = parsed
-        inst = citations.make_lookup(conn)(ctype, number)
-        if not inst:
+        matches = citations.lookup_all(conn, ctype, number)
+        if not matches:
             return None
-        return [{
-            "id": inst["id"], "doc_id": inst["id"],
-            "title": inst.get("title") or "",
-            "snippet": (inst.get("content") or "")[:2000],
-            "store_mode": inst.get("store_mode") or "",
-            "match_strategy": f"instrument:{ctype}",
-        }]
+        rows = []
+        for m in matches:
+            rows.append({
+                "id": m["id"], "doc_id": m["id"],
+                "title": m.get("title") or "",
+                "snippet": (m.get("content") or "")[:2000],
+                "store_mode": m.get("store_mode") or "",
+                "citation": m.get("citation") or "",
+                "year": m.get("year"),
+                "match_strategy": f"instrument:{ctype}",
+            })
+        # Distinct instruments = genuinely different documents, not editions,
+        # stubs or differently-formatted citations of the SAME act. Key on the
+        # TITLE with the act number and stop-words removed, so
+        # "Companies Act 2019 (Act 992)" and "Companies Act, 2019 (ACT 992)"
+        # collapse to one; a real second act (different name) keeps its own key.
+        def _norm(title):
+            t = (title or "").lower()
+            t = re.sub(r"[^a-z ]+", " ", t)
+            for junk in ("act", "no", "revised", "edition", "consolidated",
+                         "as", "amended", "instrument", "of", "the"):
+                t = re.sub(rf"\b{junk}\b", " ", t)
+            return re.sub(r"\s+", " ", t).strip()
+
+        distinct = {}
+        for m in matches:
+            key = _norm(m.get("title")) or (m.get("citation") or "").lower()
+            # keep the most useful copy for the option list (prefer full)
+            cur = distinct.get(key)
+            if cur is None or (m.get("store_mode") == "full"
+                               and cur.get("store_mode") != "full"):
+                distinct[key] = m
+        if len(distinct) > 1:
+            rows[0]["disambiguation"] = {
+                "type": ctype, "number": number,
+                "count": len(distinct),
+                "options": [
+                    {"id": v["id"], "title": v.get("title") or "",
+                     "citation": v.get("citation") or "",
+                     "store_mode": v.get("store_mode") or ""}
+                    for v in distinct.values()
+                ],
+                "question": f"I found {len(distinct)} different documents for "
+                            f"'{_ABBREV.get(ctype, ctype)} {number}'. Which one "
+                            f"do you mean?",
+            }
+        return rows
     except Exception:  # noqa: BLE001
         return None
+
+
+_ABBREV = {"act": "Act", "li": "L.I.", "ci": "C.I.", "pndcl": "P.N.D.C.L.",
+           "nrcd": "N.R.C.D.", "article": "Article"}
 
 
 _INSTRUMENT_RE = re.compile(
@@ -1025,17 +1190,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"history": src_research_audit.history(
                     RESEARCH_AUDIT, limit=int(q.get("limit", ["20"])[0]))})
             if p == "/search":
-                mode = (q.get("mode") or ["or"])[0]
+                mode = (q.get("mode") or ["hybrid"])[0]
                 limit = _clamp_limit((q.get("limit") or [_LIMIT_DEFAULT])[0])
                 commercial = commercial_requested(q, self.headers)
-                idx = embedding_index() if mode == "hybrid" else None
+                idx = embedding_index() if mode in ("hybrid", "keyword") else None
+                if mode == "keyword":
+                    idx = None  # keyword is lexical-only and must stay fast
                 results, mode = search_dispatch(
                     q.get("q", [""])[0], mode=mode, limit=limit,
                     storage=engine().storage, embed_index=idx,
                     commercial=commercial)
                 payload = {"results": results}
-                if mode == "hybrid":
-                    payload["mode"] = "hybrid"
+                payload["mode"] = mode
                 return self._send(200, payload)
             if p == "/documents":
                 commercial = commercial_requested(q, self.headers)

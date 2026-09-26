@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 from core.klaus.db_manager import (
     STORAGE_ROOT,
+    _ensure_storage,
     compute_file_hash,
     insert_document,
     insert_chunk,
@@ -222,6 +223,12 @@ def process_document(
     Full ingestion pipeline for a single document.
     Returns a dict with status and details.
     """
+    # The staging dirs are created on demand; callers (background workers,
+    # async tasks) may run before anything else has initialised storage, which
+    # previously made the raw_path.write_bytes() below fail with
+    # "No such file or directory". Idempotent.
+    _ensure_storage()
+
     file_hash = compute_file_hash(content)
 
     existing = get_document_by_hash(file_hash)

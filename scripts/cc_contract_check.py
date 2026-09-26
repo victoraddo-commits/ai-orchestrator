@@ -156,8 +156,19 @@ def _http_get(url: str, args):  # noqa: ANN001
         return resp.read().decode("utf-8", "replace")
 
 
+# Query keys that turn a read route into an expensive/side-effecting operation
+# (e.g. ?refresh=1 runs a full SSH discovery cycle). A smoke probe verifies the
+# *route* is alive, so it must not trigger these; dropping the key keeps the
+# probe cheap and deterministic. The route itself is still required to 2xx.
+_SMOKE_SKIP_QUERY_KEYS = {"refresh", "force", "reload", "sync", "rescan"}
+
+
 def _smoke_query(raw: str) -> str:
-    """Give every query key a concrete non-empty value for the probe."""
+    """Give every query key a concrete non-empty value for the probe.
+
+    Expensive / side-effecting keys (refresh, force, …) are dropped so the
+    probe exercises the read path rather than kicking off a heavy job.
+    """
     if not raw:
         return ""
     parts = []
@@ -165,11 +176,38 @@ def _smoke_query(raw: str) -> str:
         if not pair:
             continue
         key, _, val = pair.partition("=")
+        if key in _SMOKE_SKIP_QUERY_KEYS:
+            continue
         val = re.sub(r"\$\{[^}]*\}", "test", val)
         if not val or "@" in val or "{" in val:
             val = "test"
         parts.append(f"{key}={val}")
     return "?" + "&".join(parts) if parts else ""
+
+
+# Endpoints that fan out over SSH (Proxmox/CT hops, WireGuard mesh) and can
+# legitimately exceed the default smoke timeout even when healthy. They still
+# must return 2xx; only the *time* budget is widened, never the pass criterion.
+SLOW_ENDPOINT_TIMEOUTS = {
+    "/api/network/nics": 45.0,
+    "/api/network/app-access": 45.0,
+    "/api/wg/mesh": 45.0,
+    "/api/wg/status": 45.0,
+    "/api/wg/raw": 45.0,
+    "/api/infra/usage": 45.0,
+    "/api/infra/usage/history": 45.0,
+}
+
+
+class _ArgsView:
+    """Shallow copy of args with a per-endpoint timeout override."""
+
+    def __init__(self, args, timeout):  # noqa: ANN001
+        self._args = args
+        self.timeout = timeout
+
+    def __getattr__(self, name):  # noqa: ANN001
+        return getattr(self._args, name)
 
 
 def smoke(endpoints: dict, args) -> list[str]:
@@ -181,8 +219,13 @@ def smoke(endpoints: dict, args) -> list[str]:
         dynamic = "@" in path
         concrete = (path + "@" if dynamic else path).replace("@", "1")
         url = args.base_url.rstrip("/") + concrete + _smoke_query(meta["query"])
+        probe_args = _ArgsView(
+            args,
+            max(getattr(args, "timeout", 12.0),
+                SLOW_ENDPOINT_TIMEOUTS.get(path, 0.0)),
+        )
         try:
-            _http_get(url, args)
+            _http_get(url, probe_args)
         except urllib.error.HTTPError as exc:
             # A dynamic segment we filled with "1" may legitimately 404 (no such
             # resource) — only a 5xx proves the *endpoint* is broken there.

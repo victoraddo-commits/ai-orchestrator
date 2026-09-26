@@ -261,6 +261,40 @@ class TestProcessDocumentPipeline:
         except Exception:
             return b"%PDF-1.4\n%%EOF"
 
+    def test_storage_dirs_created_on_demand(self, tmp_path, monkeypatch):
+        # Regression: the background ingestion worker can run before anything
+        # else has created the staging dirs, which previously made
+        # raw_path.write_bytes() fail with "No such file or directory" for
+        # every document. process_document must ensure storage first.
+        import core.klaus.document_processor as dp
+        from core.klaus.db_manager import STORAGE_ROOT
+
+        root = tmp_path / "klaus_storage"
+        assert not (root / "raw").exists()
+
+        monkeypatch.setattr(dp, "RAW_DIR", root / "raw")
+        monkeypatch.setattr(dp, "PROCESSED_DIR", root / "processed")
+        monkeypatch.setattr(dp, "get_document_by_hash", lambda h: None)
+        monkeypatch.setattr(dp, "insert_document", lambda **kw: 1)
+        monkeypatch.setattr(dp, "insert_chunk", lambda **kw: None)
+        monkeypatch.setattr(dp, "update_document_review_status", lambda *a, **k: None)
+        monkeypatch.setattr(dp, "log_audit_event", lambda *a, **k: None)
+        monkeypatch.setattr(dp, "classify_copyright",
+                            lambda *a, **k: ("government_legislation", "full_storage"))
+        # _ensure_storage() writes to STORAGE_ROOT/raw, not the patched RAW_DIR,
+        # so point STORAGE_ROOT at our temp dir too.
+        monkeypatch.setattr("core.klaus.db_manager.STORAGE_ROOT", root)
+
+        result = dp.process_document(
+            content=b"Section 1. This Act may be cited as the Test Act.",
+            filename="test_act.txt",
+            source_id=1,
+            source_url="https://parliament.gh/docs/test",
+        )
+
+        assert (root / "raw").is_dir(), "raw/ must exist after processing"
+        assert result["status"] in ("ingested", "metadata_only")
+
     def test_duplicate_detection(self, tmp_path):
         from core.klaus.document_processor import process_document, RAW_DIR, PROCESSED_DIR
         import core.klaus.document_processor as dp

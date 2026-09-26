@@ -163,6 +163,14 @@ def insert_document(
     effective_date: Optional[str] = None,
     parent_document_id: Optional[int] = None,
 ) -> int:
+    # The jurisdiction CHECK constraint only permits the corpus jurisdictions.
+    # A document may legitimately mention another jurisdiction (Nigeria,
+    # ECOWAS, …); storing that verbatim violated the CHECK and the INSERT
+    # failed with CheckViolation, silently dropping real documents. Clamp to
+    # an allowed value at the storage boundary (detection stays honest).
+    from core.klaus.schema import ALLOWED_JURISDICTIONS
+    if jurisdiction not in ALLOWED_JURISDICTIONS:
+        jurisdiction = "Ghana"
     with get_cursor() as cur:
         cur.execute(
             """INSERT INTO klaus_documents
@@ -221,14 +229,6 @@ def update_document_version(
     file_path: str,
     title: str,
 ) -> int:
-    # The jurisdiction CHECK constraint only permits the corpus jurisdictions.
-    # A document may legitimately mention another jurisdiction (Nigeria,
-    # ECOWAS, …); storing that verbatim violated the CHECK and the INSERT
-    # failed with CheckViolation, silently dropping real documents. Clamp to
-    # an allowed value at the storage boundary (detection stays honest).
-    from core.klaus.schema import ALLOWED_JURISDICTIONS
-    if jurisdiction not in ALLOWED_JURISDICTIONS:
-        jurisdiction = "Ghana"
     with get_cursor() as cur:
 
         cur.execute(

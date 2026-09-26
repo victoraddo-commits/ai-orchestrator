@@ -86,6 +86,11 @@ def init_database():
 # ── Sources ────────────────────────────────────────────────────────────
 
 def add_source(url: str, domain: str, tier: int, jurisdiction: str = "Ghana") -> int:
+    # Blocklist choke point: a blocked domain can never be (re)registered,
+    # from any call site (seeds, registry, harvesters, admin routes).
+    from core.klaus.source_registry import is_blocked_domain
+    if is_blocked_domain(domain):
+        raise ValueError(f"domain {domain!r} is blocked from acquisition")
     with get_cursor() as cur:
         cur.execute(
             """INSERT INTO klaus_sources (url, domain, tier, jurisdiction, status)
@@ -421,8 +426,6 @@ def init_sample_data() -> bool:
         sources = [
             {"url": "https://parliament.gh", "domain": "parliament.gh",
              "tier": 1, "jurisdiction": "Ghana"},
-            {"url": "https://ghalii.org", "domain": "ghalii.org",
-             "tier": 2, "jurisdiction": "Ghana"},
         ]
 
     seeded = 0

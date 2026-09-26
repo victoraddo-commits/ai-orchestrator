@@ -83,7 +83,6 @@ KNOWN_GHANA_LEGAL_SOURCES: Set[str] = {
     "judiciary.gov.gh",
     "gazette.gov.gh",
     "laws.ghanalegal.com",
-    "ghalii.org",           # Ghana Legal Information Institute
     "data.gov.gh",
     "mojagd.gov.gh",        # Ministry of Justice
     "nlc.gov.gh",           # National Law Council — not a valid source, removed
@@ -139,7 +138,7 @@ class SourceVerificationAgent:
                 severity=QCSeverity.WARNING,
                 category="source_verification",
                 description=f"Source URL '{source_url[:100]}' is not from a recognized Ghana legal source",
-                recommendation="Verify the source is a legitimate primary legal source. Recognized sources include: parliament.gh, judiciary.gov.gh, gazette.gov.gh, ghalii.org",
+                recommendation="Verify the source is a legitimate primary legal source. Recognized sources include: parliament.gh, judiciary.gov.gh, gazette.gov.gh",
                 evidence={"source_url": source_url},
             ))
 

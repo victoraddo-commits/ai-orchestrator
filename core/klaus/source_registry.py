@@ -29,6 +29,26 @@ ACQUISITION_STATUS = {
     "ALTERNATIVE_AVAILABLE": "same material exists from unrestricted source",
 }
 
+# ── Blocked domains (operator directive) ──────────────────────────────────
+# Domains that must NEVER be registered, discovered, or fetched.
+# ghalii.org is paywalled/Cloudflare-walled: removed completely 2026-09-26 on
+# operator instruction ("remove it completely and block it till I say so").
+# Unblock only on explicit operator instruction.
+BLOCKED_DOMAINS = {
+    "ghalii.org",
+}
+
+
+def is_blocked_domain(domain: str) -> bool:
+    """True when a domain (or any parent of it) is on the blocklist."""
+    if not domain:
+        return False
+    d = domain.strip().lower().lstrip(".")
+    for b in BLOCKED_DOMAINS:
+        if d == b or d.endswith("." + b):
+            return True
+    return False
+
 # ── Source Catalog ────────────────────────────────────────────────────────
 
 
@@ -125,28 +145,8 @@ GHANA_LEGAL_SOURCES: List[GhanaLegalSource] = [
               "alternative unrestricted access to judgments.",
     ),
 
-    GhanaLegalSource(
-        key="ghalii",
-        name="Ghana Legal Information Institute (GhaLII)",
-        domain="ghalii.org",
-        tier=2,
-        acquisition_status="RESTRICTED",
-        rights_classification="open_license",
-        base_url="https://ghalii.org",
-        discovery_urls=[
-            "https://ghalii.org/judgments/",
-            "https://ghalii.org/legislation/",
-        ],
-        sitemap_urls=["https://ghalii.org/sitemap.xml"],
-        document_types=[
-            "supreme_court_judgment", "court_of_appeal_judgment",
-            "high_court_judgment", "legislation", "constitutional_instrument",
-        ],
-        monitoring_frequency="daily",
-        notes="Cloudflare WAF blocks automated access (403). Use for metadata/citation "
-              "discovery only until AfricanLII API access is obtained. robots.txt allows "
-              "search=yes. Prefer judicial.gov.gh for actual judgment acquisition.",
-    ),
+    # GhaLII entry removed 2026-09-26 (operator directive): paywalled source.
+    # Excluded via BLOCKED_DOMAINS. Do not re-add without explicit instruction.
 
     # ═══════════════════════════════════════════════════════════════════════
     # GAZETTE & OFFICIAL PUBLICATION

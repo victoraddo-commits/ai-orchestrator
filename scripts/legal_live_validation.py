@@ -252,7 +252,7 @@ def _acquisition_path(topic) -> str:
     area = topic.get("area")
     table = {
         "human_rights": ("harvest/enable a GREEN human-rights source "
-                         "(e.g. CHRAJ reports, ghalii legislation) and re-run "
+                         "(e.g. CHRAJ reports, Ghana Parliament legislation) and re-run "
                          "the weekly cycle; weak-area stubs are prioritised"),
         "evidence": ("harvest the Evidence Act and evidence-related judgments; "
                      "weak-area stubs are prioritised by the weekly cycle"),

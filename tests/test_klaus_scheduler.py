@@ -24,7 +24,7 @@ from core.klaus.scheduler import (
 
 class TestTier1Seeds:
     def test_seeds_are_valid(self):
-        assert len(TIER_1_SEEDS) == 2
+        assert len(TIER_1_SEEDS) >= 1
         for seed in TIER_1_SEEDS:
             assert "url" in seed
             assert "domain" in seed
@@ -35,7 +35,12 @@ class TestTier1Seeds:
     def test_seeds_match_approved_plan(self):
         domains = {s["domain"] for s in TIER_1_SEEDS}
         assert "parliament.gh" in domains
-        assert "ghalii.org" in domains
+
+    def test_seeds_exclude_blocked_domains(self):
+        # ghalii.org is paywalled and blocked (operator directive 2026-09-26).
+        from core.klaus.source_registry import is_blocked_domain
+        for seed in TIER_1_SEEDS:
+            assert not is_blocked_domain(seed["domain"])
 
 
 class TestEnsureSeeds:

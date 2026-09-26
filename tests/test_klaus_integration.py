@@ -374,4 +374,4 @@ class TestDBManagerInitSampleData:
             # (it was >=3 when a now-removed login-walled source inflated it).
             from core.klaus.scheduler import TIER_1_SEEDS
             assert mock_add.call_count == len(TIER_1_SEEDS)
-            assert mock_add.call_count >= 2
+            assert mock_add.call_count >= 1

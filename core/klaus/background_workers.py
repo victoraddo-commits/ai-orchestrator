@@ -144,104 +144,6 @@ def _discover_parliament_gh(source_url: str, source_domain: str) -> List[Dict]:
     return documents
 
 
-def _discover_ghalii(source_url: str, source_domain: str) -> List[Dict]:
-    """GhaLII (PeachJam/LII) discovery for Ghana legislation + judgments.
-
-    Live behaviour (verified 2026-09-26):
-      * ``/legislation/all`` and ``/legislation/subsidiary`` return 200 and list
-        ~50 real acts / L.I.s each as ``/akn/gh/act/...`` links — this is the
-        authoritative primary-legislation index.
-      * ``/judgments/`` and ``/akn/`` return 403, and individual act pages are
-        Cloudflare-gated (403 "Just a moment..."), so full text cannot be
-        fetched with plain HTTP. We therefore record the authoritative
-        *reference* (canonical GhaLII URL + title) as a ``reference`` document;
-        the fetch layer may later resolve it via a headless browser. We never
-        fabricate text.
-
-    Falls back to keyword search when the browse pages yield nothing.
-    """
-    import urllib.parse
-
-    documents: List[Dict] = []
-    seen: set[str] = set()
-
-    def _add(url: str, title: str) -> None:
-        if not url or url in seen:
-            return
-        seen.add(url)
-        documents.append({
-            "title": title or url.rstrip("/").split("/")[-1],
-            "url": url,
-            "type": "reference",          # canonical legal reference (akn)
-            "source_domain": source_domain,
-            "store_mode": "reference",
-        })
-
-    # 1) Authoritative browse indexes (these work; /akn pages do not).
-    browse_paths = [
-        ("/legislation/all", "Ghana Act"),
-        ("/legislation/subsidiary", "Ghana Subsidiary Legislation (L.I.)"),
-        ("/legislation/aa-au/", "AU Charter/Treaty"),
-    ]
-    try:
-        from bs4 import BeautifulSoup
-    except Exception:  # noqa: BLE001
-        return documents
-
-    for path, label in browse_paths:
-        try:
-            url = f"https://ghalii.org{path}"
-            response = requests.get(url, headers=HEADERS, timeout=30)
-            if response.status_code != 200:
-                continue
-            soup = BeautifulSoup(response.text, "html.parser")
-            for link in soup.find_all("a", href=True):
-                href = link.get("href", "")
-                if "/akn/gh/" not in href:
-                    continue
-                title = link.get_text().strip()
-                full = _resolve_url(href, "https://ghalii.org")
-                # Derive a readable title from the akn path when the anchor is
-                # empty (e.g. /akn/gh/act/2010/796/eng@2010-04-16 -> Act 796).
-                if not title:
-                    parts = [p for p in href.split("/") if p]
-                    try:
-                        kind_i = parts.index("act")
-                        title = f"{label} {parts[kind_i + 1]}/{parts[kind_i + 2]}"
-                    except (ValueError, IndexError):
-                        title = label
-                _add(full, title)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("GhaLII browse %s failed: %s", path, e)
-
-    if documents:
-        logger.info("GhaLII browse indexes found %d legislation references", len(documents))
-        return documents
-
-    # 2) Fallback: keyword search (kept from the previous implementation).
-    search_terms = [
-        "ghana constitution", "act of parliament ghana", "criminal ghana",
-        "land ghana", "tax ghana", "employment ghana", "human rights ghana",
-    ]
-    for term in search_terms:
-        try:
-            q = urllib.parse.quote(term)
-            url = f"https://ghalii.org/search/?q={q}"
-            response = requests.get(url, headers=HEADERS, timeout=30)
-            if response.status_code != 200:
-                continue
-            soup = BeautifulSoup(response.text, "html.parser")
-            for link in soup.find_all("a", href=True):
-                href = link.get("href", "")
-                if "/akn/gh/" not in href:
-                    continue
-                _add(_resolve_url(href, "https://ghalii.org"),
-                     link.get_text().strip() or "GhaLII legislation")
-        except Exception as e:  # noqa: BLE001
-            logger.warning("GhaLII search '%s' failed: %s", term, e)
-
-    return documents
-
 
 def _discover_judicial_gh(source_url: str, source_domain: str) -> List[Dict]:
     """Ghana-specific: scrape judicial.gov.gh for court rulings/publications.
@@ -557,7 +459,6 @@ def _discover_ghanapublishing_gh(source_url: str, source_domain: str) -> List[Di
 # Per-domain discovery handlers — dedicated handlers for known sources
 _DOMAIN_HANDLERS = {
     "parliament.gh": _discover_parliament_repository,
-    "ghalii.org": _discover_ghalii,
     "judicial.gov.gh": _discover_ejudgment_gh,
     "ghanapublishing.gov.gh": _discover_ghanapublishing_gh,
 }
@@ -599,7 +500,15 @@ def discover_source_content(source_url: str, source_domain: str) -> List[Dict]:
 
     Returns list of document candidates with metadata.
     Uses domain-specific handlers when available, falling back to generic scraping.
+    Blocked domains (see source_registry.BLOCKED_DOMAINS) return no candidates.
     """
+    try:
+        from core.klaus.source_registry import is_blocked_domain
+        if is_blocked_domain(source_domain):
+            logger.info("Discovery skipped: %s is a blocked domain", source_domain)
+            return []
+    except Exception:  # noqa: BLE001
+        pass
     # Use domain-specific handler if available
     handler = _DOMAIN_HANDLERS.get(source_domain)
     if handler:

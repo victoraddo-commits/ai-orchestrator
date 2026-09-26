@@ -49,7 +49,7 @@ class SourceVerificationAgent:
 
     KNOWN_GOV_DOMAINS = (
         ".gov.gh", ".gov.ng", ".gov.ke", ".go.ke",
-        "parliament.gh", "judiciary.gov.gh", "ghalii.org",
+        "parliament.gh", "judiciary.gov.gh",
         ".gov.za", ".go.tz", ".go.ug",
     )
 

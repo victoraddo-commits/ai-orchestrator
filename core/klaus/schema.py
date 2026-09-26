@@ -12,6 +12,10 @@ SQL schema matching the approved Phase 17O implementation plan + Phase 18C
 - Audit trail for all operations
 """
 
+# Jurisdictions permitted by the CHECK constraints below. Storage clamps to
+# this set so a document mentioning another jurisdiction never fails INSERT.
+ALLOWED_JURISDICTIONS = {"Ghana"}
+
 SCHEMA_SQL = """
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;

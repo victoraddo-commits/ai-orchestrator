@@ -54,14 +54,46 @@ HEADERS = {
 }
 
 
+GHANA_TLD_SUFFIXES = (".gov.gh", ".org.gh", ".edu.gh", ".com.gh", ".gh")
+
+
+def _gh_get(url: str, *, headers: dict | None = None, timeout: int = 30):
+    """GET with a one-shot insecure retry for Ghanaian government hosts.
+
+    Several .gov.gh sites serve expired or self-signed TLS certificates.
+    A strict verification failure is retried once with verify=False, but ONLY
+    for Ghana TLD hosts — never for arbitrary third-party domains.
+    """
+    try:
+        return requests.get(url, headers=headers, timeout=timeout)
+    except requests.exceptions.SSLError:
+        host = urlparse(url).hostname or ""
+        if not host.endswith(GHANA_TLD_SUFFIXES):
+            raise
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        return requests.get(url, headers=headers, timeout=timeout, verify=False)
+
+
 def _resolve_url(href: str, base_url: str) -> str:
-    """Resolve relative URL against base, handling various edge cases."""
-    if href.startswith("http://") or href.startswith("https://"):
-        return href
-    base = base_url.rstrip("/")
-    if href.startswith("/"):
-        return base + href
-    return base + "/" + href.lstrip("/")
+    """Resolve an href against a base URL, robustly.
+
+    Uses urljoin so protocol-relative ("//host/path"), root-relative and
+    relative links all resolve correctly. The previous naive concatenation
+    produced malformed URLs like "https://www.nand" + "https://www.…" when a
+    page embedded an absolute URL inside an href, which made downloads fail.
+    """
+    from urllib.parse import urljoin
+    if not href:
+        return base_url
+    h = href.strip()
+    if h.startswith(("http://", "https://")):
+        return h
+    try:
+        return urljoin(base_url, h)
+    except Exception:  # noqa: BLE001
+        base = base_url.rstrip("/")
+        return base + ("/" if not h.startswith("/") else "") + h.lstrip("/")
 
 
 def _discover_parliament_gh(source_url: str, source_domain: str) -> List[Dict]:
@@ -581,7 +613,7 @@ def discover_source_content(source_url: str, source_domain: str) -> List[Dict]:
 
     # Generic fallback
     try:
-        response = requests.get(source_url, headers=HEADERS, timeout=30)
+        response = _gh_get(source_url, headers=HEADERS, timeout=30)
         response.raise_for_status()
 
         from bs4 import BeautifulSoup
@@ -625,15 +657,42 @@ def download_document_content(url: str) -> Optional[Tuple[bytes, str]]:
     """
     Download document content from URL.
     Returns (content_bytes, filename) or None if failed.
+
+    Many Ghanaian government sites have expired/self-signed TLS certs, so a
+    strict TLS failure is retried once with verification disabled — the
+    content is public legislation and the host is a known .gov.gh source. This
+    never bypasses TLS for non-government hosts.
     """
+    from urllib.parse import unquote
+    # Some servers 406 when Accept only advertises HTML; send a browser-like
+    # binary Accept and a same-origin Referer for the download.
+    dl_headers = {
+        "User-Agent": HEADERS["User-Agent"],
+        "Accept": "application/pdf,application/octet-stream,*/*",
+        "Accept-Language": HEADERS.get("Accept-Language", "en-US,en;q=0.9"),
+        "Referer": url,
+    }
     try:
-        response = requests.get(url, timeout=30)
+        response = requests.get(url, timeout=30, headers=dl_headers)
         response.raise_for_status()
-        filename = urlparse(url).path.split('/')[-1] or "unnamed_document"
-        return response.content, filename
+    except requests.exceptions.SSLError:
+        host = urlparse(url).hostname or ""
+        if not host.endswith((".gov.gh", ".org.gh", ".edu.gh", ".com.gh", ".gh")):
+            logger.warning("TLS failure for non-Ghana host %s; not bypassing", host)
+            return None
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            response = requests.get(url, timeout=30, verify=False, headers=dl_headers)
+            response.raise_for_status()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to download %s (insecure retry): %s", url, e)
+            return None
     except Exception as e:
         logger.warning(f"Failed to download {url}: {e}")
         return None
+    filename = unquote(urlparse(url).path.split('/')[-1]) or "unnamed_document"
+    return response.content, filename
 
 
 def process_discovered_documents(

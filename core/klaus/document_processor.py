@@ -65,6 +65,9 @@ JURISDICTION_SIGNALS = {
     "au": "African Union",
 }
 
+# Values permitted by the klaus_documents.jurisdiction CHECK constraint.
+_ALLOWED_JURISDICTIONS = {"Ghana"}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -160,6 +163,8 @@ def clean_text(text: str) -> str:
 
 
 def detect_jurisdiction(text: str) -> str:
+    """Best-effort jurisdiction detection (never clamped — this is the honest
+    detected value; the DB stores a clamped form via insert_document)."""
     lower = text[:4000].lower()
     for signal, name in JURISDICTION_SIGNALS.items():
         if signal in lower:

@@ -43,6 +43,12 @@ DEFAULT_DENSE_LIMIT = 200
 # document's best chunk — these are we-keep-talking-about-the-same-thing hits.
 DENSE_MATCH_WINDOW = 0.05
 
+# The authority-aware re-rank must see more candidates than the final page:
+# cutting by raw RRF first re-creates the near-tie bug at small limits
+# ("director duties" limit=3 returned Fisheries: Companies Act 992 was RRF
+# rank 4 and never reached the re-rank; measured 2026-09-26).
+DEFAULT_RANK_POOL = 25
+
 # Coverage bonus: each extra near-best chunk lifts the passage score by a
 # logarithmic step (0.10 * ln(1 + n-1)), capped at 1.0. One chunk alone gets
 # bonus 0; the constants were measured on "director duties" (Fisheries' 2
@@ -267,13 +273,14 @@ def hybrid_search(query: str, limit: int = 10, *, storage=None,
         return []
 
     ordered, ranks = rrf_fuse([bm25_ids, dense_ids], k=rrf_k, weights=weights)
+    pool = max(limit, DEFAULT_RANK_POOL)
     bm25_by_id = _first_by(bm25_rows, "id")
     dense_agg_by_id = {row["document_id"]: row for row in dense_doc_rows}
     if meta_fn is None:
         meta_fn = _default_meta_fn(storage)
 
     results = []
-    for doc_id, rrf_score in ordered[:limit]:
+    for doc_id, rrf_score in ordered[:pool]:
         bm25_row = bm25_by_id.get(doc_id)
         agg = dense_agg_by_id.get(doc_id)
         dense_hit = (agg["best_hit"] if agg else None)
@@ -326,4 +333,4 @@ def hybrid_search(query: str, limit: int = 10, *, storage=None,
         for r in results:
             if not r["snippet"]:
                 r["snippet"] = snaps.get(r["doc_id"]) or ""
-    return ranking.rank_results(results)
+    return ranking.rank_results(results)[:limit]

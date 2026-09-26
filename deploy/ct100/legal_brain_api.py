@@ -1918,6 +1918,28 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def _warmup_once():
+    """Serve the first real /search without the cold-start cost.
+
+    The embedding path loads the VM104 model over the tunnel (~0.9s first
+    query after a restart, measured 2026-09-26); a background warmup query
+    pays that once at boot so the first caller does not.
+    """
+    try:
+        engine()
+        # Build + use the real dense index (this thread-local is not shared
+        # with request threads, but the embedding model load on VM104, the
+        # ANN mmap and the SQLite page cache are process-wide).
+        search_dispatch("warmup", mode="hybrid", limit=1,
+                        storage=engine().storage,
+                        embed_index=embedding_index())
+        print("warmup complete", flush=True)
+    except Exception as exc:  # noqa: BLE001 - warmup is best effort
+        print(f"warmup skipped: {exc}", flush=True)
+
+
 if __name__ == "__main__":
     print(f"kai-legal-brain on :{PORT}  db={DB}", flush=True)
+    import threading
+    threading.Thread(target=_warmup_once, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

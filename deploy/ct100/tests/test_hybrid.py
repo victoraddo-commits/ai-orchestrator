@@ -288,3 +288,16 @@ def test_dense_snippet_preferred_over_backfill():
                                     snippet="dense passage")])
     res = hybrid.hybrid_search("land", limit=5, storage=st, embed_index=idx)
     assert res[0]["snippet"] == "dense passage"
+
+
+def test_small_limit_cuts_after_authority_rerank_not_raw_rrf():
+    """A statute with a lower RRF score must still be reachable at small
+    limits: the candidate pool is ranked authority-aware, THEN cut to the
+    page (the limit=3 Fisheries regression)."""
+    st = FakeStorage(rows=[bm25_row(1, "Commentary on Company Law",
+                                    type_="other")])
+    idx = FakeEmbedIndex([dense_hit(2, "Companies Act", 0.9)])
+    res = hybrid.hybrid_search("director duties", limit=1, storage=st,
+                               embed_index=idx, use_router=False)
+    assert res[0]["doc_id"] == 2, (
+        f"authority re-rank never saw the statute: {res[0]['doc_id']}")

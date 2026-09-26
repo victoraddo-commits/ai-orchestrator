@@ -1,6 +1,6 @@
 # Command Center — Module ↔ Full Page Coverage
 
-**Updated**: 2026-09-25
+**Updated**: 2026-09-26
 
 Source of truth for "every app/module has a full page inside the Command
 Center". A module counts as *wired* when all four exist and match:
@@ -16,11 +16,11 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 | `legal` | Legal Brain | loadLegal | /api/legal/* (brain proxy), /api/juris-kai/reports, /cc/legal |
 | `payments` | Pricing & Payments | loadPayments | /api/juris-kai/cc/plans, /cc/pricing, /cc/payments |
 | `ai-workforce` | Workforce | loadWorkforce | /kai/workforce* |
-| `money` | Money | loadMoney | /kai/money* |
 | `talent` | Talent | loadTalent | /kai/talent* |
 | `android` | Android | loadAndroid | /kai/android* |
 | `docs` | Documents | loadDocs | /kai/knowledge, /kai/secondbrain |
-| `hubtel` | Hubtel | loadHubtel | /kai/hubtel* |
+| `hubtel` | Hubtel | loadHubtel | `/hubtel/status`, `/hubtel/config` (Hubtel MoMo billing; credentials in Vault) |
+| `arbitra` | Arbitra | loadArbitra | `/cc/arbitra/*` (module proxy → 192.168.1.118:8096; **gated** by module health) |
 | `docker` | Docker | loadDocker | /api/docker, /api/infra/usage (Proxmox CTs + VMs) |
 | `telegram` | Telegram | loadTelegram | /kai/telegram* |
 | `airdrop` | Airdrop | loadAirdrop | /kai/airdrop* |
@@ -83,6 +83,37 @@ sidebar (`buildMoreMenu()`), so no separate mobile wiring is needed.
 - `loadPanel()` dispatcher has a loader for every `nav-item[data-hash]`.
 - Each loader fetches its module's backend endpoint(s) and renders a real
   panel (not a stub).
+- **Runtime self-check** `auditPanelWiring()` runs at boot (after
+  `buildMoreMenu()`) and `console.warn`s `[CC wiring drift]` listing any
+  divergence between the sidebar nav, the `<section class="panel">`s, the
+  `PANEL_TITLES` map and the `PANEL_LOADERS` map. It treats runtime model pages
+  (`model-*`, routed via `MODEL_PAGES`) as legitimately loader-less. Callable
+  from the console as `window.auditPanelWiring()`; returns `{}` when clean.
+
+## Audit 2026-09-26 — drift fix
+
+Found and fixed real drift between the four hand-maintained lists:
+
+- **`hubtel`** had a loader, a `PANEL_TITLES` entry and a `hubtel-content`
+  container, but **no `nav-item` and no `<section id="panel-hubtel">`** — the
+  panel was unreachable. Now wired (Management group, under Pricing & Payments).
+- **`arbitra`** likewise had a loader/title/content but no nav item or section.
+  Now wired. It is a registered CC **module** (`core/cc_modules.py`) with a
+  health probe, so `applyModuleGating()` hides it while its backend
+  (192.168.1.118:8096) is unreachable (returns 502); the tab appears
+  automatically once healthy. This is intended gating, not a bug.
+- The doc previously listed a **`money`** panel that does not exist anywhere
+  (no nav, section, title or loader) — removed.
+- `loadPanel()`'s dispatcher was refactored into a named `PANEL_LOADERS` const so
+  the self-check can inspect it; behaviour is unchanged.
+
+Verified via Playwright (operator session, service workers blocked):
+`window.auditPanelWiring()` → `{}` (no drift); nav 54–55 / panels 54–55 /
+titles 54–55 / loaders 49 (the difference = runtime model pages, plus the
+gated-off Arbitra tab whose nav+panel are removed while its backend is down);
+`panel-hubtel` renders
+`HUBTEL BILLING INCOMPLETE` (graceful — MoMo creds not set); `panel-arbitra`
+exists, is gated off while its backend is down, and renders when reachable.
 
 ## Notes
 

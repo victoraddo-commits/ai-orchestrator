@@ -1010,6 +1010,29 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
 @media (max-width:768px){ .topbar-center{display:none} .kpi-strip{grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(130px,1fr))} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
+/* ── Smart Home device cards: real switch visuals + multi-gang + automations ── */
+.sh-dev{padding:8px 10px;border:1px solid var(--border);font-family:var(--font-mono);font-size:0.65rem;margin-bottom:6px;border-radius:4px}
+.sh-dev-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sh-dev-meta{margin-top:3px;color:var(--fg-muted)}
+.sh-dev-actions{margin-top:6px;display:flex;gap:5px}
+.sh-switch-row{display:flex;align-items:center;gap:9px;margin-top:6px}
+.sh-switch-state{font-size:0.6rem;color:var(--fg-muted)}
+.sh-switch-state.on{color:var(--ok,#27c93f);font-weight:600}
+.sh-switch{background:none;border:0;padding:0;cursor:pointer;line-height:0}
+.sh-switch.disabled{cursor:not-allowed;opacity:.5}
+.sh-switch-track{display:inline-block;position:relative;width:40px;height:22px;border-radius:999px;background:var(--border,#334155);transition:background .18s}
+.sh-switch-knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .18s}
+.sh-switch.on .sh-switch-track{background:var(--ok,#27c93f)}
+.sh-switch.on .sh-switch-knob{left:21px}
+.sh-switch:focus-visible .sh-switch-track{outline:2px solid var(--accent);outline-offset:2px}
+.sh-gangs{margin-top:6px;display:grid;gap:4px}
+.sh-gang{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 7px;border:1px solid var(--border);border-radius:4px;background:var(--bg-elevated)}
+.sh-gang-label{color:var(--fg-muted)}
+.sh-expand{margin-left:auto}
+.sh-autos{margin-top:6px;border-top:1px dashed var(--border);padding-top:6px;display:grid;gap:5px}
+.sh-auto{padding:6px 8px;border:1px solid var(--border);border-radius:4px}
+.sh-auto.none{color:var(--fg-muted);border-style:dashed}
+
 </style>
 </head>
 <body>
@@ -1085,7 +1108,9 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal Brain</span></a>
       <a class="nav-item" href="#payments" data-hash="payments"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M6 15h4"/></svg></span><span class="label">Pricing &amp; Payments</span></a>
+      <a class="nav-item" href="#hubtel" data-hash="hubtel"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg></span><span class="label">Hubtel</span></a>
       <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
+      <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span><span class="label">Arbitra</span></a>
       <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
       <a class="nav-item" href="#android" data-hash="android"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18"/><path d="M8 6h8"/></svg></span><span class="label">Android</span></a>
       <a class="nav-item" href="#docs" data-hash="docs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span><span class="label">Docs</span></a>
@@ -1250,6 +1275,7 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <!-- LEGAL -->
       <section class="panel" id="panel-legal"><div id="legal-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-payments"><div id="payments-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-hubtel"><div id="hubtel-content"><span class="loading">loading…</span></div></section>
 
       <!-- AI WORKFORCE -->
       <section class="panel" id="panel-ai-workforce"><div id="ai-workforce-content"><span class="loading">loading…</span></div></section>
@@ -1259,6 +1285,7 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <section class="panel" id="panel-factory"><div id="factory-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-evolution"><div id="evolution-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-bet"><div id="bet-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-arbitra"><div id="arbitra-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
       <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading…</span></div></section>
@@ -1747,7 +1774,7 @@ function switchMobileTab(e, hash) {
 function toggleMoreMenu() {
   const overlay = $('more-overlay');
   if (!overlay) return;
-  buildMoreMenu();
+buildMoreMenu();
   overlay.classList.toggle('open');
 }
 function closeMoreMenu(e) {
@@ -1796,14 +1823,57 @@ function navigateTo(hash) {
   if(!S.loadedPanels.has(name)){S.loadedPanels.add(name);loadPanel(name);}
   _syncMobileNav(hash);
 }
+// Panel dispatcher map — single place mapping a panel key to its loader.
+// Kept as a named const so auditPanelWiring() can verify it against the DOM.
+const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
 function loadPanel(name) {
-  const fns={home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
+  const fns=PANEL_LOADERS;
   if(fns[name])fns[name]();
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
+// ── Wiring self-check (Command Center coverage contract) ──────────
+// A panel is "wired" only when the sidebar nav-item, the <section
+// id="panel-x">, the PANEL_TITLES entry and the PANEL_LOADERS entry all agree.
+// Runs at boot; logs a console warning listing any drift so the hand-maintained
+// lists can never silently diverge. Returns the drift report (for diagnostics).
+function auditPanelWiring() {
+  const nav = [...document.querySelectorAll('#sidebar-nav .nav-item[data-hash]')]
+    .map(a => a.dataset.hash).filter(Boolean);
+  const panels = [...document.querySelectorAll('.panel[id^="panel-"]')]
+    .map(s => s.id.replace(/^panel-/, ''));
+  const titles = Object.keys(PANEL_TITLES);
+  const loaders = Object.keys(PANEL_LOADERS);
+  // Model pages are legitimately dynamic: they get a nav-item, a panel and a
+  // PANEL_TITLES entry at runtime (registerModelPages) and are routed through
+  // MODEL_PAGES, so a missing PANEL_LOADERS entry is expected for them.
+  // Module-gated tabs are removed from the DOM by applyModuleGating() when the
+  // module's backend is unhealthy; their loader/title legitimately have no nav.
+  const gated = new Set((S.hiddenTabs || []).map(h => h.tab));
+  const isModel = x => x.startsWith('model-');
+  const exempt = x => isModel(x) || gated.has(x);
+  const set = a => new Set(a);
+  const diff = (a, b) => [...set(a)].filter(x => !set(b).has(x));
+  const drift = {
+    navWithoutPanel: diff(nav, panels).filter(x => !exempt(x)),
+    panelWithoutNav: diff(panels, nav).filter(x => !exempt(x)),
+    navWithoutTitle: diff(nav, titles).filter(x => !exempt(x)),
+    navWithoutLoader: diff(nav, loaders).filter(x => !exempt(x)),
+    titleWithoutNav: diff(titles, nav).filter(x => !exempt(x)),
+    loaderWithoutNav: diff(loaders, nav).filter(x => !exempt(x)),
+  };
+  const bad = Object.entries(drift).filter(([, v]) => v.length);
+  if (bad.length) {
+    console.warn('[CC wiring drift]', Object.fromEntries(bad),
+      '— nav:' + nav.length + ' panels:' + panels.length +
+      ' titles:' + titles.length + ' loaders:' + loaders.length);
+  }
+  return Object.fromEntries(bad);
+}
+window.auditPanelWiring = auditPanelWiring;
 window.addEventListener('hashchange',()=>navigateTo(location.hash));
 document.querySelectorAll('.nav-item').forEach(el=>{el.addEventListener('click',e=>{e.preventDefault();location.hash=el.dataset.hash;});});
 buildMoreMenu();
+auditPanelWiring();
 // Give each sidebar nav link a resolvable in-page target (its own hash id) so
 // fragment links resolve for assistive tech / the axe skip-link rule.
 document.querySelectorAll('#sidebar-nav .nav-item[data-hash]').forEach(a=>{const h=a.dataset.hash;if(h&&!document.getElementById(h))a.id=h;});
@@ -7639,20 +7709,107 @@ function shStateText(d){
   }
   return '<span class="badge">UNKNOWN</span>';
 }
-function shDeviceCard(d){
-  const ctrl=(d.kind==='light'||d.kind==='switch');
-  const on=d.state && String(d.state.state)==='on';
-  let acts='';
-  if(ctrl && !d.stale){
-    acts='<button class="btn btn-xs '+(on?'btn-warn':'btn-accent')+'" onclick="shControl(\''+esc(d.id)+'\','+(on?'false':'true')+')">'+(on?'Turn off':'Turn on')+' <button class="btn btn-xs" onclick="shSetRoom(\''+esc(d.id)+'\')">Room</button>';
-  } else if(d.kind==='lock'||d.kind==='camera'||d.kind==='cover'){
-    acts='<span style="font-size:0.6rem;color:var(--fg-muted)">sensitive — via approvals</span>';
+// Sibling gang entities share a base prefix, e.g.
+//   switch.hall_3_gang_switch_1 / _2 / _3
+//   switch.corridor_2_gang_switch_1 / _2
+// Returns {base, gang} when the entity is one gang of a multi-gang device,
+// else null. `base` is the shared key used to group rows into one card.
+function shGangBase(d){
+  const pid=String(d.provider_id||'');
+  const m=pid.match(/^(.*?[_\s-]switch)[_\s-]*(\d+)$/i);
+  if(!m) return null;
+  return {base:m[1].toLowerCase().replace(/[_\s-]+$/,''), gang:Number(m[2])};
+}
+// Group a flat device list so gang siblings become ONE logical card.
+// Non-gang devices stay as single-entry groups.
+function shGroupDevices(list){
+  const groups=[]; const byBase={};
+  for(const d of list){
+    const g=shGangBase(d);
+    if(g){
+      const key='gang:'+g.base;
+      if(!byBase[key]){ byBase[key]={base:g.base, members:[]}; groups.push(byBase[key]); }
+      byBase[key].members.push({gang:g.gang, dev:d});
+    } else {
+      groups.push({base:null, members:[{gang:null, dev:d}]});
+    }
   }
-  return '<div style="padding:8px 10px;border:1px solid var(--border);border-left:3px solid '+(d.stale?'var(--warn,#D29922)':'var(--ok,#27c93f)')+';font-family:var(--font-mono);font-size:0.65rem;margin-bottom:6px;border-radius:4px">'
-    +'<b>'+esc(d.name||d.provider_id)+'</b> '+shKindBadge(d.kind)+' '+shStateText(d)
-    +'<div style="margin-top:3px;color:var(--fg-muted)">'+esc(d.provider)+' · '+esc(d.provider_id||'')+(d.room?' · room <b>'+esc(d.room)+'</b>':' · <i>unassigned</i>')+(d.vendor?' · '+esc(d.vendor):'')+'</div>'
-    +(d.address?'<div style="color:var(--fg-muted)">'+esc(d.address)+(d.mac?' · '+esc(d.mac):'')+'</div>':'')
-    +(acts?'<div class="action-row" style="margin-top:6px">'+acts+'</div>':'')+'</div>';
+  for(const grp of groups){ if(grp.base) grp.members.sort((a,b)=>a.gang-b.gang); }
+  return groups;
+}
+function shToggle(d){
+  const on=d.state && String(d.state.state)==='on';
+  const disabled=!!d.stale;
+  return '<button class="sh-switch'+(on?' on':'')+(disabled?' disabled':'')+'" role="switch" aria-checked="'+(on?'true':'false')+'" aria-label="'+esc(d.name||'')+'" '
+    +(disabled?'disabled':'onclick="shControl(\''+esc(d.id)+'\','+(on?'false':'true')+')"')
+    +'><span class="sh-switch-track"><span class="sh-switch-knob"></span></span></button>';
+}
+function shGangRow(d,gangNo){
+  const on=d.state && String(d.state.state)==='on';
+  const stale=!!d.stale || String((d.state||{}).state)==='unavailable';
+  return '<div class="sh-gang"><span class="sh-gang-label">Gang '+gangNo
+      +' <span style="color:var(--fg-muted);font-size:0.58rem">'+esc((d.name||'').replace(/\s*Switch\s*\d+\s*$/i,''))+'</span></span>'
+    +'<span class="badge '+(stale?'warn':(on?'ok':''))+'">'+(stale?'N/A':(on?'ON':'OFF'))+'</span>'+shToggle(d)+'</div>';
+}
+// One card for a group of devices. Single-member groups render as today's
+// single-device card; multi-member (gang) groups render per-gang rows.
+function shGroupCard(grp){
+  const members=grp.members;
+  if(members.length===1) return shDeviceCard(members[0].dev);
+  const lead=members[0].dev;
+  const anyOn=members.some(m=>m.dev.state && String(m.dev.state.state)==='on');
+  const anyStale=members.some(m=>m.dev.stale);
+  const border=anyStale?'var(--warn,#D29922)':(anyOn?'var(--ok,#27c93f)':'var(--border,#334155)');
+  const onCount=members.filter(m=>m.dev.state && String(m.dev.state.state)==='on').length;
+  const gangLabel=members.length+'-gang';
+  return '<div class="sh-dev" data-dev="'+esc(lead.id)+'" style="border-left:3px solid '+border+'">'
+    +'<div class="sh-dev-head"><b>'+esc((lead.name||lead.provider_id).replace(/\s*Switch\s*\d+\s*$/i,''))+'</b> '
+      +shKindBadge(lead.kind)+' <span class="badge info">'+gangLabel+'</span> '
+      +'<span class="badge '+(onCount?'ok':'')+'">'+onCount+'/'+members.length+' on</span>'
+      +'<button class="btn btn-xs sh-expand" aria-expanded="false" title="Show automations" onclick="shExpand(\''+esc(lead.id)+'\',this)">Automations ▾</button>'
+    +'</div>'
+    +'<div class="sh-dev-meta">'+esc(lead.provider)+' · '+esc(lead.provider_id||'')
+      +(lead.room?' · room <b>'+esc(lead.room)+'</b>':' · <i>unassigned</i>')+'</div>'
+    +'<div class="sh-gangs">'+members.map(m=>shGangRow(m.dev,m.gang)).join('')+'</div>'
+    +'<div class="sh-dev-actions"><button class="btn btn-xs" onclick="shSetRoom(\''+esc(lead.id)+'\')">Room</button></div>'
+    +'<div class="sh-autos" id="sh-autos-'+esc(lead.id)+'" style="display:none"></div>'
+  +'</div>';
+}
+function shDeviceCard(d){
+  const isSwitch=(d.kind==='light'||d.kind==='switch');
+  const on=d.state && String(d.state.state)==='on';
+  const border=d.stale?'var(--warn,#D29922)':(on?'var(--ok,#27c93f)':'var(--border,#334155)');
+  let body='';
+  if(isSwitch){
+    body='<div class="sh-switch-row">'+shToggle(d)+'<span class="sh-switch-state '+(on?'on':'')+'">'+(d.stale?'unavailable':(on?'On':'Off'))+'</span></div>';
+  } else if(d.kind==='lock'||d.kind==='camera'||d.kind==='cover'){
+    body='<div class="sh-dev-meta">sensitive — via approvals</div>';
+  } else {
+    body='<div class="sh-dev-meta">'+esc(String((d.state&&d.state.state)||'—'))+'</div>';
+  }
+  return '<div class="sh-dev" data-dev="'+esc(d.id)+'" style="border-left:3px solid '+border+'">'
+    +'<div class="sh-dev-head"><b>'+esc(d.name||d.provider_id)+'</b> '+shKindBadge(d.kind)+' '+shStateText(d)
+      +'<button class="btn btn-xs sh-expand" aria-expanded="false" title="Show automations" onclick="shExpand(\''+esc(d.id)+'\',this)">Automations ▾</button>'
+    +'</div>'
+    +'<div class="sh-dev-meta">'+esc(d.provider)+' · '+esc(d.provider_id||'')+(d.room?' · room <b>'+esc(d.room)+'</b>':' · <i>unassigned</i>')+(d.vendor?' · '+esc(d.vendor):'')+'</div>'
+    +(d.address?'<div class="sh-dev-meta">'+esc(d.address)+(d.mac?' · '+esc(d.mac):'')+'</div>':'')
+    +body
+    +'<div class="sh-dev-actions"><button class="btn btn-xs" onclick="shSetRoom(\''+esc(d.id)+'\')">Room</button></div>'
+    +'<div class="sh-autos" id="sh-autos-'+esc(d.id)+'" style="display:none"></div>'
+  +'</div>';
+}
+async function shExpand(devId,btn){
+  const el=$('sh-autos-'+devId); if(!el) return;
+  if(el.style.display!=='none'){ el.style.display='none'; if(btn){btn.textContent='Automations ▾'; btn.setAttribute('aria-expanded','false');} return; }
+  if(btn){btn.textContent='Automations ▴'; btn.setAttribute('aria-expanded','true');}
+  el.style.display='block'; el.innerHTML='<span class="loading">loading automations…</span>';
+  try{
+    const d=await apiT('/api/smarthome/automations',15000);
+    const all=(d&&d.automations)||[];
+    const mine=all.filter(a=>JSON.stringify(a).includes(devId));
+    if(!mine.length){ el.innerHTML='<div class="sh-auto none">No automations reference this device.</div>'; return; }
+    el.innerHTML=mine.map(shAutomationRow).join('');
+  }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
 }
 async function shControl(id,on){
   try{ const d=await api('/api/smarthome/devices/'+encodeURIComponent(id)+'/control',{method:'POST',body:JSON.stringify({changes:{on:on}})});
@@ -7683,9 +7840,11 @@ async function loadSmartHome(){
       html+='<tr><td>'+esc(k)+'</td><td>'+esc(String(p.devices))+'</td><td>'+(p.reachable?'<span class="badge ok">ready</span>':'<span class="badge warn">not configured</span>')+'</td></tr>';}
     html+='</tbody></table></div></div>';
   }
-  html+='<div class="card"><h3>Devices <span class="badge info">'+list.length+'</span></h3>';
+  const groups=shGroupDevices(list);
+  html+='<div class="card"><h3>Devices <span class="badge info">'+list.length+'</span>'
+    +(groups.length!==list.length?'<span class="badge">'+groups.length+' cards</span>':'')+'</h3>';
   if(!list.length) html+='<p class="empty">No smart-home devices registered yet — run discovery or refresh a provider.</p>';
-  for(const d of list) html+=shDeviceCard(d);
+  for(const grp of groups) html+=shGroupCard(grp);
   html+='<div class="card"><h3>Automations <span class="badge info">trigger \u2192 action</span><span class="card-header-actions"><button class="btn btn-xs btn-accent" onclick="shAutForm()">+ New</button><button class="btn btn-xs" onclick="shAutomationsLoad()">Refresh</button></span></h3><div id="sh-aut-new"></div><div id="sh-automations"><span class="loading">loading\u2026</span></div></div>';
   html+='</div>';
   el.innerHTML=html;

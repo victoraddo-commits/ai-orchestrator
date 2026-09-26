@@ -102,16 +102,31 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> Tuple[str, bool]:
             text = ""
 
     if not text:
+        # OCR fallback for scanned PDFs (no embedded text layer).
+        #
+        # Performance notes (measured on CT111 4vCPU/4GB, 2026-09-26):
+        #   * 300 DPI: render 0.29s + OCR 5.86s/page.
+        #   * 200 DPI: render 0.43s + OCR 3.84s/page — SAME extracted text.
+        # So OCR_DPI defaults to 200 (~1.5x faster for identical output).
+        # Tesseract is single-threaded per page; OMP_THREAD_LIMIT keeps a call
+        # from spawning a thread per core and thrashing a small container.
+        import os
         try:
             import pytesseract
-            from PIL import Image
+            from PIL import Image  # noqa: F401
             import pdfplumber
 
+            os.environ.setdefault("OMP_THREAD_LIMIT", "4")
+            dpi = int(os.environ.get("KLAUS_OCR_DPI", "200"))
+            # LSTM engine (--oem 1) is the modern, more accurate default; PSM 6
+            # ("assume a single uniform block of text") suits scanned documents.
+            cfg = os.environ.get("KLAUS_OCR_TESSERACT_CONFIG", "--oem 1 --psm 6")
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 ocr_pages = []
                 for page in pdf.pages:
-                    img = page.to_image(resolution=300)
-                    ocr_text = pytesseract.image_to_string(img.original, lang="eng")
+                    img = page.to_image(resolution=dpi)
+                    ocr_text = pytesseract.image_to_string(
+                        img.original, lang="eng", config=cfg)
                     ocr_pages.append(ocr_text or "")
                 text = "\n\n".join(ocr_pages).strip()
                 if text:

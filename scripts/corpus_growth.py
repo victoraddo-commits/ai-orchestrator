@@ -91,6 +91,27 @@ def _candidate_docs(url: str, domain: str) -> list[str]:
     return list(urls)[:MAX_PER_SOURCE]
 
 
+def _finish(source_id: int, source_url: str, domain: str, doc_id: int) -> None:
+    """Post-ingest: quality agents, then embed regardless of status.
+
+    Mirrors core.klaus.background_workers.process_discovered_documents so the
+    scheduled path and the in-process worker behave identically.
+    """
+    from core.klaus.quality_agents import run_all_agents
+    from core.klaus.vector_indexer import index_document_chunks
+    try:
+        result = run_all_agents(doc_id)
+        overall = (result or {}).get("overall")
+    except Exception:  # noqa: BLE001
+        overall = None
+    try:
+        index_document_chunks(doc_id)
+    except Exception:  # noqa: BLE001
+        pass
+    if overall and overall != "approved":
+        print(f"    doc {doc_id}: quality={overall}", flush=True)
+
+
 def main() -> int:
     conn = get_connection()
     cur = conn.cursor()
@@ -119,6 +140,16 @@ def main() -> int:
                     if out.get("status") == "ingested":
                         new_docs += 1
                         found += 1
+                        # Run the SAME post-ingest pipeline the in-process
+                        # worker uses (quality agents -> review status ->
+                        # tier + authority record -> embeddings). Previously
+                        # the timer stopped at process_document, so every
+                        # harvested doc stayed `pending` with tier_id NULL and
+                        # was excluded from search.
+                        try:
+                            _finish(sid, u, domain, out["document_id"])
+                        except Exception as _e:  # noqa: BLE001
+                            print(f"    finish error: {type(_e).__name__}", flush=True)
                 except Exception:  # noqa: BLE001
                     errors += 1
         except Exception as e:  # noqa: BLE001

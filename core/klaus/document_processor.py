@@ -73,11 +73,27 @@ def _now_iso() -> str:
 def extract_text_from_pdf(pdf_bytes: bytes) -> Tuple[str, bool]:
     """
     Extract text from PDF bytes. Returns (text, used_ocr).
-    Tries pdfplumber first, falls back to pypdf, then OCR.
+
+    Offloads to the VM112 OCR service FIRST — it returns either the embedded
+    text layer (pdftotext) or OCR, so this 4 GB container never has to load
+    and parse a large scanned PDF locally. Falls back to the local
+    pdfplumber → pypdf → tesseract chain when VM112 is unreachable.
     """
     text = ""
     used_ocr = False
 
+    # 1) remote service (VM112): text-layer OR OCR, decided server-side
+    try:
+        import os as _os
+        from core.klaus.ocr_client import ocr_pdf
+        remote_text, used_remote = ocr_pdf(
+            pdf_bytes, dpi=int(_os.environ.get("KLAUS_OCR_DPI", "200")))
+        if used_remote and remote_text.strip():
+            return remote_text.strip(), True
+    except Exception:  # noqa: BLE001
+        pass
+
+    # 2) local fallback
     try:
         import pdfplumber
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
@@ -103,23 +119,17 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> Tuple[str, bool]:
 
     if not text:
         # OCR fallback for scanned PDFs (no embedded text layer).
-        #
-        # Performance notes (measured on CT111 4vCPU/4GB, 2026-09-26):
-        #   * 300 DPI: render 0.29s + OCR 5.86s/page.
-        #   * 200 DPI: render 0.43s + OCR 3.84s/page — SAME extracted text.
-        # So OCR_DPI defaults to 200 (~1.5x faster for identical output).
-        # Tesseract is single-threaded per page; OMP_THREAD_LIMIT keeps a call
-        # from spawning a thread per core and thrashing a small container.
+        # The remote service already had first crack; this is the LOCAL path
+        # for when VM112 is unreachable. Local measurements (CT111 4vCPU/4GB):
+        # 300 DPI = 5.86s/page, 200 DPI = 3.84s/page for identical text.
         import os
+        dpi = int(os.environ.get("KLAUS_OCR_DPI", "200"))
         try:
             import pytesseract
             from PIL import Image  # noqa: F401
             import pdfplumber
 
             os.environ.setdefault("OMP_THREAD_LIMIT", "4")
-            dpi = int(os.environ.get("KLAUS_OCR_DPI", "200"))
-            # LSTM engine (--oem 1) is the modern, more accurate default; PSM 6
-            # ("assume a single uniform block of text") suits scanned documents.
             cfg = os.environ.get("KLAUS_OCR_TESSERACT_CONFIG", "--oem 1 --psm 6")
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 ocr_pages = []

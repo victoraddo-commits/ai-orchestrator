@@ -20,6 +20,12 @@ from core.klaus.vector_indexer import (
 
 
 class TestEmbeddingGeneration:
+    @pytest.fixture(autouse=True)
+    def _local_only(self, monkeypatch):
+        # These tests mock sentence-transformers and assert the LOCAL path.
+        # Disable the GPU fabric path so it doesn't intercept the call.
+        monkeypatch.setenv("KLAUS_EMBED_GPU", "0")
+
     def test_generate_embedding_returns_list_of_floats(self):
         import core.klaus.vector_indexer as vi
         vi._embedding_model = None

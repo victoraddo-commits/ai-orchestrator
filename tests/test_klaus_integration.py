@@ -370,4 +370,8 @@ class TestDBManagerInitSampleData:
         with patch("core.klaus.db_manager.add_source") as mock_add:
             result = init_sample_data()
             assert result is True
-            assert mock_add.call_count >= 3
+            # Assert against the canonical seed list rather than a magic number
+            # (it was >=3 when a now-removed login-walled source inflated it).
+            from core.klaus.scheduler import TIER_1_SEEDS
+            assert mock_add.call_count == len(TIER_1_SEEDS)
+            assert mock_add.call_count >= 2

@@ -7,6 +7,7 @@ process them through the quality control pipeline.
 """
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -112,25 +113,84 @@ def _discover_parliament_gh(source_url: str, source_domain: str) -> List[Dict]:
 
 
 def _discover_ghalii(source_url: str, source_domain: str) -> List[Dict]:
-    """Ghana-specific: scrape GhaLII (PeachJam/LII platform) for judgments and legislation.
+    """GhaLII (PeachJam/LII) discovery for Ghana legislation + judgments.
 
-    GhaLII blocks direct browse paths (/judgments/) with 403 but search works.
-    Uses keyword searches across Ghana legal topics to discover documents.
+    Live behaviour (verified 2026-09-26):
+      * ``/legislation/all`` and ``/legislation/subsidiary`` return 200 and list
+        ~50 real acts / L.I.s each as ``/akn/gh/act/...`` links — this is the
+        authoritative primary-legislation index.
+      * ``/judgments/`` and ``/akn/`` return 403, and individual act pages are
+        Cloudflare-gated (403 "Just a moment..."), so full text cannot be
+        fetched with plain HTTP. We therefore record the authoritative
+        *reference* (canonical GhaLII URL + title) as a ``reference`` document;
+        the fetch layer may later resolve it via a headless browser. We never
+        fabricate text.
+
+    Falls back to keyword search when the browse pages yield nothing.
     """
     import urllib.parse
 
-    documents = []
-    seen_urls = set()
+    documents: List[Dict] = []
+    seen: set[str] = set()
 
-    # Ghana legal search terms — broad coverage of legal areas
-    search_terms = [
-        "ghana supreme court", "ghana court of appeal", "ghana high court",
-        "ghana constitution", "act of parliament ghana", "criminal ghana",
-        "commercial ghana", "land ghana", "employment ghana",
-        "tax ghana", "family law ghana", "contract ghana",
-        "property ghana", "banking ghana", "human rights ghana",
+    def _add(url: str, title: str) -> None:
+        if not url or url in seen:
+            return
+        seen.add(url)
+        documents.append({
+            "title": title or url.rstrip("/").split("/")[-1],
+            "url": url,
+            "type": "reference",          # canonical legal reference (akn)
+            "source_domain": source_domain,
+            "store_mode": "reference",
+        })
+
+    # 1) Authoritative browse indexes (these work; /akn pages do not).
+    browse_paths = [
+        ("/legislation/all", "Ghana Act"),
+        ("/legislation/subsidiary", "Ghana Subsidiary Legislation (L.I.)"),
+        ("/legislation/aa-au/", "AU Charter/Treaty"),
     ]
+    try:
+        from bs4 import BeautifulSoup
+    except Exception:  # noqa: BLE001
+        return documents
 
+    for path, label in browse_paths:
+        try:
+            url = f"https://ghalii.org{path}"
+            response = requests.get(url, headers=HEADERS, timeout=30)
+            if response.status_code != 200:
+                continue
+            soup = BeautifulSoup(response.text, "html.parser")
+            for link in soup.find_all("a", href=True):
+                href = link.get("href", "")
+                if "/akn/gh/" not in href:
+                    continue
+                title = link.get_text().strip()
+                full = _resolve_url(href, "https://ghalii.org")
+                # Derive a readable title from the akn path when the anchor is
+                # empty (e.g. /akn/gh/act/2010/796/eng@2010-04-16 -> Act 796).
+                if not title:
+                    parts = [p for p in href.split("/") if p]
+                    try:
+                        kind_i = parts.index("act")
+                        title = f"{label} {parts[kind_i + 1]}/{parts[kind_i + 2]}"
+                    except (ValueError, IndexError):
+                        title = label
+                _add(full, title)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("GhaLII browse %s failed: %s", path, e)
+
+    if documents:
+        logger.info("GhaLII browse indexes found %d legislation references", len(documents))
+        return documents
+
+    # 2) Fallback: keyword search (kept from the previous implementation).
+    search_terms = [
+        "ghana constitution", "act of parliament ghana", "criminal ghana",
+        "land ghana", "tax ghana", "employment ghana", "human rights ghana",
+    ]
     for term in search_terms:
         try:
             q = urllib.parse.quote(term)
@@ -138,58 +198,15 @@ def _discover_ghalii(source_url: str, source_domain: str) -> List[Dict]:
             response = requests.get(url, headers=HEADERS, timeout=30)
             if response.status_code != 200:
                 continue
-            from bs4 import BeautifulSoup
             soup = BeautifulSoup(response.text, "html.parser")
-
             for link in soup.find_all("a", href=True):
                 href = link.get("href", "")
-                title = link.get_text().strip()
-                if not title or len(title) < 10:
+                if "/akn/gh/" not in href:
                     continue
-                if any(skip in href.lower() for skip in ("/search", "/about", "/contact", "#")):
-                    continue
-
-                is_content = any(p in href.lower() for p in (
-                    "/judgment/", "/akn/", "/legislation/", "/node/"
-                ))
-                is_pdf = href.lower().endswith(".pdf")
-
-                if is_content or is_pdf:
-                    full_url = _resolve_url(href, "https://ghalii.org")
-                    if full_url in seen_urls:
-                        continue
-                    seen_urls.add(full_url)
-
-                    if is_pdf:
-                        documents.append({
-                            "title": title,
-                            "url": full_url,
-                            "type": "pdf",
-                            "source_domain": source_domain,
-                        })
-                    else:
-                        # Follow judgment page for PDF download links
-                        try:
-                            inner_r = requests.get(full_url, headers=HEADERS, timeout=15)
-                            if inner_r.status_code == 200:
-                                inner_soup = BeautifulSoup(inner_r.text, "html.parser")
-                                for inner_link in inner_soup.find_all("a", href=True):
-                                    ihref = inner_link.get("href", "")
-                                    if ihref.lower().endswith(".pdf"):
-                                        doc_title = inner_link.get_text().strip() or title
-                                        pdf_url = _resolve_url(ihref, full_url)
-                                        if pdf_url not in seen_urls:
-                                            seen_urls.add(pdf_url)
-                                            documents.append({
-                                                "title": doc_title,
-                                                "url": pdf_url,
-                                                "type": "pdf",
-                                                "source_domain": source_domain,
-                                            })
-                        except Exception:
-                            pass
-        except Exception as e:
-            logger.warning(f"GhaLII search '{term}' failed: {e}")
+                _add(_resolve_url(href, "https://ghalii.org"),
+                     link.get_text().strip() or "GhaLII legislation")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("GhaLII search '%s' failed: %s", term, e)
 
     return documents
 
@@ -320,64 +337,97 @@ def _discover_ejudgment_gh(source_url: str, source_domain: str) -> List[Dict]:
 
 
 def _discover_parliament_repository(source_url: str, source_domain: str) -> List[Dict]:
-    """Ghana Parliament Repository scraper — https://repository.parliament.gh/
+    """Ghana Parliament Repository (DSpace 7) discovery.
 
-    The Parliament repository runs on DSpace, which exposes a REST API.
-    Strategy:
-    1. REST API: /rest/collections → enumerate collections → /rest/items
-    2. Fallback: HTML scrape of the repository home page for links
-    3. Also try the showPDF pattern (legacy parliament.gh)
+    Verified live 2026-09-26: the legacy ``/rest/`` API is gone; DSpace 7 uses
+    ``/server/``. Discovery path that works without credentials:
+
+      1. OAI-PMH ListRecords (oai_dc) — 100 records/page, gives dc:title and a
+         handle URL (e.g. http://hdl.handle.net/123456789/762).
+      2. Resolve each handle to an item uuid via
+         ``/server/api/pid/find?id=hdl:<handle>``.
+      3. ``/server/api/core/items/<uuid>/bundles`` → ORIGINAL bundle →
+         ``/server/api/core/bundles/<uuid>/bitstreams`` → the PDF.
+      4. Bitstream download:
+         ``/server/api/core/bitstreams/<uuid>/content``.
+
+    Newer DSpace exposes the first bitstream directly on the item as
+    ``_embedded.bitstreams``; both are handled. Never fabricates a URL.
     """
-    documents = []
+    documents: List[Dict] = []
     session = requests.Session()
-    session.headers.update({**HEADERS, "Accept": "application/json, text/html,*/*"})
+    session.headers.update({**HEADERS, "Accept": "application/json, text/xml, */*"})
+    base = "https://repository.parliament.gh/server"
+    seen_items: set[str] = set()
 
-    # Strategy 1: DSpace REST API discovery
+    def _pdf_from_item(item: dict) -> Optional[Dict]:
+        uuid = item.get("uuid") or item.get("id")
+        name = item.get("name") or "Parliament record"
+        if not uuid or uuid in seen_items:
+            return None
+        seen_items.add(uuid)
+        # 1) inline bitstreams (DSpace 7 sometimes embeds them)
+        try:
+            emb = (item.get("_embedded") or {}).get("bitstreams") or {}
+            for bs in emb.get("bitstreams", []) or []:
+                nm = (bs.get("name") or "").lower()
+                if nm.endswith(".pdf"):
+                    return {"title": f"[Parliament] {name}",
+                            "url": f"{base}/api/core/bitstreams/{bs.get('uuid')}/content",
+                            "type": "pdf", "source_domain": source_domain}
+        except Exception:  # noqa: BLE001
+            pass
+        # 2) bundles → ORIGINAL → bitstreams
+        try:
+            rb = session.get(f"{base}/api/core/items/{uuid}/bundles", timeout=20)
+            if rb.status_code == 200:
+                for b in (rb.json().get("_embedded", {}) or {}).get("bundles", []) or []:
+                    if b.get("name") != "ORIGINAL":
+                        continue
+                    rbs = session.get(f"{base}/api/core/bundles/{b['uuid']}/bitstreams",
+                                      timeout=20)
+                    if rbs.status_code == 200:
+                        for bs in (rbs.json().get("_embedded", {}) or {}).get("bitstreams", []) or []:
+                            if (bs.get("name") or "").lower().endswith(".pdf"):
+                                return {"title": f"[Parliament] {name}",
+                                        "url": f"{base}/api/core/bitstreams/{bs['uuid']}/content",
+                                        "type": "pdf", "source_domain": source_domain}
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    # Strategy 1: OAI-PMH ListRecords (one page; the worker can resume later).
+    handles: list[str] = []
     try:
-        # Get collections
-        collections_url = "https://repository.parliament.gh/rest/collections"
-        resp = session.get(collections_url, timeout=30)
-        if resp.status_code == 200:
-            try:
-                collections = resp.json()
-                for coll in collections[:20]:  # Limit to first 20 collections
-                    coll_id = coll.get("id") or coll.get("uuid")
-                    if not coll_id:
-                        continue
-                    # Get items in this collection
-                    items_url = f"https://repository.parliament.gh/rest/collections/{coll_id}/items"
-                    items_resp = session.get(items_url, timeout=30)
-                    if items_resp.status_code != 200:
-                        continue
-                    items = items_resp.json()
-                    for item in items[:50]:  # Limit per collection
-                        item_name = item.get("name", "")
-                        item_id = item.get("id") or item.get("uuid")
-                        if not item_name or not item_id:
-                            continue
-                        # Get bitstreams (PDFs) for this item
-                        try:
-                            bs_url = f"https://repository.parliament.gh/rest/items/{item_id}/bitstreams"
-                            bs_resp = session.get(bs_url, timeout=30)
-                            if bs_resp.status_code == 200:
-                                for bs in bs_resp.json():
-                                    bs_name = bs.get("name", "")
-                                    if bs_name.lower().endswith(".pdf"):
-                                        bs_id = bs.get("id") or bs.get("uuid")
-                                        documents.append({
-                                            "title": f"[Parliament] {item_name}",
-                                            "url": f"https://repository.parliament.gh/rest/bitstreams/{bs_id}/retrieve",
-                                            "type": "pdf",
-                                            "source_domain": source_domain,
-                                        })
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-    except Exception as e:
-        logger.info(f"Parliament REST API discovery: {e}")
+        import xml.etree.ElementTree as ET
+        r = session.get(f"{base}/oai/request?verb=ListRecords&metadataPrefix=oai_dc",
+                        timeout=30)
+        if r.status_code == 200:
+            root = ET.fromstring(r.text)
+            # dc:identifier lives in the Dublin Core namespace (the oai_dc
+            # wrapper uses oai_dc, but the elements themselves are dc:).
+            for ident in root.iter("{http://purl.org/dc/elements/1.1/}identifier"):
+                # handles look like http://hdl.handle.net/123456789/762
+                m = re.search(r"(?:hdl\.handle\.net|ir\.parliament\.gh/handle)/"
+                              r"([0-9]+/[0-9]+)", ident.text or "")
+                if m:
+                    handles.append(m.group(1))
+    except Exception as e:  # noqa: BLE001
+        logger.info("Parliament OAI discovery failed: %s", e)
 
-    # Strategy 2: Fall back to HTML scraping of the repository home page
+    # Strategy 2: resolve handles → items → PDFs (bounded batch)
+    for handle in list(dict.fromkeys(handles))[:40]:
+        try:
+            rp = session.get(f"{base}/api/pid/find?id=hdl:{handle}", timeout=20)
+            if rp.status_code != 200:
+                continue
+            doc = _pdf_from_item(rp.json())
+            if doc:
+                documents.append(doc)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Parliament handle %s: %s", handle, e)
+
+    # Strategy 3: HTML fallback for the home page, then legacy parliament.gh.
     if len(documents) < 5:
         try:
             response = session.get("https://repository.parliament.gh/home", timeout=30,
@@ -395,12 +445,11 @@ def _discover_parliament_repository(source_url: str, source_domain: str) -> List
                             "type": "pdf",
                             "source_domain": source_domain,
                         })
-        except Exception as e:
-            logger.debug(f"Parliament HTML fallback: {e}")
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Parliament HTML fallback: %s", e)
 
-    # Strategy 3: Also try legacy parliament.gh showPDF pattern
-    legacy_docs = _discover_parliament_gh("https://www.parliament.gh", source_domain)
-    documents.extend(legacy_docs)
+    legacy = _discover_parliament_gh("https://www.parliament.gh", source_domain)
+    documents.extend(legacy)
 
     return documents
 

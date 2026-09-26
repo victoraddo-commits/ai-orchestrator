@@ -297,6 +297,18 @@ def start_scheduler():
     Start the KLAUS background scheduler. Safe to call multiple times;
     apscheduler will ignore duplicate job additions.
     """
+    # Ensure schema + the 16 acquisition tiers exist before any worker runs.
+    # Previously only the standalone migration called these, so on a fresh
+    # start klaus_acquisition_tiers was empty (0 rows) and every document's
+    # tier_id resolved to NULL, silently disabling tier coverage.
+    try:
+        from core.klaus.db_manager import init_database, seed_acquisition_tiers
+        init_database()
+        seeded = seed_acquisition_tiers()
+        logger.info("KLAUS: schema ensured; %d acquisition tiers seeded", seeded)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("KLAUS: schema/tier init skipped: %s", e)
+
     _ensure_seeds()
 
     _scheduler.add_job(

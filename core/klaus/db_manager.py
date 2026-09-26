@@ -406,11 +406,12 @@ def init_sample_data() -> bool:
         from core.klaus.scheduler import TIER_1_SEEDS
         sources = TIER_1_SEEDS
     except Exception:
-        # Fallback if scheduler is not importable
+        # Fallback if scheduler is not importable. Note: judicial.gov.gh's
+        # eJudgment portal is login-walled and is intentionally NOT a source;
+        # the old entry also carried a misspelled domain ("judliary.gov.gh")
+        # that made discovery fail on every cycle with NXDOMAIN.
         sources = [
             {"url": "https://parliament.gh", "domain": "parliament.gh",
-             "tier": 1, "jurisdiction": "Ghana"},
-            {"url": "https://judiciary.gov.gh", "domain": "judliary.gov.gh",
              "tier": 1, "jurisdiction": "Ghana"},
             {"url": "https://ghalii.org", "domain": "ghalii.org",
              "tier": 2, "jurisdiction": "Ghana"},

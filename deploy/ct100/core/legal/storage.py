@@ -548,7 +548,8 @@ class LegalStorage:
         return [dict(r) for r in rows]
 
     def search(self, query: str, limit: int = 20, mode: str = "or",
-               commercial: bool = False) -> list[dict]:
+               commercial: bool = False,
+               with_snippet: bool = True) -> list[dict]:
         """FTS5 search with a normalized query and the CONTENT snippet.
 
         Never passes raw user text to MATCH (FTS5 operators raise syntax
@@ -573,15 +574,31 @@ class LegalStorage:
         # body (up to ~830 KB) to use ~1.2 KB. A wider window lets full-tier
         # results be grounded from the snippet alone, removing the N+1 fetch.
         snippet_tokens = int(os.environ.get("KAI_LEGAL_SNIPPET_TOKENS", "190"))
-        rows = self.conn.execute(
-            f"""SELECT d.*, snippet(fts_documents, 0, '', '', '…', ?) AS snippet,
-                       bm25(fts_documents) AS _bm25
-               FROM fts_documents
-               JOIN documents d ON d.id = fts_documents.rowid
-               WHERE fts_documents MATCH ?
-                 AND {self._visibility_sql('d', commercial=commercial)}
-               ORDER BY rank LIMIT ?""",
-            (snippet_tokens, expr, limit)).fetchall()
+        if with_snippet:
+            rows = self.conn.execute(
+                f"""SELECT d.*, snippet(fts_documents, 0, '', '', '…', ?) AS snippet,
+                           bm25(fts_documents) AS _bm25
+                   FROM fts_documents
+                   JOIN documents d ON d.id = fts_documents.rowid
+                   WHERE fts_documents MATCH ?
+                     AND {self._visibility_sql('d', commercial=commercial)}
+                   ORDER BY rank LIMIT ?""",
+                (snippet_tokens, expr, limit)).fetchall()
+        else:
+            # Snippet-free over-fetch for rankers: snippet() costs ~6ms/row
+            # over the full-copy content column (measured: 150 rows ~= 900ms),
+            # and fusion discards almost every row of the over-fetch. The
+            # caller refetches snippets only for surviving top hits via
+            # :meth:`snippet_batch`.
+            rows = self.conn.execute(
+                f"""SELECT d.id, d.title, d.citation, d.type, d.year,
+                           d.store_mode, bm25(fts_documents) AS _bm25
+                   FROM fts_documents
+                   JOIN documents d ON d.id = fts_documents.rowid
+                   WHERE fts_documents MATCH ?
+                     AND {self._visibility_sql('d', commercial=commercial)}
+                   ORDER BY rank LIMIT ?""",
+                (expr, limit)).fetchall()
         out = []
         for r in rows:
             d = dict(r)
@@ -601,6 +618,36 @@ class LegalStorage:
         for d in ranked:
             d.pop("_bm25", None)
         return ranked
+
+    def snippet_batch(self, query, doc_ids, mode: str = "or",
+                      tokens=None) -> dict:
+        """Snippets for a shortlist of documents, computed only for those rows.
+
+        Fusion ranks over a wide over-fetch with snippets disabled, then asks
+        for snippets of just the surviving top hits. FTS5 ``snippet()`` is
+        computed per fetched row (~6ms/row over the full-content copy), so
+        this keeps keyword-side latency bounded by what is *returned*, not
+        what was scanned. Returns ``{doc_id: snippet}``.
+        """
+        from core.legal.query_normalize import build_match_query
+        expr = build_match_query(query, mode=mode)
+        if not expr or not doc_ids:
+            return {}
+        doc_ids = [int(d) for d in doc_ids if d is not None]
+        if not doc_ids:
+            return {}
+        tokens = int(tokens or os.environ.get("KAI_LEGAL_SNIPPET_TOKENS", "190"))
+        marks = ",".join("?" * len(doc_ids))
+        rows = self.conn.execute(
+            f"""SELECT fts_documents.rowid AS id,
+                       snippet(fts_documents, 0, '', '', '…', ?) AS snippet
+               FROM fts_documents
+               JOIN documents d ON d.id = fts_documents.rowid
+               WHERE fts_documents MATCH ?
+                 AND fts_documents.rowid IN ({marks})
+                 AND {self._visibility_sql('d', commercial=False)}""",
+            (tokens, expr, *doc_ids)).fetchall()
+        return {r["id"]: r["snippet"] for r in rows}
 
     def _search_like(self, query: str, limit: int,
                      commercial: bool = False) -> list[dict]:

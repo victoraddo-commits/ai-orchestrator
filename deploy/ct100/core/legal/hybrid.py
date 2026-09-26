@@ -78,21 +78,41 @@ def rrf_fuse(rank_lists, k: int = DEFAULT_RRF_K, weights=None):
     return ordered, ranks
 
 
-def _safe_bm25(storage, query, limit, mode, commercial=False):
-    if storage is None or not (query or "").strip():
-        return []
+def _storage_search(storage, query, limit, mode, commercial):
+    """storage.search with snippets OFF when the implementation supports it.
+
+    Fusion over-fetches (150 rows) to rank, then returns ~limit rows; FTS5
+    snippet() is computed per fetched row (~6ms/row over the full-copy
+    content column), so computing snippets for discarded rows wastes
+    ~0.9s/query. Doubles that predate ``with_snippet`` keep working.
+    """
     try:
-        rows = storage.search(query, limit=limit, mode=mode,
+        return storage.search(query, limit=limit, mode=mode,
+                              commercial=commercial, with_snippet=False)
+    except TypeError:
+        return storage.search(query, limit=limit, mode=mode,
                               commercial=commercial)
+
+
+def _safe_bm25(storage, query, limit, mode, commercial=False):
+    """Fetch BM25 rows snippet-free; returns ``(rows, mode_used)``.
+
+    ``mode_used`` tracks the and->or fallback so the snippet backfill asks
+    FTS5 with the match expression that actually produced the rows.
+    """
+    if storage is None or not (query or "").strip():
+        return [], mode
+    try:
+        rows = _storage_search(storage, query, limit, mode, commercial)
     except Exception:  # noqa: BLE001 - never fail retrieval
         rows = []
     if not rows and mode == "and":
         try:
-            rows = storage.search(query, limit=limit, mode="or",
-                                  commercial=commercial)
+            rows = _storage_search(storage, query, limit, "or", commercial)
+            mode = "or"
         except Exception:  # noqa: BLE001
             rows = []
-    return rows or []
+    return rows or [], mode
 
 
 def _commercial_allowed(storage, doc_id):
@@ -229,9 +249,9 @@ def hybrid_search(query: str, limit: int = 10, *, storage=None,
                if plan else [1.0, 1.0])
     bm25_query = expanded if (plan and plan["expand_bm25"]) else original
 
-    bm25_rows = _safe_bm25(storage, bm25_query,
-                           bm25_limit or DEFAULT_BM25_LIMIT, bm25_mode,
-                           commercial=commercial)
+    bm25_rows, bm25_mode_used = _safe_bm25(
+        storage, bm25_query, bm25_limit or DEFAULT_BM25_LIMIT, bm25_mode,
+        commercial=commercial)
     dense_hits = _safe_dense(embed_index, expanded,
                              dense_limit or DEFAULT_DENSE_LIMIT)
     if commercial:
@@ -291,4 +311,19 @@ def hybrid_search(query: str, limit: int = 10, *, storage=None,
             "rrf_score": rrf_score,
             "match_strategy": match_strategy,
         })
+    # Backfill snippets for the surviving top hits (the BM25 over-fetch ran
+    # snippet-free; see _storage_search). Dense rows already carry their best
+    # passage as the snippet, so only BM25-only/hybrid rows need the FTS
+    # snippet here.
+    need = [r["doc_id"] for r in results
+            if not r["snippet"] and r["match_strategy"] in ("bm25", "hybrid")]
+    if need:
+        try:
+            snaps = storage.snippet_batch(bm25_query, need,
+                                          mode=bm25_mode_used)
+        except Exception:  # noqa: BLE001 - snippet backfill is best effort
+            snaps = {}
+        for r in results:
+            if not r["snippet"]:
+                r["snippet"] = snaps.get(r["doc_id"]) or ""
     return ranking.rank_results(results)

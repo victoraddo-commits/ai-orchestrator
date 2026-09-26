@@ -25,3 +25,12 @@ class ProviderAdapter:
     def set_state(self, provider_id: str, changes: dict) -> dict:
         """Apply changes and return the observed state (read-back)."""
         raise NotImplementedError
+
+    def health(self) -> dict:
+        """Report provider health as an honest dict.
+
+        Returns at minimum ``{"ok": bool}``; adapters may add ``detail`` and a
+        ``notice`` for operator-facing remediation (e.g. an expired session).
+        The default is "unknown" — never claim health an adapter cannot prove.
+        """
+        return {"ok": None, "detail": "no health probe for this provider"}

@@ -7835,10 +7835,22 @@ async function loadSmartHome(){
     +'<div class="metric"><span class="val">'+new Set(list.map(d=>d.room||'')).size+'</span><span class="lbl">Rooms</span></div>'
     +'</div></div>';
   if(provs&&provs.providers){
-    html+='<div class="card"><h3>Providers</h3><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Devices</th><th>Adapter</th></tr></thead><tbody>';
+    html+='<div class="card"><h3>Providers</h3><div class="table-wrap"><table><thead><tr><th>Provider</th><th>Devices</th><th>Status</th><th>Detail</th></tr></thead><tbody>';
     for(const k of Object.keys(provs.providers)){const p=provs.providers[k];
-      html+='<tr><td>'+esc(k)+'</td><td>'+esc(String(p.devices))+'</td><td>'+(p.reachable?'<span class="badge ok">ready</span>':'<span class="badge warn">not configured</span>')+'</td></tr>';}
-    html+='</tbody></table></div></div>';
+      const h=p.health||{};
+      const badge = (h.ok===true)?'<span class="badge ok">ready</span>'
+                   :(h.ok===false)?'<span class="badge bad">attention</span>'
+                   :(p.reachable===true)?'<span class="badge ok">ready</span>'
+                   :(p.reachable===false)?'<span class="badge warn">not configured</span>'
+                   :'<span class="badge">n/a</span>';
+      const detail = h.ok===false
+        ? '<span class="error-text">'+esc(h.detail||'')+(h.notice?' — '+esc(h.notice):'')+'</span>'
+        : (h.detail?esc(h.detail):'');
+      html+='<tr><td>'+esc(k)+'</td><td>'+esc(String(p.devices))+'</td><td>'+badge+'</td><td style="font-size:0.62rem">'+detail+'</td></tr>';}
+    html+='</tbody></table></div>';
+    const notices=Object.keys(provs.providers).map(k=>({k,h:provs.providers[k].health||{}})).filter(x=>x.h.ok===false&&x.h.notice);
+    for(const n of notices) html+='<div class="kai-banner warn" style="margin-top:8px">⚠ '+esc(n.k)+': '+esc(n.h.notice)+'</div>';
+    html+='</div>';
   }
   const groups=shGroupDevices(list);
   html+='<div class="card"><h3>Devices <span class="badge info">'+list.length+'</span>'

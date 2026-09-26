@@ -1648,10 +1648,21 @@ def sh_providers(_: None = Depends(_req_op)):
             p["devices"] += 1
         for name in list(provs):
             try:
-                _sh_svc().get_adapter(name)
+                adapter = _sh_svc().get_adapter(name)
                 provs[name]["reachable"] = True
+                probe = getattr(adapter, "health", None)
+                if callable(probe):
+                    try:
+                        h = probe() or {}
+                    except Exception as he:  # noqa: BLE001
+                        h = {"ok": False, "detail": str(he)[:200]}
+                    provs[name]["health"] = h
+                    if not h.get("ok"):
+                        provs[name]["reachable"] = False
             except Exception:  # noqa: BLE001
-                provs[name]["reachable"] = False
+                # No adapter for this provider (e.g. the mixed direct-LAN
+                # bucket). Reachability is unknown, not "unreachable".
+                provs[name]["reachable"] = None
         return JSONResponse(content={"providers": provs},
                             headers={"Cache-Control": "no-store"})
     except Exception as e:  # noqa: BLE001

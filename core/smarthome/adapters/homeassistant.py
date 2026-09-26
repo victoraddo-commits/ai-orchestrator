@@ -78,6 +78,36 @@ class HomeAssistantAdapter(ProviderAdapter):
             raise AdapterError(f"HA GET {path} -> {r.status_code}")
         return r.json()
 
+    def health(self) -> dict:
+        """Probe HA reachability + token, and count unavailable entities.
+
+        Uses the cheap ``/api/config`` endpoint; a 401 means the token lapsed,
+        anything else is reported verbatim. Never fabricates a healthy state.
+        """
+        if not self.token:
+            return {"ok": False, "detail": "Home Assistant token not configured",
+                    "notice": "HA long-lived token missing — set it in the vault"}
+        try:
+            cfg = self._get("/api/config")
+        except AdapterError as e:
+            msg = str(e)
+            notice = ("Home Assistant rejected the token (401) — reissue the "
+                      "long-lived token") if "401" in msg else None
+            return {"ok": False, "detail": msg, **({"notice": notice} if notice else {})}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "detail": str(e)[:200],
+                    "notice": "Home Assistant unreachable — check the host"}
+        try:
+            states = self._get("/api/states")
+            unavailable = sum(1 for s in states if s.get("state") == "unavailable")
+        except Exception:  # noqa: BLE001
+            unavailable = None
+        detail = f"v{cfg.get('version', '?')} · {cfg.get('state', '?')}"
+        if unavailable is not None:
+            detail += f" · {unavailable} unavailable entities"
+        return {"ok": True, "detail": detail, "version": cfg.get("version"),
+                "state": cfg.get("state"), "unavailable": unavailable}
+
     def identify(self) -> list[dict]:
         out = []
         for s in self._get("/api/states"):

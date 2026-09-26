@@ -98,3 +98,31 @@ class EWeLinkAdapter(ProviderAdapter):
         if r.get("error") not in (0, None):
             raise AdapterError(f"eWeLink control failed: {r.get('msg')}")
         return self.get_state(provider_id)  # read-back
+
+    def health(self) -> dict:
+        """Probe the eWeLink account session over the region host.
+
+        Reports the account's device count when the session is live. A network
+        or DNS failure (the CoolKit dispatcher is intermittently flaky) is
+        surfaced with an operator notice, never a silent "not configured".
+        """
+        if not self._s.get("at"):
+            return {"ok": False, "detail": "eWeLink session not configured",
+                    "notice": "eWeLink session missing — sign in again"}
+        try:
+            things = self._things()
+        except AdapterError as e:
+            msg = str(e)
+            notice = ("eWeLink cloud unreachable — CoolKit DNS/connection "
+                      "timeout, will retry") if ("failed" in msg or "timeout"
+                      in msg.lower()) else None
+            return {"ok": False, "detail": msg[:200],
+                    **({"notice": notice} if notice else {})}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "detail": str(e)[:200],
+                    "notice": "eWeLink cloud unreachable — will retry"}
+        online = sum(1 for t in things
+                     if (t.get("itemData") or {}).get("online"))
+        return {"ok": True, "devices": len(things), "online": online,
+                "detail": f"{len(things)} devices · {online} online"}
+

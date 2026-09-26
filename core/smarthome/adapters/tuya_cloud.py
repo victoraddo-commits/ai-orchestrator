@@ -89,3 +89,35 @@ class TuyaCloudAdapter(ProviderAdapter):
         except Exception as e:  # noqa: BLE001
             raise AdapterError(f"Tuya cloud control failed: {e}")
         return self.get_state(provider_id)  # read-back
+
+    def health(self) -> dict:
+        """Probe the cloud session without inventing device state.
+
+        A successful ``update_device_cache`` proves the shared session is
+        live. A ``1010``/expiry/sign error means the QR-login session has
+        lapsed and needs a re-scan — surfaced as an operator notice rather
+        than silently showing cloud devices as merely "unavailable".
+        """
+        s = self._session
+        if not s or not s.get("access_token"):
+            return {"ok": False,
+                    "detail": "no tuya_cloud session stored",
+                    "notice": "Tuya cloud session missing — run the QR login"}
+        try:
+            mgr = self._mgr()
+            mgr.update_device_cache()
+            return {"ok": True, "detail": "cloud session live",
+                    "devices": len(getattr(mgr, "device_map", {}) or {})}
+        except AdapterError as e:
+            return {"ok": False, "detail": str(e),
+                    "notice": "Tuya cloud session error — re-scan may be needed"}
+        except Exception as e:  # noqa: BLE001
+            msg = str(e)
+            low = msg.lower()
+            expired = ("1010" in msg or "expired" in low or "invalid" in low
+                       or "sign" in low)
+            return {"ok": False, "detail": msg[:200],
+                    "notice": ("Tuya cloud session expired — re-scan the Smart "
+                               "Life QR to restore cloud device control")
+                              if expired else
+                              "Tuya cloud unreachable — check network/session"}

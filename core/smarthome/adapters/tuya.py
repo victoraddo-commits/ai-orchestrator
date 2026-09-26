@@ -137,3 +137,33 @@ class TuyaAdapter(ProviderAdapter):
         if cloud is not None:
             return cloud.set_state(provider_id, changes)
         raise AdapterError(f"Tuya device {provider_id} not controllable (no local path, no cloud session)")
+
+    def health(self) -> dict:
+        """Honest split of local (LAN) vs cloud-only devices.
+
+        A device is controllable when either its local key + LAN address are
+        present, or a live ``tuya_cloud`` session covers it. When ANY device is
+        cloud-only the cloud session is probed, so an expired session surfaces
+        an operator notice instead of devices silently reading "unavailable".
+        """
+        local = [g for g in self._devices if self._local_works(g)]
+        cloud_only = [g for g in self._devices if g not in local]
+        result = {"ok": True, "local": len(local),
+                  "cloud_only": len(cloud_only),
+                  "detail": f"{len(local)} local · {len(cloud_only)} cloud-only"}
+        if not cloud_only:
+            return result
+        cloud = self._cloud()
+        if cloud is None:
+            result.update(ok=False,
+                          notice="Tuya cloud adapter unavailable for off-LAN devices")
+            return result
+        try:
+            ch = cloud.health()
+        except Exception as e:  # noqa: BLE001
+            ch = {"ok": False, "detail": str(e)[:200]}
+        if not ch.get("ok"):
+            result.update(ok=False, notice=ch.get("notice"),
+                          detail=result["detail"] + " · cloud: "
+                          + (ch.get("detail") or "not live"))
+        return result

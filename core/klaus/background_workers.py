@@ -692,7 +692,16 @@ def download_document_content(url: str) -> Optional[Tuple[bytes, str]]:
         logger.warning(f"Failed to download {url}: {e}")
         return None
     filename = unquote(urlparse(url).path.split('/')[-1]) or "unnamed_document"
-    return response.content, filename
+    content = response.content
+    # Guard against saving an HTML error/redirect page as a document. A URL
+    # ending in .pdf that actually returns HTML (login wall, soft-404, JS
+    # shell) must not enter the corpus as an empty "PDF" — it produces a
+    # chunk-less document and pollutes the index.
+    head = content[:16].lstrip().lower()
+    if filename.lower().endswith(".pdf") and head.startswith((b"<!doctype", b"<html")):
+        logger.warning("Skipping %s: expected PDF, got HTML (%d bytes)", url, len(content))
+        return None
+    return content, filename
 
 
 def process_discovered_documents(

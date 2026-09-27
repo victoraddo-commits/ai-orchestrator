@@ -36,82 +36,11 @@ DEFAULT_MODEL = os.environ.get("JURIS_KAI_MODEL", "qwen3-coder:kai")
 CONNECT_TIMEOUT = float(os.environ.get("JURIS_KAI_STREAM_CONNECT_TIMEOUT", "3"))
 READ_TIMEOUT = float(os.environ.get("JURIS_KAI_STREAM_READ_TIMEOUT", "300"))
 TEMPERATURE = float(os.environ.get("JURIS_KAI_TEMPERATURE", "0.7"))
-# Deep reasoning passes (advocate/opponent/judge) want determinism, chat wants
-# variety, so temperature is per-task. ``JURIS_KAI_TEMPERATURE`` keeps governing
-# chat tasks exactly as before; the reasoning knob is independent and defaults
-# low so the three passes stay auditable and repeatable.
-TEMP_REASONING = float(os.environ.get("JURIS_KAI_TEMPERATURE_REASONING", "0.15"))
-# Hard cap for the model's context window. 0 = leave ollama's own default (the
-# historical 8192). Set via ``JURIS_KAI_NUM_CTX`` (e.g. 16384) only when the
-# GPU has KV headroom — the raised window costs VRAM on the P40.
-NUM_CTX = int(os.environ.get("JURIS_KAI_NUM_CTX", "0") or 0)
 # Keep whichever model just answered resident between sparse calls. Without an
 # explicit keep_alive ollama unloads a model after its default 5-min idle; a
 # cold 30B reload is ~50s. This also keeps the routed small model warm so the
 # routing win is not paid back on every idle gap.
 KEEP_ALIVE = os.environ.get("JURIS_KAI_KEEP_ALIVE", "30m")
-
-
-# ---------------------------------------------------------------------------
-# VM112 CPU failover (judge pass + quick legal_research only)
-# ---------------------------------------------------------------------------
-
-# If VM104 (the P40 Ollama host behind the tunnel) is unreachable at connect
-# time, judge / quick legal_research calls may retry ONCE against the VM112
-# llama.cpp server's OpenAI-compatible endpoint instead of degrading the whole
-# deep answer to retrieval-only. Gated on the environment (opt-in per
-# deployment) and failover failure always degrades to the pre-existing path.
-import urllib.request
-
-FAILOVER_ENABLED = os.environ.get("JURIS_KAI_CPU_FAILOVER", "0") == "1"
-FAILOVER_URL = os.environ.get(
-    "JURIS_KAI_FAILOVER_URL", "http://192.168.1.242:5001").rstrip("/")
-FAILOVER_MODEL = os.environ.get(
-    "JURIS_KAI_FAILOVER_MODEL",
-    "/opt/kai-cpu-models/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf")
-FAILOVER_CONNECT_TIMEOUT = float(
-    os.environ.get("JURIS_KAI_FAILOVER_CONNECT_TIMEOUT", "3"))
-FAILOVER_LABEL = "failover:llama_cpu"
-
-
-def _is_connect_kind(exc) -> bool:
-    """True for failures that look like connect-time (not mid-stream) errors."""
-    return (isinstance(exc, requests.exceptions.ConnectTimeout)
-            or isinstance(exc, requests.exceptions.ConnectionError)
-            or "connection" in str(exc).lower()
-            or "timed out" in str(exc).lower())
-
-
-def _failover_generate(prompt: str, task_type: str, reasoning: bool,
-                       read_timeout: float):
-    """One-attempt OpenAI-shaped chat completion against the VM112 endpoint.
-
-    Returns (ok, text). Never raises; returns (False, "") on ANY failure.
-    """
-    payload = {
-        "model": FAILOVER_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": budget_for(task_type),
-        "temperature": TEMP_REASONING if reasoning else TEMPERATURE,
-    }
-    req = urllib.request.Request(
-        f"{FAILOVER_URL}/v1/chat/completions",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"})
-    try:
-        resp = urllib.request.urlopen(
-            req, timeout=(FAILOVER_CONNECT_TIMEOUT, read_timeout))
-    except Exception as exc:  # noqa: BLE001 - failover must never crash
-        logger.warning("cpu failover attempt failed: %s", exc)
-        return (False, "")
-    try:
-        body = json.loads(resp.read())
-        content = (((body.get("choices") or [{}])[0].get("message") or {})
-                   .get("content") or "")
-        return (bool(content), content)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("cpu failover response unparsable: %s", exc)
-        return (False, "")
 
 
 class StreamGuardAbort(RuntimeError):
@@ -190,27 +119,19 @@ def _guard_final(text: str, source: str) -> str:
 # Raw transport
 # ---------------------------------------------------------------------------
 
-def _build_options(task_type: str, reasoning: bool) -> dict:
-    """Per-task ollama options (temperature, budget, optional num_ctx)."""
-    options = {
-        "temperature": TEMP_REASONING if reasoning else TEMPERATURE,
-        "top_p": 0.9,
-        "num_predict": budget_for(task_type),
-    }
-    if NUM_CTX > 0:
-        options["num_ctx"] = NUM_CTX
-    return options
-
-
 def _raw_stream_chat(prompt: str, model: str, read_timeout: float,
-                     task_type: str, reasoning: bool = False):
+                     task_type: str):
     """Yield incremental text chunks straight from the local model."""
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": True,
         "keep_alive": KEEP_ALIVE,
-        "options": _build_options(task_type, reasoning),
+        "options": {
+            "temperature": TEMPERATURE,
+            "top_p": 0.9,
+            "num_predict": budget_for(task_type),
+        },
     }
     with requests.post(f"{OLLAMA_URL}/api/chat", json=payload, stream=True,
                        timeout=(CONNECT_TIMEOUT, read_timeout)) as resp:
@@ -247,8 +168,7 @@ def select_route(prompt: str, task_type: str = "legal_research",
 def stream_chat(prompt: str, task_type: str = "legal_research",
                 model: str | None = None, timeout: float | None = None,
                 guard: bool = True, source: str = "juris_kai_stream",
-                query: str | None = None, deep: bool = False,
-                reasoning: bool = False):
+                query: str | None = None, deep: bool = False):
     """Yield incremental text chunks from the local model.
 
     When ``model`` is not pinned, a zero-call complexity heuristic picks the
@@ -285,18 +205,13 @@ def stream_chat(prompt: str, task_type: str = "legal_research",
         fallback = _routing.strong_model()
 
     attempts = [model] + ([fallback] if fallback else [])
-    failover_ok = (
-        FAILOVER_ENABLED
-        and (task_type == "judge"
-             or (task_type == "legal_research" and not deep)))
     last_exc = None
-    primary_succeeded = False
     for attempt_index, attempt_model in enumerate(attempts):
         acc = ""
         yielded = False
         try:
             for piece in _raw_stream_chat(prompt, attempt_model, read_timeout,
-                                          task_type, reasoning=reasoning):
+                                          task_type):
                 yielded = True
                 if guard_prefix is None:
                     yield piece
@@ -306,35 +221,16 @@ def stream_chat(prompt: str, task_type: str = "legal_research",
                 if verdict.get("abort"):
                     raise StreamGuardAbort(verdict.get("markers"), source)
                 yield piece
-            primary_succeeded = True
             return
         except StreamGuardAbort:
             raise
         except Exception as exc:  # noqa: BLE001 - retry on strong, else bubble
             last_exc = exc
-            if yielded:
+            if yielded or attempt_index + 1 >= len(attempts):
                 raise
-            if attempt_index + 1 < len(attempts):
-                logger.warning(
-                    "small model %s failed before any output (%s); "
-                    "retrying on %s",
-                    attempt_model, exc, attempts[attempt_index + 1])
-                continue
-            break  # all attempts exhausted; cpu failover decides below
-    if last_exc is not None and not primary_succeeded and failover_ok:
-        if _is_connect_kind(last_exc):
-            ok, text = _failover_generate(prompt, task_type, reasoning,
-                                          read_timeout)
-            if ok:
-                logger.warning(
-                    "primary LLM unreachable (%s); served via cpu failover",
-                    last_exc)
-                yield f"[{FAILOVER_LABEL}] {text}"
-                return
-        # Failover attempted and failed (or error not connect-shaped): degrade
-        # silently -- never crash, never guess.
-        logger.warning("cpu failover unavailable for %s; degrading", last_exc)
-        return
+            logger.warning(
+                "small model %s failed before any output (%s); retrying on %s",
+                attempt_model, exc, attempts[attempt_index + 1])
     if last_exc is not None:  # pragma: no cover - defensive
         raise last_exc
 
@@ -353,13 +249,12 @@ def collect(chunks, source: str = "juris_kai_stream", guard: bool = True) -> str
 def generate(prompt: str, task_type: str = "legal_research",
              model: str | None = None, timeout: float | None = None,
              guard: bool = True, source: str = "juris_kai_stream",
-             query: str | None = None, deep: bool = False,
-             reasoning: bool = False) -> str:
+             query: str | None = None, deep: bool = False) -> str:
     """Non-streamed local generation (same model/options as stream_chat).
 
     Used for latency comparisons and the Command Center test-query box.
     """
     return collect(stream_chat(prompt, task_type=task_type, model=model,
                                timeout=timeout, guard=guard, source=source,
-                               query=query, deep=deep, reasoning=reasoning),
+                               query=query, deep=deep),
                    source=source, guard=guard)

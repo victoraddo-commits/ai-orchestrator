@@ -11,6 +11,8 @@ assistant boundary.
 import json
 import os
 import sqlite3
+import time
+import threading
 import uuid
 import hashlib
 import secrets
@@ -398,11 +400,30 @@ class AccountManager:
     """Manages multi-tenant Juris Kai accounts."""
 
     def __init__(self):
-        self.db = _get_db()
+        # Per-thread connections: sharing one sqlite3 connection across
+        # threads lets concurrent transactions interleave/rollback each
+        # other (get_or_create returned None under 20-user concurrency).
+        self._local = threading.local()
         # Remember which path this manager was built for so a stale singleton
         # can be detected and rebuilt when DB_PATH changes (test isolation, or
         # an operator repointing the DB).
         self._db_path = DB_PATH
+
+    @property
+    def db(self) -> sqlite3.Connection:
+        """Connection bound to the current thread (WAL + busy_timeout)."""
+        conn = getattr(self._local, "conn", None)
+        path = DB_PATH
+        if conn is None or getattr(self._local, "path", None) != path:
+            if conn is not None:
+                try:
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+            conn = _get_db()
+            self._local.conn = conn
+            self._local.path = path
+        return conn
 
     # ---- Account CRUD ----
 
@@ -424,14 +445,21 @@ class AccountManager:
         now = datetime.now(timezone.utc).isoformat()
         trial_end = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
 
-        self.db.execute(
-            """INSERT INTO juris_accounts
-               (account_id, telegram_id, full_name, subscription_tier,
-                subscription_start, subscription_end, created_at, updated_at)
-               VALUES (?, ?, ?, 'free_trial', ?, ?, ?, ?)""",
-            (account_id, str(telegram_id), full_name, now, trial_end, now, now),
-        )
-        self.db.commit()
+        for attempt in range(3):
+            try:
+                self.db.execute(
+                    """INSERT INTO juris_accounts
+                       (account_id, telegram_id, full_name, subscription_tier,
+                        subscription_start, subscription_end, created_at, updated_at)
+                       VALUES (?, ?, ?, 'free_trial', ?, ?, ?, ?)""",
+                    (account_id, str(telegram_id), full_name, now, trial_end, now, now),
+                )
+                self.db.commit()
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 2:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
         logger.info(f"New Juris Kai account: {account_id} for telegram_id={telegram_id}")
         result = self.get_account(account_id)

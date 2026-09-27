@@ -763,11 +763,18 @@ def test_last_user_tokens_bails_when_no_user_turn():
 
 
 def test_standalone_query_ignores_context(monkeypatch):
+    # A standalone query must not borrow tokens from the prior turn. The
+    # citation stage (stage 0) resolves a bare instrument first, so capture
+    # whatever retrieval entry point is used and assert on its query.
     seen = []
     monkeypatch.setattr(grounding, "_search",
                         lambda query, limit=3, mode="or": seen.append(query) or [])
+    monkeypatch.setattr(grounding, "_citation_stage",
+                        lambda query, limit, commercial=False: (
+                            seen.append(query) or None))
     grounding.retrieve("Criminal Offences Act 1960",
                        context="User: Contracts Act 1975")
+    assert seen, "retrieval must be invoked"
     toks = seen[0].lower().split()
     assert "contracts" not in toks
 
@@ -825,3 +832,20 @@ def test_footer_truncates_very_long_amendment_list():
     assert len(out) < 600
     assert "[AMENDED]" in out
 
+
+
+def test_relevance_window_centers_on_rarest_token():
+    # "constitution" peppers the document head; "article 14" occurs once, deep
+    # in the body. Earliest-token centring parked the window on "constitution";
+    # rarest-token centring must land near "article 14".
+    body = ("constitution " * 40 + "A" * 2000 + " article 14 subsection 2 "
+            + "B" * 2000)
+    out = grounding._relevance_window(body, "constitution article 14", 1200)
+    assert "article 14" in out
+
+
+def test_relevance_window_rarest_tiebreak_by_position():
+    # Equal document frequency (1 occurrence each) -> earliest position wins.
+    body = "alpha once here " + "X" * 2000 + " beta once there"
+    out = grounding._relevance_window(body, "alpha beta", 400)
+    assert "alpha" in out

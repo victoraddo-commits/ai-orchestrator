@@ -48,22 +48,9 @@ def pass_task_type(pass_name: str, fast: bool = False) -> str:
     return table[pass_name]
 
 
-# Hard budget for the whole SOURCES block across a prompt. Without it a large
-# judge prompt (all advocate + opponent docs) can overflow the 8k-token context
-# and ollama silently truncates the sources the judge must ground on.
-MAX_SOURCES_TOTAL_CHARS = 14000
-
-
 def _sources_block(docs: list) -> str:
-    """Fenced, neutralized list of retrieved sources (never citable otherwise).
-
-    Each chunk is still capped at ``MAX_CHUNK_LENGTH`` chars, and the whole
-    block is capped at ``MAX_SOURCES_TOTAL_CHARS`` cumulative chars: appending
-    stops as soon as the budget is filled so the SOURCES block can never blow
-    the model's context window.
-    """
+    """Fenced, neutralized list of retrieved sources (never citable otherwise)."""
     lines = []
-    total = 0
     for i, d in enumerate(docs or [], 1):
         title = (d.get("title") or "Untitled").strip()
         citation = (d.get("citation") or "").strip()
@@ -73,13 +60,7 @@ def _sources_block(docs: list) -> str:
         chunk = (d.get("chunk_content") or "")[:MAX_CHUNK_LENGTH]
         chunk = chunk.replace("<<<USER_CONTENT>>>", "[fence marker removed]")
         chunk = chunk.replace("<<<END_USER_CONTENT>>>", "[fence marker removed]")
-        block = f"{label}\n{fence_user_content(neutralize(chunk))}"
-        if total >= MAX_SOURCES_TOTAL_CHARS:
-            break
-        budget = MAX_SOURCES_TOTAL_CHARS - total
-        limited = block if len(block) <= budget else block[:budget]
-        lines.append(limited)
-        total += len(limited)
+        lines.append(f"{label}\n{fence_user_content(neutralize(chunk))}")
     return "\n\n".join(lines)
 
 

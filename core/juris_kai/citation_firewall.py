@@ -17,6 +17,7 @@ rather than crash a legal reply.
 from __future__ import annotations
 
 import logging
+import re
 
 logger = logging.getLogger("juris_kai.citation_firewall")
 
@@ -91,6 +92,16 @@ def apply_citation_firewall(answer: str, verifier=None, marker: str = UNVERIFIED
     text = answer or ""
     if not text.strip():
         return {"text": text, "report": {}, "changed": False, "error": None}
+
+    # Idempotency: the cache may replay an already-annotated answer. Strip the
+    # markers this module inserted previously so verification and annotation
+    # always run on marker-free text (no double "[status unknown]" notes).
+    prior_markers = [
+        re.escape(UNVERIFIED_MARKER),
+        re.escape(REPEALED_MARKER),
+        r"\s*" + re.escape(UNKNOWN_NOTE.strip()),
+    ]
+    text = re.sub("|".join(prior_markers), "", text)
 
     verify = verifier or _default_verifier
     try:

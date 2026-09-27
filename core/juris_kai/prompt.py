@@ -269,14 +269,21 @@ def build_grounded_prompt(task_type: str, content: str, verdict: str,
             "article that is not in them. The sources only partially cover this "
             "question: mark any point that the sources do not directly support "
             "as general or unverified, and say so plainly if they do not answer "
-            "it. Quote the source text briefly to support each point."
+            "it. Quote the source text briefly to support each point. When you "
+            "name an Article, section, or Act number, copy the number EXACTLY "
+            "from the source text; if the number is not visible in the sources, "
+            "say 'the exact provision number could not be determined from the "
+            "sources' — NEVER guess a number."
         )
     else:
         strict = (
             "Cite ONLY the sources below. Do not mention any statute, case, or "
             "article that is not in them. If the sources do not answer the "
             "question, say so plainly. Quote the source text briefly to support "
-            "each point."
+            "each point. When you name an Article, section, or Act number, copy "
+            "the number EXACTLY from the source text; if the number is not "
+            "visible in the sources, say 'the exact provision number could not "
+            "be determined from the sources' — NEVER guess a number."
         )
 
     return (

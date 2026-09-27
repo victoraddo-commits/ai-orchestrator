@@ -210,12 +210,8 @@ def _relevance_window(content: str, query: str, width: int) -> str:
     A full-tier document's stored body can be large (an Act's front matter, a
     long judgment); truncating from the head can miss the very section the query
     is about (e.g. "rape" deep in the Criminal Offences Act). When a query token
-    occurs in the body, centre the window on the RAREST token (fewest
-    occurrences in this document: a word like "constitution" can pepper the
-    whole Act while "section 14" sits in one place, so earliest-token centring
-    parks the window in the wrong section), tie-breaking by earliest position
-    (with a small lead-in so the hit is visible); otherwise fall back to the
-    head.
+    occurs in the body, centre the window on its first occurrence (with a small
+    lead-in so the hit is visible); otherwise fall back to the head.
     """
     text = content or ""
     if not text:
@@ -224,17 +220,13 @@ def _relevance_window(content: str, query: str, width: int) -> str:
     if not tokens:
         return text[:width]
     low = text.lower()
-    best = None  # (doc_freq, first_pos): rarest wins, position breaks ties
+    pos = -1
     for tok in tokens:
-        pos = low.find(tok)
-        if pos == -1:
-            continue
-        cand = (low.count(tok), pos)
-        if best is None or cand < best:
-            best = cand
-    if best is None:
+        i = low.find(tok)
+        if i != -1 and (pos == -1 or i < pos):
+            pos = i
+    if pos == -1:
         return text[:width]
-    pos = best[1]
     lead = min(pos, width // 4)
     start = pos - lead
     return text[start:start + width]
@@ -453,137 +445,7 @@ def _is_on_topic(docs: list[dict], tokens: list[str]):
     return False if judged else None
 
 
-_BARE_NUMBER_RE = re.compile(r"^\s*(?:act\s*)?(\d{1,5})\s*$", re.I)
-
-
-def _bare_number(query: str):
-    """Return the instrument number for a bare number like "992", else None."""
-    m = _BARE_NUMBER_RE.match((query or "").strip())
-    return int(m.group(1)) if m else None
-
-
-_CITATION_RE = re.compile(
-    r"^\s*(?:the\s+)?(?:article|act|p\.?n\.?d\.?c\.?l|n\.?r\.?c\.?d|"
-    r"l\.?\s*i|c\.?\s*i|e\.?\s*i|n\.?l\.?c\.?d?|s\.?m\.?c|a\.?f\.?r\.?c\.?d)"
-    r"\s*(?:no\.?\s*)?\d{1,5}\s*$", re.I)
-
-
-def _looks_like_citation(query: str) -> bool:
-    """True when the query is essentially just a legal citation.
-
-    Guards the lookup stage so a real question containing "act" is not treated
-    as a citation. Also accepts "<Name> Act <N>" shapes such as
-    "Companies Act 992".
-    """
-    q = (query or "").strip()
-    if not q or len(q) > 60:
-        return False
-    # a bare number ("992", "Act 992") is a citation the user may only know
-    if _bare_number(q) is not None:
-        return True
-    if _CITATION_RE.match(q):
-        return True
-    return bool(re.search(
-        r"\b(act|p\.?n\.?d\.?c\.?l|n\.?r\.?c\.?d|l\.?\s*i|c\.?\s*i)\s*"
-        r"(?:no\.?\s*)?\d{1,5}\b", q, re.I)) and len(q.split()) <= 5
-
-
-def _citation_stage(query: str, limit: int, commercial: bool = False):
-    """Authoritative exact-citation lookup, or ``None`` if not a citation.
-
-    Returns a retrieval dict (``docs`` + ``verdict`` + ``stage``) on a
-    resolution, an ``ambiguous`` clarification request when the citation matches
-    several distinct documents, or ``None`` to let normal search proceed.
-    """
-    # A bare number ("992") is how a user who only knows the number asks. Try
-    # an Act lookup for it so they get results/options instead of nothing.
-    lookup_query = query
-    bare = _bare_number(query)
-    if bare is not None:
-        lookup_query = f"Act {bare}"
-    try:
-        from core import legal_brain_client as lb
-        hits = (lb.search(lookup_query, limit=max(8, limit), mode="or",
-                          commercial=True) if commercial
-                else lb.search(lookup_query, limit=max(8, limit), mode="or")) or []
-    except Exception as exc:  # noqa: BLE001 - never crash retrieval
-        logger.warning("grounding: citation lookup failed for %r: %s", query, exc)
-        return None
-    if not hits:
-        return None
-    # For a bare number, offer EVERY plausible instrument as options so the
-    # user can narrow down; do not silently pick.
-    if bare is not None:
-        def _nametitle(t):
-            t = (t or "").lower()
-            t = re.sub(r"[^a-z ]+", " ", t)
-            for junk in ("act", "no", "revised", "edition", "consolidated",
-                         "as", "amended", "instrument", "of", "the"):
-                t = re.sub(rf"\b{junk}\b", " ", t)
-            return re.sub(r"\s+", " ", t).strip()
-
-        opts = []
-        bytitle = {}
-        for h in hits:
-            title = str(h.get("title") or "")
-            if not re.search(rf"\b{re.escape(str(bare))}\b", title):
-                continue
-            key = _nametitle(title)
-            cur = bytitle.get(key)
-            # keep the content-rich copy for the option list
-            if cur is None or (h.get("store_mode") == "full"
-                               and cur.get("store_mode") != "full"):
-                bytitle[key] = h
-        for h in bytitle.values():
-            opts.append({"id": h.get("id"), "title": h.get("title") or "",
-                         "citation": h.get("citation") or "",
-                         "store_mode": h.get("store_mode") or ""})
-        if len(opts) > 1:
-            return {
-                "docs": [], "verdict": "NEEDS_CLARIFICATION", "stage": 0,
-                "clarification": {
-                    "question": (f"I found {len(opts)} documents matching "
-                                 f"'{bare}'. Which one do you mean?"),
-                    "options": opts[:10],
-                },
-            }
-        if len(opts) == 1:
-            docs = _hydrate_all([hits[0]], query, commercial=commercial)
-            usable = _usable(docs) or docs
-            if usable:
-                return {"docs": usable, "verdict": "GROUNDED", "stage": 0,
-                        "citation": str(hits[0].get("citation") or "")}
-    # Only trust results the brain tagged as an exact instrument/article match.
-    cited = [h for h in hits if str(h.get("match_strategy") or "").startswith(
-        ("instrument:", "article", "citation"))]
-    if not cited:
-        return None
-    dis = cited[0].get("disambiguation")
-    if dis and dis.get("count", 0) > 1:
-        return {
-            "docs": [], "verdict": "NEEDS_CLARIFICATION", "stage": 0,
-            "clarification": {
-                "question": dis.get("question"),
-                "options": dis.get("options") or [],
-            },
-        }
-    docs = _hydrate_all(cited[:limit], query, commercial=commercial)
-    usable = _usable(docs) or docs
-    if not usable:
-        return None
-    return {"docs": usable, "verdict": "GROUNDED", "stage": 0,
-            "citation": str(cited[0].get("citation") or "")}
-
-
-def _hydrate_all(docs, query, commercial=False):
-    """Hydrate a list of hits (mirrors ``_stage``'s hydration step)."""
-    try:
-        return [_hydrate(d, query, commercial=commercial) for d in docs]
-    except Exception:  # noqa: BLE001
-        return docs
-
-
-def retrieve(query: str, limit: int = 8, context: str = "",
+def retrieve(query: str, limit: int = 3, context: str = "",
              commercial: bool = False) -> dict:
     """Progressive retrieval. Returns {docs, verdict, stage}.
 
@@ -610,17 +472,6 @@ def retrieve(query: str, limit: int = 8, context: str = "",
     tokens = significant_tokens(q)
     if not tokens:
         return {"docs": [], "verdict": "UNGROUNDED", "stage": 0}
-
-    # Stage 0 (authoritative): exact-citation lookup.
-    # A bare citation ("Act 992", "Article 24", "L.I. 2377") is a LOOKUP, not a
-    # search: BM25 favours short stubs, so the real Act can rank #63 of 924 and
-    # never surface. Ask the corpus directly. This also surfaces ambiguity so
-    # Juris Kai can ask which document is meant instead of refusing.
-    cite = _citation_stage(query if _looks_like_citation(query) else q,
-                           limit, commercial=commercial)
-    if cite is not None:
-        return cite
-
     q = " ".join(tokens)
 
     # Stage 1 (primary): authority-aware hybrid retrieval.
@@ -820,25 +671,9 @@ def build_grounded_plan(query: str, task_type: str = "juris_research",
             result = retrieve(q, **extra)
         verdict = result["verdict"]
         docs = result["docs"]
-        clarification = result.get("clarification")
     except Exception as exc:  # noqa: BLE001 - fail closed, never answer ungrounded
         logger.warning("grounding plan retrieval failed (fail closed): %s", exc)
-        verdict, docs, clarification = "UNGROUNDED", [], None
-
-    # An exact citation that matches several distinct documents is NOT a
-    # failure: ask the user which one they mean instead of refusing.
-    if verdict == "NEEDS_CLARIFICATION" and clarification:
-        opts = clarification.get("options") or []
-        lines = [clarification.get("question") or "Which document do you mean?"]
-        for i, o in enumerate(opts, 1):
-            label = o.get("citation") or o.get("title") or f"document {o.get('id')}"
-            lines.append(f"  {i}. {label}")
-        lines.append("Reply with the number.")
-        return {"groundable": False, "out_of_scope": False,
-                "verdict": "NEEDS_CLARIFICATION", "docs": [],
-                "prompt": "", "banner": "", "footer": "", "source_key": "",
-                "refusal": "\n".join(lines),
-                "clarification_options": opts}
+        verdict, docs = "UNGROUNDED", []
 
     if verdict == "UNGROUNDED" or not docs:
         maybe_record_gap(q, "UNGROUNDED", [], asker=asker)

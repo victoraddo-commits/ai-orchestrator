@@ -54,10 +54,6 @@ CONTRARY_TERMS = (
 
 _MAX_PROPOSITIONS = 8
 
-# Cap on the adverse-authority union passed to the opponent pass: keep the
-# top-N most relevant (lowest ``bm25_rank``) hits, deduped.
-MAX_CONTRARY_DOCS = 5
-
 # Advocate and opponent depend only on retrieval (not on each other), so they
 # run concurrently on a two-thread pool; the judge waits for both. The alias is
 # a seam so tests can force the sequential fallback.
@@ -81,15 +77,13 @@ def _generate(prompt: str, task_type: str) -> str:
     to look short.
     """
     from core.juris_kai import streaming
-    return streaming.generate(prompt, task_type=task_type, deep=True,
-                              reasoning=True)
+    return streaming.generate(prompt, task_type=task_type, deep=True)
 
 
 def _stream_generate(prompt: str, task_type: str):
     """Local-only streaming seam; yields incremental text chunks (30B-pinned)."""
     from core.juris_kai import streaming
-    return streaming.stream_chat(prompt, task_type=task_type, deep=True,
-                                 reasoning=True)
+    return streaming.stream_chat(prompt, task_type=task_type, deep=True)
 
 
 def _noop_generate(prompt: str, task_type: str) -> str:
@@ -196,12 +190,7 @@ def _extract_propositions(text: str) -> list:
 
 
 def _retrieve_contrary(query: str, docs: list) -> list:
-    """Actively retrieve adverse authority via the existing retrieval client.
-
-    The union is capped at the ``MAX_CONTRARY_DOCS`` highest-ranked hits
-    (``bm25_rank``) so a broad contrary sweep cannot flood the opponent pass's
-    SOURCES block and starve the model's context.
-    """
+    """Actively retrieve adverse authority via the existing retrieval client."""
     have = {_doc_key(d) for d in docs or []}
     out = []
     for term in CONTRARY_TERMS:
@@ -215,9 +204,7 @@ def _retrieve_contrary(query: str, docs: list) -> list:
             if key not in have:
                 have.add(key)
                 out.append(hit)
-    out.sort(key=lambda d: (d.get("bm25_rank") is None,
-                            d.get("bm25_rank") or 0))
-    return out[:MAX_CONTRARY_DOCS]
+    return out
 
 
 def _find_contrary_spans(docs: list) -> list:

@@ -419,7 +419,10 @@ def is_admin(telegram_id: str) -> bool:
 # With deepseek_native_flash as primary + max_tokens=2048, responses
 # typically arrive in 15-30s. 45s gives headroom without blocking the
 # polling loop for too long.
-DELEGATE_TIMEOUT = 45
+# 45s covers the GPU path comfortably; when VM104 is down the chain walks
+# to the CPU node which needs 40-60s for grounded prompts, so allow the
+# operator-configured deep timeout to raise the bound instead of failing.
+DELEGATE_TIMEOUT = max(45, int(os.environ.get("JURIS_KAI_DEEP_TIMEOUT", "45")))
 
 # ---------------------------------------------------------------------------
 # Request isolation — no shared mutable state across users

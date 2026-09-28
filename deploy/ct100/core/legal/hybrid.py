@@ -24,13 +24,34 @@ Retrieval must **never fail**: a missing, empty or erroring dense index
 degrades to BM25-only, and vice-versa. The query router (T5) chooses the BM25
 mode / RRF weights per intent and supplies the additive expansion used for the
 dense query; the original query is never mutated.
+
+**Dual dense-source fusion** (env ``JURIS_KAI_DENSE_FUSION``): the legacy
+1100-char window index (SQLite) and the pgvector structure-chunk index see
+different chunk granularities of the same corpus, so fusing BOTH dense lists
+alongside BM25 reinforces documents that match in either space while a
+structure chunk that lost context in the pgvector list can still be carried
+by its legacy-window twin. Values:
+
+- ``both``      — fuse ``[bm25, legacy_dense, pg_dense]`` with weights
+  ``[bm25_w, dense_w, dense_w * DENSE_SECONDARY_WEIGHT]``;
+- ``pgvector`` / ``sqlite`` (or unset) — single-source fusion, i.e. today's
+  two-list behaviour (default follows ``JURIS_KAI_DENSE_BACKEND``).
+
+The companion index is built lazily from ``storage`` and cached per
+``(kind, db_path)``; every dense call stays fail-safe, so a dead companion
+silently degrades to single-source fusion.
 """
 from __future__ import annotations
 
 import math
+import os
+import threading
 
 from core.legal import ranking
 from core.legal.query_router import route_query
+
+DENSE_FUSION_ENV = "JURIS_KAI_DENSE_FUSION"
+DENSE_SECONDARY_WEIGHT = 0.9
 
 DEFAULT_RRF_K = 60
 DEFAULT_BM25_LIMIT = 150
@@ -140,6 +161,78 @@ def _safe_dense(embed_index, query, limit):
         return []
 
 
+def dense_fusion_mode(override: str = None) -> str:
+    """Resolve the dual-source fusion mode.
+
+    ``both`` fuses both dense lists; ``pgvector``/``sqlite`` (or unknown)
+    keep today's single-source behaviour. Unset follows
+    ``JURIS_KAI_DENSE_BACKEND`` so the drop-in switch keeps working unchanged.
+    """
+    fused = (os.environ.get(DENSE_FUSION_ENV, "").strip().lower()
+             if (override or "") == "" else override.strip().lower())
+    if fused == "both":
+        return "both"
+    return "single"
+
+
+def _is_pg_provider(index) -> bool:
+    return type(index).__name__ == "PgVectorDense"
+
+
+_COMPANION_LOCK = threading.Lock()
+_COMPANION: dict = {}
+
+
+def _companion_index(embed_index, storage):
+    """The OTHER dense source for dual-source fusion, cached per storage.
+
+    A PgVectorDense primary gets a legacy :class:`EmbeddingIndex` companion
+    and vice-versa; the companion is built lazily (construction is cheap:
+    the ANN snapshot is cached module-wide and pg connects on first use) and
+    cached in ``_COMPANION`` keyed by ``(kind, db_path)`` so connection
+    persistence and caches survive across requests. Any failure returns None
+    and retrieval silently degrades to single-source.
+    """
+    if storage is None or embed_index is None:
+        return None
+    kind = "pg" if _is_pg_provider(embed_index) else "legacy"
+    key = (kind, getattr(storage, "db_path", None) or id(storage))
+    with _COMPANION_LOCK:
+        idx = _COMPANION.get(key)
+        if idx is not None:
+            return idx
+        try:
+            if kind == "pg":
+                from core.legal.pg_dense import PgVectorDense
+                idx = PgVectorDense(storage=storage)
+            else:
+                from core.legal.embeddings import EmbeddingIndex
+                idx = EmbeddingIndex(storage)
+        except Exception:  # noqa: BLE001 - companion is optional
+            return None
+        _COMPANION[key] = idx
+        return idx
+
+
+def _merge_dense_agg(rows_by_list) -> dict:
+    """Merge per-source passage aggregations into one ``document_id`` map.
+
+    A document seen by several dense sources keeps the aggregation with the
+    higher passage score (its strongest evidence), which also feeds
+    ``_doc_view``/snippet selection exactly like the single-source path.
+    """
+    merged: dict = {}
+    for rows in rows_by_list:
+        for row in rows:
+            doc_id = row["document_id"]
+            current = merged.get(doc_id)
+            if (current is None
+                    or float(row["passage_score"]) > float(
+                        current["passage_score"])):
+                merged[doc_id] = row
+    return merged
+
+
 def _aggregate_passages(dense_hits):
     """Collapse chunk-level dense hits into one row per document.
 
@@ -233,13 +326,19 @@ def _safe_meta(meta_fn, doc_id):
 def hybrid_search(query: str, limit: int = 10, *, storage=None,
                   embed_index=None, bm25_limit=None, dense_limit=None,
                   rrf_k: int = DEFAULT_RRF_K, use_router: bool = True,
-                  meta_fn=None, commercial: bool = False) -> list:
+                  meta_fn=None, commercial: bool = False,
+                  fusion: str = None) -> list:
     """Fuse BM25 + dense hits into one authority-aware ranked list.
 
     Dense ranking happens per **passage**: a document's dense list position is
     its best chunk score boosted by how many chunks match near it, so a
     one-off keyword hit inside a large unrelated Act cannot outrank an Act
     that treats the query throughout.
+
+    With dual-source fusion (``JURIS_KAI_DENSE_FUSION=both``, or the
+    ``fusion`` override), the legacy window index AND the pgvector
+    structure-chunk index both contribute a dense list to the RRF fusion; see
+    the module docstring.
 
     Returns results with ``{doc_id, title, snippet, store_mode, citation, type,
     year, authority_level, authority_score, bm25_rank, dense_sim,
@@ -258,24 +357,54 @@ def hybrid_search(query: str, limit: int = 10, *, storage=None,
     bm25_rows, bm25_mode_used = _safe_bm25(
         storage, bm25_query, bm25_limit or DEFAULT_BM25_LIMIT, bm25_mode,
         commercial=commercial)
-    dense_hits = _safe_dense(embed_index, expanded,
-                             dense_limit or DEFAULT_DENSE_LIMIT)
+
+    # Dual-source fusion: when enabled, the primary dense provider runs at
+    # ~2x dense_limit (passage aggregation wants chunk coverage, and both
+    # sources pay for it in rank position, not latency) and the companion
+    # index contributes a second dense list fused at a 0.9-damped weight.
+    dual = dense_fusion_mode(fusion) == "both"
+    fusion_fetch = (dense_limit or DEFAULT_DENSE_LIMIT) * 2 if dual else (
+        dense_limit or DEFAULT_DENSE_LIMIT)
+    dense_hits = _safe_dense(embed_index, expanded, fusion_fetch)
+    companion = _companion_index(embed_index, storage) if dual else None
+    companion_hits = (_safe_dense(companion, expanded, fusion_fetch)
+                      if companion is not None else [])
     if commercial:
-        # The dense index is not rights-filtered; drop any hit the commercial
-        # gate would not serve so RRF can never surface a non-commercial doc.
+        # The dense indexes are not rights-filtered; drop any hit the
+        # commercial gate would not serve so RRF can never surface a
+        # non-commercial doc.
         dense_hits = [h for h in dense_hits
                       if _commercial_allowed(storage, h.get("document_id"))]
+        companion_hits = [h for h in companion_hits
+                          if _commercial_allowed(storage, h.get("document_id"))]
 
     bm25_ids = _ids(bm25_rows, "id")
     dense_doc_rows = _aggregate_passages(dense_hits)
+    companion_doc_rows = (_aggregate_passages(companion_hits)
+                          if dual and companion is not None else [])
+    # The PRIMARY dense list feeds RRF with its own docs only; the merged
+    # aggregation (primary wins on equal/greater passage score) is used for
+    # the doc view / snippet / dense stats below.
     dense_ids = [row["document_id"] for row in dense_doc_rows]
-    if not bm25_ids and not dense_ids:
+    dense_agg_by_id = _merge_dense_agg([dense_doc_rows, companion_doc_rows])
+    if not bm25_ids and not dense_agg_by_id:
         return []
 
-    ordered, ranks = rrf_fuse([bm25_ids, dense_ids], k=rrf_k, weights=weights)
+    if dual and companion_doc_rows:
+        # Primary source keeps the full dense weight; the companion list is
+        # fused damped so neither dense space dominates the fusion.
+        ordered, ranks = rrf_fuse(
+            [bm25_ids,
+             [r["document_id"] for r in companion_doc_rows],
+             dense_ids],
+            k=rrf_k,
+            weights=[weights[0], weights[1] * DENSE_SECONDARY_WEIGHT,
+                     weights[1]])
+    else:
+        ordered, ranks = rrf_fuse([bm25_ids, dense_ids], k=rrf_k,
+                                  weights=weights)
     pool = max(limit, DEFAULT_RANK_POOL)
     bm25_by_id = _first_by(bm25_rows, "id")
-    dense_agg_by_id = {row["document_id"]: row for row in dense_doc_rows}
     if meta_fn is None:
         meta_fn = _default_meta_fn(storage)
 

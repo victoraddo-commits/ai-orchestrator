@@ -1,0 +1,12 @@
+[Unit]
+Description=Kai juris nightly golden eval (fast tier, limit-per-cat 2) + regression alert
+Documentation=file:/opt/ai-orchestrator/scripts/juris_nightly_eval.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/ai-orchestrator
+ExecStart=/opt/ai-orchestrator/scripts/juris_nightly_eval.sh
+TimeoutStartSec=2h

@@ -1,0 +1,14 @@
+[Unit]
+Description=Juris Kai FAQ/generation cache warmer (15 everyday-law questions, real AI)
+Documentation=file:/opt/ai-orchestrator/scripts/juris_warm_cache.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/ai-orchestrator
+ExecStart=/opt/ai-orchestrator/.venv/bin/python /opt/ai-orchestrator/scripts/juris_warm_cache.py
+TimeoutStartSec=15min
+StandardOutput=append:/opt/ai-orchestrator/logs/juris_warm.log
+StandardError=append:/opt/ai-orchestrator/logs/juris_warm.log

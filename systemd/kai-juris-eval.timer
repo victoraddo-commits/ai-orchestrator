@@ -1,0 +1,12 @@
+[Unit]
+Description=Nightly fast-tier juris eval at 04:30 (avoids the 03:30 vzdump window)
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=600
+Persistent=true
+AccuracySec=1min
+Unit=kai-juris-eval.service
+
+[Install]
+WantedBy=timers.target

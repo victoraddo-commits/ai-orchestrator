@@ -4719,6 +4719,18 @@ except Exception as _v_exc:
     _lv.getLogger(__name__).warning('vault broker unavailable: %s', _v_exc)
 
 
+# Universal Account Registration — Command Center API (roadmap STEP 8):
+# onboarding sessions, account registry, provider policy, SMS inbox, human
+# actions. Operator-gated and secret-redacted (core/cc_account_routes.py).
+try:
+    from core.cc_account_routes import cc_account_router as _acct_router
+    app.include_router(_acct_router)
+except Exception as _acct_exc:
+    import logging as _lacct
+    _lacct.getLogger(__name__).warning(
+        'cc_account_routes unavailable: %s', _acct_exc)
+
+
 # ── Backup & Disaster Recovery (roadmap 27E) ───────────────────────
 
 @app.get("/api/backups")

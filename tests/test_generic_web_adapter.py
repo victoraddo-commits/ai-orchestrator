@@ -503,3 +503,49 @@ def test_published_recipe_without_steps_pauses_without_submitting(isolated):
     assert outcome["requires_human"] is True
     assert vault.writes == {}
     assert browser.fills == []
+
+
+# ---------------------------------------------------------------------------
+# M2: a transient transport error must not demote a good published recipe
+# ---------------------------------------------------------------------------
+
+
+class _RaisingBrowser:
+    def perform(self, session_id, op, params=None):
+        raise TimeoutError("browser transport timeout")
+
+
+def test_transient_transport_error_does_not_demote_recipe(isolated):
+    _published_recipe("transient.example")
+    browser = _RaisingBrowser()
+    adapter = GenericWebAdapter("transient.example", browser=browser,
+                                profile=SiteProfile(domain="transient.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-x")
+
+    assert outcome["status"] == "transient_error"
+    assert outcome["requires_human"] is True
+    # the good recipe is NOT demoted
+    assert recipe_store.get_published("transient.example") is not None
+    assert recipe_store.get_recipe("transient.example", status="stale") is None
+
+
+def test_selector_error_still_marks_recipe_stale(monkeypatch, isolated):
+    _patch_identity(monkeypatch)
+    _published_recipe("selector.example")
+    browser = FakeBrowser(fail_selectors={"#email"})
+    learner = RecipeLearner(
+        FixtureReasoningBackend(recipes={"selector.example": {
+            "flow_type": "single_page", "confidence": 0.5,
+            "steps": [{"index": 0, "action": "navigate",
+                       "url": "https://selector.example/signup"}],
+        }}), browser=browser)
+    adapter = GenericWebAdapter("selector.example", browser=browser,
+                                learner=learner,
+                                profile=SiteProfile(domain="selector.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-y",
+                                   identity_id="ident-1")
+
+    assert outcome["status"] == "drift_relearned"
+    assert recipe_store.get_recipe("selector.example", status="stale") is not None

@@ -35,6 +35,17 @@ _PASSWORD_SYMBOLS = "!@#$%^&*-_=+"
 #: engine must pause rather than fill a blank into a real form field.
 _UNRESOLVED = object()
 
+#: Browser/operator error names that mean the element/page is genuinely gone.
+#: These demote a published recipe to ``stale``; every other error is treated
+#: as transient (a transport/timeout blip) and must NOT demote a good recipe.
+_SELECTOR_ERRORS = frozenset({
+    "selector_not_found",
+    "element_not_found",
+    "no_such_element",
+    "target_not_found",
+    "step_failed",
+})
+
 
 def _generate_password(length: int = 20) -> str:
     """A strong password with all character classes (never logged/returned)."""
@@ -218,9 +229,19 @@ class GenericWebAdapter(ProviderAdapter):
                 params["credential"] = True
         try:
             result = self._cli().perform(session_id, step.action, params)
-        except Exception as exc:  # noqa: BLE001 - any operator error is drift
-            return {"ok": False, "error": type(exc).__name__}
+        except Exception as exc:  # noqa: BLE001 - transport blip, not drift
+            return {"ok": False, "error": type(exc).__name__, "transient": True}
         return result if isinstance(result, dict) else {"ok": True}
+
+    @staticmethod
+    def _is_transient_error(result: dict) -> bool:
+        """True when a failed step is a transport blip, not element drift."""
+        if result.get("transient"):
+            return True
+        error = result.get("error")
+        if not error:
+            return False
+        return str(error).lower() not in _SELECTOR_ERRORS
 
     def _learn_and_pause(self, session_id: str, *, reason: str,
                          stale: bool = False) -> dict:
@@ -283,6 +304,15 @@ class GenericWebAdapter(ProviderAdapter):
                             "be resolved (vault/identity/totp); operator action "
                             "required")}
             if result.get("ok") is False:
+                if self._is_transient_error(result):
+                    # A transport/timeout blip: keep the recipe published and
+                    # pause for a retry instead of demoting a good recipe.
+                    return {"status": "transient_error", "requires_human": True,
+                            "retryable": True, "action_type": "OTHER",
+                            "instructions": (
+                                f"transient operator/browser error for "
+                                f"{self._domain}; recipe left published, retry "
+                                "required")}
                 self._store.mark_stale(self._domain)
                 return self._learn_and_pause(
                     session_id,

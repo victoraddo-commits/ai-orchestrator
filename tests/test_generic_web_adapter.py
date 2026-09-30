@@ -431,3 +431,54 @@ def test_generated_username_resolves_to_a_value(isolated):
     filled = dict(browser.fills)
     assert filled.get("#username")
     assert not filled["#username"].isnumeric()
+
+
+# ---------------------------------------------------------------------------
+# I3: a Vault write failure must pause, not silently lose the credential
+# ---------------------------------------------------------------------------
+
+
+class _FlakyVault:
+    def __init__(self):
+        self.writes = {}
+        self.fail = True
+
+    def __call__(self, path, value):
+        if self.fail:
+            return None
+        self.writes[path] = value
+        return path
+
+
+def test_vault_write_failure_pauses_and_retains_password(isolated):
+    _published_steps("vaultfail.example", [
+        RecipeStep(index=0, action="navigate",
+                   url="https://vaultfail.example/signup"),
+        RecipeStep(index=1, action="fill", selector="#password",
+                   value_source="generated_password"),
+    ])
+    browser = _ValueBrowser()
+    vault = _FlakyVault()
+    adapter = GenericWebAdapter("vaultfail.example", browser=browser, vault=vault,
+                                profile=SiteProfile(domain="vaultfail.example"))
+
+    first = adapter.registration(browser_session_id="sess-v1", account_id="acct-v",
+                                 mission_id="mis-v")
+    assert first["status"] == "vault_write_failed"
+    assert first["requires_human"] is True
+    assert first.get("password_ref") is None
+    assert vault.writes == {}
+
+    # Retry (same mission) after the Vault recovers: the SAME generated
+    # password is reused, proving it was not cleared on the failed write.
+    vault.fail = False
+    second = adapter.registration(browser_session_id="sess-v1", account_id="acct-v",
+                                  mission_id="mis-v")
+    ref = "secrets/accounts/vaultfail_example/acct-v"
+    assert second["status"] == "submitted"
+    assert second["password_ref"] == ref
+    assert set(vault.writes) == {ref}
+
+    passwords = [value for selector, value in browser.fills if selector == "#password"]
+    assert len(passwords) == 2
+    assert passwords[0] == passwords[1]

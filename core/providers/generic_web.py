@@ -285,8 +285,16 @@ class GenericWebAdapter(ProviderAdapter):
             path = (vault_reference_for(self._domain, account_id) if account_id
                     else f"secrets/accounts/{self._domain}/{PROVIDER_ACCOUNT_TYPE}")
             password_ref = self._vault_store(path, password)
-            if password_ref is not None:
-                self._pending_passwords.pop(run_key, None)
+            if password_ref is None:
+                # Do NOT clear the plaintext: only drop it after a successful
+                # write. Pause so a retry can persist the same credential.
+                return {"status": "vault_write_failed", "requires_human": True,
+                        "action_type": "OTHER",
+                        "instructions": (
+                            f"could not store the generated credential for "
+                            f"{self._domain} in Vault; account not submitted and "
+                            "credential retained for retry")}
+            self._pending_passwords.pop(run_key, None)
         return {"status": "submitted", "requires_human": False,
                 "recipe_version": published.version, "password_ref": password_ref}
 

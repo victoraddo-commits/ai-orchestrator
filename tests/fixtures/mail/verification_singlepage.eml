@@ -1,0 +1,25 @@
+Return-Path: <bounces@singlepage.example>
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=singlepage.example; s=selector; h=from:to:subject;
+Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=singlepage.example; dkim=pass header.d=singlepage.example; dmarc=pass header.from=singlepage.example
+Received-SPF: pass (mx.example.org: domain of singlepage.example designates 203.0.113.10 as permitted sender)
+Message-ID: <verif-single-001@singlepage.example>
+Date: Wed, 30 Sep 2026 08:00:00 +0000
+From: "Single Page" <no-reply@singlepage.example>
+Reply-To: support@singlepage.example
+To: kai-e2e@example.invalid
+Subject: Verify your email address
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="BOUND1"
+
+--BOUND1
+Content-Type: text/plain; charset="utf-8"
+
+Welcome to Single Page. Please verify your email address by visiting:
+https://singlepage.example/verify?token=abc123
+
+--BOUND1
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>Welcome. <a href="https://singlepage.example/verify?token=abc123">Verify your email</a></p></body></html>
+
+--BOUND1--

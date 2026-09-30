@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Create an account</title></head>
+<body>
+  <!-- Step 1 of 2: identity email. -->
+  <section id="step-1" data-step="1" aria-current="step">
+    <h1>Step 1 of 2</h1>
+    <p>Create an account. Email.</p>
+    <form id="step-1-form" action="/register/2" method="post">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email">
+      <button id="next" type="submit">Continue</button>
+    </form>
+  </section>
+
+  <!-- Step 2 of 2: password + mobile number. -->
+  <section id="step-2" data-step="2">
+    <h1>Step 2 of 2</h1>
+    <p>Password. Mobile number. Finish.</p>
+    <form id="step-2-form" action="/welcome" method="post">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password">
+      <label for="phone">Mobile number</label>
+      <input id="phone" name="phone" type="tel" autocomplete="tel">
+      <button id="finish" type="submit">Finish</button>
+    </form>
+  </section>
+</body>
+</html>

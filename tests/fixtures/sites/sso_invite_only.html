@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Request an invitation</title></head>
+<body>
+  <h1>Request an invitation</h1>
+  <p>This product is invite-only. Request access to join the waitlist.</p>
+
+  <!-- SSO-only affordance: no password field anywhere on this page. -->
+  <button id="google-sso" data-provider="google">Sign in with Google</button>
+  <button id="apple-sso" data-provider="apple">Continue with Apple</button>
+
+  <!-- Invite-required path: an existing invitation email must be supplied. -->
+  <form id="invite" action="/welcome" method="post">
+    <label for="invite-email">Enter the email your invitation was sent to</label>
+    <input id="invite-email" name="invite_email" type="email" autocomplete="email">
+    <button id="continue" type="submit">Continue</button>
+  </form>
+</body>
+</html>

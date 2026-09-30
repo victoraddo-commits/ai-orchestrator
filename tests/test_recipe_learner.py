@@ -115,3 +115,54 @@ def test_learn_works_without_a_browser():
     assert recipe.status is RecipeStatus.draft
     assert recipe.confidence == 0.5
     assert recipe.steps == []
+
+
+# ---------------------------------------------------------------------------
+# I4: an untrusted backend proposal must never escape as a ValidationError
+# ---------------------------------------------------------------------------
+
+
+def test_learn_malformed_proposal_yields_empty_draft():
+    backend = FixtureReasoningBackend(recipes={"learn.example": {
+        "flow_type": "single_page",
+        "steps": [{"selector": "#email"}],   # missing required action
+        "fields": [{"name": "Email"}],        # missing required selector
+        "confidence": 0.9,
+    }})
+    browser = FakeInspectBrowser({"title": "Sign up", "elements": []})
+    recipe = RecipeLearner(backend, browser=browser).learn(_profile(),
+                                                           session_id="s1")
+    assert recipe.steps == []
+    assert recipe.fields == []
+    assert recipe.status is RecipeStatus.draft
+    assert recipe.source is RecipeSource.learned
+
+
+def test_learn_filters_unknown_proposal_keys():
+    backend = FixtureReasoningBackend(recipes={"learn.example": {
+        "flow_type": "single_page",
+        "bogus_top_level": 1,
+        "steps": [{"index": 0, "action": "navigate",
+                   "url": "https://learn.example/signup", "bogus": "x"}],
+        "confidence": 0.5,
+    }})
+    recipe = RecipeLearner(backend).learn(_profile(), session_id="s1")
+    assert [s.action for s in recipe.steps] == ["navigate"]
+
+
+def test_learn_invalid_flow_type_falls_back_to_profile():
+    backend = FixtureReasoningBackend(recipes={"learn.example": {
+        "flow_type": "not-a-real-flow", "confidence": 0.5,
+        "steps": [{"index": 0, "action": "navigate",
+                   "url": "https://learn.example/signup"}],
+    }})
+    recipe = RecipeLearner(backend).learn(_profile(), session_id="s1")
+    assert recipe.flow_type is FlowType.unknown   # _profile() default
+    assert [s.action for s in recipe.steps] == ["navigate"]
+
+
+def test_learn_non_dict_proposal_yields_empty_draft():
+    backend = FixtureReasoningBackend(recipes={"learn.example": ["not", "a", "dict"]})
+    recipe = RecipeLearner(backend).learn(_profile(), session_id="s1")
+    assert recipe.steps == [] and recipe.fields == []
+    assert recipe.status is RecipeStatus.draft

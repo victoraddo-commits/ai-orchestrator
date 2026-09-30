@@ -13,6 +13,7 @@ from core.site_recipes.schema import (
     SiteProfile,
     SiteRecipe,
     SiteRequirements,
+    is_symbolic_value_source,
     normalize_domain,
 )
 
@@ -58,3 +59,66 @@ def test_site_profile_defaults_policy_unknown():
     assert profile.automation_policy is AutomationPolicy.UNKNOWN
     assert profile.registrable is True
     assert profile.flow_type is FlowType.unknown
+
+
+SYMBOLIC_SOURCES = [
+    "identity.full_name",
+    "identity.display_name",
+    "identity.email",
+    "identity.phone",
+    "generated_password",
+    "generated_username",
+    "totp",
+    "literal:secrets/accounts/acme/ref-1",
+]
+
+NON_SYMBOLIC_SOURCES = [
+    "hunter2-literal",
+    "constant:hunter2",
+    "password123",
+    "sk-live-abcdef",
+    "identity.password",
+    "literal:hunter2",
+]
+
+
+def test_field_spec_rejects_literal_secret_value_source():
+    with pytest.raises(ValidationError):
+        FieldSpec(name="Email", selector="#email", value_source="hunter2-literal")
+
+
+def test_field_spec_accepts_generated_password_value_source():
+    field = FieldSpec(name="Password", selector="#password",
+                      value_source="generated_password")
+    assert field.value_source == "generated_password"
+
+
+@pytest.mark.parametrize("source", SYMBOLIC_SOURCES)
+def test_symbolic_value_sources_are_accepted(source):
+    assert is_symbolic_value_source(source) is True
+    assert FieldSpec(name="X", selector="#x", value_source=source).value_source == source
+    assert RecipeStep(index=1, action="fill", selector="#x",
+                      value_source=source).value_source == source
+
+
+@pytest.mark.parametrize("source", NON_SYMBOLIC_SOURCES)
+def test_literal_or_secret_value_sources_are_rejected(source):
+    assert is_symbolic_value_source(source) is False
+    with pytest.raises(ValidationError):
+        FieldSpec(name="X", selector="#x", value_source=source)
+    with pytest.raises(ValidationError):
+        RecipeStep(index=1, action="fill", selector="#x", value_source=source)
+
+
+def test_recipe_confidence_is_bounded():
+    assert SiteRecipe(domain="example.com", confidence=1.0).confidence == 1.0
+    with pytest.raises(ValidationError):
+        SiteRecipe(domain="example.com", confidence=1.5)
+    with pytest.raises(ValidationError):
+        SiteRecipe(domain="example.com", confidence=-0.1)
+
+
+def test_recipe_version_must_be_positive():
+    assert SiteRecipe(domain="example.com", version=1).version == 1
+    with pytest.raises(ValidationError):
+        SiteRecipe(domain="example.com", version=0)

@@ -19,6 +19,51 @@ from core.providers.schema import AutomationPolicy
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://")
 _DOMAIN_RE = re.compile(r"^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$")
 
+#: Identity attributes a symbolic ``value_source`` may name.
+SYMBOLIC_IDENTITY_ATTRS = (
+    "full_name",
+    "display_name",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+)
+
+#: Closed whitelist of symbolic ``value_source`` tokens (never literal values).
+SYMBOLIC_VALUE_SOURCES = frozenset(
+    {f"identity.{attr}" for attr in SYMBOLIC_IDENTITY_ATTRS}
+    | {"generated_password", "generated_username", "totp"}
+)
+
+#: ``literal:<vault/path>`` references a Vault entry; it is a path, not a value.
+_LITERAL_SOURCE_RE = re.compile(r"^literal:[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+$")
+
+
+def is_symbolic_value_source(value: object) -> bool:
+    """True when ``value`` is a whitelisted symbolic source, never a literal.
+
+    A symbolic source names *where* a run-time value comes from
+    (``identity.<field>``, ``generated_password``, ``generated_username``,
+    ``totp``) or references Vault (``literal:<vault/path>``). Anything else --
+    a raw credential, an arbitrary literal, or ``constant:<value>`` -- is
+    rejected, because a recipe MUST NOT contain secrets.
+    """
+    if not isinstance(value, str):
+        return False
+    return value in SYMBOLIC_VALUE_SOURCES or bool(_LITERAL_SOURCE_RE.match(value))
+
+
+def _validate_symbolic_source(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return value
+    if not is_symbolic_value_source(value):
+        raise ValueError(
+            "value_source must be symbolic (identity.<field>, "
+            "generated_password, generated_username, totp, "
+            f"literal:<vault/path>); got literal {value!r}"
+        )
+    return value
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -80,6 +125,11 @@ class FieldSpec(BaseModel):
     value_source: Optional[str] = None
     step: int = 0
 
+    @field_validator("value_source")
+    @classmethod
+    def _check_value_source(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_symbolic_source(value)
+
 
 class RecipeStep(BaseModel):
     """One browser-operator step. ``value_source`` is symbolic, never a value."""
@@ -93,6 +143,11 @@ class RecipeStep(BaseModel):
     value_source: Optional[str] = None
     description: Optional[str] = None
 
+    @field_validator("value_source")
+    @classmethod
+    def _check_value_source(cls, value: Optional[str]) -> Optional[str]:
+        return _validate_symbolic_source(value)
+
 
 class SiteRecipe(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -104,10 +159,10 @@ class SiteRecipe(BaseModel):
     requirements: SiteRequirements = Field(default_factory=SiteRequirements)
     steps: list[RecipeStep] = Field(default_factory=list)
     verification_flow: Optional[str] = None
-    confidence: float = 0.0
+    confidence: float = Field(0.0, ge=0.0, le=1.0)
     source: RecipeSource = RecipeSource.learned
     status: RecipeStatus = RecipeStatus.draft
-    version: int = 1
+    version: int = Field(1, ge=1)
     last_verified_at: Optional[str] = None
     evidence_ref: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
@@ -134,7 +189,7 @@ class SiteProfile(BaseModel):
     requirements: SiteRequirements = Field(default_factory=SiteRequirements)
     automation_policy: AutomationPolicy = AutomationPolicy.UNKNOWN
     policy_source: Optional[str] = None
-    confidence: float = 0.0
+    confidence: float = Field(0.0, ge=0.0, le=1.0)
     evidence: list[str] = Field(default_factory=list)
 
     @field_validator("domain")

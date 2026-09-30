@@ -7,6 +7,7 @@ from core.site_recipes import store
 from core.site_recipes.schema import (
     FieldSpec,
     RecipeStatus,
+    RecipeStep,
     SiteRecipe,
 )
 
@@ -72,8 +73,83 @@ def test_list_recipes_returns_latest_per_domain(isolated):
     assert domains == ["a.example", "b.example"]
 
 
-def test_store_rejects_secret_looking_recipe_keys(isolated):
+def test_store_rejects_secret_looking_field_names(isolated):
     # A recipe carrying a secret-looking field name must be rejected at storage.
     recipe = _recipe(fields=[FieldSpec(name="api_key", selector="#k")])
     with pytest.raises(SecretFieldError):
         store.save_recipe(recipe)
+
+
+def test_store_rejects_secret_values_in_selector_url_and_description(isolated):
+    recipe = _recipe(steps=[
+        RecipeStep(index=1, action="goto",
+                   url="https://example.com/signup?token=hunter2"),
+    ])
+    with pytest.raises(SecretFieldError):
+        store.save_recipe(recipe)
+
+    recipe = _recipe(fields=[
+        FieldSpec(name="Email", selector='input[value="password=hunter2"]',
+                  value_source="identity.email"),
+    ])
+    with pytest.raises(SecretFieldError):
+        store.save_recipe(recipe)
+
+
+def test_store_allows_legit_password_selector(isolated):
+    # A selector *pointing at* a password input is metadata, not a secret.
+    recipe = _recipe(
+        fields=[FieldSpec(name="Password", selector="input[type=password]",
+                          value_source="generated_password")],
+        steps=[RecipeStep(index=1, action="fill", selector="#password",
+                          value_source="generated_password")],
+    )
+    assert store.save_recipe(recipe).version == 1
+
+
+def test_publish_unknown_version_preserves_published(isolated):
+    store.save_recipe(_recipe())                 # v1
+    store.publish_recipe("example.com")          # v1 published
+    with pytest.raises(store.RecipeNotFound):
+        store.publish_recipe("example.com", version=999)
+    published = store.get_published("example.com")
+    assert published is not None
+    assert published.version == 1
+
+
+def test_mark_stale_returns_the_stale_row_not_latest(isolated):
+    store.save_recipe(_recipe())                 # v1
+    store.publish_recipe("example.com")          # v1 published
+    store.save_recipe(_recipe())                 # v2 draft (latest)
+    stale = store.mark_stale("example.com")
+    assert stale is not None
+    assert stale.version == 1
+    assert stale.status is RecipeStatus.stale
+
+
+def test_get_recipe_unknown_version_returns_none(isolated):
+    store.save_recipe(_recipe())
+    assert store.get_recipe("example.com", version=999) is None
+
+
+def test_get_recipe_by_stale_status(isolated):
+    store.save_recipe(_recipe())
+    store.publish_recipe("example.com")
+    store.mark_stale("example.com")
+    stale = store.get_recipe("example.com", status=RecipeStatus.stale)
+    assert stale is not None
+    assert stale.status is RecipeStatus.stale
+
+
+def test_two_memory_dirs_are_isolated(isolated, monkeypatch, tmp_path):
+    dir_a = tmp_path / "mem-a"
+    dir_b = tmp_path / "mem-b"
+    monkeypatch.setenv("AI_ORCHESTRATOR_MEMORY_DIR", str(dir_a))
+    store.save_recipe(_recipe("a-only.example"))
+    monkeypatch.setenv("AI_ORCHESTRATOR_MEMORY_DIR", str(dir_b))
+    store.save_recipe(_recipe("b-only.example"))
+    assert store.get_recipe("a-only.example") is None
+    assert store.get_recipe("b-only.example") is not None
+    monkeypatch.setenv("AI_ORCHESTRATOR_MEMORY_DIR", str(dir_a))
+    assert store.get_recipe("a-only.example") is not None
+    assert store.get_recipe("b-only.example") is None

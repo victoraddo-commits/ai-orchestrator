@@ -50,6 +50,11 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 | `evolution` | Evolution | loadEvolution | /kai/evolution |
 | `wireguard` | WireGuard | loadWireguard | **NEW 2026-09-16** · /api/wg/status, /api/wg/raw |
 | `directory` | Service Directory | loadDirectory | /api/directory/services, /api/directory/conformance |
+| `onboarding` | Onboarding | loadOnboarding | **NEW 2026-09-30 (STEP 8)** · /api/onboarding[,/{id},/resume,/cancel,human-action complete] |
+| `accounts` | Accounts | loadAccounts | **NEW 2026-09-30 (STEP 8)** · /api/accounts[,/{id}] |
+| `providers` | Providers | loadProviders | **NEW 2026-09-30 (STEP 8)** · /api/providers |
+| `site-recipes` | Site Recipes | loadSiteRecipes | **NEW 2026-09-30 (Task 10)** · /api/site-recipes[,/{domain},/{domain}/publish] |
+| `inbox` | Inbox | loadInbox | **NEW 2026-09-30 (STEP 8)** · /api/sms/inbox, /api/notifications |
 
 ## Fixes 2026-09-16
 
@@ -586,3 +591,128 @@ bringing them up is out of scope (firewall change).
 
 `tests/test_proxmox_nic_inventory.py`, `tests/test_infra_usage_history.py`,
 `tests/test_network_inventory.py`.
+
+## WireGuard server management (CT105)
+
+Replaces the stale CT102 device-pool plumbing. The WG server is **CT105**
+(`Ohio`, pve-A, wg0 `10.6.0.1/24` UDP 51820, peer pve-B
+`10.6.0.2`). Managed over the existing SSH chain
+`CT111 → pve-B → pve-A → pct exec 105` driving
+`/opt/kai-wg-agent/wg_agent.py` (stdlib CLI). Writes are double-gated
+(`WG_AGENT_ALLOW_WRITE=1` + `/etc/wireguard/.agent_token`) and audit-logged;
+client private keys are one-time only and never stored.
+
+### CC routes (`core/cc_extra_routes.py`, operator-gated via `_req_wg_op`)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/wg/server` | server status card (up, port, pubkey, peers, totals) |
+| GET | `/api/wg/peers` | enriched peers: state light, health, 24h/7d deltas |
+| GET | `/api/wg/usage?peer=&window=24h\|7d` | usage series + deltas |
+| GET | `/api/wg/server_export` | server conf with private keys stripped |
+| POST | `/api/wg/peers` | add peer (config + QR; key returned once) |
+| POST | `/api/wg/peers/{pubkey}/pause` \| `/resume` \| `/restart` | immediate, audited |
+| POST | `/api/wg/restart` | `wg-quick down/up wg0` |
+| POST | `/api/wg/peers/{pubkey}/rename` | rename (audited) |
+| POST | `/api/wg/peers/{pubkey}/allowed` | set server-side AllowedIPs |
+| DELETE | `/api/wg/peers/{pubkey}` | delete peer |
+
+Server-side module: `core/wg_peer_service.py`. UI: `#wireguard` panel in
+`core/kai/command_center.html` (server card, peer table with status lights,
+inline-SVG sparklines, add-peer config+QR, 30 s auto-refresh).
+
+### Tests
+
+`tests/test_jk_wg_service.py`, `tests/test_wg_peer_service.py`,
+`tests/test_cc_wg_routes.py`.
+
+## Universal Account Registration — Command Center UI (STEP 8, 2026-09-30)
+
+Four new full pages wiring the STEP 1-7 account-registration backend into the
+Command Center (mandatory wiring rule). All four are consistent across the
+sidebar `nav-item[data-hash]`, `<section id="panel-<name>">`, `PANEL_TITLES`
+and `PANEL_LOADERS` (verified by `window.auditPanelWiring()` → `{}` and by
+`tests/test_cc_contract.py`).
+
+| Panel key | Title | Loader | Backend |
+|---|---|---|---|
+| `onboarding` | Onboarding | loadOnboarding | `GET/POST /api/onboarding`, `GET /api/onboarding/{id}`, `/resume`, `/cancel`, `/human-action/{action_id}/complete` |
+| `accounts` | Accounts | loadAccounts | `GET /api/accounts`, `GET /api/accounts/{id}` |
+| `providers` | Providers | loadProviders | `GET /api/providers` |
+| `inbox` | Inbox | loadInbox | `GET /api/sms/inbox`, `GET /api/notifications` |
+
+- **Onboarding** renders the state-machine **progress stepper** (the canonical
+  `STATE_SEQUENCE`, completed/current/pending-human/skipped, `aria-current="step"`,
+  colour **plus** glyph/label — never colour alone), a **human-action banner**
+  (`role="status"` `aria-live="polite"`) with inline instructions and an
+  **"I've completed this"** button that calls the human-action endpoint, plus
+  per-session Details (evidence ledger + errors), Resume and Cancel.
+- **Accounts** is a registry table (provider, status badge, verification flags,
+  vault-ref **PRESENT** indicator) with a detail drawer showing masked
+  email/phone, the redacted vault-ref hint, and the evidence timeline.
+- **Providers** shows descriptor cards with the **automation-policy badge**
+  (ALLOWED / UNKNOWN · human confirm / PROHIBITED) and the **`policy_source`
+  citation** in an expandable block — the honest ToS posture (Amazon = UNKNOWN)
+  is surfaced, not hidden — plus requirements chips and readiness.
+- **Inbox** is the redacted SMS activity feed (classification/from/to/timestamp
+  only — never the body or OTP code) plus the human-action queue with a
+  one-click complete.
+
+### Backend (`core/cc_account_routes.py`, mounted in `core/api.py`)
+
+Add-only router (`cc_account_router`) mounted next to the other CC routers.
+Every route is operator-gated (bridge token, CC operator session, or the
+auth-proxy `X-Kai-User`/`X-Kai-User-Id` from a trusted peer) and shapes
+responses through whitelist helpers — **no credential, vault value, OTP code or
+SMS body is ever returned**. Vault references are surfaced as a boolean
+`vault_ref_present` + a redacted namespace hint only.
+
+### Tests
+
+`tests/test_account_registration_api.py` (22 cases): auth gate (401/403),
+validation (422/404/400), onboarding start/resume/cancel/human-action-complete,
+account registry list/detail, provider honest-policy posture, SMS OTP redaction
+and a cross-endpoint leak sweep that asserts the OTP code, a password and a raw
+email never appear and that the house `secret_guard.find_secret_fields()` finds
+no secret-looking keys. Endpoint contract guarded by `scripts/cc_contract_check.py`.
+
+## Site Recipes viewer — Command Center UI (Task 10, 2026-09-30)
+
+A viewer page for the universal-website-registration **Site Recipe** store
+(`core/site_recipes`): the reviewable, secret-free per-domain signup plan.
+
+Wired consistently across the sidebar `nav-item[data-hash="site-recipes"]`,
+`<section class="panel" id="panel-site-recipes">`, `PANEL_TITLES` and
+`PANEL_LOADERS` (verified by `window.auditPanelWiring()` → `{}` and by
+`tests/test_cc_contract.py`).
+
+| Panel key | Title | Loader | Backend |
+|---|---|---|---|
+| `site-recipes` | Site Recipes | loadSiteRecipes | `GET /api/site-recipes`, `GET /api/site-recipes/{domain}`, `POST /api/site-recipes/{domain}/publish` |
+
+- **Site Recipes** lists one card per domain: flow type, `v{n}`, source
+  (seeded/learned), requirement chips (email/phone/captcha/mfa/KYC/payment/
+  verify), confidence, step/field counts, `last_verified_at`, and a status badge
+  (**published**=ok, **draft**=info, **stale**=warn — colour **plus** label). A
+  draft row offers **Publish**; **Inspect** opens the ordered browser-step table
+  (value sources are symbolic only) with the evidence ref. Buttons carry
+  `aria-label`s and the detail region is `role="region" aria-live="polite"`.
+
+### Backend (`core/cc_account_routes.py`, mounted in `core/api.py`)
+
+Add-only routes on `cc_account_router`, all operator-gated (`_req_op`: bridge
+token, CC operator session, or trusted-proxy identity headers → 401 unauth /
+403 non-operator). Shaping helpers whitelist fields; `_assert_recipe_secret_free`
+is a third secret check on the **response path** (after the schema `value_source`
+validator and the store persistence guard), so even a secret written straight
+into the store file can never be echoed. `POST .../publish` accepts an optional
+`version` (`ge=1`, `extra="forbid"`); an unknown version returns 404 and, per the
+store's fixed behaviour, never demotes the currently published row.
+
+### Tests
+
+`tests/test_site_recipes_api.py` (13 cases): auth gate (401 and 403), list/detail
+shapes, detail 404, publish promote/404, publish body validation (422), publish
+unknown-version 404 with no demotion, a symbolic-only password recipe, a
+`secret_guard.find_secret_fields()` sweep across list/detail, a forced raw-secret
+store record that is never echoed, and the model-edge/store-boundary rejections.

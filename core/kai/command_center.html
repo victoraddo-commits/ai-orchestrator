@@ -1033,6 +1033,23 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
 .sh-auto{padding:6px 8px;border:1px solid var(--border);border-radius:4px}
 .sh-auto.none{color:var(--fg-muted);border-style:dashed}
 
+/* Account Registration — state-machine stepper + human-action banner */
+.uar-stepper{display:flex;align-items:center;gap:0;overflow-x:auto;padding:8px 2px;min-width:0}
+.uar-step{display:flex;flex-direction:column;align-items:center;min-width:52px;flex:0 0 auto;font-size:0.55rem;color:var(--fg-muted)}
+.uar-step .dot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);background:var(--bg-elevated);font-size:0.62rem;color:var(--fg-muted);transition:background var(--transition-fast),border-color var(--transition-fast)}
+.uar-step .lbl{margin-top:3px;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap}
+.uar-step.done .dot{background:var(--accent);border-color:var(--accent);color:#fff}
+.uar-step.done .lbl{color:var(--accent-bright)}
+.uar-step.current .dot{border-color:var(--accent-bright);color:var(--accent-bright);box-shadow:0 0 0 3px var(--accent-glow,rgba(34,197,94,.2))}
+.uar-step.current .lbl{color:var(--fg);font-weight:600}
+.uar-step.human .dot{border-color:var(--warn);color:var(--warn)}
+.uar-step.human .lbl{color:var(--warn)}
+.uar-step.skip .dot{opacity:0.5}
+.uar-sep{flex:1 0 10px;height:1px;background:var(--border);min-width:10px}
+.uar-banner{background:rgba(210,153,34,0.12);border:1px solid var(--warn);border-radius:var(--radius);padding:8px 10px;margin:8px 0;overflow-wrap:anywhere}
+.uar-cite{font-size:0.6rem;color:var(--fg-muted);background:var(--bg-deep);border-left:2px solid var(--info);padding:6px 8px;border-radius:4px;overflow-wrap:anywhere;max-height:130px;overflow:auto;margin-top:4px}
+@media (max-width:768px){ .uar-step{min-width:46px} }
+@media (prefers-reduced-motion:reduce){ .uar-step .dot{transition:none!important} }
 </style>
 </head>
 <body>
@@ -1120,6 +1137,12 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <a class="nav-item" href="#enhancements" data-hash="enhancements"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></span><span class="label">Enhancements</span></a>
       <a class="nav-item" href="#factory" data-hash="factory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20M4 20V8l6 4V8l6 4V4h6v16"/></svg></span><span class="label">Factory</span></a>
       <a class="nav-item" href="#evolution" data-hash="evolution"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></span><span class="label">Evolution</span></a>
+      <div class="sidebar-section-label">Account Registration</div>
+      <a class="nav-item" href="#onboarding" data-hash="onboarding"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Onboarding</span></a>
+      <a class="nav-item" href="#accounts" data-hash="accounts"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span class="label">Accounts</span></a>
+      <a class="nav-item" href="#providers" data-hash="providers"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></span><span class="label">Providers</span></a>
+      <a class="nav-item" href="#site-recipes" data-hash="site-recipes"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4h16v4H4zM4 10h16v10H4z"/><path d="M8 14h8M8 17h5"/></svg></span><span class="label">Site Recipes</span></a>
+      <a class="nav-item" href="#inbox" data-hash="inbox"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg></span><span class="label">Inbox</span></a>
       <div class="sidebar-section-label">Infrastructure</div>
       <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
       <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
@@ -1286,6 +1309,13 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <section class="panel" id="panel-evolution"><div id="evolution-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-bet"><div id="bet-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-arbitra"><div id="arbitra-content"><span class="loading">loading…</span></div></section>
+
+      <!-- ACCOUNT REGISTRATION (Universal Account Registration) -->
+      <section class="panel" id="panel-onboarding"><div id="onboarding-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-accounts"><div id="accounts-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-providers"><div id="providers-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-site-recipes" aria-label="Site Recipes"><div id="site-recipes-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-inbox"><div id="inbox-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
       <section class="panel" id="panel-docker"><div id="docker-content"><span class="loading">loading…</span></div></section>
@@ -1535,7 +1565,8 @@ const PANEL_TITLES = {
   evolution:'Evolution', network:'Network', models:'Model Fabric', vault:'Vault', secondbrain:'2nd Brain',
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
   sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise',
-  diagnostics:'Diagnostics', audit:'Audit', world:'World Model'
+  diagnostics:'Diagnostics', audit:'Audit', world:'World Model',
+  onboarding:'Onboarding', accounts:'Accounts', providers:'Providers', 'site-recipes':'Site Recipes', inbox:'Inbox'
 };
 
 const $=id=>document.getElementById(id);
@@ -1825,7 +1856,7 @@ function navigateTo(hash) {
 }
 // Panel dispatcher map — single place mapping a panel key to its loader.
 // Kept as a named const so auditPanelWiring() can verify it against the DOM.
-const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld};
+const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld,onboarding:loadOnboarding,accounts:loadAccounts,providers:loadProviders,'site-recipes':loadSiteRecipes,inbox:loadInbox};
 function loadPanel(name) {
   const fns=PANEL_LOADERS;
   if(fns[name])fns[name]();
@@ -5707,7 +5738,7 @@ function guestLabel(kind,vmid,host){
 function guestSiteName(site){return {PA:'Proxmox A',PB:'Proxmox B',PC:'Proxmox C'}[site]||'Proxmox ?';}
 
 let wgTimer=null;
-const WG_STATE={peers:[], query:'', auto:false};
+const WG_STATE={peers:[], query:'', auto:false, server:null, states:{}, usage:{}, session:{}};
 async function wgCopy(text,label){
   try{ await navigator.clipboard.writeText(text||''); toast((label||'copied')+' copied'); return; }catch(e){}
   const ta=document.createElement('textarea'); ta.value=text||''; document.body.appendChild(ta); ta.select();
@@ -5719,38 +5750,71 @@ function wgEnc(pk){try{return btoa(String(pk)).replace(/\+/g,'-').replace(/\//g,
 function wgSafe(s){return String(s||'').replace(/[^A-Za-z0-9 ._()\-]/g,'').slice(0,64);}
 function wgFmtBytes(n){n=Number(n)||0;const u=['B','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++;}return n.toFixed(i?1:0)+' '+u[i];}
 function wgAgo(ts){if(!ts)return 'never';const s=Math.max(0,Math.floor(Date.now()/1000-Number(ts)));if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
+// State lights: colour + label (never colour alone).
+function wgStateMeta(s){
+  return {connected:{label:'CONNECTED',cls:'ok',color:'var(--ok,#27c93f)',dot:'#22C55E'},
+          idle:{label:'IDLE',cls:'warn',color:'var(--warn,#D29922)',dot:'#D29922'},
+          disconnected:{label:'DISCONNECTED',cls:'bad',color:'var(--bad,#e5484d)',dot:'#DC2626'},
+          paused:{label:'PAUSED',cls:'info',color:'#94A3B8',dot:'#64748B'}}[s]
+    ||{label:String(s||'unknown').toUpperCase(),cls:'warn',color:'#94A3B8',dot:'#64748B'};
+}
+function wgLight(state){
+  const m=wgStateMeta(state);
+  return '<span class="wg-light" title="'+esc(m.label)+'" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:'+m.dot+';box-shadow:0 0 5px '+m.dot+';margin-right:6px;vertical-align:middle"></span>';
+}
+function wgStateBadge(state){
+  const m=wgStateMeta(state);
+  return wgLight(state)+'<span class="badge '+m.cls+'">'+esc(m.label)+'</span>';
+}
+function wgHumanAge(s){if(s==null)return 'never';s=Math.max(0,Number(s)||0);if(s<60)return s+'s';if(s<3600)return Math.floor(s/60)+'m '+(s%60)+'s';if(s<86400)return Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m';return Math.floor(s/86400)+'d '+Math.floor((s%86400)/3600)+'h';}
+function wgDelta(n){n=Number(n)||0;return '<span style="color:'+(n>0?'var(--ok,#27c93f)':'var(--fg-muted)')+'">+'+wgFmtBytes(n)+'</span>';}
+// Inline SVG sparkline (no external JS libs).
+function wgSparkline(pts,field){
+  if(!pts||pts.length<2)return '<span style="color:var(--fg-muted);font-size:0.55rem">no history yet</span>';
+  const vals=pts.map(p=>Number(p[field]||0));
+  const w=110,h=20,n=vals.length,max=Math.max.apply(null,vals.concat([1])),min=Math.min.apply(null,vals.concat([0]));
+  const span=(max-min)||1;
+  const xy=vals.map((v,i)=>[(i/(n-1))*w,h-((v-min)/span)*h]);
+  const d='M'+xy.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L');
+  return '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" style="vertical-align:middle;overflow:visible"><path d="'+d+'" fill="none" stroke="var(--info,#3B82F6)" stroke-width="1.5"/></svg>';
+}
 function wgMsg(t,ok){const el=$('wg-msg');if(el)el.innerHTML='<div style="font-size:0.65rem;margin:6px 0;color:'+(ok?'var(--ok,#27c93f)':'var(--bad,#e5484d)')+'">'+esc(t)+'</div>';}
 function wgDetail(title,bodyHtml){
   const el=$('wireguard-content'); if(!el) return;
   el.innerHTML='<div class="card"><h3>'+title+'</h3>'+bodyHtml
     +'<div class="action-row" style="margin-top:10px"><button class="btn btn-xs btn-accent" onclick="loadWireguard()">Back to devices</button></div></div>';
 }
+function wgConfigFor(p){
+  // Client keys are one-time; only configs created in this browser session are
+  // re-viewable. Otherwise the API returns 410 and we explain instead.
+  return (WG_STATE.session&&WG_STATE.session[p.pubkey])||null;
+}
 function wgDevRow(p){
-  const up=(Number(p.latest_handshake)||0)>0, paused=!!p.paused;
-  const badge=paused?'<span class="badge warn">PAUSED</span>':(up?'<span class="badge ok">UP</span>':'<span class="badge bad">DOWN</span>');
-  const mode=p.mode==='site-to-site'?'<span class="badge info">SITE-TO-SITE</span>':'<span class="badge info">FULL-TUNNEL</span>';
-  const border=paused?'var(--warn,#D29922)':(up?'var(--ok,#27c93f)':'var(--bad,#e5484d)');
+  const state=p.state||(p.paused?'paused':((Number(p.latest_handshake)||0)>0?'connected':'disconnected'));
   const enc=wgEnc(p.pubkey);
-  const extra=(p.mode==='site-to-site'&&(p.peer_lans||[]).length)?' · peer LANs <b>'+esc((p.peer_lans||[]).join(', '))+'</b>':'';
-  let acts;
+  const s=WG_STATE.usage[p.pubkey]||{};
+  const name=esc(p.name||('device '+String(p.pubkey||'').slice(0,8)));
+  const cx=wgConfigFor(p)?'ok':'info';
+  let acts=`<button class="btn btn-xs" onclick="wgPause('${enc}')" ${p.paused?'style="display:none"':''}>Pause</button>`
+    +`<button class="btn btn-xs btn-accent" onclick="wgResume('${enc}')" ${p.paused?'':'style="display:none"'}>Resume</button>`
+    +` <button class="btn btn-xs" onclick="wgPeerUsage('${enc}','${wgSafe(p.name)}')">Usage</button>`;
   if(p.managed){
-    acts=(paused?`<button class="btn btn-xs btn-accent" onclick="wgResume('${enc}')">Resume</button>`
-                :`<button class="btn btn-xs" onclick="wgPause('${enc}')">Pause</button>`)
-      +` <button class="btn btn-xs btn-accent" onclick="wgShowQR('${enc}')">QR / scan</button>`
-      +` <button class="btn btn-xs" onclick="wgCopyConfig('${enc}')">Copy</button>`
-      +` <button class="btn btn-xs" onclick="wgDownload('${enc}','wg')">.conf</button>`
-      +` <button class="btn btn-xs" onclick="wgExport('${enc}','ddwrt')">DD-WRT</button>`
-      +` <button class="btn btn-xs" onclick="wgExport('${enc}','openwrt')">OpenWRT</button>`
+    acts+=` <button class="btn btn-xs" onclick="wgShowQR('${enc}')">Config/QR</button>`
       +` <button class="btn btn-xs" onclick="wgRename('${enc}','${wgSafe(p.name)}')">Rename</button>`
       +` <button class="btn btn-xs" onclick="wgDelete('${enc}','${wgSafe(p.name)}')">Delete</button>`;
   } else {
-    acts='<span style="color:var(--fg-muted);font-size:0.6rem">external peer — no Kai client key to export</span>';
+    acts+=` <button class="btn btn-xs" onclick="wgRename('${enc}','${wgSafe(p.name)}')">Rename</button>`;
   }
-  return `<div style="padding:8px 10px;border:1px solid var(--border);border-left:3px solid ${border};font-family:var(--font-mono);font-size:0.65rem;margin-bottom:6px;border-radius:4px">
-<b>${esc(p.name||('device '+String(p.pubkey||'').slice(0,8)))}</b> ${badge} ${mode} <span style="color:var(--fg-muted)">${esc(p.address||'')}</span>
-<div style="margin-top:3px;color:var(--fg-muted)">endpoint <b>${esc(p.endpoint||'-')}</b> · allowed <b>${esc((p.allowed_ips||[]).join(', '))}</b>${extra}</div>
-<div>handshake <b>${esc(wgAgo(p.latest_handshake))}</b> · rx <b>${wgFmtBytes(p.rx_bytes)}</b> · tx <b>${wgFmtBytes(p.tx_bytes)}</b></div>
-<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:5px">${acts}</div></div>`;
+  const extra=(p.mode==='site-to-site'&&(p.peer_lans||[]).length)?'<div style="color:var(--fg-muted);font-size:0.58rem">LANs '+esc((p.peer_lans||[]).join(', '))+'</div>':'';
+  return `<tr data-wgrow="${esc(((p.name||'')+' '+(p.address||'')+' '+(p.mode||'')+' '+(p.pubkey||'')).toLowerCase())}" style="border-top:1px solid var(--border)">
+<td style="padding:6px 8px;white-space:nowrap">${wgLight(state)}<b>${name}</b><div style="color:var(--fg-muted);font-size:0.58rem">${p.managed?'managed':'external'}</div></td>
+<td style="padding:6px 8px;font-family:var(--font-mono)">${esc(p.address||'-')}${extra}</td>
+<td style="padding:6px 8px;font-family:var(--font-mono);font-size:0.6rem">${esc(p.endpoint||'-')}</td>
+<td style="padding:6px 8px;white-space:nowrap">${wgStateBadge(state)}<div style="color:var(--fg-muted);font-size:0.58rem">${esc(wgHumanAge(p.handshake_age_s))} ago</div></td>
+<td style="padding:6px 8px;font-family:var(--font-mono);font-size:0.6rem;white-space:nowrap">rx ${wgFmtBytes(p.rx_bytes)}<br>tx ${wgFmtBytes(p.tx_bytes)}</td>
+<td style="padding:6px 8px;font-family:var(--font-mono);font-size:0.6rem;white-space:nowrap">24h ${wgDelta(p.rx_delta_24h+p.tx_delta_24h)}</td>
+<td style="padding:6px 8px">${wgSparkline(s.series,'rx')}</td>
+<td style="padding:6px 8px"><div class="action-row" style="flex-wrap:wrap;gap:4px">${acts}</div></td></tr>`;
 }
 function wgMeshNodeRow(n){
   const st=n.status||'unknown';
@@ -5783,11 +5847,14 @@ function wgMeshCard(m){
 async function loadWireguard(){
   const el=$('wireguard-content'); if(!el) return;
   el.innerHTML='<span class="loading">loading connections…</span>';
-  // Peers first and bounded: the A/B/C mesh probe SSHes three nodes and can
-  // take 30s+. It must never block the connection manager from rendering.
-  let d=null;
+  // Peers + usage, then the (slow) A/B/C mesh probe fires and forget.
+  let d=null,u=null;
   try{ d=await apiT('/api/wg/peers',12000); }catch(e){ d={error:e.message}; }
+  try{ u=await apiT('/api/wg/usage?window=24h',12000); }catch(e){ u={peers:{}}; }
   WG_STATE.peers=(d&&Array.isArray(d.peers))?d.peers:[];
+  WG_STATE.server=(d&&d.server)||null;
+  WG_STATE.states=(d&&d.states)||{};
+  WG_STATE.usage=(u&&u.peers)||{};
   renderWgManager(d);
   wgMeshLoad();          // fire-and-forget; fills #wg-mesh when it resolves
   wgAutoRefresh();
@@ -5797,24 +5864,43 @@ function renderWgManager(d){
   window._wgLast=d;
   const peers=WG_STATE.peers, live=d&&!d.error;
   const managed=peers.filter(p=>p.managed);
-  let html='<div id="wg-mesh"><div class="card" style="margin-bottom:10px"><h3>Full Mesh &middot; wg-kai <span class="badge info">loading…</span></h3><div class="muted" style="font-size:0.62rem">A&harr;B&harr;C probe running — the connection list below is already live.</div></div></div>';
-  html+='<div class="card"><h3>WireGuard Connections &middot; CT102-PA pool <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span></h3>';
-  html+='<div style="font-size:0.64rem;color:var(--fg-muted)">'+(d&&d.interface_public_key?('server pub <code>'+esc(String(d.interface_public_key).slice(0,12))+'&hellip;</code> · port <b>'+esc(String(d.listen_port||''))+'</b> · pool <b>'+esc(d.pool||'')+'</b> · '+peers.length+' connection(s), '+managed.length+' managed'):'')+(d&&d.error?' <span class="error-text">'+esc(d.error)+'</span>':'')+'</div>';
+  const srv=WG_STATE.server||(d&&d.server)||{};
+  const st=WG_STATE.states||{};
+  let html='';
+  // Server status card
+  html+='<div class="card" style="margin-bottom:10px"><h3>WireGuard server &middot; Ohio <span class="badge '+(srv.up?'ok':'bad')+'">'+(srv.up?'UP':'DOWN')+'</span></h3>';
+  html+='<div style="display:flex;gap:18px;flex-wrap:wrap;font-family:var(--font-mono);font-size:0.66rem">'
+    +'<div><span style="color:var(--fg-muted)">pubkey</span><br><code>'+esc(String(srv.pubkey||'—').slice(0,20))+'&hellip;</code></div>'
+    +'<div><span style="color:var(--fg-muted)">port</span><br>'+esc(String(srv.listen_port||'—'))+'</div>'
+    +'<div><span style="color:var(--fg-muted)">tunnel ip</span><br>'+esc(srv.tunnel_ip||'—')+'</div>'
+    +'<div><span style="color:var(--fg-muted)">endpoint</span><br>'+esc(srv.endpoint||'—')+'</div>'
+    +'<div><span style="color:var(--fg-muted)">peers</span><br>'+esc(String(srv.peer_count||peers.length))+'</div>'
+    +'<div><span style="color:var(--fg-muted)">rx / tx</span><br>'+wgFmtBytes(srv.total_rx)+' / '+wgFmtBytes(srv.total_tx)+'</div></div>';
   html+='<div class="action-row" style="margin:8px 0;flex-wrap:wrap;gap:6px">'
-    +'<button class="btn btn-xs btn-accent" onclick="wgAddForm()">+ Add connection</button>'
-    +'<input class="search-input" placeholder="filter connections…" oninput="wgFilterRows(this.value)" style="max-width:180px">'
-    +'<button class="btn btn-xs" onclick="wgToggleAuto()">'+(WG_STATE.auto?'Auto-refresh: on':'Auto-refresh: off')+'</button>'
+    +'<button class="btn btn-xs" onclick="wgRestartServer()">Restart wg0</button>'
+    +'<button class="btn btn-xs" onclick="wgServerExport()">Server config</button>'
+    +'<span style="font-size:0.62rem;color:var(--fg-muted)">'
+      +wgLight('connected')+esc(String(st.connected||0))+' connected &middot; '+wgLight('idle')+esc(String(st.idle||0))+' idle &middot; '+wgLight('disconnected')+esc(String(st.disconnected||0))+' down &middot; '+wgLight('paused')+esc(String(st.paused||0))+' paused</span></div></div>';
+  // Connections card
+  html+='<div class="card"><h3>WireGuard connections <span class="badge '+(live?'ok':'warn')+'">'+(live?'LIVE':'OFFLINE')+'</span></h3>';
+  if(d&&d.error)html+='<div class="error-text" style="font-size:0.64rem">'+esc(d.error)+'</div>';
+  html+='<div class="action-row" style="margin:8px 0;flex-wrap:wrap;gap:6px">'
+    +'<button class="btn btn-xs btn-accent" onclick="wgAddForm()">+ Add peer</button>'
+    +'<input class="search-input" placeholder="filter peers…" oninput="wgFilterRows(this.value)" style="max-width:180px">'
+    +'<button class="btn btn-xs" onclick="wgToggleAuto()">'+(WG_STATE.auto?'Auto-refresh: on (30s)':'Auto-refresh: off')+'</button>'
     +'<button class="btn btn-xs" onclick="loadWireguard()">Refresh</button>'
-    +'<button class="btn btn-xs" onclick="wgDownloadAll()">Download all</button>'
-    +'<button class="btn btn-xs" onclick="wgExitNode()">Exit node (CT103)</button>'
-    +'<button class="btn btn-xs" onclick="wgRaw()">Raw</button></div>';
+    +'<button class="btn btn-xs" onclick="wgExitNode()">Exit node (CT103)</button></div>';
   html+='<div id="wg-add"></div><div id="wg-msg"></div>';
-  if(!peers.length){html+='<p class="empty">no connections yet — use “Add connection”.</p>';}
-  for(const p of peers){
-    const hay=((p.name||'')+' '+(p.address||'')+' '+(p.mode||'')+' '+(p.pubkey||'')).toLowerCase();
-    html+='<div data-wgrow="'+esc(hay)+'">'+wgDevRow(p)+'</div>';
+  if(!peers.length){html+='<p class="empty">no peers yet — use “Add peer”.</p>';}
+  else{
+    html+='<div class="table-wrap"><table style="width:100%;border-collapse:collapse;font-size:0.64rem">'
+      +'<thead><tr style="text-align:left;color:var(--fg-muted)"><th style="padding:4px 8px">name</th><th style="padding:4px 8px">tunnel ip</th><th style="padding:4px 8px">endpoint</th><th style="padding:4px 8px">state</th><th style="padding:4px 8px">rx / tx</th><th style="padding:4px 8px">delta</th><th style="padding:4px 8px">24h</th><th style="padding:4px 8px">actions</th></tr></thead><tbody>';
+    for(const p of peers)html+=wgDevRow(p);
+    html+='</tbody></table></div>';
   }
-  html+='</div>'; el.innerHTML=html;
+  html+='</div>';
+  html+='<div id="wg-mesh"></div>';
+  el.innerHTML=html;
 }
 function wgFilterRows(v){
   WG_STATE.query=v||'';
@@ -5835,8 +5921,49 @@ function wgAutoRefresh(){
   if(!WG_STATE.auto) return;
   wgTimer=setInterval(async()=>{
     if(window.location.hash!=='#wireguard') return;
-    try{const d=await apiT('/api/wg/peers',12000);WG_STATE.peers=(d&&d.peers)||[];renderWgManager(d);}catch(e){}
-  },15000);
+    try{
+      const d=await apiT('/api/wg/peers',12000);
+      WG_STATE.peers=(d&&d.peers)||[]; WG_STATE.server=(d&&d.server)||null; WG_STATE.states=(d&&d.states)||{};
+      try{const u=await apiT('/api/wg/usage?window=24h',12000); WG_STATE.usage=(u&&u.peers)||{};}catch(e){}
+      renderWgManager(d);
+    }catch(e){}
+  },30000);
+}
+async function wgRestartServer(){
+  if(!confirm('Restart the wg0 interface on Ohio? Existing tunnels will briefly drop.'))return;
+  try{const d=await api('/api/wg/restart',{method:'POST'});
+    toast(d&&d.up?'wg0 restarted':'restart may have failed');
+    WG_STATE.usage={}; loadWireguard();
+  }catch(e){toast('restart failed: '+e.message);}
+}
+async function wgServerExport(){
+  try{
+    const d=await api('/api/wg/server_export');
+    window._wgLastConfig=d.config||'';
+    wgDetail('WireGuard server config (Ohio) &middot; private keys stripped',
+      '<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">server-side wg0.conf; every PrivateKey/PresharedKey line removed.</div>'
+      +'<textarea readonly style="width:100%;height:300px;font-family:var(--font-mono);font-size:0.62rem;white-space:pre">'+esc(d.config||'')+'</textarea>'
+      +'<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn btn-xs" onclick="wgCopy(window._wgLastConfig,\'server config\')">Copy</button></div>');
+  }catch(e){toast('export failed: '+e.message);}
+}
+async function wgPeerUsage(enc,name){
+  try{
+    const d=await api('/api/wg/usage?window=7d');
+    const u=(d&&d.peers)||{};
+    const pk=Object.keys(u).find(k=>wgEnc(k)===enc)||null;
+    const s=pk?u[pk]:null;
+    let body='';
+    if(!s){body='<p class="empty">no usage history for this peer yet — snapshots accrue every 5 minutes.</p>';}
+    else{
+      body='<div style="font-family:var(--font-mono);font-size:0.66rem;margin-bottom:8px">'
+        +'rx 24h <b>'+wgFmtBytes(s.rx_delta_24h)+'</b> &middot; tx 24h <b>'+wgFmtBytes(s.tx_delta_24h)+'</b><br>'
+        +'rx 7d <b>'+wgFmtBytes(s.rx_delta_7d)+'</b> &middot; tx 7d <b>'+wgFmtBytes(s.tx_delta_7d)+'</b></div>'
+        +'<div style="margin:6px 0">rx '+wgSparkline(s.series,'rx')+'</div>'
+        +'<div style="margin:6px 0">tx '+wgSparkline(s.series,'tx')+'</div>'
+        +'<div style="color:var(--fg-muted);font-size:0.6rem">'+((s.series||[]).length)+' samples</div>';
+    }
+    wgDetail('Usage &middot; '+esc(name||'peer'),body);
+  }catch(e){toast('usage failed: '+e.message);}
 }
 function wgAddCancel(){const el=$('wg-add'); if(el) el.innerHTML='';}
 function wgAddForm(){
@@ -5877,21 +6004,28 @@ async function wgAdd(){
   wgMsg('creating '+name+'…',true);
   try{
     const d=await api('/api/wg/peers',{method:'POST',body:JSON.stringify(body)});
-    wgShowResult('Connection created — '+esc(d.name)+' ('+esc(d.ip)+')',d.config,d.qr_png_base64,wgEnc(d.pubkey));
+    // Cache the one-time client config for this browser session only.
+    WG_STATE.session[d.pubkey]={config:d.config||'',qr:d.qr_png_base64||''};
+    wgShowResult('Peer created — '+esc(d.name)+' ('+esc(d.ip)+')',d.config,d.qr_png_base64,wgEnc(d.pubkey));
   }catch(e){wgMsg('create failed: '+e.message,false);}
 }
 function wgShowResult(title,config,qr,enc){
   window._wgLastConfig=config||'';
   wgDetail(title,
     (qr?'<div style="text-align:center;margin:10px 0"><img alt="WireGuard QR" style="width:220px;height:220px;background:#fff;padding:8px;border-radius:6px" src="data:image/png;base64,'+qr+'"></div>':'')
-    +'<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">client config — contains this device&rsquo;s private key; share only with the device owner.</div>'
+    +'<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">client config — contains this device&rsquo;s private key. It is shown once; save it now.</div>'
     +'<textarea readonly style="width:100%;height:220px;font-family:var(--font-mono);font-size:0.62rem;white-space:pre">'+esc(config||'')+'</textarea>'
     +'<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:6px">'
-    +'<button class="btn btn-xs" onclick="wgCopy(window._wgLastConfig,\'config\')">Copy config</button>'
-    +'<button class="btn btn-xs" onclick="wgDownload(\''+enc+'\',\'wg\')">Download .conf</button>'
-    +'<button class="btn btn-xs" onclick="wgExport(\''+enc+'\',\'ddwrt\')">DD-WRT</button>'
-    +'<button class="btn btn-xs" onclick="wgExport(\''+enc+'\',\'openwrt\')">OpenWRT</button>'
-    +'<button class="btn btn-xs" onclick="wgShowQR(\''+enc+'\')">QR / scan</button></div>');
+    +'<button class="btn btn-xs btn-accent" onclick="wgCopy(window._wgLastConfig,\'config\')">Copy config</button>'
+    +'<button class="btn btn-xs" onclick="wgClientDownload(\''+esc(enc)+'\')">Download .conf</button></div>');
+}
+function wgClientDownload(enc){
+  const c=wgSessionByEnc(enc);
+  if(!c||!c.config){toast('config not in this session');return;}
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([c.config],{type:'text/plain'}));
+  a.download='kai-wg-'+String(enc).slice(0,10)+'.conf';
+  document.body.appendChild(a); a.click(); a.remove();
 }
 async function wgExport(enc,fmt){
   try{
@@ -5907,16 +6041,34 @@ async function wgExport(enc,fmt){
   }catch(e){toast('export failed: '+e.message);}
 }
 async function wgShowQR(enc){
+  const cached=wgSessionByEnc(enc);
+  if(cached&&cached.qr){
+    wgDetail('Peer config &middot; scan to add',
+      '<div style="text-align:center;margin:10px 0"><img alt="WireGuard QR" style="width:240px;height:240px;background:#fff;padding:10px;border-radius:6px" src="data:image/png;base64,'+esc(cached.qr)+'"></div>'
+      +'<div style="font-size:0.64rem;color:var(--fg-muted);margin-bottom:4px">client config — contains this device&rsquo;s private key.</div>'
+      +'<textarea readonly style="width:100%;height:180px;font-family:var(--font-mono);font-size:0.62rem;white-space:pre">'+esc(cached.config||'')+'</textarea>'
+      +'<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:6px"><button class="btn btn-xs" onclick="wgCopy(window._wgLastConfig,\'config\')">Copy config</button></div>');
+    window._wgLastConfig=cached.config||'';
+    return;
+  }
   try{
     const d=await api('/api/wg/peers/'+enc+'/qr?type=wg');
     window._wgLastConfig=d.config||window._wgLastConfig||'';
-    wgDetail('Connection QR &middot; scan to add',
+    wgDetail('Peer config &middot; scan to add',
       '<div style="text-align:center;margin:10px 0"><img alt="WireGuard QR" style="width:240px;height:240px;background:#fff;padding:10px;border-radius:6px" src="data:image/png;base64,'+esc(d.qr_png_base64||'')+'"></div>'
-      +'<p style="font-size:0.64rem;color:var(--fg-muted)">Open the WireGuard app &rarr; <b>+</b> &rarr; <b>Scan from QR code</b>. The QR encodes the full client config (private key included).</p>'
-      +'<div class="action-row" style="margin-top:6px;flex-wrap:wrap;gap:6px">'
-      +'<button class="btn btn-xs btn-accent" onclick="wgDownloadQR(\''+enc+'\')">Download PNG</button>'
-      +'<button class="btn btn-xs" onclick="wgCopyConfig(\''+enc+'\')">Copy config</button></div>');
-  }catch(e){toast('QR failed: '+e.message);}
+      +'<p style="font-size:0.64rem;color:var(--fg-muted)">Open the WireGuard app &rarr; <b>+</b> &rarr; <b>Scan from QR code</b>. The QR encodes the full client config.</p>');
+  }catch(e){ wgOneTimeNotice(e.message); }
+}
+function wgOneTimeNotice(msg){
+  wgDetail('Client key not stored',
+    '<p style="font-size:0.66rem;color:var(--fg-muted)">'+esc(msg||'The client private key is returned only once, at creation, and is never stored on the server.')+'</p>'
+    +'<p style="font-size:0.66rem;color:var(--fg-muted)">To issue a fresh config, delete this peer and add it again (the device gets a new key).</p>');
+}
+function wgSessionByEnc(enc){
+  try{
+    for(const pk in WG_STATE.session){ if(wgEnc(pk)===enc) return WG_STATE.session[pk]; }
+  }catch(e){}
+  return null;
 }
 async function wgDownloadQR(enc){
   try{
@@ -8167,6 +8319,264 @@ async function loadActivity(){
     h+='</tbody></table></div>';} else h+='<p class="empty">No approvals.</p>';
   h+='</div>';
   el.innerHTML=h;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PANEL: ACCOUNT REGISTRATION (Universal Account Registration, STEP 8)
+// Onboarding · Accounts · Providers · Inbox
+// ═══════════════════════════════════════════════════════════════════
+const UAR_SEQ=['DISCOVER_PROVIDER','CHECK_EXISTING_ACCOUNT','SELECT_IDENTITY','SELECT_PROVIDER_ADAPTER','CHECK_REQUIREMENTS','PREPARE_BROWSER','START_REGISTRATION','ENTER_INFORMATION','EMAIL_VERIFICATION','SMS_VERIFICATION','MFA','CAPTCHA/HUMAN_TAKEOVER','IDENTITY_VERIFICATION','SECURITY_CONFIGURATION','ACCOUNT_VERIFICATION','ACCOUNT_REGISTRY','VAULT','END_TO_END_TEST','COMPLETED'];
+const UAR_SHORT={DISCOVER_PROVIDER:'Discover',CHECK_EXISTING_ACCOUNT:'Existing',SELECT_IDENTITY:'Identity',SELECT_PROVIDER_ADAPTER:'Adapter',CHECK_REQUIREMENTS:'Req',PREPARE_BROWSER:'Browser',START_REGISTRATION:'Register',ENTER_INFORMATION:'Info',EMAIL_VERIFICATION:'Email',SMS_VERIFICATION:'SMS',MFA:'MFA','CAPTCHA/HUMAN_TAKEOVER':'Captcha',IDENTITY_VERIFICATION:'ID',SECURITY_CONFIGURATION:'Security',ACCOUNT_VERIFICATION:'Verify',ACCOUNT_REGISTRY:'Registry',VAULT:'Vault',END_TO_END_TEST:'E2E',COMPLETED:'Done'};
+function uarStatusBadge(s){const v=String(s||'').toLowerCase();const m={active:'ok',completed:'ok',paused_human:'warn',failed:'bad',cancelled:'info',archived:'info'};return '<span class="badge '+(m[v]||'info')+'">'+esc(s||'\u2014')+'</span>';}
+function uarVerifyBadge(v){const m={VERIFIED:'ok','PARTIALLY VERIFIED':'warn',PENDING:'warn',FAILED:'bad','NOT TESTED':'info','NOT APPLICABLE':'info'};return '<span class="badge '+(m[v]||'info')+'">'+esc(v||'\u2014')+'</span>';}
+function uarPolicyBadge(p){const m={ALLOWED:'ok',UNKNOWN:'warn',PROHIBITED:'bad'};const l={ALLOWED:'automation allowed',UNKNOWN:'unknown \u00b7 human confirm',PROHIBITED:'automation prohibited'};return '<span class="badge '+(m[p]||'info')+'">'+esc(l[p]||p||'\u2014')+'</span>';}
+function uarStepper(states){
+  const by={};for(const s of (states||[]))by[s.state]=s.status;
+  let i=0,html='<div class="uar-stepper" role="list" aria-label="Onboarding state machine">';
+  for(const st of UAR_SEQ){
+    const status=by[st]||'pending';
+    const cls={completed:'done',current:'current',pending_human:'human',skipped:'skip'}[status]||'';
+    const mark={completed:'\u2713',skipped:'\u2013',current:'\u25cf',pending_human:'!'}[status]||String(i+1);
+    const cur=status==='current'?' aria-current="step"':'';
+    html+='<div class="uar-step '+cls+'" role="listitem"'+cur+' title="'+attr(st)+' \u2014 '+attr(status)+'"><span class="dot" aria-hidden="true">'+mark+'</span><span class="lbl">'+esc(UAR_SHORT[st]||st)+'</span></div>';
+    if(i<UAR_SEQ.length-1)html+='<span class="uar-sep" aria-hidden="true"></span>';
+    i++;
+  }
+  return html+'</div>';
+}
+function uarHumanBanner(s){
+  if(!s.human_action_required)return '';
+  const ha=s.human_action||{};const aid=s.human_action_id||ha.action_id||'';
+  return '<div class="uar-banner" role="status" aria-live="polite">'
+    +'<div><b>Human action required:</b> '+esc(String(s.human_action_type||ha.action_type||'Human').replace(/_/g,' '))+'</div>'
+    +'<div style="font-size:0.66rem;margin:4px 0;color:var(--fg-secondary)">'+esc(ha.instructions||'KAI is waiting for you to complete this step.')+'</div>'
+    +(aid?'<button class="btn btn-xs btn-accent" data-mid="'+attr(s.mission_id||s.id)+'" data-aid="'+attr(aid)+'" onclick="uarComplete(this)">I\u2019ve completed this</button>':'<span class="field-hint">no action id</span>')
+    +'</div>';
+}
+async function loadOnboarding(){
+  const el=$('onboarding-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  try{
+    const d=await api('/api/onboarding');
+    const list=d.sessions||[];
+    let html='<div class="spread" style="margin-bottom:10px"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">Universal Account Registration \u00b7 Onboarding</span><button class="btn btn-xs" onclick="loadOnboarding()">Refresh</button></div>';
+    html+='<div class="card"><h3>Start a run</h3><div class="action-row" style="flex-wrap:wrap;gap:6px">'
+      +'<input id="uar-provider" class="search-input" placeholder="provider (e.g. amazon)" aria-label="Provider" style="max-width:200px">'
+      +'<input id="uar-acct-type" class="search-input" placeholder="account type (optional)" aria-label="Account type" style="max-width:200px">'
+      +'<button class="btn btn-xs btn-accent" onclick="uarStart()">Start onboarding</button></div>'
+      +'<div id="uar-result" class="field-hint" style="margin-top:6px" role="status" aria-live="polite"></div></div>';
+    if(!list.length)html+='<div class="card"><p class="empty">No onboarding sessions yet.</p></div>';
+    for(const s of list){
+      html+='<div class="card" style="margin-bottom:10px"><div class="spread"><h3 style="margin:0;font-size:0.8rem">'+esc(s.provider_id)+' '+uarStatusBadge(s.status)+' <span class="badge info">'+esc((s.progress&&s.progress.completed)||0)+'/'+esc((s.progress&&s.progress.total)||0)+'</span></h3>'
+        +'<span style="font-size:0.6rem;color:var(--fg-muted);font-family:var(--font-mono)">'+esc(s.mission_id)+'</span></div>'
+        +'<div style="font-size:0.66rem;color:var(--fg-secondary);margin:2px 0 4px">'+esc(s.objective||'')+'</div>'
+        +uarStepper(s.states)
+        +uarHumanBanner(s)
+        +'<div class="action-row" style="margin-top:6px;gap:6px">'
+        +'<button class="btn btn-xs" data-mid="'+attr(s.mission_id)+'" onclick="uarDetail(this.dataset.mid)">Details</button>'
+        +'<button class="btn btn-xs" data-mid="'+attr(s.mission_id)+'" onclick="uarResume(this.dataset.mid)">Resume</button>'
+        +'<button class="btn btn-xs btn-warn" data-mid="'+attr(s.mission_id)+'" onclick="uarCancel(this.dataset.mid)">Cancel</button>'
+        +'</div><div id="uar-detail-'+attr(s.mission_id)+'"></div></div>';
+    }
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function uarStart(){
+  const provider=($('uar-provider')||{}).value.trim();const at=($('uar-acct-type')||{}).value.trim();const r=$('uar-result');
+  if(!provider){toast('provider is required','err');if(r)r.textContent='provider is required';return;}
+  try{const d=await api('/api/onboarding',{method:'POST',body:JSON.stringify({provider:provider,account_type:at||undefined})});
+    if(r)r.textContent='started '+d.session.id+' ('+d.session.status+')';toast('onboarding started');loadOnboarding();}
+  catch(e){if(r)r.textContent='error: '+e.message;toast('error: '+e.message,'err');}
+}
+async function uarDetail(mid){
+  const el=$('uar-detail-'+mid);if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  try{const d=await api('/api/onboarding/'+encodeURIComponent(mid));const s=d.session||{};
+    let h=uarStepper(s.states);
+    const ev=(s.evidence||[]);
+    h+='<h4 style="font-size:0.68rem;margin-top:8px">Evidence ledger <span class="badge info">'+ev.length+'</span></h4>';
+    if(ev.length){h+='<div class="table-wrap"><table><thead><tr><th>State</th><th>Kind</th><th>Ref</th><th>Hash</th><th>At</th></tr></thead><tbody>';
+      for(const e of ev)h+='<tr><td style="font-size:0.6rem">'+esc(e.state||'')+'</td><td style="font-size:0.6rem">'+esc(e.kind||'')+'</td><td style="font-size:0.6rem">'+esc(String(e.ref||'\u2014').slice(0,40))+'</td><td style="font-size:0.58rem;color:var(--fg-muted)">'+esc(String(e.hash||'\u2014').slice(0,12))+'</td><td style="font-size:0.58rem">'+esc(String(e.at||'').slice(0,19).replace('T',' '))+'</td></tr>';
+      h+='</tbody></table></div>';}else h+='<p class="empty">No evidence yet.</p>';
+    const errs=(s.errors||[]);
+    if(errs.length){h+='<h4 style="font-size:0.68rem;margin-top:8px">Errors</h4><div class="table-wrap"><table><thead><tr><th>State</th><th>Error</th><th>At</th></tr></thead><tbody>';
+      for(const e of errs)h+='<tr><td style="font-size:0.6rem">'+esc(e.state||'')+'</td><td style="font-size:0.6rem;color:var(--destructive)">'+esc(e.error||'')+'</td><td style="font-size:0.58rem">'+esc(String(e.at||'').slice(0,19))+'</td></tr>';
+      h+='</tbody></table></div>';}
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function uarResume(mid){try{await api('/api/onboarding/'+encodeURIComponent(mid)+'/resume',{method:'POST',body:'{}'});toast('resumed');loadOnboarding();}catch(e){toast('error: '+e.message,'err');}}
+function uarCancel(mid){confirmAction('Cancel onboarding','Cancel session '+mid+'? This is terminal.',async()=>{try{await api('/api/onboarding/'+encodeURIComponent(mid)+'/cancel',{method:'POST',body:'{}'});toast('cancelled');loadOnboarding();}catch(e){toast('error: '+e.message,'err');}});}
+async function uarComplete(btn){
+  const mid=btn.dataset.mid,aid=btn.dataset.aid;
+  try{await api('/api/onboarding/'+encodeURIComponent(mid)+'/human-action/'+encodeURIComponent(aid)+'/complete',{method:'POST',body:'{}'});toast('marked complete \u2014 KAI resuming');loadOnboarding();loadInbox();}
+  catch(e){toast('error: '+e.message,'err');}
+}
+async function loadAccounts(){
+  const el=$('accounts-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  try{
+    const d=await api('/api/accounts');
+    const rows=d.accounts||[];
+    const verified=rows.filter(a=>a.verification_status==='VERIFIED').length;
+    const pending=rows.filter(a=>a.verification_status==='PENDING'||a.verification_status==='NOT TESTED').length;
+    let html='<div class="metric-row">'
+      +'<div class="metric"><span class="val">'+esc(rows.length)+'</span><span class="lbl">Accounts</span></div>'
+      +'<div class="metric"><span class="val" style="color:var(--accent)">'+esc(verified)+'</span><span class="lbl">Verified</span></div>'
+      +'<div class="metric"><span class="val" style="color:var(--warn)">'+esc(pending)+'</span><span class="lbl">Pending</span></div></div>';
+    html+='<div class="card"><h3>Account Registry <span class="badge info">'+esc(rows.length)+'</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadAccounts()">Refresh</button></span></h3>';
+    html+='<div class="table-wrap"><table><thead><tr><th>Provider</th><th>Account</th><th>Type</th><th>Status</th><th>Verification</th><th>Vault</th><th>Created (UTC)</th><th></th></tr></thead><tbody>';
+    if(!rows.length)html+='<tr><td colspan="8" class="empty">no accounts registered</td></tr>';
+    for(const a of rows){
+      html+='<tr><td>'+esc(a.provider)+'</td><td><code>'+esc(a.account_id)+'</code><div style="font-size:0.6rem;color:var(--fg-muted)">'+esc(a.username||'')+'</div></td>'
+        +'<td style="font-size:0.62rem">'+esc(a.account_type||'\u2014')+'</td>'
+        +'<td>'+uarStatusBadge(a.status)+'</td><td>'+uarVerifyBadge(a.verification_status)+'</td>'
+        +'<td>'+(a.vault_ref_present?'<span class="badge ok" title="'+attr(a.vault_ref_hint||'')+'">PRESENT</span>':'<span class="badge info">none</span>')+'</td>'
+        +'<td style="font-size:0.6rem">'+esc(String(a.created_at||'').slice(0,19).replace('T',' '))+'</td>'
+        +'<td><button class="btn btn-xs" data-id="'+attr(a.account_id)+'" onclick="acctShow(this.dataset.id)">Details</button></td></tr>';
+    }
+    html+='</tbody></table></div><div id="acct-detail"></div></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function acctShow(id){
+  const el=$('acct-detail');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  try{const d=await api('/api/accounts/'+encodeURIComponent(id));const a=d.account||{};
+    let h='<h4 style="font-size:0.75rem;margin-top:10px">'+esc(a.provider)+' \u00b7 '+esc(a.account_id)+'</h4>';
+    h+='<div class="table-wrap"><table><tbody>'
+      +'<tr><td style="color:var(--fg-muted)">Status</td><td>'+uarStatusBadge(a.status)+'</td></tr>'
+      +'<tr><td style="color:var(--fg-muted)">Verification</td><td>'+uarVerifyBadge(a.verification_status)+'</td></tr>'
+      +'<tr><td style="color:var(--fg-muted)">Security</td><td>'+esc(a.security_status||'\u2014')+'</td></tr>'
+      +'<tr><td style="color:var(--fg-muted)">Email</td><td>'+esc(a.email_masked||'\u2014')+'</td></tr>'
+      +'<tr><td style="color:var(--fg-muted)">Phone</td><td>'+esc(a.phone_masked||'\u2014')+'</td></tr>'
+      +'<tr><td style="color:var(--fg-muted)">Vault ref</td><td>'+(a.vault_ref_present?'<span class="badge ok">PRESENT</span> <span style="font-size:0.6rem;color:var(--fg-muted)">'+esc(a.vault_ref_hint||'')+'</span>':'<span class="badge info">none</span>')+'</td></tr>'
+      +'<tr><td style="color:var(--fg-muted)">Created</td><td style="font-size:0.62rem">'+esc(String(a.created_at||'').slice(0,19).replace('T',' '))+'</td></tr>'
+      +'</tbody></table></div>';
+    const ev=(a.evidence||[]);
+    h+='<h4 style="font-size:0.68rem;margin-top:8px">Evidence timeline <span class="badge info">'+ev.length+'</span></h4>';
+    if(ev.length){h+='<div class="table-wrap"><table><thead><tr><th>State</th><th>Kind</th><th>Ref</th><th>At</th></tr></thead><tbody>';
+      for(const e of ev)h+='<tr><td style="font-size:0.6rem">'+esc(e.state||'')+'</td><td style="font-size:0.6rem">'+esc(e.kind||'')+'</td><td style="font-size:0.6rem">'+esc(String(e.ref||'\u2014').slice(0,40))+'</td><td style="font-size:0.58rem">'+esc(String(e.at||'').slice(0,19).replace('T',' '))+'</td></tr>';
+      h+='</tbody></table></div>';}else h+='<p class="empty">No linked onboarding evidence.</p>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function loadProviders(){
+  const el=$('providers-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  try{
+    const d=await api('/api/providers');
+    const list=d.providers||[];
+    let html='<div class="spread" style="margin-bottom:10px"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">Provider Registry \u00b7 automation policy</span><button class="btn btn-xs" onclick="loadProviders()">Refresh</button></div>';
+    html+='<div class="grid">';
+    if(!list.length)html+='<div class="card"><p class="empty">No providers registered.</p></div>';
+    for(const p of list){
+      const req=p.requirements||{};const chips=[];
+      if(req.email)chips.push('email');if(req.phone)chips.push('phone');if(req.captcha)chips.push('captcha');if(req.mfa)chips.push('mfa');if(req.kyc)chips.push('KYC');if(req.payment)chips.push('payment');
+      html+='<div class="card"><div class="spread"><h3 style="margin:0;font-size:0.8rem">'+esc(p.display_name)+'</h3>'+uarPolicyBadge(p.automation_policy)+'</div>'
+        +'<div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin:2px 0 6px">'+esc(p.provider_id)+' \u00b7 '+esc(p.official_domain||'\u2014')+'</div>'
+        +'<div style="font-size:0.64rem;margin-bottom:4px"><b>Account types:</b> '+esc((p.account_types||[]).join(', '))+'</div>'
+        +'<div style="font-size:0.64rem;margin-bottom:6px"><b>Requires:</b> '+(chips.length?chips.map(c=>'<span class="badge info" style="margin-right:3px">'+esc(c)+'</span>').join(''):'<span class="field-hint">nothing beyond browser</span>')+'</div>'
+        +'<div style="font-size:0.62rem;margin-bottom:4px"><b>Readiness:</b> '+esc(p.readiness)+' \u00b7 adapter '+(p.adapter_registered?'<span class="badge ok">registered</span>':'<span class="badge info">none</span>')+'</div>'
+        +'<details><summary style="font-size:0.62rem;cursor:pointer;color:var(--info)">policy source (citation)</summary><div class="uar-cite">'+esc(p.policy_source||'no policy source recorded')+'</div></details>'
+        +'</div>';
+    }
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+// ── PANEL: SITE RECIPES (universal website registration viewer) ────
+// Status is always colour + label (never colour alone): published=ok,
+// draft=info, stale=warn (degraded). Recipes are metadata only — symbolic
+// value sources, selectors and URLs, never credentials.
+function srStatusBadge(status){
+  const s=String(status||'').toLowerCase();
+  const m={published:'ok',draft:'info',stale:'warn'};
+  const l={published:'published',draft:'draft',stale:'stale'};
+  return '<span class="badge '+(m[s]||'info')+'">'+esc(l[s]||s||'\u2014')+'</span>';
+}
+function _srChips(req){
+  const chips=[];
+  if(req.email)chips.push('email');if(req.phone)chips.push('phone');if(req.captcha)chips.push('captcha');
+  if(req.mfa)chips.push('mfa');if(req.kyc)chips.push('KYC');if(req.payment)chips.push('payment');
+  if(req.email_verify)chips.push('email verify');if(req.phone_verify)chips.push('phone verify');
+  return chips;
+}
+async function loadSiteRecipes(){
+  const el=$('site-recipes-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  try{
+    const d=await api('/api/site-recipes');
+    const list=d.recipes||[];
+    let html='<div class="spread" style="margin-bottom:10px"><span style="font-size:0.68rem;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.5px">Site Recipes \u00b7 reviewable signup flows</span><button class="btn btn-xs" onclick="loadSiteRecipes()">Refresh</button></div>';
+    html+='<div class="grid">';
+    if(!list.length)html+='<div class="card"><p class="empty">No site recipes learned yet.</p></div>';
+    for(const r of list){
+      const chips=_srChips(r.requirements||{});
+      html+='<div class="card"><div class="spread"><h3 style="margin:0;font-size:0.8rem">'+esc(r.domain)+'</h3>'+srStatusBadge(r.status)+'</div>'
+        +'<div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin:2px 0 6px">'+esc(r.flow_type)+' \u00b7 v'+esc(r.version)+' \u00b7 '+esc(r.source)+'</div>'
+        +'<div style="font-size:0.64rem;margin-bottom:6px"><b>Requires:</b> '+(chips.length?chips.map(c=>'<span class="badge info" style="margin-right:3px">'+esc(c)+'</span>').join(''):'<span class="field-hint">nothing beyond browser</span>')+'</div>'
+        +'<div style="font-size:0.62rem;margin-bottom:4px"><b>Confidence:</b> '+esc(r.confidence)+' \u00b7 '+esc(r.step_count)+' steps \u00b7 '+esc(r.field_count)+' fields</div>'
+        +'<div style="font-size:0.6rem;color:var(--fg-muted);margin-bottom:6px">Last verified: '+esc(r.last_verified_at||'\u2014')+'</div>'
+        +'<button class="btn btn-xs" data-domain="'+attr(r.domain)+'" onclick="srDetail(this.dataset.domain)" aria-label="Inspect recipe for '+attr(r.domain)+'">Inspect</button> '
+        +(r.status!=='published'?'<button class="btn btn-xs btn-accent" data-domain="'+attr(r.domain)+'" onclick="srPublish(this.dataset.domain)" aria-label="Publish recipe for '+attr(r.domain)+'">Publish</button>':'')
+        +'</div>';
+    }
+    html+='</div><div id="sr-detail" role="region" aria-live="polite" aria-label="Site recipe detail"></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function srDetail(domain){
+  const el=$('sr-detail');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  try{
+    const d=await api('/api/site-recipes/'+encodeURIComponent(domain));const r=d.recipe||{};
+    const chips=_srChips(r.requirements||{});
+    let h='<div class="card" style="margin-top:8px"><div class="spread"><h4 style="margin:0;font-size:0.75rem">'+esc(r.domain)+'</h4>'+srStatusBadge(r.status)+'</div>'
+      +'<div style="font-size:0.62rem;color:var(--fg-muted);font-family:var(--font-mono);margin:2px 0 6px">'+esc(r.flow_type)+' \u00b7 v'+esc(r.version)+' \u00b7 '+esc(r.source)+' \u00b7 confidence '+esc(r.confidence)+'</div>'
+      +'<div style="font-size:0.64rem;margin-bottom:6px"><b>Requirements:</b> '+(chips.length?chips.map(c=>'<span class="badge info" style="margin-right:3px">'+esc(c)+'</span>').join(''):'<span class="field-hint">nothing beyond browser</span>')+'</div>'
+      +'<div style="font-size:0.6rem;color:var(--fg-muted);margin-bottom:6px">Last verified: '+esc(r.last_verified_at||'\u2014')+' \u00b7 Evidence: '+esc(r.evidence_ref||'\u2014')+'</div>';
+    h+='<div class="table-wrap"><table><caption class="field-hint">Ordered browser steps (value sources are symbolic only)</caption><thead><tr><th scope="col">#</th><th scope="col">Action</th><th scope="col">Target</th><th scope="col">Value source</th></tr></thead><tbody>';
+    if(!(r.steps||[]).length)h+='<tr><td colspan="4" class="empty">no steps recorded</td></tr>';
+    for(const s of (r.steps||[]))h+='<tr><td>'+esc(s.index)+'</td><td>'+esc(s.action)+'</td><td style="font-size:0.6rem">'+esc(s.selector||s.url||'')+'</td><td style="font-size:0.6rem">'+esc(s.value_source||'')+'</td></tr>';
+    h+='</tbody></table></div>';
+    h+='<p class="field-hint" style="margin-top:4px">Recipes are metadata only \u2014 symbolic value sources, never credentials.</p></div>';
+    el.innerHTML=h;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function srPublish(domain){
+  try{await api('/api/site-recipes/'+encodeURIComponent(domain)+'/publish',{method:'POST',body:'{}'});toast('recipe published');loadSiteRecipes();}
+  catch(e){toast('error: '+e.message,'err');}
+}
+async function loadInbox(){
+  const el=$('inbox-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {error:e.message};}};
+  try{
+    const [sms,notes]=await Promise.all([g('/api/sms/inbox'),g('/api/notifications')]);
+    const msgs=sms.messages||[];const pend=notes.notifications||[];
+    const otp=msgs.filter(m=>m.otp_present).length;const susp=msgs.filter(m=>m.suspicious).length;
+    let html='<div class="metric-row">'
+      +'<div class="metric"><span class="val">'+esc(msgs.length)+'</span><span class="lbl">SMS</span></div>'
+      +'<div class="metric"><span class="val" style="color:var(--info)">'+esc(otp)+'</span><span class="lbl">OTP (redacted)</span></div>'
+      +'<div class="metric"><span class="val" style="color:var(--destructive)">'+esc(susp)+'</span><span class="lbl">Suspicious</span></div>'
+      +'<div class="metric"><span class="val" style="color:var(--warn)">'+esc(pend.length)+'</span><span class="lbl">Human actions</span></div></div>';
+    html+='<div class="card"><h3>Human-action queue <span class="badge warn">'+esc(pend.length)+'</span><span class="card-header-actions"><button class="btn btn-xs" onclick="loadInbox()">Refresh</button></span></h3>';
+    if(!pend.length)html+='<p class="empty">Nothing awaiting you.</p>';
+    for(const n of pend){
+      html+='<div class="uar-banner" role="status" style="margin:6px 0"><div><b>'+esc(String(n.action_type||'Human').replace(/_/g,' '))+'</b> \u00b7 '+esc(n.provider||'\u2014')+'</div>'
+        +'<div style="font-size:0.64rem;margin:3px 0;color:var(--fg-secondary)">'+esc(n.instructions||'')+'</div>'
+        +(n.mission_id&&n.action_id?'<button class="btn btn-xs btn-accent" data-mid="'+attr(n.mission_id)+'" data-aid="'+attr(n.action_id)+'" onclick="uarComplete(this)">I\u2019ve completed this</button>':'')
+        +'</div>';
+    }
+    html+='</div>';
+    html+='<div class="card"><h3>SMS activity <span class="badge info">'+esc(msgs.length)+'</span></h3>';
+    html+='<div class="table-wrap"><table><thead><tr><th>When (UTC)</th><th>From</th><th>To</th><th>Class</th><th>Carrier</th><th>Mission</th></tr></thead><tbody>';
+    if(!msgs.length)html+='<tr><td colspan="6" class="empty">no inbound SMS</td></tr>';
+    for(const m of msgs){
+      const cls=m.classification||'other';const cb=cls==='otp'?'info':cls==='suspicious'?'bad':cls==='security_alert'?'warn':'info';
+      html+='<tr><td style="font-size:0.6rem">'+esc(String(m.received_at||'').slice(0,19).replace('T',' '))+'</td>'
+        +'<td style="font-size:0.62rem">'+esc(m.from||'\u2014')+(m.suspicious?' <span class="badge bad">spo</span>':'')+'</td>'
+        +'<td style="font-size:0.62rem">'+esc(m.to||'\u2014')+'</td>'
+        +'<td><span class="badge '+cb+'">'+esc(cls)+'</span>'+(m.otp_present?' <span class="badge info">otp</span>':'')+'</td>'
+        +'<td style="font-size:0.6rem">'+esc(m.carrier||'\u2014')+'</td>'
+        +'<td style="font-size:0.58rem">'+esc(m.mission_id||'\u2014')+'</td></tr>';
+    }
+    html+='</tbody></table></div><p class="field-hint" style="margin-top:4px">Bodies and OTP codes are never shown \u2014 metadata only.</p></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
 </script>

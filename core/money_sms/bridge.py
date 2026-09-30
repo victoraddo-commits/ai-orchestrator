@@ -231,6 +231,49 @@ def wants_forward(record: dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# timestamp coercion (Phase 4 fix): akush-core rejects epoch stamps with 400
+# `timestamp invalid`; normalize epoch seconds/millis/ISO to ISO-8601 UTC here
+# so bridge failures become immediate dead-letters, not retry loops.
+# ---------------------------------------------------------------------------
+def _coerce_timestamp(value):
+    """
+    Accept epoch seconds (int/float, incl. ms-magnitude), ISO-8601 strings or
+    datetime objects; always return an ISO-8601 UTC string. Raise ValueError
+    for anything unparseable (callers dead-letter immediately — no retries).
+    """
+    from datetime import datetime, timezone
+
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
+
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        v = float(value)
+        if v >= 1e11:            # epoch milliseconds
+            v /= 1000.0
+        if v > 1e10:             # implausibly large for seconds -> reject
+            raise ValueError("implausible epoch timestamp")
+        return datetime.fromtimestamp(int(v), timezone.utc).isoformat()
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            raise ValueError("empty timestamp")
+        if text.replace("-", "", 1).replace(".", "", 1).isdigit():
+            return _coerce_timestamp(float(text))
+        normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+        try:
+            dt = datetime.fromisoformat(normalized)
+        except ValueError:
+            raise ValueError("unparseable timestamp: %r" % text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
+
+    raise ValueError("unsupported timestamp type: %s" % type(value).__name__)
+
+
+# ---------------------------------------------------------------------------
 # POST
 # ---------------------------------------------------------------------------
 def sleep(seconds: float) -> None:  # test seam
@@ -390,11 +433,20 @@ def _process_one(event: dict, preloaded: dict | None) -> None:
         return
 
     # -- POST ------------------------------------------------------------------
+    # Phase 4 fix: coerce the timestamp to ISO-8601 UTC before POST. Epoch
+    # stamps used to bounce off akush-core's 400 `timestamp invalid` and burn
+    # the full retry budget forever; unparseable stamps now dead-letter once.
+    try:
+        iso_stamp = _coerce_timestamp(record.get("received_at"))
+    except (ValueError, TypeError):
+        state["counters"]["failed"] = int(state["counters"].get("failed", 0)) + 1
+        _dead_letter(record, "unparseable_timestamp")
+        return
     payload = {
         "fingerprint": fp,
         "source_id": record.get("message_id"),
         "sender": record.get("from_number"),
-        "timestamp": record.get("received_at"),
+        "timestamp": iso_stamp,
         "body": record.get("body", ""),
         "otp_redacted": bool(record.get("otp_present")),
         "line": record.get("line"),
@@ -517,5 +569,5 @@ def _reset_runtime_cache() -> None:
 __all__ = [
     "register_subscriber", "enqueue_work", "load_state", "wants_forward",
     "bridge_token", "fingerprint_key", "FAILURE_TOPIC", "SUCCESS_TOPIC",
-    "QUEUE_MAX", "MAX_ATTEMPTS",
+    "QUEUE_MAX", "MAX_ATTEMPTS", "_coerce_timestamp",
 ]

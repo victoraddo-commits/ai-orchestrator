@@ -159,7 +159,9 @@ def test_event_results_in_correct_payload(posted, fpkey):
     assert body["sender"] == rec["from_number"]
     assert body["body"] == rec["body"]
     assert body["otp_redacted"] is False
-    assert body["timestamp"] == rec["received_at"]
+    # Phase 4: timestamp is canonically ISO-8601 UTC (was raw passthrough)
+    from datetime import datetime as _dt
+    assert _dt.fromisoformat(body["timestamp"].replace("Z", "+00:00")).timestamp() == _dt.fromisoformat(rec["received_at"].replace("Z", "+00:00")).timestamp()
     assert "Bearer " in (call["headers"] or {}).get("Authorization", "")
 
 
@@ -330,3 +332,64 @@ def test_manager_module_unpatched_api():
         assert callable(getattr(manager, fn, None))
     from core.sms.server import create_app  # webhook surface still importable
     assert callable(create_app)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 fix-back: timestamp coercion (epoch seconds/millis/ISO -> ISO-8601
+# UTC). akush-core dead-letters on epoch-seconds (400 timestamp invalid); the
+# bridge must coerce before POST and never retry-loop an unparseable stamp.
+# ---------------------------------------------------------------------------
+def test_timestamp_epoch_seconds_coerced_to_iso8601(posted, fpkey):
+    from core.money_sms import bridge
+    assert bridge._coerce_timestamp(1790758800) == "2026-09-30T09:00:00+00:00"
+    rec = _record()
+    rec["received_at"] = 1790758800
+    bridge._handle_event({"message_id": rec["message_id"]}, preloaded=rec)
+    assert len(posted[0]) == 1
+    ts = posted[0][0]["json"]["timestamp"]
+    assert isinstance(ts, str) and "T" in ts
+    assert ts.endswith("+00:00") or ts.endswith("Z")
+
+
+def test_timestamp_epoch_millis_coerced_to_iso8601(posted, fpkey):
+    from core.money_sms import bridge
+    coerced = bridge._coerce_timestamp(1790758800000)
+    assert coerced.startswith("2026-09-30T") and ("+00:00" in coerced or "Z" in coerced)
+
+
+def test_timestamp_offset_seconds_coerced_not_shifted(posted, fpkey):
+    from core.money_sms import bridge
+    same = bridge._coerce_timestamp(1790758800.25) == bridge._coerce_timestamp(1790758800)
+    assert same  # fractional epoch seconds below 1s do not move the instant
+
+
+def test_timestamp_iso_passthrough_canonicalized_utc(posted, fpkey):
+    from core.money_sms import bridge
+    assert bridge._coerce_timestamp("2026-09-30T09:00:00Z").startswith("2026-09-30T09:00:00")
+
+
+def test_timestamp_unparseable_deadletters_immediately_no_retry(posted, fpkey, monkeypatch):
+    from core.money_sms import bridge
+    import core.money_sms.bridge as bridge_mod
+    calls, _ = posted
+    published = []
+
+    def _pub(topic, payload, *a, **k):
+        if topic != "sms.received":
+            published.append(topic)
+        return 0
+    monkeypatch.setattr(kai_event_bus, "publish", _pub)
+    monkeypatch.setattr(bridge_mod, "MAX_ATTEMPTS", 3)
+
+    rec = _record()
+    rec["received_at"] = "definitely-not-a-timestamp"
+    bridge._handle_event({"message_id": rec["message_id"]}, preloaded=rec)
+    assert len(calls) == 0  # never POSTed
+    state = bridge.load_state()
+    assert any(d.get("reason") == "unparseable_timestamp"
+               for d in state["dead_letter"])
+    assert bridge.FAILURE_TOPIC in published
+    # exactly ONE dead-letter entry for this message (no retry loop)
+    mine = [d for d in state["dead_letter"]
+            if d.get("message_id") == rec["message_id"]]
+    assert len(mine) == 1

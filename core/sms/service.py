@@ -69,6 +69,17 @@ def serve(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> None:  # pragma
 
     from core.sms.server import create_app
 
+    # Phase 2c: money SMS bridge subscriber — the SMS events originate in THIS
+    # process's event bus, so the subscriber must attach here too. Idempotent
+    # + fail-safe: a bridge problem must never stop the webhook server.
+    try:
+        from core.money_sms import bridge as _money_sms_bridge
+        _money_sms_bridge.register_subscriber()
+        logger.info("money sms bridge subscriber registered (sms worker process)")
+    except Exception as _mms_exc:
+        logger.warning("money sms bridge registration failed: %s",
+                       type(_mms_exc).__name__)
+
     token = None
     from core.sms import vault
 

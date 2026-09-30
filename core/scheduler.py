@@ -114,6 +114,30 @@ class WatchdogHeartbeat:
         return False
 
 
+def _register_onboarding_tool_surfaces() -> list[str]:
+    """Register the Universal Account Registration tool surfaces at boot.
+
+    STEP 6 deferred-fix (a): the browser/mail/sms tool wrappers existed but were
+    never wired into a boot path, so the Brain/Mission Engine could not discover
+    them. Additive and fail-safe — a registration problem must never stop the
+    scheduler (same convention as the other boot steps).
+    """
+    registered: list[str] = []
+    for label, importer in (
+        ("browser", "core.browser.tools"),
+        ("mail", "core.mail.tools"),
+        ("sms", "core.sms.tools"),
+    ):
+        try:
+            module = __import__(importer, fromlist=["register"])
+            register = getattr(module, f"register_{label}_tools")
+            registered.extend(register())
+        except Exception as exc:  # noqa: BLE001
+            info(f"tool surface {label} registration failed: {type(exc).__name__}")
+    info(f"registered onboarding tool surfaces: {len(registered)} tools")
+    return registered
+
+
 def start():
 
     global _pool, _monitor, _health_worker, _provider_health_monitor, _last_network_discovery
@@ -143,6 +167,19 @@ def start():
     # 2026-09-09: Provider Health Monitor — KAI Phase 1 autonomous failover
     # Monitors all AI providers every 30s, sends Telegram alerts on failures.
     _provider_health_monitor = start_provider_health_monitor()
+
+    # STEP 6: register the Universal Account Registration tool surfaces on the
+    # tool bus (browser / mail / sms). Additive + fail-safe.
+    _register_onboarding_tool_surfaces()
+
+    # Phase 2c: money SMS bridge subscriber (akush-core). Idempotent +
+    # fail-safe; registration problems never stop the scheduler.
+    try:
+        from core.money_sms import bridge as _money_sms_bridge
+        _money_sms_bridge.register_subscriber()
+        info("money sms bridge subscriber registered")
+    except Exception as _mms_exc:
+        info(f"money sms bridge registration failed: {type(_mms_exc).__name__}")
 
     info("scheduler started (DeepSeek pool + Telegram monitor + Health Worker + Provider Health Monitor)")
 

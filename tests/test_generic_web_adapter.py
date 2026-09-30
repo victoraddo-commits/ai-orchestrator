@@ -103,7 +103,8 @@ def test_descriptor_surfaces_requirements_and_policy_unknown():
     assert surfaced["flow_type"] == "sso_only"
 
 
-def test_registration_drives_published_recipe_and_stores_vault_ref(isolated):
+def test_registration_drives_published_recipe_and_stores_vault_ref(isolated, monkeypatch):
+    _patch_identity(monkeypatch)
     published = _published_recipe()
     browser = FakeBrowser()
     vault = FakeVault()
@@ -148,7 +149,8 @@ def test_registration_without_published_recipe_learns_draft_and_pauses(isolated)
     assert draft.steps[0].action == "navigate"
 
 
-def test_registration_marks_stale_and_relearns_on_drift(isolated):
+def test_registration_marks_stale_and_relearns_on_drift(isolated, monkeypatch):
+    _patch_identity(monkeypatch)
     _published_recipe("drift.example")
     backend = FixtureReasoningBackend(recipes={"drift.example": {
         "flow_type": "multi_step", "confidence": 0.5,
@@ -160,7 +162,8 @@ def test_registration_marks_stale_and_relearns_on_drift(isolated):
     adapter = GenericWebAdapter("drift.example", browser=browser, learner=learner,
                                 profile=SiteProfile(domain="drift.example"))
 
-    outcome = adapter.registration(browser_session_id="sess-3")
+    outcome = adapter.registration(browser_session_id="sess-3",
+                                   identity_id="ident-1")
     assert outcome["status"] == "drift_relearned"
     assert outcome["requires_human"] is True
 
@@ -299,3 +302,132 @@ def test_interleaved_missions_do_not_share_identity_or_password(monkeypatch, iso
     pw_by_session = {sid: val for sid, sel, val in browser.fills
                      if sel == "#password"}
     assert pw_by_session["sess-A"] != pw_by_session["sess-B"]
+
+
+# ---------------------------------------------------------------------------
+# I2: literal vault sources + explicit-unresolved signals
+# ---------------------------------------------------------------------------
+
+
+class ReadWriteVault(FakeVault):
+    def __init__(self, entries=None):
+        super().__init__()
+        self.entries = dict(entries or {})
+
+    def read(self, path):
+        return self.entries.get(path)
+
+
+class _ValueBrowser:
+    def __init__(self):
+        self.fills = []
+
+    def perform(self, session_id, op, params=None):
+        params = dict(params or {})
+        if op == "fill":
+            self.fills.append((params.get("selector"), params.get("value")))
+        return {"op": op, "ok": True}
+
+
+def _published_steps(domain, steps):
+    recipe = SiteRecipe(domain=domain, signup_url=f"https://{domain}/signup",
+                        status=RecipeStatus.published, source=RecipeSource.seeded,
+                        steps=steps)
+    recipe_store.save_recipe(recipe)
+    return recipe_store.publish_recipe(domain)
+
+
+def test_literal_value_source_reads_from_vault(isolated):
+    _published_steps("literal.example", [
+        RecipeStep(index=0, action="navigate",
+                   url="https://literal.example/signup"),
+        RecipeStep(index=1, action="fill", selector="#token",
+                   value_source="literal:secrets/accounts/literal.example/token"),
+    ])
+    browser = _ValueBrowser()
+    vault = ReadWriteVault(
+        {"secrets/accounts/literal.example/token": "token-value"})
+    adapter = GenericWebAdapter("literal.example", browser=browser, vault=vault,
+                                profile=SiteProfile(domain="literal.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-l1",
+                                   account_id="acct-l")
+
+    assert outcome["status"] == "submitted"
+    filled = dict(browser.fills)
+    assert filled["#token"] == "token-value"
+    assert "token-value" not in json.dumps(outcome)
+
+
+def test_literal_missing_from_vault_is_unresolved_and_pauses(isolated):
+    _published_steps("noread.example", [
+        RecipeStep(index=0, action="navigate",
+                   url="https://noread.example/signup"),
+        RecipeStep(index=1, action="fill", selector="#token",
+                   value_source="literal:secrets/accounts/noread.example/token"),
+    ])
+    browser = _ValueBrowser()
+    adapter = GenericWebAdapter("noread.example", browser=browser,
+                                vault=ReadWriteVault({}),
+                                profile=SiteProfile(domain="noread.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-l2")
+
+    assert outcome["status"] == "unresolved_value_source"
+    assert outcome["requires_human"] is True
+    assert browser.fills == []
+
+
+def test_totp_is_explicitly_unresolved_and_pauses(isolated):
+    _published_steps("totp.example", [
+        RecipeStep(index=0, action="navigate",
+                   url="https://totp.example/signup"),
+        RecipeStep(index=1, action="fill", selector="#otp", value_source="totp"),
+    ])
+    browser = _ValueBrowser()
+    adapter = GenericWebAdapter("totp.example", browser=browser,
+                                profile=SiteProfile(domain="totp.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-t1")
+
+    assert outcome["status"] == "unresolved_value_source"
+    assert outcome["requires_human"] is True
+    assert browser.fills == []
+
+
+def test_missing_identity_attribute_is_unresolved_and_pauses(isolated):
+    _published_steps("noident.example", [
+        RecipeStep(index=0, action="navigate",
+                   url="https://noident.example/signup"),
+        RecipeStep(index=1, action="fill", selector="#email",
+                   value_source="identity.email"),
+    ])
+    browser = _ValueBrowser()
+    adapter = GenericWebAdapter("noident.example", browser=browser,
+                                profile=SiteProfile(domain="noident.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-i1",
+                                   identity_id="ident-does-not-exist")
+
+    assert outcome["status"] == "unresolved_value_source"
+    assert outcome["requires_human"] is True
+    assert browser.fills == []
+
+
+def test_generated_username_resolves_to_a_value(isolated):
+    _published_steps("uname.example", [
+        RecipeStep(index=0, action="navigate",
+                   url="https://uname.example/signup"),
+        RecipeStep(index=1, action="fill", selector="#username",
+                   value_source="generated_username"),
+    ])
+    browser = _ValueBrowser()
+    adapter = GenericWebAdapter("uname.example", browser=browser,
+                                profile=SiteProfile(domain="uname.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-u1")
+
+    assert outcome["status"] == "submitted"
+    filled = dict(browser.fills)
+    assert filled.get("#username")
+    assert not filled["#username"].isnumeric()

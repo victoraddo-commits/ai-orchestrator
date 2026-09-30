@@ -31,6 +31,10 @@ PROVIDER_ACCOUNT_TYPE = "web"
 
 _PASSWORD_SYMBOLS = "!@#$%^&*-_=+"
 
+#: Distinct "could not be resolved" signal. Never returned as a value: the
+#: engine must pause rather than fill a blank into a real form field.
+_UNRESOLVED = object()
+
 
 def _generate_password(length: int = 20) -> str:
     """A strong password with all character classes (never logged/returned)."""
@@ -41,6 +45,12 @@ def _generate_password(length: int = 20) -> str:
                 and any(c.isdigit() for c in password)
                 and any(c in _PASSWORD_SYMBOLS for c in password)):
             return password
+
+
+def _generate_username(length: int = 12) -> str:
+    """A stable-per-run, account-safe username (never logged/returned)."""
+    alphabet = string.ascii_lowercase + string.digits
+    return "kai_" + "".join(_secrets.choice(alphabet) for _ in range(max(1, length - 4)))
 
 
 class GenericWebAdapter(ProviderAdapter):
@@ -60,6 +70,7 @@ class GenericWebAdapter(ProviderAdapter):
         # a single shared slot): concurrent/interleaved missions on the shared
         # registry instance must never see each other's generated credential.
         self._pending_passwords: dict = {}
+        self._pending_usernames: dict = {}
 
     # -- descriptor ----------------------------------------------------------
     @staticmethod
@@ -121,19 +132,60 @@ class GenericWebAdapter(ProviderAdapter):
         return "__default__"
 
     def _resolve_value(self, source: Optional[str], *, identity_id,
-                       run_key: str) -> str:
+                       run_key: str):
+        """Resolve a symbolic ``value_source`` to a run value or ``_UNRESOLVED``.
+
+        ``totp`` is intentionally **unresolved**: a TOTP seed lives in Vault and
+        one-time-code generation is deliberately out of scope for the recipe
+        runner, so the engine pauses for a human / the identity's authenticator
+        rather than filling a blank code. ``literal:<vault/path>`` is read from
+        Vault; a missing Vault read is unresolved. Any ``identity.*`` attribute
+        that is absent on the resolved identity is unresolved too.
+        """
         if not source:
-            return ""
+            return _UNRESOLVED
         if source == "generated_password":
             password = self._pending_passwords.get(run_key)
             if password is None:
                 password = _generate_password()
                 self._pending_passwords[run_key] = password
             return password
+        if source == "generated_username":
+            username = self._pending_usernames.get(run_key)
+            if username is None:
+                username = _generate_username()
+                self._pending_usernames[run_key] = username
+            return username
+        if source == "totp":
+            return _UNRESOLVED
+        if source.startswith("literal:"):
+            value = self._vault_read(source[len("literal:"):])
+            return value if value else _UNRESOLVED
         if source.startswith("identity."):
             ident = self._resolve_identity(identity_id)
-            return getattr(ident, source.split(".", 1)[1], "") if ident else ""
-        return ""
+            value = getattr(ident, source.split(".", 1)[1], None) if ident else None
+            return value if value not in (None, "") else _UNRESOLVED
+        return _UNRESOLVED
+
+    def _vault_read(self, path: str) -> Optional[str]:
+        """Read a Vault entry by path. None on any failure (never raises)."""
+        reader = getattr(self._vault, "read", None)
+        if callable(reader):
+            try:
+                return reader(path)
+            except Exception:  # noqa: BLE001 - a vault outage must not crash
+                return None
+        try:
+            from core.ai.kai_vault_client import fetch_secret, load_token
+        except Exception:  # noqa: BLE001
+            return None
+        token = load_token()
+        if not token:
+            return None
+        try:
+            return fetch_secret(path, token)
+        except Exception:  # noqa: BLE001 - never log/raise the secret path read
+            return None
 
     def _vault_store(self, path: str, value: str) -> Optional[str]:
         writer = self._vault
@@ -156,8 +208,12 @@ class GenericWebAdapter(ProviderAdapter):
         if step.selector:
             params["selector"] = step.selector
         if step.value_source:
-            params["value"] = self._resolve_value(
-                step.value_source, identity_id=identity_id, run_key=run_key)
+            value = self._resolve_value(step.value_source, identity_id=identity_id,
+                                        run_key=run_key)
+            if value is _UNRESOLVED:
+                return {"ok": False, "unresolved": True,
+                        "value_source": step.value_source}
+            params["value"] = value
             if step.value_source == "generated_password":
                 params["credential"] = True
         try:
@@ -206,8 +262,17 @@ class GenericWebAdapter(ProviderAdapter):
                 reason="no published recipe; learned a draft for operator review")
 
         for step in published.steps:
-            if self._perform(session_id, step, identity_id=identity_id,
-                             run_key=run_key).get("ok") is False:
+            result = self._perform(session_id, step, identity_id=identity_id,
+                                   run_key=run_key)
+            if result.get("unresolved"):
+                return {"status": "unresolved_value_source",
+                        "requires_human": True, "action_type": "OTHER",
+                        "instructions": (
+                            f"recipe for {self._domain} needs "
+                            f"{result.get('value_source')} but the value could not "
+                            "be resolved (vault/identity/totp); operator action "
+                            "required")}
+            if result.get("ok") is False:
                 self._store.mark_stale(self._domain)
                 return self._learn_and_pause(
                     session_id,

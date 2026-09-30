@@ -1,0 +1,211 @@
+"""core.providers.generic_web - universal adapter behavior (offline)."""
+
+import json
+
+import pytest
+
+from core.discovery.reasoning import FixtureReasoningBackend
+from core.providers import AutomationPolicy
+from core.providers.adapter import ProviderAdapter
+from core.providers.generic_web import GenericWebAdapter, build_generic_adapter
+from core.secret_guard import SecretFieldError
+from core.site_recipes import store as recipe_store
+from core.site_recipes.learner import RecipeLearner
+from core.site_recipes.schema import (
+    RecipeSource,
+    RecipeStatus,
+    RecipeStep,
+    SiteProfile,
+    SiteRecipe,
+)
+
+
+@pytest.fixture(autouse=True)
+def isolated(monkeypatch, tmp_path):
+    monkeypatch.setenv("AI_ORCHESTRATOR_MEMORY_DIR", str(tmp_path))
+    return tmp_path
+
+
+class FakeBrowser:
+    def __init__(self, *, fail_selectors=()):
+        self.fail = set(fail_selectors)
+        self.calls = []
+
+    def perform(self, session_id, op, params=None):
+        params = dict(params or {})
+        target = params.get("selector") or params.get("url")
+        self.calls.append((op, target, params.get("credential", False)))
+        if target in self.fail:
+            return {"op": op, "ok": False, "error": "selector_not_found"}
+        if op == "inspect":
+            return {"op": op, "snapshot": {"title": "Sign up", "elements": [],
+                                           "has_password_field": True,
+                                           "untrusted": True}}
+        return {"op": op, "ok": True}
+
+
+class FakeVault:
+    def __init__(self):
+        self.writes = {}
+
+    def __call__(self, path, value):
+        self.writes[path] = value
+        return path
+
+
+def _published_recipe(domain="site.example"):
+    recipe = SiteRecipe(
+        domain=domain, signup_url=f"https://{domain}/signup",
+        status=RecipeStatus.published, source=RecipeSource.seeded,
+        steps=[
+            RecipeStep(index=0, action="navigate", url=f"https://{domain}/signup"),
+            RecipeStep(index=1, action="fill", selector="#email",
+                       value_source="identity.email"),
+            RecipeStep(index=2, action="fill", selector="#password",
+                       value_source="generated_password"),
+            RecipeStep(index=3, action="click", selector="#submit"),
+        ])
+    recipe_store.save_recipe(recipe)
+    return recipe_store.publish_recipe(domain)
+
+
+def test_adapter_synthesizes_descriptor_from_profile():
+    adapter = build_generic_adapter("site.example")
+    assert isinstance(adapter, ProviderAdapter)
+    assert adapter.descriptor.provider_id == "site.example"
+    assert adapter.descriptor.official_domain == "site.example"
+    assert adapter.descriptor.browser_required is True
+    assert adapter.descriptor.automation_policy is AutomationPolicy.UNKNOWN
+    for operation in ("discovery", "registration", "verification",
+                      "security_setup", "profile_setup", "account_status"):
+        assert callable(getattr(adapter, operation))
+
+
+def test_descriptor_surfaces_requirements_and_policy_unknown():
+    profile = SiteProfile(
+        domain="req.example", signup_url="https://req.example/signup",
+        flow_type="sso_only",
+        requirements={"email": True, "phone": True, "captcha": True, "mfa": True},
+        automation_policy=AutomationPolicy.UNKNOWN,
+        policy_source="classifier: test note")
+    adapter = GenericWebAdapter("req.example", profile=profile, browser=FakeBrowser())
+
+    assert adapter.descriptor.requires_email is True
+    assert adapter.descriptor.requires_phone is True
+    assert adapter.descriptor.requires_captcha is True
+    assert adapter.descriptor.requires_mfa is True
+    assert adapter.descriptor.has_oauth is True
+    assert adapter.descriptor.automation_policy is AutomationPolicy.UNKNOWN
+    assert adapter.descriptor.policy_source == "classifier: test note"
+
+    surfaced = adapter.discovery()
+    assert surfaced["automation_policy"] == "UNKNOWN"
+    assert surfaced["flow_type"] == "sso_only"
+
+
+def test_registration_drives_published_recipe_and_stores_vault_ref(isolated):
+    published = _published_recipe()
+    browser = FakeBrowser()
+    vault = FakeVault()
+    adapter = GenericWebAdapter("site.example", browser=browser, vault=vault,
+                                profile=SiteProfile(domain="site.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-1",
+                                   identity_id="ident-1", account_id="acct-1")
+    assert outcome["status"] == "submitted"
+    assert outcome["requires_human"] is False
+    assert outcome["recipe_version"] == published.version
+    assert outcome["password_ref"] == "secrets/accounts/site_example/acct-1"
+    assert set(vault.writes) == {"secrets/accounts/site_example/acct-1"}
+    password = vault.writes[outcome["password_ref"]]
+    assert len(password) >= 16
+    assert password not in json.dumps(outcome)
+    # the credential fill is flagged, and the plaintext is never in the calls list
+    flagged = [c for c in browser.calls if c[0] == "fill" and c[2] is True]
+    assert flagged and flagged[0][1] == "#password"
+    assert all(outcome["password_ref"] != str(c[1]) for c in browser.calls)
+
+
+def test_registration_without_published_recipe_learns_draft_and_pauses(isolated):
+    backend = FixtureReasoningBackend(recipes={"new.example": {
+        "flow_type": "single_page",
+        "steps": [{"index": 0, "action": "navigate",
+                   "url": "https://new.example/signup"}],
+        "confidence": 0.4,
+    }})
+    browser = FakeBrowser()
+    learner = RecipeLearner(backend, browser=browser)
+    adapter = GenericWebAdapter("new.example", browser=browser, learner=learner,
+                                profile=SiteProfile(domain="new.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-2")
+    assert outcome["status"] == "draft_learned"
+    assert outcome["requires_human"] is True
+
+    draft = recipe_store.get_recipe("new.example")
+    assert draft.status is RecipeStatus.draft
+    assert draft.source is RecipeSource.learned
+    assert draft.steps[0].action == "navigate"
+
+
+def test_registration_marks_stale_and_relearns_on_drift(isolated):
+    _published_recipe("drift.example")
+    backend = FixtureReasoningBackend(recipes={"drift.example": {
+        "flow_type": "multi_step", "confidence": 0.5,
+        "steps": [{"index": 0, "action": "navigate",
+                   "url": "https://drift.example/signup"}],
+    }})
+    browser = FakeBrowser(fail_selectors={"#email"})
+    learner = RecipeLearner(backend, browser=browser)
+    adapter = GenericWebAdapter("drift.example", browser=browser, learner=learner,
+                                profile=SiteProfile(domain="drift.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-3")
+    assert outcome["status"] == "drift_relearned"
+    assert outcome["requires_human"] is True
+
+    stale = recipe_store.get_recipe("drift.example", status=RecipeStatus.stale)
+    assert stale is not None
+    assert stale.version == 1
+    assert recipe_store.get_published("drift.example") is None
+
+    drafts = [v for v in recipe_store.read_versions("drift.example")
+              if v["status"] == "draft"]
+    assert drafts and drafts[-1]["source"] == "learned"
+
+
+def test_learned_recipe_stores_symbolic_sources_only(isolated, tmp_path):
+    backend = FixtureReasoningBackend(recipes={"sym.example": {
+        "flow_type": "single_page", "confidence": 0.6,
+        "steps": [
+            {"index": 0, "action": "navigate", "url": "https://sym.example/signup"},
+            {"index": 1, "action": "fill", "selector": "#password",
+             "value_source": "generated_password"},
+        ],
+    }})
+    browser = FakeBrowser()
+    adapter = GenericWebAdapter("sym.example", browser=browser,
+                                learner=RecipeLearner(backend, browser=browser),
+                                profile=SiteProfile(domain="sym.example"))
+    adapter.registration(browser_session_id="sess-5")
+
+    raw = (tmp_path / "site_recipes" / "sym.example.json").read_text()
+    assert "generated_password" in raw
+    assert "hunter2" not in raw
+    assert '"value"' not in raw
+
+
+def test_learned_draft_with_secret_like_description_is_not_persisted(isolated):
+    backend = FixtureReasoningBackend(recipes={"leak.example": {
+        "flow_type": "single_page", "confidence": 0.6,
+        "steps": [{"index": 0, "action": "navigate",
+                   "url": "https://leak.example/signup",
+                   "description": "password=hunter2"}],
+    }})
+    browser = FakeBrowser()
+    adapter = GenericWebAdapter("leak.example", browser=browser,
+                                learner=RecipeLearner(backend, browser=browser),
+                                profile=SiteProfile(domain="leak.example"))
+    with pytest.raises(SecretFieldError):
+        adapter.registration(browser_session_id="sess-4")
+    assert recipe_store.read_versions("leak.example") == []

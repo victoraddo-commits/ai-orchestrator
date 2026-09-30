@@ -209,3 +209,93 @@ def test_learned_draft_with_secret_like_description_is_not_persisted(isolated):
     with pytest.raises(SecretFieldError):
         adapter.registration(browser_session_id="sess-4")
     assert recipe_store.read_versions("leak.example") == []
+
+
+# ---------------------------------------------------------------------------
+# I1: shared adapter instance must be stateless per mission
+# ---------------------------------------------------------------------------
+
+
+class _Ident:
+    def __init__(self, identity_id):
+        self.identity_id = identity_id
+        self.display_name = identity_id
+        self.email = f"{identity_id}@example.test"
+        self.phone = "+10000000000"
+
+
+def _patch_identity(monkeypatch):
+    import core.identity as identity_mod
+
+    monkeypatch.setattr(identity_mod, "get_identity", lambda iid: _Ident(iid))
+
+
+class _InterleavingBrowser:
+    """On the first credential fill it runs mission B on the SAME adapter."""
+
+    def __init__(self):
+        self.fills = []
+        self._armed = None
+        self._fired = False
+
+    def arm(self, callback):
+        self._armed = callback
+
+    def perform(self, session_id, op, params=None):
+        params = dict(params or {})
+        if op == "fill":
+            self.fills.append((session_id, params.get("selector"),
+                               params.get("value")))
+            if self._armed and not self._fired and params.get("credential"):
+                self._fired = True
+                self._armed()
+        return {"op": op, "ok": True}
+
+
+def test_interleaved_missions_do_not_share_identity_or_password(monkeypatch, isolated):
+    _patch_identity(monkeypatch)
+    # The password step comes FIRST so mission B can overwrite any shared
+    # identity slot before mission A resolves identity.email.
+    recipe = SiteRecipe(
+        domain="interleave.example",
+        signup_url="https://interleave.example/signup",
+        status=RecipeStatus.published, source=RecipeSource.seeded,
+        steps=[
+            RecipeStep(index=0, action="navigate",
+                       url="https://interleave.example/signup"),
+            RecipeStep(index=1, action="fill", selector="#password",
+                       value_source="generated_password"),
+            RecipeStep(index=2, action="fill", selector="#email",
+                       value_source="identity.email"),
+        ])
+    recipe_store.save_recipe(recipe)
+    recipe_store.publish_recipe("interleave.example")
+
+    browser = _InterleavingBrowser()
+    vault = FakeVault()
+    adapter = GenericWebAdapter("interleave.example", browser=browser, vault=vault,
+                                profile=SiteProfile(domain="interleave.example"))
+
+    def run_mission_b():
+        adapter.registration(browser_session_id="sess-B", identity_id="ident-B",
+                             account_id="acct-B", mission_id="mis-B")
+
+    browser.arm(run_mission_b)
+    outcome_a = adapter.registration(browser_session_id="sess-A",
+                                     identity_id="ident-A", account_id="acct-A",
+                                     mission_id="mis-A")
+
+    assert outcome_a["status"] == "submitted"
+    ref_a = "secrets/accounts/interleave_example/acct-A"
+    ref_b = "secrets/accounts/interleave_example/acct-B"
+    assert set(vault.writes) == {ref_a, ref_b}
+    assert vault.writes[ref_a] != vault.writes[ref_b]
+
+    email_by_session = {sid: val for sid, sel, val in browser.fills
+                        if sel == "#email"}
+    assert email_by_session["sess-A"] == "ident-A@example.test"
+    assert email_by_session["sess-B"] == "ident-B@example.test"
+
+    pw_by_session = {sid: val for sid, sel, val in browser.fills
+                     if sel == "#password"}
+    assert pw_by_session["sess-A"] != pw_by_session["sess-B"]

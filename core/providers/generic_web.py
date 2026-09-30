@@ -56,10 +56,10 @@ class GenericWebAdapter(ProviderAdapter):
         self._vault = vault
         self._store = recipe_store_module or recipe_store
         self._learner = learner
-        self._sessions_by_account: dict = {}
-        self._identity_id: Optional[str] = None
-        self._last_password: Optional[str] = None
-        self._last_relearn = None
+        # Per-mission state, keyed by a run key derived from the mission (never
+        # a single shared slot): concurrent/interleaved missions on the shared
+        # registry instance must never see each other's generated credential.
+        self._pending_passwords: dict = {}
 
     # -- descriptor ----------------------------------------------------------
     @staticmethod
@@ -105,15 +105,33 @@ class GenericWebAdapter(ProviderAdapter):
 
         return get_identity(identity_id)
 
-    def _resolve_value(self, source: Optional[str]) -> str:
+    @staticmethod
+    def _run_key(*, mission_id=None, session_id=None, account_id=None,
+                 identity_id=None) -> str:
+        """A stable per-mission key for run-scoped state.
+
+        Mission id is preferred; the other identifiers are fallbacks for
+        callers that operate without a mission (e.g. focused unit tests). All
+        per-mission state is keyed by this so a shared adapter instance cannot
+        leak one mission's identity/password into another.
+        """
+        for candidate in (mission_id, session_id, account_id, identity_id):
+            if candidate:
+                return str(candidate)
+        return "__default__"
+
+    def _resolve_value(self, source: Optional[str], *, identity_id,
+                       run_key: str) -> str:
         if not source:
             return ""
         if source == "generated_password":
-            if self._last_password is None:
-                self._last_password = _generate_password()
-            return self._last_password
+            password = self._pending_passwords.get(run_key)
+            if password is None:
+                password = _generate_password()
+                self._pending_passwords[run_key] = password
+            return password
         if source.startswith("identity."):
-            ident = self._resolve_identity(self._identity_id)
+            ident = self._resolve_identity(identity_id)
             return getattr(ident, source.split(".", 1)[1], "") if ident else ""
         return ""
 
@@ -130,14 +148,16 @@ class GenericWebAdapter(ProviderAdapter):
         return stored or None
 
     # -- recipe driving ------------------------------------------------------
-    def _perform(self, session_id: str, step: RecipeStep) -> dict:
+    def _perform(self, session_id: str, step: RecipeStep, *, identity_id,
+                 run_key: str) -> dict:
         params: dict = {}
         if step.url:
             params["url"] = step.url
         if step.selector:
             params["selector"] = step.selector
         if step.value_source:
-            params["value"] = self._resolve_value(step.value_source)
+            params["value"] = self._resolve_value(
+                step.value_source, identity_id=identity_id, run_key=run_key)
             if step.value_source == "generated_password":
                 params["credential"] = True
         try:
@@ -155,7 +175,6 @@ class GenericWebAdapter(ProviderAdapter):
                                     browser=self._browser)
         assert_no_secret_fields(draft.model_dump())
         saved = self._store.save_recipe(draft)
-        self._last_relearn = saved
         return {"status": "drift_relearned" if stale else "draft_learned",
                 "requires_human": True, "action_type": "OTHER",
                 "instructions": reason, "recipe_version": saved.version}
@@ -172,13 +191,13 @@ class GenericWebAdapter(ProviderAdapter):
     def registration(self, **ctx) -> dict:
         session_id = ctx.get("browser_session_id")
         account_id = ctx.get("account_id")
-        self._identity_id = ctx.get("identity_id")
-        self._last_password = None
+        identity_id = ctx.get("identity_id")
+        mission_id = ctx.get("mission_id")
+        run_key = self._run_key(mission_id=mission_id, session_id=session_id,
+                                account_id=account_id, identity_id=identity_id)
         if not session_id:
             return {"status": "unavailable", "reason": "missing_session",
                     "requires_human": False}
-        if account_id:
-            self._sessions_by_account[account_id] = session_id
 
         published = self._store.get_published(self._domain)
         if published is None:
@@ -187,7 +206,8 @@ class GenericWebAdapter(ProviderAdapter):
                 reason="no published recipe; learned a draft for operator review")
 
         for step in published.steps:
-            if self._perform(session_id, step).get("ok") is False:
+            if self._perform(session_id, step, identity_id=identity_id,
+                             run_key=run_key).get("ok") is False:
                 self._store.mark_stale(self._domain)
                 return self._learn_and_pause(
                     session_id,
@@ -195,11 +215,13 @@ class GenericWebAdapter(ProviderAdapter):
                     stale=True)
 
         password_ref = None
-        if self._last_password is not None:
+        password = self._pending_passwords.get(run_key)
+        if password is not None:
             path = (vault_reference_for(self._domain, account_id) if account_id
                     else f"secrets/accounts/{self._domain}/{PROVIDER_ACCOUNT_TYPE}")
-            password_ref = self._vault_store(path, self._last_password)
-            self._last_password = None
+            password_ref = self._vault_store(path, password)
+            if password_ref is not None:
+                self._pending_passwords.pop(run_key, None)
         return {"status": "submitted", "requires_human": False,
                 "recipe_version": published.version, "password_ref": password_ref}
 

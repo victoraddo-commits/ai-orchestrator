@@ -261,6 +261,16 @@ class GenericWebAdapter(ProviderAdapter):
                 session_id,
                 reason="no published recipe; learned a draft for operator review")
 
+        if not published.steps and not ctx.get("confirm_empty_recipe"):
+            # A recipe that performs no action must never report ``submitted``
+            # (the operator reviewed nothing and any credential would be
+            # written without the account actually being created).
+            return {"status": "no_recipe_steps", "requires_human": True,
+                    "action_type": "OTHER",
+                    "instructions": (
+                        f"published recipe for {self._domain} has no steps; "
+                        "operator review/confirmation required before registration")}
+
         for step in published.steps:
             result = self._perform(session_id, step, identity_id=identity_id,
                                    run_key=run_key)

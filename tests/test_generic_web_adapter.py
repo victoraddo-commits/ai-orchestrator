@@ -482,3 +482,24 @@ def test_vault_write_failure_pauses_and_retains_password(isolated):
     passwords = [value for selector, value in browser.fills if selector == "#password"]
     assert len(passwords) == 2
     assert passwords[0] == passwords[1]
+
+
+# ---------------------------------------------------------------------------
+# I5: a published recipe with no steps must not report ``submitted``
+# ---------------------------------------------------------------------------
+
+
+def test_published_recipe_without_steps_pauses_without_submitting(isolated):
+    _published_steps("empty.example", [])
+    browser = _ValueBrowser()
+    vault = FakeVault()
+    adapter = GenericWebAdapter("empty.example", browser=browser, vault=vault,
+                                profile=SiteProfile(domain="empty.example"))
+
+    outcome = adapter.registration(browser_session_id="sess-e1",
+                                   account_id="acct-e")
+
+    assert outcome["status"] == "no_recipe_steps"
+    assert outcome["requires_human"] is True
+    assert vault.writes == {}
+    assert browser.fills == []

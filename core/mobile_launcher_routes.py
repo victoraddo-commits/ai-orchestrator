@@ -259,7 +259,7 @@ TILES = [
         "description": "KAI Money Ecosystem — treasury, operations, KAI account",
         "icon": "banknote",
         "color": "#059669",
-        "url": "https://192.168.1.118:8095",
+        "url": "http://proxmox-b.tail82a9ca.ts.net:8770",
         "type": "external",
         "tags": ["money", "production"],
     },
@@ -833,7 +833,7 @@ async def mobile_api_wallet(_: str = Depends(_require_lan_source)):
         import httpx  # noqa: F401
         # Localhost proxy to money-center (same docker network on claude-code,
         # or via the KAI_MC_URL env if set)
-        mc_url = os.environ.get("KAI_MC_URL", "https://192.168.1.118:8095")
+        mc_url = os.environ.get("KAI_MC_URL", "http://proxmox-b.tail82a9ca.ts.net:8770")
         viewer_tok = None
         viewer_tok_path = "/root/.credentials/money-viewer-token"
         if os.path.exists(viewer_tok_path):
@@ -1294,7 +1294,7 @@ function loadStaticTiles(){
     {id:'code-server',name:'Code Server',description:'VS Code in the browser',icon:'code',color:'#2563EB',url:'http://192.168.99.11:8443',type:'external',status:'unknown',tags:['dev']},
     {id:'juris-kai',name:'Juris Kai',description:'Ghana legal corpus search & analysis',icon:'scale',color:'#D97706',url:'/command-center#legal',type:'internal',status:'unknown',tags:['legal']},
     {id:'portfolio',name:'Portfolio',description:'Investment & asset tracker',icon:'chart-line',color:'#10B981',url:'http://192.168.99.11:3000',type:'external',status:'unknown',tags:['finance']},
-    {id:'money-center',name:'Money Center',description:'KAI Money Ecosystem — treasury, operations, KAI account',icon:'banknote',color:'#059669',url:'https://192.168.1.118:8095',type:'external',status:'unknown',tags:['money','production']},
+    {id:'money-center',name:'Money Center',description:'KAI Money Ecosystem — treasury, operations, KAI account',icon:'banknote',color:'#059669',url:'http://proxmox-b.tail82a9ca.ts.net:8770',type:'external',status:'unknown',tags:['money','production']},
     {id:'kai-vault',name:'Kai Vault',description:'Passkey login, secrets, identity, audit',icon:'shield-check',color:'#7C3AED',url:'https://vault.sso.deerude.com',type:'external',status:'unknown',tags:['identity','security','core']},
     {id:'deerude',name:'Deerude',description:'Public site — ventures & careers portal',icon:'globe',color:'#0EA5E9',url:'https://deerude.com',type:'external',status:'unknown',tags:['web','public']},
     // KAI Ultimate feature surfaces (mirror of TILES in Python)

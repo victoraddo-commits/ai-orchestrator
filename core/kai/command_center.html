@@ -8583,7 +8583,7 @@ async function loadInbox(){
 }
 
 // ── Akush Money panel (Phase 7 — akush-core CT108 via /api/money/* proxy) ──
-const AKUSH_PWA_URL = 'https://192.168.1.118:8095/';
+const AKUSH_PWA_URL = 'http://proxmox-b.tail82a9ca.ts.net:8770/';
 async function loadAkush(){
   const el=$('akush-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
   const g=async p=>{try{return await api(p);}catch(e){return {__error:e.message};}};

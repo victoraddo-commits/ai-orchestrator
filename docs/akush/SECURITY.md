@@ -91,3 +91,43 @@ step-up is active at the orchestrator (CT108 commit `b3a39b0`).
   grants (akush_app scoped per Phase 8; akush_test has zero grants).
   klaus_db: klaus_user scoped to its 6 tables, legal_read SELECT-only —
   untouched by R2.
+
+## TASK R4 — unified gateway entry :8770 (2026-10-01)
+
+- **One URL now serves both the SMS registration webhook and the Akush Money
+  dashboard:** `http://proxmox-b.tail82a9ca.ts.net:8770` (and the same port on
+  the LAN IP `http://192.168.1.110:8770`). The phone SMS-forwarder app keeps its
+  EXISTING base URL — verified against live webhook traffic (POSTs arrive
+  through the pve-B listener; the app was never reconfigured).
+- **pve-B nginx gateway** (`/etc/nginx/sites-available/akush-gateway.conf` +
+  symlink; PVE's own config untouched): `listen 8770` on ALL interfaces;
+  `location = /webhook/sms` → `http://192.168.1.111:8770` (kai-sms-worker,
+  method/body/headers preserved, 64k body cap, minimal no-body/no-query access
+  log — SMS bodies and tokens are never logged); `location /` →
+  `https://192.168.1.118:8095` (akush-core PWA; `proxy_ssl_verify off` is
+  deliberate: upstream cert is self-signed for a PINNED LAN host, and every
+  transport path (LAN or tailnet) is already mesh-encrypted, so hostname/CA
+  verification adds nothing here).
+- **Superseded:** `sms-worker-tailscale-proxy.service` (socat tailnet-IP →
+  CT111 :8770) was stopped and disabled on pve-B — nginx now owns :8770 for
+  both tailnet and LAN. Unit file kept for rollback (re-enable + disable nginx
+  site). `sms-worker-tls.service` (:8771 CT111 TLS sidecar) is kept as-is but
+  is now OPTIONAL/superseded for phone migration: the unified :8770 entry
+  serves the phone already; do not migrate the phone to :8771.
+  `cc-tailscale-proxy.service` (:8443) untouched — CC tailnet access re-verified
+  200 after the change.
+- **Transport tradeoff (honest):** the unified entry is plain HTTP inside the
+  tailnet/LAN mesh (tailnet traffic is WireGuard-encrypted; LAN traffic is
+  trusted-fabric). Consequence: akush-core issues session cookies with the
+  `Secure` flag (upstream is HTTPS-terminated), so interactive BROWSER logins
+  through the http:// gateway will not persist cookies in some browsers; the
+  API-level cookie login is fully functional (verified end-to-end below). When
+  browser login is needed, use the direct origin `https://192.168.1.118:8095`
+  (still available and unchanged). No auth logic was weakened for the gateway.
+- **Verified (R4):** phone-path webhook 200 through the gateway → bridge →
+  akush-core row in kai_money; PWA via same URL (200 + CSP header); cookie
+  login (pwa-e2e-viewer) via gateway → 200 + authenticated /api/v1/session
+  roundtrip via="cookie"; dashboard from Proxmox B LAN via 192.168.1.110:8770 →
+  200 (from CT111 AND VM104); CT111 pytest test_sms_webhook +
+  test_money_sms_bridge 25/25; OTP-shaped webhook POST → stored as
+  `[REDACTED]`, digits absent from CT111 inbox AND akush-core DB (0 rows).

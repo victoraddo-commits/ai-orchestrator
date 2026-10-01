@@ -55,6 +55,7 @@ entry, and a loader in the `loadPanel()` dispatcher map.
 | `providers` | Providers | loadProviders | **NEW 2026-09-30 (STEP 8)** · /api/providers |
 | `site-recipes` | Site Recipes | loadSiteRecipes | **NEW 2026-09-30 (Task 10)** · /api/site-recipes[,/{domain},/{domain}/publish] |
 | `inbox` | Inbox | loadInbox | **NEW 2026-09-30 (STEP 8)** · /api/sms/inbox, /api/notifications |
+| `akush` | Akush Money | loadAkush | **NEW 2026-10-01 (Phase 7)** · /api/money/overview, /api/money/accounts, /api/money/inbox[/{id}/act], /api/money/anomalies (proxy → akush-core CT108, `cc` service token from vault) |
 
 ## Fixes 2026-09-16
 
@@ -119,6 +120,18 @@ gated-off Arbitra tab whose nav+panel are removed while its backend is down);
 `panel-hubtel` renders
 `HUBTEL BILLING INCOMPLETE` (graceful — MoMo creds not set); `panel-arbitra`
 exists, is gated off while its backend is down, and renders when reachable.
+
+## Akush Money module (2026-10-01, Phase 7)
+
+- `akush` panel wired: sidebar `nav-item[data-hash="akush"]`, `<section id="panel-akush">`,
+  `PANEL_TITLES['akush']`, `PANEL_LOADERS['akush']=loadAkush` — each exactly once
+  (verified by static tests in `tests/test_money_cc_panel.py` + `auditPanelWiring()`).
+- Backend: `core/cc_extra_routes.py` `/api/money/*` — operator-gated proxy to
+  akush-core (CT108, http://192.168.1.118:8095) using the `cc` service token from
+  vault `secrets/money/service_tokens`. Inbox actions require an explicit
+  operator confirmation flag. Metadata only: SMS bodies and OTP values are
+  never proxied (tests assert the leak guards).
+- PWA deep-link: "Open full Akush Money →" → `http://192.168.1.118:8095/`.
 
 ## Notes
 
@@ -640,6 +653,7 @@ and `PANEL_LOADERS` (verified by `window.auditPanelWiring()` → `{}` and by
 | `accounts` | Accounts | loadAccounts | `GET /api/accounts`, `GET /api/accounts/{id}` |
 | `providers` | Providers | loadProviders | `GET /api/providers` |
 | `inbox` | Inbox | loadInbox | `GET /api/sms/inbox`, `GET /api/notifications` |
+| `akush` | Akush Money | loadAkush | `/api/money/*` (proxy to akush-core) |
 
 - **Onboarding** renders the state-machine **progress stepper** (the canonical
   `STATE_SEQUENCE`, completed/current/pending-human/skipped, `aria-current="step"`,

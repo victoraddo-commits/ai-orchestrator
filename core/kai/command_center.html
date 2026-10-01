@@ -1125,7 +1125,8 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
       <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal Brain</span></a>
       <a class="nav-item" href="#payments" data-hash="payments"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M6 15h4"/></svg></span><span class="label">Pricing &amp; Payments</span></a>
-      <a class="nav-item" href="#hubtel" data-hash="hubtel"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg></span><span class="label">Hubtel</span></a>
+      <a class="nav-item" href="#hubtel" data-hash="hubtel">
+      <a class="nav-item" href="#akush" data-hash="akush"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg></span><span class="label">Hubtel</span></a>
       <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
       <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span><span class="label">Arbitra</span></a>
       <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
@@ -1315,6 +1316,7 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <section class="panel" id="panel-accounts"><div id="accounts-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-providers"><div id="providers-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-site-recipes" aria-label="Site Recipes"><div id="site-recipes-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-akush"><div id="akush-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-inbox"><div id="inbox-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
@@ -1566,7 +1568,8 @@ const PANEL_TITLES = {
   knowledge:'Knowledge', approvals:'Approvals', notifications:'Notify', backups:'Backups',
   sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise',
   diagnostics:'Diagnostics', audit:'Audit', world:'World Model',
-  onboarding:'Onboarding', accounts:'Accounts', providers:'Providers', 'site-recipes':'Site Recipes', inbox:'Inbox'
+  onboarding:'Onboarding', accounts:'Accounts', providers:'Providers', 'site-recipes':'Site Recipes', inbox:'Inbox',
+  akush:'Akush Money'
 };
 
 const $=id=>document.getElementById(id);
@@ -1856,7 +1859,7 @@ function navigateTo(hash) {
 }
 // Panel dispatcher map — single place mapping a panel key to its loader.
 // Kept as a named const so auditPanelWiring() can verify it against the DOM.
-const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld,onboarding:loadOnboarding,accounts:loadAccounts,providers:loadProviders,'site-recipes':loadSiteRecipes,inbox:loadInbox};
+const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld,onboarding:loadOnboarding,accounts:loadAccounts,providers:loadProviders,'site-recipes':loadSiteRecipes,inbox:loadInbox,akush:loadAkush};
 function loadPanel(name) {
   const fns=PANEL_LOADERS;
   if(fns[name])fns[name]();
@@ -8579,8 +8582,81 @@ async function loadInbox(){
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 
-</script>
-<div class="modal-overlay" id="palette" style="display:none;align-items:flex-start;justify-content:center">
+// ── Akush Money panel (Phase 7 — akush-core CT108 via /api/money/* proxy) ──
+const AKUSH_PWA_URL = 'http://192.168.1.118:8095/';
+async function loadAkush(){
+  const el=$('akush-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
+  const g=async p=>{try{return await api(p);}catch(e){return {__error:e.message};}};
+  try{
+    const [ov,accounts,inbox,anoms]=await Promise.all([
+      g('/api/money/overview'),g('/api/money/accounts'),
+      g('/api/money/inbox'),g('/api/money/anomalies')]);
+    if(ov.__error){el.innerHTML='<div class="card"><p class="error-text">'+esc(ov.__error)+'</p></div>';return;}
+    const h=ov.health||{};const hcls=h.status==='ok'?'ok':'bad';const hlbl=h.status==='ok'?'ok':'degraded';
+    let html='<div class="metric-row">'
+      +'<div class="metric"><span class="val"><span class="badge '+hcls+'">'+esc(hlbl)+'</span></span><span class="lbl">akush-core health</span></div>'
+      +'<div class="metric"><span class="val">'+esc(String(ov.accounts?.count??0))+'</span><span class="lbl">accounts ('+(Object.entries(ov.accounts?.by_status||{}).map(([k,v])=>k+':'+v).join(' · ')||'none')+')'
+      +'</span></div>'
+      +'<div class="metric"><span class="val">'+esc(String(ov.inbox?.pending??0))+'</span><span class="lbl">inbox pending</span></div>'
+      +'<div class="metric"><span class="val">'+esc(String(ov.anomalies?.open??0))+'</span><span class="lbl">anomalies open</span></div>'
+      +'<div class="metric"><span class="val">'+esc(String(ov.obligations_7d?.count??0))+'</span><span class="lbl">obligations 7d · '+esc(String(ov.obligations_7d?.total??0))+'</span></div>'
+      +'<div class="metric"><span class="val">'+(ov.reconciliation?.health_pct==null?'no data':esc(String(ov.reconciliation.health_pct)+'%'))+'</span><span class="lbl">reconciliation · '+(ov.reconciliation?.health_pct==null?'none recorded':esc(String(ov.reconciliation.open)+' unresolved'))+'</span></div>'
+      +'</div>';
+    // sms ingestion strip
+    const si=ov.sms_ingestion||{};
+    html+='<div class="card"><h3>SMS ingestion <span class="badge '+(si.dead_letters>0?'warn':'ok')+'">'+(si.dead_letters>0?'dead letters '+esc(String(si.dead_letters)):'ok')+'</span></h3>'
+      +'<div class="metric-row">'
+      +'<div class="metric"><span class="val">'+esc(String(si.total_messages??'\u2014'))+'</span><span class="lbl">messages total</span></div>'
+      +'<div class="metric"><span class="val">'+esc(String(si.last_24h??'\u2014'))+'</span><span class="lbl">last 24h</span></div>'
+      +'<div class="metric"><span class="val" style="font-size:0.72rem">'+esc(String(si.last_received??'\u2014').slice(0,19))+'</span><span class="lbl">last processed</span></div>'
+      +'</div></div>';
+    // backup strip
+    const bk=ov.backup||{};
+    html+='<div class="card"><h3>Backup <span class="badge '+(bk.status==='ok'?'ok':'warn')+'">'+esc(bk.status||'unknown')+'</span></h3>'
+      +(bk.latest?'<p class="field-hint">latest: '+esc(String(bk.latest.name||'\u2014'))+' · '+esc(String(bk.latest.created||'\u2014'))+'</p>':'<p class="empty">no backups recorded</p>')+'</div>';
+    // accounts table
+    html+='<div class="card"><h3>Accounts <span class="card-header-actions"><button class="btn btn-xs" onclick="loadAkush()">Refresh</button></span></h3>';
+    const accs=accounts.data||[];
+    if(accs.length){
+      html+='<div class="table-wrap"><table><thead><tr><th>Id</th><th>Name</th><th>Institution</th><th>Kind</th><th>Status</th></tr></thead><tbody>'
+        +accs.map(a=>'<tr><td>'+esc(String(a.id))+'</td><td>'+esc(a.name||'')+'</td><td>'+esc(a.institution||'\u2014')+'</td><td>'+esc(a.kind||'')+'</td><td><span class="badge '+(a.status==='ACTIVE'||a.status==='CONFIRMED'?'ok':'info')+'">'+esc(String(a.status||'').toLowerCase())+'</span></td></tr>').join('')
+        +'</tbody></table></div>';
+    } else html+='<p class="empty">No accounts yet.</p>';
+    html+='</div>';
+    // inbox preview with actions
+    html+='<div class="card"><h3>Financial inbox (pending) <span class="badge warn">'+esc(String((inbox.data||[]).length))+'</span></h3>';
+    const items=inbox.data||[];
+    if(items.length){
+      html+='<div class="table-wrap"><table><thead><tr><th>Id</th><th>Event</th><th>Suggested</th><th>Conf</th><th>Actions</th></tr></thead><tbody>'
+        +items.slice(0,8).map(i=>'<tr><td>#'+esc(String(i.id))+'</td><td>'+esc(i.event_kind||'\u2014')+'</td><td>'+esc(i.suggested_action||'\u2014')+'</td><td>'+esc(i.confidence==null?'\u2014':String(i.confidence))+'</td>'
+          +'<td><button class="btn btn-xs btn-accent" onclick="akushInboxAct('+esc(String(i.id))+',\'confirm\')">Confirm</button> '
+          +'<button class="btn btn-xs btn-danger" onclick="akushInboxAct('+esc(String(i.id))+',\'reject\')">Reject</button></td></tr>').join('')
+        +'</tbody></table></div>';
+    } else html+='<p class="empty">Inbox zero \u2014 nothing awaiting confirmation.</p>';
+    html+='</div>';
+    // anomalies
+    html+='<div class="card"><h3>Anomalies <span class="badge '+(anoms.open>0?'warn':'muted')+'">'+esc(String(anoms.open??0))+' open</span></h3>';
+    const al=anoms.data||[];
+    html+=al.length?'<div class="table-wrap"><table><thead><tr><th>Id</th><th>Severity</th><th>Summary</th><th>Status</th></tr></thead><tbody>'
+      +al.slice(0,6).map(a=>'<tr><td>#'+esc(String(a.id))+'</td><td>'+esc(a.severity||'\u2014')+'</td><td style="font-size:0.66rem">'+esc(a.summary||'\u2014')+'</td><td>'+esc(a.status||'')+'</td></tr>').join('')
+      +'</tbody></table></div>':'<p class="empty">No anomalies.</p>';
+    html+='</div>';
+    html+='<div class="card"><h3>Full dashboard</h3><p><a href="'+AKUSH_PWA_URL+'" target="_blank" rel="noopener">Open full Akush Money \u2192</a> <span class="muted" style="font-size:0.66rem">'+esc(AKUSH_PWA_URL)+'</span></p></div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+async function akushInboxAct(id,action){
+  if(!confirm('Operator confirmation: '+action+' inbox item #'+id+'?'))return;
+  try{
+    await api('/api/money/inbox/'+id+'/act',{method:'POST',body:JSON.stringify({action,confirmed:true})});
+    toast('inbox item #'+id+' '+action+' done');
+    loadAkush();
+  }catch(e){toast('act failed: '+e.message);}
+}
+window.loadAkush=loadAkush;
+window.akushInboxAct=akushInboxAct;
+
+</script> style="display:none;align-items:flex-start;justify-content:center">
   <div class="modal-box" style="max-width:560px;width:92%;margin-top:10vh;padding:0">
     <input id="palette-input" autocomplete="off" placeholder="Type a command…  (network · doctor · missions · guardian)" style="width:100%;box-sizing:border-box;padding:14px;font-size:0.9rem;background:var(--bg-deep);color:var(--fg);border:0;border-bottom:1px solid var(--border);outline:none">
     <div id="palette-results" style="max-height:50vh;overflow:auto"></div>

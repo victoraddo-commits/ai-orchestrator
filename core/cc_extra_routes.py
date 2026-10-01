@@ -1376,10 +1376,11 @@ def legal_ask(body: _AskBody, _: None = Depends(_req_op)):
 # The Command Center never reaches CT102 directly: the WG host is not
 # reachable on the LAN from the CC (ARP/TCP to 192.168.1.182 fail from PVE-A,
 # PVE-B and CT111; only `pct exec` works). ``core.wg_peer_service`` drives the
-# CT102 agent over the existing key-based SSH chain
-# (CT111 -> PVE-B -> PVE-A -> `pct exec 102`), so no new listener is exposed on
+# CT105 agent over the existing key-based SSH chain
+# (CT111 -> PVE-B -> PVE-A -> `pct exec 105`), so no new listener is exposed on
 # the WireGuard host. Every route below is operator-gated (or accepts the
-# WG_CTL_TOKEN service token) and never returns a server private key.
+# WG_CTL_TOKEN service token) and never returns a server private key. Client
+# private keys are one-time: only the add response carries one.
 # ---------------------------------------------------------------------------
 
 def _req_wg_op(request: Request) -> None:
@@ -1396,6 +1397,22 @@ def _req_wg_op(request: Request) -> None:
 def _wg_svc():
     from core import wg_peer_service
     return wg_peer_service
+
+
+def _wg_actor(request: Request) -> str:
+    """Best-effort operator identity for the audit log."""
+    ident = (request.headers.get("x-kai-user")
+             or request.headers.get("x-kai-user-id"))
+    if ident:
+        return ident
+    tok = request.headers.get("x-kai-session", "")
+    if tok:
+        try:
+            from core import authz
+            return authz.resolve_identity(tok) or "operator"
+        except Exception:  # noqa: BLE001
+            return "operator"
+    return "operator"
 
 
 def encode_pubkey_param(pubkey: str) -> str:
@@ -1508,6 +1525,88 @@ def wg_device_update(pubkey: str, body: WgUpdateDevice,
         return JSONResponse(
             content=_wg_svc().rename_peer(
                 pubkey, **body.model_dump(exclude_none=True)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+class WgRenameBody(BaseModel):
+    name: str
+
+
+class WgAllowedBody(BaseModel):
+    ips: str
+
+
+@cc_extra_router.get("/api/wg/server")
+def wg_server(_: None = Depends(_req_wg_op)):
+    """Server status card: up/down, port, pubkey, peer count, throughput."""
+    try:
+        return JSONResponse(content=_wg_svc().server_status(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/usage")
+def wg_usage(peer: str = "", window: str = "24h",
+             _: None = Depends(_req_wg_op)):
+    """Usage series + 24h/7d byte deltas for charts."""
+    try:
+        return JSONResponse(content=_wg_svc().usage(peer, window),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/server_export")
+def wg_server_export(_: None = Depends(_req_wg_op)):
+    """Server config with every private key stripped."""
+    try:
+        return JSONResponse(content=_wg_svc().server_export(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/restart")
+def wg_restart(request: Request, _: None = Depends(_req_wg_op)):
+    """Restart the wg0 interface (wg-quick down/up). Brief."""
+    try:
+        return JSONResponse(content=_wg_svc().restart_server(_wg_actor(request)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/restart")
+def wg_device_restart(pubkey: str, request: Request,
+                      _: None = Depends(_req_wg_op)):
+    """Alias for the server restart (the tunnel, not the single peer)."""
+    try:
+        return JSONResponse(content=_wg_svc().restart_server(_wg_actor(request)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/rename")
+def wg_device_rename(pubkey: str, body: WgRenameBody, request: Request,
+                     _: None = Depends(_req_wg_op)):
+    """Rename a managed peer (audit-logged)."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().rename_peer(
+            pubkey, body.name, actor=_wg_actor(request)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/allowed")
+def wg_device_allowed(pubkey: str, body: WgAllowedBody, request: Request,
+                      _: None = Depends(_req_wg_op)):
+    """Set a managed peer's server-side AllowedIPs (audit-logged)."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().set_allowed(
+            pubkey, body.ips, actor=_wg_actor(request)))
     except Exception as e:  # noqa: BLE001
         return _wg_err(e)
 
@@ -1818,3 +1917,250 @@ def power_ups(_: None = Depends(_req_op)):
                              "states": ["COMMUNICATION LOST"],
                              "error": f"{type(e).__name__}: {e}"},
                             status_code=200)
+
+# ---------------------------------------------------------------------------
+# Akush Money module (Phase 7, CT108 akush-core on 192.168.1.118:8095) ──────
+# Operator-gated read proxy + inbox action proxy. Uses the `cc` service token
+# from vault secrets/money/service_tokens (machine plane). NEVER proxies raw
+# SMS bodies or OTP values: responses are shaped below — only ids, statuses,
+# counts, classifications, and masked metadata leave this module.
+# ---------------------------------------------------------------------------
+_AKUSH_BASE = os.environ.get("CC_AKUSH_URL", "http://192.168.1.118:8095")
+_AKUSH_TOKEN_PATH = "secrets/money/service_tokens"
+_AKUSH_URL_BASE = os.environ.get("CC_AKUSH_PWA_URL", "http://192.168.1.118:8095/")
+_akush_tok_cache = {"value": "", "at": 0.0}
+_AKUSH_INBOX_ACTIONS = ("confirm", "reject", "ignore", "match", "investigate")
+
+
+def _akush_service_token() -> str:
+    """`cc` service token from vault. Cached 5 min; the value is never
+    logged and never appears in any response payload."""
+    if _akush_tok_cache["value"] and time.time() - _akush_tok_cache["at"] < 300:
+        return _akush_tok_cache["value"]
+    r = _vault_call("/api/v1/machine/secret", "POST", {
+        "path": _AKUSH_TOKEN_PATH, "operation": "reveal",
+        "reason": "command-center akush money panel service auth",
+    })
+    raw = r.get("value") if isinstance(r, dict) else None
+    if raw:
+        try:
+            tok = (json.loads(raw) or {}).get("cc", "")
+            if tok:
+                _akush_tok_cache["value"] = str(tok)
+                _akush_tok_cache["at"] = time.time()
+        except (ValueError, TypeError):
+            pass
+    return _akush_tok_cache["value"]
+
+
+def _akush_call(path: str, method: str = "GET", body=None, params: dict | None = None) -> dict:
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    url = _AKUSH_BASE.rstrip("/") + path
+    if params:
+        qs = urllib.parse.urlencode({k: v for k, v in params.items() if v not in (None, "")})
+        if qs:
+            url += "?" + qs
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method, headers={
+        "authorization": "Bearer " + _akush_service_token(),
+        "content-type": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.load(e)
+        except Exception:  # noqa: BLE001
+            detail = {}
+        # pass through upstream auth/validation semantics, degrade the rest
+        if e.code in (400, 401, 403, 404, 409, 422):
+            raise HTTPException(status_code=e.code, detail=detail)
+        raise HTTPException(status_code=502, detail=f"akush-core HTTP {e.code}")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502,
+                            detail=f"akush-core unreachable: {type(e).__name__}")
+
+
+def _akush_health() -> dict:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(_AKUSH_BASE.rstrip("/") + "/health", timeout=5) as r:
+            return json.load(r)
+    except Exception as e:  # noqa: BLE001
+        return {"status": "degraded", "error": type(e).__name__}
+
+
+@cc_extra_router.get("/api/money/overview")
+def money_overview(request: Request):
+    """Dashboard cards for the Akush Money CC panel: health, accounts,
+    SMS ingestion, inbox, anomalies, obligations, reconciliation, backup."""
+    _req_op(request)
+    health = _akush_health()
+
+    accounts, inbox, anomalies, sts, sms_status = {}, [], [], {}, {}
+    if isinstance(health, dict) and health.get("status") == "ok":
+        accounts = _akush_call("/api/v1/accounts")
+        try:
+            inbox = _akush_call("/api/v1/financial-inbox", params={"limit": 200}).get("data", [])
+        except HTTPException:
+            inbox = []
+        try:
+            anomalies = _akush_call("/api/v1/anomalies", params={"limit": 50})
+        except HTTPException:
+            anomalies = {}
+        try:
+            sts = _akush_call("/api/v1/safe-to-spend")
+        except HTTPException:
+            sts = {}
+        try:
+            sms_status = _akush_call("/api/v1/sms-ingestion-status")
+        except HTTPException:
+            sms_status = {}
+
+    acct_by_status: dict[str, int] = {}
+    for a in (accounts.get("data") or []):
+        st = a.get("status") or "unknown"
+        acct_by_status[st] = acct_by_status.get(st, 0) + 1
+
+    inbox_counts: dict[str, int] = {}
+    for i in inbox:
+        st = i.get("status") or "unknown"
+        inbox_counts[st] = inbox_counts.get(st, 0) + 1
+
+    # upcoming obligations (7d) from the safe-to-spend itemization (real dues)
+    b = sts.get("breakdown") or {}
+    bills_7d = [x for x in ((b.get("bills_due") or {}).get("items") or [])
+                if str(x.get("date") or "") <= (time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 86400)))]
+    debt_7d = [x for x in ((b.get("debt_due") or {}).get("items") or [])
+               if str(x.get("date") or "") <= (time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 86400)))]
+    obligations_total = sum(float(x.get("amount") or 0) for x in bills_7d + debt_7d)
+
+    # reconciliation health (per-account records; read-only, honest null when none)
+    recon_open = recon_resolved = recon_total = 0
+    recon_pct = None
+    try:
+        for a in (accounts.get("data") or [])[:10]:
+            rec = _akush_call(f"/api/v1/accounts/{a['id']}/reconciliations")
+            for r in (rec.get("data") or rec.get("reconciliations") or []):
+                recon_total += 1
+                if (r.get("status") or "") == "open":
+                    recon_open += 1
+                else:
+                    recon_resolved += 1
+        if recon_total:
+            recon_pct = round(100 * recon_resolved / recon_total)
+    except HTTPException:
+        pass
+
+    # backup info (local kai-backup state, read-only)
+    backup = {"status": "unknown"}
+    try:
+        from core import backup_manager
+        latest = backup_manager.latest()
+        backup = {
+            "status": "ok" if latest else "no backups yet",
+            "latest": {k: latest.get(k) for k in ("name", "created", "size_bytes") if latest and k in latest},
+        }
+    except Exception as e:  # noqa: BLE001
+        backup = {"status": "unknown", "error": type(e).__name__}
+
+    # security events count
+    sec_count = None
+    try:
+        sec = _akush_call("/api/v1/security-events", params={"limit": 100})
+        sec_count = len(sec.get("data") or [])
+    except HTTPException:
+        pass
+
+    sms_status.pop("note", None)
+    return {
+        "health": health,
+        "pwa_url": _AKUSH_URL_BASE,
+        "accounts": {"count": len(accounts.get("data") or []), "by_status": acct_by_status},
+        "sms_ingestion": sms_status or {"status": "unavailable"},
+        "inbox": {"counts": inbox_counts,
+                  "pending": inbox_counts.get("pending", 0)},
+        "anomalies": {"open": anomalies.get("open", 0) if isinstance(anomalies, dict) else 0},
+        "obligations_7d": {"count": len(bills_7d) + len(debt_7d),
+                           "total": round(obligations_total, 2)},
+        "reconciliation": {"total": recon_total, "open": recon_open,
+                           "resolved": recon_resolved, "health_pct": recon_pct},
+        "backup": backup,
+        "security_events_recent": sec_count,
+    }
+
+
+@cc_extra_router.get("/api/money/accounts")
+def money_accounts(request: Request, status: str | None = None):
+    """Accounts (shaped: id/name/institution/kind/status/opening — no
+    identifiers, no raw notes)."""
+    _req_op(request)
+    r = _akush_call("/api/v1/accounts", params={"status": status})
+    out = []
+    for a in (r.get("data") or []):
+        out.append({
+            "id": a.get("id"), "name": a.get("name"),
+            "institution": a.get("institution"), "kind": a.get("kind"),
+            "status": a.get("status"), "opening_balance": a.get("opening_balance"),
+            "currency": a.get("currency"),
+        })
+    return {"count": len(out), "data": out}
+
+
+@cc_extra_router.get("/api/money/inbox")
+def money_inbox(request: Request, status: str = "pending"):
+    """Financial inbox preview. Metadata only: ids, kinds, suggested actions,
+    confidence, timestamps. SMS bodies and OTP values are NEVER proxied."""
+    _req_op(request)
+    r = _akush_call("/api/v1/financial-inbox", params={"status": status, "limit": 50})
+    out = []
+    for i in (r.get("data") or []):
+        out.append({
+            "id": i.get("id"), "status": i.get("status"),
+            "event_kind": i.get("event_kind"), "suggested_action": i.get("suggested_action"),
+            "confidence": i.get("confidence"), "source": i.get("source"),
+            "created_at": i.get("created_at"),
+        })
+    return {"status_filter": status, "count": len(out), "data": out}
+
+
+class _MoneyInboxActBody(BaseModel):
+    action: str
+    payload: dict | None = None
+    confirmed: bool = False
+
+
+@cc_extra_router.post("/api/money/inbox/{item_id}/act")
+def money_inbox_act(item_id: int, body: _MoneyInboxActBody, request: Request):
+    """Operator-confirmed proxy for POST /financial-inbox/:id/act.
+    Requires `confirmed: true` in the body (the CC panel asks first)."""
+    _req_op(request)
+    if not body.confirmed:
+        raise HTTPException(status_code=400,
+                            detail="confirmation required: repeat with confirmed=true")
+    if body.action not in _AKUSH_INBOX_ACTIONS:
+        raise HTTPException(status_code=400,
+                            detail="action must be one of " + "|".join(_AKUSH_INBOX_ACTIONS))
+    r = _akush_call(f"/api/v1/financial-inbox/{item_id}/act", method="POST",
+                    body={"action": body.action, "payload": body.payload or {}})
+    return {"ok": True, "result": r}
+
+
+@cc_extra_router.get("/api/money/anomalies")
+def money_anomalies(request: Request, status: str | None = "pending"):
+    """Open anomalies (metadata only — payload summaries are whitelisted)."""
+    _req_op(request)
+    r = _akush_call("/api/v1/anomalies", params={"status": status, "limit": 50})
+    out = []
+    for a in (r.get("data") or []):
+        out.append({
+            "id": a.get("id"), "status": a.get("status"),
+            "suggested_action": a.get("suggested_action"),
+            "severity": a.get("severity"), "summary": a.get("summary"),
+            "confidence": a.get("confidence"), "created_at": a.get("created_at"),
+        })
+    return {"open": r.get("open", 0), "count": len(out), "data": out}

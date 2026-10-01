@@ -140,6 +140,38 @@ def fetch_for_provider(provider: str) -> Optional[str]:
     return fetch_secret(secret_path_for_provider(provider), token)
 
 
+def store_secret(path: str, value: str, token: Optional[str] = None,
+                 reason: str = "orchestrator credential store") -> Optional[str]:
+    """Write one secret to the kai-vault machine plane. Returns the path on
+    success, None on ANY failure. The value is NEVER logged.
+
+    Mirrors :func:`fetch_secret` — same base URL, bearer token and TLS policy —
+    but POSTs to ``/api/v1/machine/secret/set``. Used by the STEP 7 Amazon
+    adapter to persist the generated account password, which is then referenced
+    from the Account Registry by *path* only.
+    """
+    token = token or load_token()
+    if not token:
+        return None
+    url = f"{vault_url()}/api/v1/machine/secret/set"
+    try:
+        response = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            json={"path": path, "value": value, "reason": reason},
+            timeout=VAULT_TIMEOUT,
+            verify=_verify_for(url),
+        )
+        if response.status_code == 200:
+            return path
+        logger.warning("kai-vault store: %s -> HTTP %d (not stored)",
+                       path, response.status_code)
+    except requests.RequestException as error:
+        logger.warning("kai-vault unreachable (%s) — secret not stored",
+                       type(error).__name__)
+    return None
+
+
 def delete_for_provider(provider: str, token: Optional[str] = None) -> bool:
     """Best-effort delete of a provider secret from the kai-vault machine plane.
 

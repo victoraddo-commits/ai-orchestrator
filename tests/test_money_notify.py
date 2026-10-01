@@ -258,7 +258,9 @@ def test_send_now_requires_chat(monkeypatch):
 def test_send_now_bot_disabled(monkeypatch):
     _with_chat()
     import core.telegram.transport as transport
+    import core.telegram.registry as reg
     monkeypatch.setattr(transport, "token_for", lambda bot: "tok")
+    monkeypatch.setattr(reg, "is_enabled", lambda bot: False)
     res = notify.deliver_now("t", now=1)
     assert res["sent"] is False and res["reason"] == "bot disabled"
 

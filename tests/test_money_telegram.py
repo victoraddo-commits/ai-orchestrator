@@ -302,7 +302,8 @@ def test_runtime_ready_requires_registry_flag_and_token(monkeypatch):
     import core.telegram.registry as reg
     import core.money_telegram.token as token_mod
     monkeypatch.setattr(token_mod, "token_available", lambda **k: True)
-    # real registry: akush233-bot is disabled until the operator flag flip
+    # registry flag off → not ready (explicit, independent of live operator state)
+    monkeypatch.setattr(reg, "is_enabled", lambda b: False)
     assert runtime_ready() is False
     # flag flipped + token present → active
     monkeypatch.setattr(reg, "is_enabled", lambda b: True)
@@ -330,5 +331,8 @@ def test_token_absent_fails_safe(monkeypatch, tmp_path):
     import core.money_telegram.token as token_mod
     monkeypatch.setattr(token_mod, "ENV_FILE", str(tmp_path / "missing.env"))
     monkeypatch.setattr(token_mod, "_vault_fetch", lambda path: None)
+    # the live bot env file exists on this host — stub the transport token
+    # path so the test exercises only the absent-token fail-safe
+    monkeypatch.setattr(token_mod, "transport_token_for", lambda bot: None)
     assert token_mod.ensure_env_file() is False
     assert token_mod.runtime_ready() is False

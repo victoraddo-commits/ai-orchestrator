@@ -152,11 +152,11 @@ CC money panel live and green: `GET /api/money/overview` returned 200 with real 
 
 1. **kai-sms-worker :8770 is plain HTTP on 0.0.0.0** — TLS on the webhook receiver is operator-gated (needs webhook cert/key + sender trust store).
 2. **Vault :8120 HTTP listener — RESOLVED (R2):** plain listener disabled; TLS :8443-only with all consumers verified.
-3. **Bridge dead-letter holds 12 historical entries** (development-phase transport `post_failed`), no replay mechanism — operator-gated purge/replay.
+3. ~~**Bridge dead-letter holds 12 historical entries**~~ **Resolved 2026-10-01 (TASK R3):** purged (backed up); state reload required restart of both subscriber processes; live E2E re-verified.
 4. ~~**Duo unconfigured**~~ **Resolved 2026-10-01 (TASK R1):** Duo env provisioned in `/etc/kai/duo.env`; `is_configured()` True in the api process — step-up active. Pending: end-to-end Duo push not exercised from a real login.
 5. ~~**Telegram bot token unprovisioned**~~ **Resolved 2026-10-01 (TASK R1):** operator token stored in vault (`secrets/money/telegram_bot_token`), registry `enabled=True` (commit `6f1e218`), poller live. Pending: allowlist awaits the operator's first message to the bot (no known chat id existed to pre-seed).
 6. **akush_app owns the whole `kai_money` database** (broad within the DB; no superuser flags; infra tables owned by `postgres` and write-restricted) — acceptable, but ownership scoping could be tightened.
-7. **Dead code:** 64 `.bak`/`.backup` files in CT111 `core/`, 10 in CT108 `services/akush-core/src/` (incl. `auth.js.bak-phase7`, `server.js.orig`, `transactions.js.bak-phase6`…). Untracked; candidates for cleanup.
+7. ~~**Dead code:** 64 + 10 `.bak`/`.backup` files~~ **Reduced 2026-10-01 (TASK R3):** 66 (CT111 core/) + 9 (CT108 akush-core src/ + public/) moved to dedicated backup dirs, preserving paths; `.orig` files untouched; suites green post-move.
 8. **Tailscale funnel proxies CC :8000 with `https+insecure` upstream** — self-signed upstream trust is implicit; flag rotation is operator-owned.
 9. CT111 carries a dirty worktree (uncommitted non-money changes predating this session) — not touched.
 
@@ -171,27 +171,48 @@ CC money panel live and green: `GET /api/money/overview` returned 200 with real 
 | Auth matrix + fail-closed | VERIFIED | auth.test.js 9, pwa_auth 20, security_phase8 15; CT111 unreachable → fail closed |
 | Confirmation tokens (destructive ops) | VERIFIED | `confirm.js` + confirmation_tokens table; §71 tests |
 | Idempotency keys | VERIFIED | transactions.js:45–56 replay-mismatch tests |
-| SMS pipeline (single :8770 receiver, bridge, dedup) | VERIFIED | sms tests green; live counters forwarded=11 duplicates=5; only one receiver in codebase |
+| SMS pipeline (single :8770 receiver, bridge, dedup) | VERIFIED | sms tests green; live counters forwarded=21 duplicates=1 failed=9 (R3); only one receiver in codebase |
 | OTP containment (never leaves CT111) | VERIFIED | redaction + transport refusal (bridge.py:287); sms_security 7/7 |
 | §72 acceptance fixtures (8 mandated cases) | VERIFIED | sms_pipeline.test.js 12/12 incl. all 8 §72 cases + 2 extras |
-| Account discovery lifecycle (no auto-trust) | VERIFIED | fixtures 1–3; live accounts {CANDIDATE:3, DETECTED:1} |
+| Account discovery lifecycle (no auto-trust) | VERIFIED | fixtures 1–3; live accounts all REJECTED after R3 test-artifact purge (0 official) |
 | Balance intelligence (CHANGE ≠ income) | VERIFIED | fixtures 4–5; kind_alignment 21/21 |
-| Telegram bot | VERIFIED (post R1) | token in vault `secrets/money/telegram_bot_token` (roundtrip OK); registry `enabled=True` (6f1e218); poller active, getMe ok (@akush233Bot), env file 0600; allowlist pending operator's first message |
+| Telegram bot | ACTIVE-pending-operator-chat (R1/R3) | bot live: runtime_ready() True, registry enabled=True, poller active; allowlist awaits operator /start |
 | Telegram allowlist + fail-safe | VERIFIED | handlers.py allowlist reject; poller idle-logging disabled state |
 | Command Center panel | VERIFIED | money_cc_panel 18/18; live `/api/money/overview` 200 with aggregates |
 | PWA (CSP, no-store, cookie security) | VERIFIED | pwa_auth 20/20; CSP/no-store/HttpOnly verified in source |
 | Observability (health, dead-letter visibility) | VERIFIED | /health + /internal/health/detailed live (service-gated); CC bridge block visible |
-| Bridge dead-letter hygiene | PARTIALLY VERIFIED | visibility live; 12 historical entries unreplayed |
+| Bridge dead-letter hygiene | RESOLVED (R3) | 12 historical entries purged (backed up to /root/backups-r3); kai-scheduler+kai-sms-worker restarted to reload clean state; live E2E re-verify forwarded OK; dead_letter_count 0 stable |
 | Encrypted PG backup | VERIFIED | live run 2026-10-01T084131Z, AES-256/PBKDF2, integrity re-verified, retention ok |
 | Restore drill | VERIFIED | PASS after meta-count fix (82/82 tables, 12/12 SMS); defect found + fixed this session |
 | vzdump CT108 inclusion | VERIFIED | daily jobs.cfg vmid list contains 108 |
 | Secrets handling (vault-only) | VERIFIED | greps clean both codebases; vault-fetch patterns in code |
 | Exposed ports audit | VERIFIED (R2) | funnel OFF; vault 8120 HTTP closed (8443 TLS-only); 8770 HTTP 0.0.0.0 + NEW 8771 TLS (socat); 8000 0.0.0.0 TLS; 8099 0.0.0.0; 8095 LAN-bound |
 | Duplicate-implementation sweep | VERIFIED | no second SMS receiver/ledger/event bus found (`core/sms/service.py` IS the receiver) |
-| Dead code | PARTIALLY VERIFIED | inventoried (64 + 10 files); not removed (operator-gated) |
+| Dead code | REDUCED (R3) | 66 CT111 core/ + 9 CT108 akush-core .bak/.backup files moved to dedicated backup dirs (nothing deleted); both suites green post-move |
 | Duo | VERIFIED (configured) | `/etc/kai/duo.env` non-empty keys; `is_configured()` True in api process env; PWA base login + introspection unaffected; live push not exercised |
 | Tailscale funnel | RESOLVED (R2) | funnel reset; tailnet-only :8443 socat verified 200 from pve-A; no public listener remains |
-| SMS-worker TLS | NOT VERIFIED | plain HTTP receiver — needs operator cert provisioning |
-| Overall | **READY with operator-gated items** | 398/398 tests; live services green; 4 BLOCKED/PENDING items, all operator-gated |
+| SMS-worker TLS | PARTIAL (R2) | :8771 TLS sidecar live (socat); :8770 plain receiver still bound 0.0.0.0 — phone sender URL switch to :8771 pending operator |
+| Overall | **READY with operator-gated items** | 398/398 tests (R3 re-run); live services green; remaining items operator-gated (SMS TLS phone switch, Telegram allowlist, Duo live-push drill) |
 
 **Honesty note:** not 100% — Telegram poller is live but the chat allowlist awaits the operator's first message to @akush233bot, and no live notification has been sent to a chat yet; Duo is configured but a live push has not been exercised end-to-end; vault :8120 exposure, funnel flag, and legacy grants RESOLVED (R2); SMS-worker TLS done (:8771, phone URL switch pending operator); bridge dead-letter backlog has no replay path.
+
+## 20. R3 addendum (2026-10-01 — cleanup + final verification)
+
+**Bridge dead-letters — RESOLVED (R3):** the 12 historical development-phase dead-letters (post_failed transport errors, fingerprint_failed, queue_overflow, bridge_token_unavailable) purged from `money_sms_bridge_state.json` after backup to `/root/backups-r3/`; counters and last_processed preserved. Operational finding: BOTH bridge subscriber processes (kai-scheduler AND kai-sms-worker) hold the state in memory — a file-only purge gets re-overwritten on the next persist; both services were restarted after the purge to reload clean state. Live E2E re-verified post-restart: webhook SMS (:8770) → forwarded (counter 19→21) → akush-core row → account-candidate lifecycle exercised. `dead_letter_count: 0` stable (60 s observation + CC overview).
+
+**DEMO/test data — RESOLVED (R3), via akush-core API only** (real CT111 operator JWT, introspected via /auth/status; no raw SQL where a flow exists):
+- 4 DEMO income sources deactivated (`DELETE /api/v1/income-sources/:id` — soft-delete is_active=FALSE). Their 81 expected occurrences are append-only (no occurrence-delete flow) and are excluded from active calculation: forecast expected_in = 0.00.
+- 2 DEMO commitments deactivated (`DELETE /api/v1/commitments/:id`); their 26 occurrences remain (due/partial) but the parent is inactive → obligations_7d = 0.
+- 3 DEMO paydays deactivated (`DELETE /api/v1/paydays/:id`); 4 proposed payday_allocations remain attached but the engine reads active paydays only.
+- 6 candidate/test accounts REJECTED via `POST /api/v1/accounts/:id/reject` (4 DEMO/manual candidates + 2 R3-verification SMS candidates) → 0 official accounts (honest empty state).
+- All 43 pending `financial_event_inbox` items closed via `POST /api/v1/financial-inbox/:id/act` (9 actionable → rejected, 34 review/anomaly → ignored) → inbox pending = 0.
+- Backup before cleanup: full-table CSV dumps + tarball in `/root/backups-r3/demo-db/` (12 tables).
+- Remaining append-only rows (excluded from active calculations, documented): transactions id 4 (memo `commitment:2 DEMO bill - delete me`), ids 14/15 (`demo kiosk`) — transactions have no delete flow by design (append-only ledger); financial_events (46) and sms_messages (19) are the ingest/audit log; 2 recurring_patterns (mtn/shop) derived from user-entered transactions. Forecast honest: 0.00 in / 0.00 out / [] accounts; safe-to-spend -75.00 = 0 cash − 75.00 configured min_buffer.
+
+**.bak/.backup hygiene — RESOLVED (R3):** CT111 `core/`: 66 files (64 .bak-* + 2 .backup) → `/opt/ai-orchestrator/backups/bak-files-r3/`; CT108 `services/akush-core/`: 9 files (8 in src/, 1 in public/; test/ had none) → `/opt/kai-money/state/bak-files-r3/` preserving relative paths. Nothing deleted; `.orig` files (not .bak/.backup) untouched. Both full suites re-run green after the move.
+
+**Test harness fixes (R3):** (1) CT108 `test/helpers.js` — the vault reveal used `node:http` against the https `:8443` endpoint (introduced by R2 commit 8254711), so TEST_PGPASSWORD came back empty and the whole suite failed SASL; fixed to `node:https` (NODE_EXTRA_CA_CERTS pinned CA). (2) CT111 — 3 stale tests (`test_money_notify.py` bot-disabled, `test_money_telegram.py` runtime_ready/token-absent) updated for post-R1 reality: the operator has flipped the bot live (registry enabled=True, token env materialized), so the disabled state is now asserted explicitly via monkeypatch and the real transport token path is stubbed. No implementation changes.
+
+**Final suite (R3):** CT108 `node --test --test-concurrency=1`: **248/248 pass, 0 fail**. CT111 pytest (10 money files): **150/150 pass, 0 fail**. Grand total **398/398**.
+
+**Live verification (R3):** akush-core `/health` ok + `/internal/health/detailed` ok (db ok, pipeline_failures 0); services: akush-core active, ai-orchestrator-api active, kai-sms-worker active, akush-telegram active, kai-scheduler active, akush-pg-backup.timer active+enabled; CC `/api/money/overview`: bridge `dead_letter_count: 0`, inbox pending 0, obligations_7d 0, anomalies open 0, accounts `{REJECTED: 6}`, backup ok. PG post-cleanup: accounts 6 (all REJECTED), transactions 12, financial_events 46, financial_event_inbox 43 (0 pending), sms_messages 19.

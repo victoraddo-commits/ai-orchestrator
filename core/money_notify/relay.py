@@ -46,8 +46,9 @@ def poll_once(client=None, publish=None, *, state=None) -> dict:
         if rc != 200 or not isinstance(listing, dict):
             return {"relayed": 0, "reason": "inbox unavailable"}
         rows = listing.get("data") or []
-        new_ids = sorted(r["id"] for r in rows
-                         if isinstance(r.get("id"), int) and r["id"] > last)
+        # node-postgres serializes BIGSERIAL ids as strings — coerce
+        new_ids = sorted(int(r["id"]) for r in rows
+                         if str(r.get("id", "")).isdigit() and int(r["id"]) > last)
         relayed = 0
         for iid in new_ids:
             dc, detail = client.get(f"/financial-inbox/{iid}")

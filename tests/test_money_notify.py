@@ -301,7 +301,8 @@ def test_relay_publishes_tagged_inbox_items(monkeypatch):
     class RelayClient:
         def get(self, path, query=None):
             if path == "/financial-inbox":
-                return 200, {"data": [{"id": 12}, {"id": 11}]}
+                # live shape: node-postgres BIGSERIAL ids arrive as strings
+                return 200, {"data": [{"id": "12"}, {"id": "11"}]}
             if path == "/financial-inbox/11":
                 return 200, {"kind": "transaction_candidate", "confidence": 0.9,
                              "payload": {"tag": "money.bill.due",

@@ -14,6 +14,7 @@ Design principles:
 - State-change gating: reuses telegram_bridge.detect_state_changes for builds
 """
 
+import logging
 import threading
 import time
 from datetime import datetime, timezone
@@ -29,6 +30,8 @@ from core.logger import info as _log
 # --- Configuration ---
 
 # How often the monitor wakes up to check state (seconds).
+logger = logging.getLogger(__name__)
+
 POLL_INTERVAL = 60
 
 # Minimum interval between digest messages even if nothing changed (seconds).
@@ -286,6 +289,26 @@ class TelegramMonitor:
                 f"✅{pool_status.get('completed', 0)} ❌{pool_status.get('failed', 0)}"
             )
             lines.append("")
+
+        # --- System sections (merged heartbeat: infra/services/money/bridge/brain/incidents) ---
+        if is_heartbeat:
+            try:
+                from core.workers.heartbeat_sections import format_sections
+
+                try:
+                    from core.money_telegram.client import get_client as _akush_client
+
+                    sections = format_sections(
+                        since=now.timestamp() - HEARTBEAT_INTERVAL,
+                        bot_client=_akush_client(),
+                    )
+                except ImportError:
+                    sections = format_sections(since=now.timestamp() - HEARTBEAT_INTERVAL)
+                if sections:
+                    lines.append(sections)
+                    lines.append("")
+            except Exception as exc:  # heartbeat must never crash the digest
+                logger.warning("heartbeat sections unavailable: %s", type(exc).__name__)
 
         # Footer
         lines.append("_Kai AI Orchestrator — DeepSeek-powered_")

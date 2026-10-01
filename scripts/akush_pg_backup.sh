@@ -49,6 +49,15 @@ else
 fi
 SIZE="$(stat -c %s "$TARGET")"
 
+# --- dump-time reference counts (§60: the restore drill must compare the
+# restored snapshot against the counts captured AT DUMP TIME, not against the
+# live DB, which keeps moving and would false-fail the drill) ---------------
+SRC_TABLES="$(su - postgres -c "psql -At -d kai_money -c \"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'\"")"
+SRC_SMS="$(su - postgres -c "psql -At -d kai_money -c 'SELECT COUNT(*) FROM sms_messages'")"
+printf '{"archive":"akush-kai_money-%s","src_tables":%s,"src_sms":%s}\n' \
+  "$TS" "${SRC_TABLES:-null}" "${SRC_SMS:-null}" \
+  > "$BACKUP_DIR/akush-kai_money-${TS}.meta.json"
+
 # --- integrity: decrypt-test to /dev/null + gzip -t ---------------------------
 if ! openssl enc -d "${ENC_ARGS[@]}" -pass env:AKUSH_BK -in "$TARGET" 2>/dev/null | gzip -t; then
   LOG error "integrity check failed for created archive" ''
@@ -58,7 +67,8 @@ fi
 # --- retention: keep newest N -------------------------------------------------
 cd "$BACKUP_DIR" || exit 1
 ls -1t akush-kai_money-*.sql.gz.enc 2>/dev/null | tail -n +$((RETENTION + 1)) | while read -r old; do
-  rm -f -- "$old"
+  base="${old%.sql.gz.enc}"
+  rm -f -- "$old" "$base.meta.json"
 done
 
 # --- re-verify every retained archive ----------------------------------------

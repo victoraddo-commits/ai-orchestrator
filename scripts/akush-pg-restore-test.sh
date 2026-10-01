@@ -31,9 +31,17 @@ if [ ! -e "$ARCHIVE" ]; then
   exit 1
 fi
 
-# source reference counts
-SRC_TABLES="$(su - postgres -c "psql -At -d kai_money -c \"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'\"")"
-SRC_SMS="$(su - postgres -c "psql -At -d kai_money -c 'SELECT COUNT(*) FROM sms_messages'")"
+# source reference counts — use the dump-time meta counts when available
+# (the live DB keeps ingesting SMS, so live counts would false-fail the drill)
+META="$BACKUP_DIR/${LATEST}.meta.json"
+if [ -s "$META" ]; then
+  SRC_TABLES="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('src_tables',''))" "$META" 2>/dev/null)"
+  SRC_SMS="$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d.get('src_sms',''))" "$META" 2>/dev/null)"
+fi
+if [ -z "${SRC_TABLES:-}" ] || [ -z "${SRC_SMS:-}" ]; then
+  SRC_TABLES="$(su - postgres -c "psql -At -d kai_money -c \"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'\"")"
+  SRC_SMS="$(su - postgres -c "psql -At -d kai_money -c 'SELECT COUNT(*) FROM sms_messages'")"
+fi
 
 # throwaway restore
 su - postgres -c "psql -qc \"DROP DATABASE IF EXISTS $RESTORE_DB\" postgres >/dev/null" || true

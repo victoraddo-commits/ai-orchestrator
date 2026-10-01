@@ -117,7 +117,9 @@ Three principals: (1) human PWA — local argon2id login or CT111-issued session
 
 ## 12. Duo
 
-**BLOCKED — unconfigured.** No Duo env in `ai-orchestrator-api.service`/`.env`; only design references in `core/authz.py:184–187` (Duo push approval as step-up identity). Nothing to verify until the operator provisions Duo SSO.
+**CONFIGURED (verified 2026-10-01, TASK R1).** `/etc/kai/duo.env` on CT111 supplies `DUO_IKEY` / `DUO_SKEY` / `DUO_API_HOST` / `DUO_USERNAME` / `KAI_DUO_ALLOWED_USERS` (all non-empty; values not printed) into `ai-orchestrator-api.service` via `EnvironmentFile`, and `core.auth.duo_sso.is_configured()` evaluates **True** in that process env. Duo step-up therefore activates as designed: high-risk approval (vault reveals) and orchestrator login can require a Duo push (`core/auth/duo_sso.py`), fail-closed on push denial/unreachability.
+
+The akush-core PWA login path is unchanged: password (argon2id) + HttpOnly HMAC cookie + CSRF double-submit + confirmation tokens for destructive actions; session introspection via CT111 `/auth/status` is unaffected (live check: login 400 on empty body, `/api/v1/auth/me` 401 unauthed — validation and fail-closed behavior intact). Duo is a step-up layer on top of that base, not a replacement. PWA security-card hint updated to reflect the active step-up (CT108 commit `b3a39b0`).
 
 ## 13. Tailscale (funnel flag)
 
@@ -151,8 +153,8 @@ CC money panel live and green: `GET /api/money/overview` returned 200 with real 
 1. **kai-sms-worker :8770 is plain HTTP on 0.0.0.0** — TLS on the webhook receiver is operator-gated (needs webhook cert/key + sender trust store).
 2. **Vault :8120 HTTP listener on 0.0.0.0 (CT107)** alongside :8443 HTTPS — restricting :8120 is operator-gated.
 3. **Bridge dead-letter holds 12 historical entries** (development-phase transport `post_failed`), no replay mechanism — operator-gated purge/replay.
-4. **Duo unconfigured** (step-up identity exists in design only) — blocked.
-5. **Telegram bot token unprovisioned** — bot fail-safe disabled (by design) — blocked.
+4. ~~**Duo unconfigured**~~ **Resolved 2026-10-01 (TASK R1):** Duo env provisioned in `/etc/kai/duo.env`; `is_configured()` True in the api process — step-up active. Pending: end-to-end Duo push not exercised from a real login.
+5. ~~**Telegram bot token unprovisioned**~~ **Resolved 2026-10-01 (TASK R1):** operator token stored in vault (`secrets/money/telegram_bot_token`), registry `enabled=True` (commit `6f1e218`), poller live. Pending: allowlist awaits the operator's first message to the bot (no known chat id existed to pre-seed).
 6. **akush_app owns the whole `kai_money` database** (broad within the DB; no superuser flags; infra tables owned by `postgres` and write-restricted) — acceptable, but ownership scoping could be tightened.
 7. **Dead code:** 64 `.bak`/`.backup` files in CT111 `core/`, 10 in CT108 `services/akush-core/src/` (incl. `auth.js.bak-phase7`, `server.js.orig`, `transactions.js.bak-phase6`…). Untracked; candidates for cleanup.
 8. **Tailscale funnel proxies CC :8000 with `https+insecure` upstream** — self-signed upstream trust is implicit; flag rotation is operator-owned.
@@ -174,7 +176,7 @@ CC money panel live and green: `GET /api/money/overview` returned 200 with real 
 | §72 acceptance fixtures (8 mandated cases) | VERIFIED | sms_pipeline.test.js 12/12 incl. all 8 §72 cases + 2 extras |
 | Account discovery lifecycle (no auto-trust) | VERIFIED | fixtures 1–3; live accounts {CANDIDATE:3, DETECTED:1} |
 | Balance intelligence (CHANGE ≠ income) | VERIFIED | fixtures 4–5; kind_alignment 21/21 |
-| Telegram bot | BLOCKED | token absent (`/etc/kai/akush_bot.env` missing), `enabled=False` fail-safe idle; built + 21/21 tests |
+| Telegram bot | VERIFIED (post R1) | token in vault `secrets/money/telegram_bot_token` (roundtrip OK); registry `enabled=True` (6f1e218); poller active, getMe ok (@akush233Bot), env file 0600; allowlist pending operator's first message |
 | Telegram allowlist + fail-safe | VERIFIED | handlers.py allowlist reject; poller idle-logging disabled state |
 | Command Center panel | VERIFIED | money_cc_panel 18/18; live `/api/money/overview` 200 with aggregates |
 | PWA (CSP, no-store, cookie security) | VERIFIED | pwa_auth 20/20; CSP/no-store/HttpOnly verified in source |
@@ -187,9 +189,9 @@ CC money panel live and green: `GET /api/money/overview` returned 200 with real 
 | Exposed ports audit | PARTIALLY VERIFIED | binds documented (see limitations #1/#2): 8770 HTTP 0.0.0.0; 8000 0.0.0.0 TLS; 8099 0.0.0.0; 8095 LAN-bound; vault 8120 HTTP 0.0.0.0 |
 | Duplicate-implementation sweep | VERIFIED | no second SMS receiver/ledger/event bus found (`core/sms/service.py` IS the receiver) |
 | Dead code | PARTIALLY VERIFIED | inventoried (64 + 10 files); not removed (operator-gated) |
-| Duo | BLOCKED | unconfigured (no env, no Duo config) |
+| Duo | VERIFIED (configured) | `/etc/kai/duo.env` non-empty keys; `is_configured()` True in api process env; PWA base login + introspection unaffected; live push not exercised |
 | Tailscale funnel | PARTIALLY VERIFIED | funnel ON → CC :8000 only; end-to-end external reachability not exercised from WAN |
 | SMS-worker TLS | NOT VERIFIED | plain HTTP receiver — needs operator cert provisioning |
 | Overall | **READY with operator-gated items** | 398/398 tests; live services green; 4 BLOCKED/PENDING items, all operator-gated |
 
-**Honesty note:** not 100% — Telegram and Duo are blocked on operator provisioning; SMS-worker TLS, vault :8120 exposure, funnel flag, and legacy grant/role cleanup are operator-gated; bridge dead-letter backlog has no replay path.
+**Honesty note:** not 100% — Telegram poller is live but the chat allowlist awaits the operator's first message to @akush233bot, and no live notification has been sent to a chat yet; Duo is configured but a live push has not been exercised end-to-end; SMS-worker TLS, vault :8120 exposure, funnel flag, and legacy grant/role cleanup are operator-gated; bridge dead-letter backlog has no replay path.

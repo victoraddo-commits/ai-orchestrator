@@ -1925,9 +1925,9 @@ def power_ups(_: None = Depends(_req_op)):
 # SMS bodies or OTP values: responses are shaped below — only ids, statuses,
 # counts, classifications, and masked metadata leave this module.
 # ---------------------------------------------------------------------------
-_AKUSH_BASE = os.environ.get("CC_AKUSH_URL", "http://192.168.1.118:8095")
+_AKUSH_BASE = os.environ.get("CC_AKUSH_URL", "https://192.168.1.118:8095")
 _AKUSH_TOKEN_PATH = "secrets/money/service_tokens"
-_AKUSH_URL_BASE = os.environ.get("CC_AKUSH_PWA_URL", "http://192.168.1.118:8095/")
+_AKUSH_URL_BASE = os.environ.get("CC_AKUSH_PWA_URL", "https://192.168.1.118:8095/")
 _akush_tok_cache = {"value": "", "at": 0.0}
 _AKUSH_INBOX_ACTIONS = ("confirm", "reject", "ignore", "match", "investigate")
 
@@ -1969,7 +1969,8 @@ def _akush_call(path: str, method: str = "GET", body=None, params: dict | None =
         "content-type": "application/json",
     })
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=10,
+                                    context=_akush_tls_context()) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
         try:
@@ -1985,10 +1986,21 @@ def _akush_call(path: str, method: str = "GET", body=None, params: dict | None =
                             detail=f"akush-core unreachable: {type(e).__name__}")
 
 
+def _akush_tls_context():
+    """TLS context for the pinned LAN host akush-core (CT108, self-signed —
+    documented §49 deviation, docs/akush/SECURITY.md). This host only."""
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def _akush_health() -> dict:
     import urllib.request
     try:
-        with urllib.request.urlopen(_AKUSH_BASE.rstrip("/") + "/health", timeout=5) as r:
+        with urllib.request.urlopen(_AKUSH_BASE.rstrip("/") + "/health", timeout=5,
+                                    context=_akush_tls_context()) as r:
             return json.load(r)
     except Exception as e:  # noqa: BLE001
         return {"status": "degraded", "error": type(e).__name__}
@@ -2077,6 +2089,40 @@ def money_overview(request: Request):
         pass
 
     sms_status.pop("note", None)
+
+    # bridge health (§70 no-silent-failure): live CT111 bridge state + recent
+    # money.sms.bridge_failed bus events. Metadata only — no SMS bodies, no
+    # fingerprints, no tokens.
+    bridge = {"status": "unknown"}
+    try:
+        from core.money_sms import bridge as money_bridge
+        st = money_bridge.load_state()
+        dead_letter = st.get("dead_letter") or []
+        last_failed_at = st.get("last_failed_at") \
+            or max((d.get("ts") or 0 for d in dead_letter), default=None)
+        last_fwd_at = st.get("last_processed_at")
+        recent_failures = 0
+        try:
+            from core.kai_event_bus import event_bus
+            recent_failures = len(
+                event_bus.recent_events(topic=money_bridge.FAILURE_TOPIC, limit=200))
+        except Exception:
+            recent_failures = None
+        bridge = {
+            "status": "degraded" if dead_letter else "ok",
+            "dead_letter_count": len(dead_letter),
+            "counters": {k: st.get("counters", {}).get(k) for k in
+                         ("forwarded", "duplicates", "failed", "skipped_otp",
+                          "dropped_overflow")},
+            "last_forwarded_age_seconds": (
+                round(time.time() - last_fwd_at) if last_fwd_at else None),
+            "last_failure_age_seconds": (
+                round(time.time() - last_failed_at) if last_failed_at else None),
+            "recent_bridge_failed_events": recent_failures,
+        }
+    except Exception as e:  # noqa: BLE001
+        bridge = {"status": "unknown", "error": type(e).__name__}
+
     return {
         "health": health,
         "pwa_url": _AKUSH_URL_BASE,
@@ -2090,6 +2136,7 @@ def money_overview(request: Request):
         "reconciliation": {"total": recon_total, "open": recon_open,
                            "resolved": recon_resolved, "health_pct": recon_pct},
         "backup": backup,
+        "bridge": bridge,
         "security_events_recent": sec_count,
     }
 

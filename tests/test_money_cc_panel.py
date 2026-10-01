@@ -114,6 +114,13 @@ def mock_akush(monkeypatch):
     monkeypatch.setattr(cce, "_akush_health", fake_health)
     # stale token cache must never be used in tests (no vault in tests)
     monkeypatch.setattr(cce, "_akush_service_token", lambda: MOCK_TOKEN_VALUE)
+    # bridge state must be hermetic (§70 observability block in overview)
+    monkeypatch.setattr("core.money_sms.bridge.load_state", lambda: {
+        "counters": {"forwarded": 10, "duplicates": 1, "failed": 2,
+                     "skipped_otp": 3, "dropped_overflow": 0},
+        "dead_letter": [{"ts": 1.0, "message_id": "m1", "reason": "post_failed"}],
+        "last_processed_at": None, "last_failed_at": None,
+    })
     return calls
 
 
@@ -153,7 +160,7 @@ def test_overview_happy_shape(client, mock_akush):
     assert r.status_code == 200
     d = r.json()
     assert d["health"]["status"] == "ok"
-    assert d["pwa_url"].startswith("http://192.168.1.118:8095")
+    assert d["pwa_url"].startswith("https://192.168.1.118:8095")
     assert d["accounts"]["count"] == 2
     assert d["accounts"]["by_status"].get("ACTIVE") == 1
     assert d["inbox"]["pending"] == 1
@@ -165,6 +172,9 @@ def test_overview_happy_shape(client, mock_akush):
     assert d["reconciliation"]["total"] >= 1
     assert d["reconciliation"]["health_pct"] is not None
     assert "backup" in d
+    assert "bridge" in d
+    assert d["bridge"]["status"] == "degraded"
+    assert d["bridge"]["dead_letter_count"] == 1
     assert set(d["sms_ingestion"]) >= {"total_messages", "last_24h", "dead_letters"}
 
 
@@ -251,7 +261,7 @@ def test_panel_wiring_each_exactly_once():
 
 def test_panel_wiring_deep_link_present():
     html = CC_HTML.read_text()
-    assert "AKUSH_PWA_URL = 'http://192.168.1.118:8095/'" in html
+    assert "AKUSH_PWA_URL = 'https://192.168.1.118:8095/'" in html
     assert "Open full Akush Money" in html
 
 

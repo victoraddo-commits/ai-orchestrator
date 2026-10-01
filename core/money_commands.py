@@ -27,10 +27,20 @@ from urllib.error import URLError, HTTPError
 
 MONEY_CENTER_URL = os.environ.get("MONEY_CENTER_URL", "http://127.0.0.1:8000")
 # The orchestrator proxies nothing here — money-center lives on CT108.
-_DEFAULT_MC = "http://192.168.1.118:8095"
+_DEFAULT_MC = "https://192.168.1.118:8095"
 USER_TOKEN_FILE = os.environ.get("MONEY_USER_TOKEN_FILE", "/root/.credentials/money-user-token")
 
 _TIMEOUT = 10
+
+
+def _lan_tls():
+    """TLS context for the pinned LAN host akush-core (CT108 self-signed —
+    §49 documented deviation)."""
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 def _token():
@@ -53,7 +63,7 @@ def _api(method, path, body=None):
         },
     )
     try:
-        with _urlreq.urlopen(req, timeout=_TIMEOUT) as resp:
+        with _urlreq.urlopen(req, timeout=_TIMEOUT, context=_lan_tls()) as resp:
             return resp.status, json.loads(resp.read().decode() or "{}")
     except HTTPError as e:
         try:

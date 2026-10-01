@@ -8583,7 +8583,7 @@ async function loadInbox(){
 }
 
 // ── Akush Money panel (Phase 7 — akush-core CT108 via /api/money/* proxy) ──
-const AKUSH_PWA_URL = 'http://192.168.1.118:8095/';
+const AKUSH_PWA_URL = 'https://192.168.1.118:8095/';
 async function loadAkush(){
   const el=$('akush-content');if(!el)return;el.innerHTML='<span class="loading">loading\u2026</span>';
   const g=async p=>{try{return await api(p);}catch(e){return {__error:e.message};}};
@@ -8609,6 +8609,14 @@ async function loadAkush(){
       +'<div class="metric"><span class="val">'+esc(String(si.total_messages??'\u2014'))+'</span><span class="lbl">messages total</span></div>'
       +'<div class="metric"><span class="val">'+esc(String(si.last_24h??'\u2014'))+'</span><span class="lbl">last 24h</span></div>'
       +'<div class="metric"><span class="val" style="font-size:0.72rem">'+esc(String(si.last_received??'\u2014').slice(0,19))+'</span><span class="lbl">last processed</span></div>'
+      +'</div></div>';
+    // bridge health strip (§70)
+    const br=ov.bridge||{};const brBadge=br.status==='ok'?'ok':(br.status==='degraded'?'warn':'warn');
+    html+='<div class="card"><h3>SMS bridge <span class="badge '+brBadge+'">'+esc(br.status||'unknown')+'</span></h3>'
+      +'<div class="metric-row">'
+      +'<div class="metric"><span class="val">'+esc(String(br.dead_letter_count??'\u2014'))+'</span><span class="lbl">dead-lettered</span></div>'
+      +'<div class="metric"><span class="val">'+(br.last_forwarded_age_seconds==null?'\u2014':esc(String(br.last_forwarded_age_seconds))+'s')+'</span><span class="lbl">last forwarded age</span></div>'
+      +'<div class="metric"><span class="val">'+esc(String(br.recent_bridge_failed_events??'\u2014'))+'</span><span class="lbl">bridge_failed events (recent)</span></div>'
       +'</div></div>';
     // backup strip
     const bk=ov.backup||{};

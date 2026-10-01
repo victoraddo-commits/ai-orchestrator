@@ -278,6 +278,16 @@ class KAIEventBus:
     # Stats
     # ------------------------------------------------------------------
 
+    def recent_events(self, topic: str | None = None, limit: int = 20) -> list[dict]:
+        """Return recent envelopes (newest last), optionally filtered by topic
+        (exact match) or topic prefix (trailing ``.`` wildcard via prefix match
+        is NOT implied — pass the exact topic). Observability helper (§70):
+        lets the Command Center surface failure topics without subscribing."""
+        with self._lock:
+            events = [e for e in self._recent_events
+                      if topic is None or e.get("topic") == topic]
+        return list(events[-max(1, limit):]) if events else []
+
     def get_stats(self) -> dict:
         """Return bus statistics."""
         with self._lock:

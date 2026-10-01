@@ -18,11 +18,23 @@ from core.ai import kai_vault_client as _vault
 
 logger = logging.getLogger("kai.money_telegram")
 
-DEFAULT_BASE = os.environ.get("AKUSH_CORE_URL", "http://192.168.1.118:8095/api/v1")
+DEFAULT_BASE = os.environ.get("AKUSH_CORE_URL", "https://192.168.1.118:8095/api/v1")
 VAULT_TOKENS_PATH = "secrets/money/service_tokens"
 TIMEOUT = 15
 
 _svc_cache: tuple[str, float] | None = None
+
+
+def _lan_tls_context():
+    """TLS context for the pinned LAN host akush-core (CT108, self-signed cert
+    like CT111's :8000 — documented deviation, docs/akush/SECURITY.md §49).
+    Verification is disabled for this host only; every other HTTPS target
+    keeps default verification."""
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 def bot_service_token() -> str:
@@ -76,7 +88,8 @@ class AkushClient:
         req = urllib.request.Request(url, data=data, headers=headers,
                                      method=method)
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as res:
+            with urllib.request.urlopen(req, timeout=TIMEOUT,
+                                        context=_lan_tls_context()) as res:
                 payload = res.read().decode() or "{}"
                 try:
                     return res.status, json.loads(payload)

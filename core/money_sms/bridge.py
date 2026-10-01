@@ -288,7 +288,8 @@ def _post_to_akush(payload: dict, *, max_attempts: int | None = None) -> dict | 
     token = bridge_token()
     if not token:
         raise RuntimeError("bridge service token unavailable")
-    base = os.environ.get("KAI_MONEY_SMS_URL", "http://192.168.1.118:8095/internal/sms/ingest")
+    base = os.environ.get("KAI_MONEY_SMS_URL",
+                          "https://192.168.1.118:8095/internal/sms/ingest")
     delay = 1.0
     last_exc: Exception | None = None
     for attempt in range(max(1, max_attempts)):
@@ -384,6 +385,7 @@ def _process_one(event: dict, preloaded: dict | None) -> None:
         states["dead_letter"].append({
             "ts": time.time(), "message_id": (event or {}).get("message_id"),
             "reason": "bridge_token_unavailable"})
+        states["last_failed_at"] = time.time()  # §70 observability
         states["counters"]["failed"] = int(states["counters"].get("failed", 0)) + 1
         _persist_state()
         _publish_failure({"source_id": (event or {}).get("message_id")},
@@ -460,6 +462,7 @@ def _process_one(event: dict, preloaded: dict | None) -> None:
         return
     state["counters"]["forwarded"] = int(state["counters"].get("forwarded", 0)) + 1
     state["last_processed_id"] = record.get("message_id")
+    state["last_processed_at"] = time.time()  # §70 observability (CC bridge age)
     _persist_state_safe()
     try:
         from core import kai_event_bus as _bus
@@ -485,6 +488,7 @@ def _dead_letter(record: dict, reason: str) -> None:
         "ts": time.time(), "message_id": record.get("message_id"),
         "reason": reason,
     })
+    state["last_failed_at"] = time.time()  # §70 observability
     _persist_state()
     _publish_failure({"source_id": record.get("message_id")}, reason,
                      dead_lettered=True)

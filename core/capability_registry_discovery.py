@@ -33,7 +33,7 @@ NAME_CAPABILITY_MAP = {
 PORT_CAPABILITY_MAP = {
     8094: "notifications",
     8120: "secret-management",
-    8443: "telegram-bots",
+    8443: "secret-management",
     8092: "hr-tools",
     8093: "audit",
     8095: "trading-engine",

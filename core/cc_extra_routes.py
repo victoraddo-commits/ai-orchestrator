@@ -948,7 +948,7 @@ def vault_metadata():
                 "status": "healthy" if reachable else "blocked",
                 "rotation_days": None, "used_by": "Kai"} for p in sorted(paths)]
     count = len(secrets) or seeded
-    return {"backend": "kai-vault-machine-plane (:8120 TLS :8443)",
+    return {"backend": "kai-vault-machine-plane (:8443 TLS-only; plain :8120 closed 2026-10-01 R2)",
             "reachable": reachable,
             "status": "healthy" if reachable else "blocked",
             "count": count, "seeded_paths": seeded, "secrets": secrets,

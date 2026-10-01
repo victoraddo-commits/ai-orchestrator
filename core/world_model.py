@@ -152,7 +152,7 @@ def collect_entities() -> dict:
     # Known logical services (always present so static edges resolve even if
     # a probe is down — their STATUS comes from probes when available).
     for sid, label, st in [
-        ("svc:kai-vault-api", "Kai Vault API (CT107 :8120)", None),
+        ("svc:kai-vault-api", "Kai Vault API (CT107 :8443 TLS)", None),
         ("svc:npm-ct104", "Nginx Proxy Manager (CT104)", None),
         ("svc:ollama-local", "Ollama local models (.109 :11434)", None),
         ("svc:money-db", "Money Center Postgres (CT108)", None),

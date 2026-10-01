@@ -60,3 +60,34 @@ step-up is active at the orchestrator (CT108 commit `b3a39b0`).
   first message (e.g. `/start`) to @akush233bot; no known operator chat id
   existed in bot registries or prefs at activation time
   (`BETTING_ADMIN_CHAT_ID` is unset, `device_registry.json` carries none).
+
+## TASK R2 exposure closure (2026-10-01)
+
+- **Tailscale funnel → RESOLVED.** The public funnel
+  (https://proxmox-b.tail82a9ca.ts.net → CT111 :8000) was removed with
+  `tailscale funnel reset` (operator-authorized). No public listener remains.
+  Tailnet-only CC access verified from pve-A over node socat :8443 →
+  CT111 :8000 (HTTP 200). Pre-change serve/funnel JSON is preserved at
+  pve-B:/root/r2-backups/tailscale-serve-before-20261001.json. The SMS phone
+  path (:8770 via sms-worker-tailscale-proxy) was NOT touched by the funnel
+  removal (independent socat unit; verified 401-without-token after change).
+- **Kai Vault :8120 → RESOLVED (TLS :8443-only).** Consumer inventory:
+  orchestrator (core/ai/kai_vault_client.py — already :8443 via VAULT_CA_BUNDLE;
+  verified 200/reveal), akush-core CT108 (unit VAULT_URL switched to
+  https://192.168.1.107:8443 + NODE_EXTRA_CA_CERTS=/opt/kai-money/state/tls/
+  vault-mp-ca.pem pinned CA; fetch-secrets + /health verified), money-center
+  docker-compose (config-only; VAULT_URL fixed from stale 192.168.1.117:8120).
+  The plain :8120 listener is disabled in CT107 machine_plane.py via
+  VAULT_MP_ENABLE_PLAIN=0 (drop-in r2-close-plain.conf; unit backups on CT107).
+  Note: commit d791637 shows kai_doctor.py as a new file because it was not
+  tracked before (pre-existing); only the :8120→:8443 lines are the R2 change.
+- **SMS-worker TLS :8771 — PARTIAL (phone pending).** socat TLS sidecar
+  `sms-worker-tls.service` on CT111 proxies :8771 → :8770 (self-signed cert
+  SAN: 192.168.1.111, proxmox-b.tail82a9ca.ts.net, localhost). POST
+  /webhook/sms over :8771 → 401 without token (listener healthy); :8770 phone
+  path unchanged. Operator action: switch phone app URL to
+  https://proxmox-b.tail82a9ca.ts.net:8771, then drop :8770.
+- **Legacy grants → RESOLVED.** kai_money: no non-akush/postgres roles held
+  grants (akush_app scoped per Phase 8; akush_test has zero grants).
+  klaus_db: klaus_user scoped to its 6 tables, legal_read SELECT-only —
+  untouched by R2.

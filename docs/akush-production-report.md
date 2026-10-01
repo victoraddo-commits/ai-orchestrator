@@ -29,7 +29,7 @@ Single source of truth: **akush-core (CT108, HTTPS :8095)** owns the only money 
 | Telegram bot | CT111 `core/money_telegram/` (poller, handlers, menu, client, token) | `akush-telegram.service` | `tests/test_money_telegram.py` (21) |
 | CC panel | CT111 `core/cc_extra_routes.py` (`/api/money/*`) | ai-orchestrator-api :8000 (HTTPS) | `tests/test_money_cc_panel.py` (18) |
 | PG backup | CT111 `scripts/akush_pg_backup.sh` + `akush-pg-backup.timer` (+`akush-pg-restore-test.sh`) | daily 03:00 UTC | `scripts/akush_pg_backup.sh` |
-| Vault (CT107) | `kai-vault` | :8443 HTTPS, :8120 HTTP (operator-gated) | — |
+| Vault (CT107) | `kai-vault` | :8443 HTTPS only (R2: plain :8120 closed) | — |
 
 **Discovered/reused:** PG16 instance on CT111, kai-vault (CT107), Kai event bus, CC authz (bridge token/session/trusted-proxy), vzdump daily job. **Upgraded:** CC overview (`cc_extra_routes.py` money block), auth.js (viewer tier fix), bridge observability state. **Newly created:** akush-core, SMS bridge, fingerprint dedup, money_notify gate, money_telegram, CC money panel, PWA, encrypted PG backup + restore drill.
 
@@ -123,7 +123,7 @@ The akush-core PWA login path is unchanged: password (argon2id) + HttpOnly HMAC 
 
 ## 13. Tailscale (funnel flag)
 
-Funnel is **ON** on the Proxmox B host: `https://proxmox-b.tail82a9ca.ts.net` proxies to `https+insecure://192.168.1.111:8000` (CC API only). The PWA (:8095) is **not** funneled — money surface stays LAN-only. The funneled CC API is behind CC operator auth. Note: the proxy upstream uses `https+insecure` (self-signed upstream) — acceptable for the auth-gated CC, but the flag decision is operator-owned.
+Funnel was **REMOVED (TASK R2, 2026-10-01)** on the Proxmox B host (`tailscale funnel reset`, operator-authorized). Public internet exposure of the CC API is gone; tailnet-only access remains via node socat `cc-tailscale-proxy.service` (:8443 → CT111 :8000, verified 200 from pve-A). Pre-change serve/funnel config saved on node: /root/r2-backups/tailscale-serve-before-20261001.json.
 
 ## 14. Command Center
 
@@ -151,7 +151,7 @@ CC money panel live and green: `GET /api/money/overview` returned 200 with real 
 ## 18. Known limitations
 
 1. **kai-sms-worker :8770 is plain HTTP on 0.0.0.0** — TLS on the webhook receiver is operator-gated (needs webhook cert/key + sender trust store).
-2. **Vault :8120 HTTP listener on 0.0.0.0 (CT107)** alongside :8443 HTTPS — restricting :8120 is operator-gated.
+2. **Vault :8120 HTTP listener — RESOLVED (R2):** plain listener disabled; TLS :8443-only with all consumers verified.
 3. **Bridge dead-letter holds 12 historical entries** (development-phase transport `post_failed`), no replay mechanism — operator-gated purge/replay.
 4. ~~**Duo unconfigured**~~ **Resolved 2026-10-01 (TASK R1):** Duo env provisioned in `/etc/kai/duo.env`; `is_configured()` True in the api process — step-up active. Pending: end-to-end Duo push not exercised from a real login.
 5. ~~**Telegram bot token unprovisioned**~~ **Resolved 2026-10-01 (TASK R1):** operator token stored in vault (`secrets/money/telegram_bot_token`), registry `enabled=True` (commit `6f1e218`), poller live. Pending: allowlist awaits the operator's first message to the bot (no known chat id existed to pre-seed).
@@ -186,12 +186,12 @@ CC money panel live and green: `GET /api/money/overview` returned 200 with real 
 | Restore drill | VERIFIED | PASS after meta-count fix (82/82 tables, 12/12 SMS); defect found + fixed this session |
 | vzdump CT108 inclusion | VERIFIED | daily jobs.cfg vmid list contains 108 |
 | Secrets handling (vault-only) | VERIFIED | greps clean both codebases; vault-fetch patterns in code |
-| Exposed ports audit | PARTIALLY VERIFIED | binds documented (see limitations #1/#2): 8770 HTTP 0.0.0.0; 8000 0.0.0.0 TLS; 8099 0.0.0.0; 8095 LAN-bound; vault 8120 HTTP 0.0.0.0 |
+| Exposed ports audit | VERIFIED (R2) | funnel OFF; vault 8120 HTTP closed (8443 TLS-only); 8770 HTTP 0.0.0.0 + NEW 8771 TLS (socat); 8000 0.0.0.0 TLS; 8099 0.0.0.0; 8095 LAN-bound |
 | Duplicate-implementation sweep | VERIFIED | no second SMS receiver/ledger/event bus found (`core/sms/service.py` IS the receiver) |
 | Dead code | PARTIALLY VERIFIED | inventoried (64 + 10 files); not removed (operator-gated) |
 | Duo | VERIFIED (configured) | `/etc/kai/duo.env` non-empty keys; `is_configured()` True in api process env; PWA base login + introspection unaffected; live push not exercised |
-| Tailscale funnel | PARTIALLY VERIFIED | funnel ON → CC :8000 only; end-to-end external reachability not exercised from WAN |
+| Tailscale funnel | RESOLVED (R2) | funnel reset; tailnet-only :8443 socat verified 200 from pve-A; no public listener remains |
 | SMS-worker TLS | NOT VERIFIED | plain HTTP receiver — needs operator cert provisioning |
 | Overall | **READY with operator-gated items** | 398/398 tests; live services green; 4 BLOCKED/PENDING items, all operator-gated |
 
-**Honesty note:** not 100% — Telegram poller is live but the chat allowlist awaits the operator's first message to @akush233bot, and no live notification has been sent to a chat yet; Duo is configured but a live push has not been exercised end-to-end; SMS-worker TLS, vault :8120 exposure, funnel flag, and legacy grant/role cleanup are operator-gated; bridge dead-letter backlog has no replay path.
+**Honesty note:** not 100% — Telegram poller is live but the chat allowlist awaits the operator's first message to @akush233bot, and no live notification has been sent to a chat yet; Duo is configured but a live push has not been exercised end-to-end; vault :8120 exposure, funnel flag, and legacy grants RESOLVED (R2); SMS-worker TLS done (:8771, phone URL switch pending operator); bridge dead-letter backlog has no replay path.

@@ -119,11 +119,10 @@ BOTS: dict[str, Bot] = {
         # materializes it into this 0600 env file (bootstrap, never logged).
         host="ct111",
         env_file="/etc/kai/akush_bot.env",
-        # DISABLED (fail-safe) until the operator provisions the bot token
-        # into vault. The one flag flip: set enabled=True, restart
-        # akush-telegram (+ reload the orchestrator so notify re-gates).
-        # Everything else is already built and waits for this.
-        enabled=False,
+        # ENABLED (TASK R1, 2026-10-01): operator uploaded the bot token;
+        # it now lives in vault (secrets/money/telegram_bot_token) and the
+        # poller bootstraps the 0600 env file from vault at startup.
+        enabled=True,
     ),
 }
 

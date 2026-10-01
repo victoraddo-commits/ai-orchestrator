@@ -134,6 +134,16 @@ async def lifespan(app: FastAPI):
     cap_reg.start()
     from core.kai_event_bus import event_bus
     event_bus.start()
+    # Phase 6: money notify fan-out — the bus is in-process, and akush-core
+    # publishes money.* events cross-host via the bus HTTP route handled by
+    # THIS process, so the §45 subscriber must live here too (fail-safe).
+    try:
+        from core.money_notify import notify as _money_notify
+        _money_notify.register_subscriber()
+    except Exception as _mnn_exc:
+        import logging as _mnl
+        _mnl.getLogger(__name__).warning(
+            "money notify registration failed: %s", type(_mnn_exc).__name__)
     # §37 module integration: expose every KAI module's capability to the
     # unified workforce (skills + module workers) and start outcome recording.
     try:

@@ -1,0 +1,27 @@
+[Unit]
+Description=Akush Money Telegram bot (@akush233bot) — notify fan-out + inbound handlers (§44/§45)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ai-orchestrator
+Environment=PYTHONPATH=/opt/ai-orchestrator
+EnvironmentFile=-/etc/kai/akush_bot.env
+ExecStart=/opt/ai-orchestrator/.venv/bin/python -m core.money_telegram.poller
+Restart=always
+RestartSec=10
+
+# never print the token into the journal — failures log type names only
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/etc/kai /opt/ai-orchestrator/memory
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

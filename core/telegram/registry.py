@@ -104,13 +104,25 @@ BOTS: dict[str, Bot] = {
         bot_id="akush233-bot",
         username="akush233bot",
         token_env="TELEGRAM_BOT_TOKEN",
-        owner_application="Kai Money (crypto + money)",
+        owner_application="Kai Money (akush) — money + crypto",
         owner_module="kai_money",
-        capabilities=frozenset({"money.notify", "crypto.notify"}),
-        host="ct108",
-        env_file="/opt/kai-money/secrets/telegram_bot_token.txt",
-        # Disabled 2026-09-25: CT108 (kai-money) no longer exists on Proxmox B
-        # (verified absent from `pct list`); its token file cannot be read.
+        # money.notify: §45 fan-out (outbound). money.query/money.actions:
+        # §44 inbound handlers (allow-listed operator chat only), served by
+        # core.money_telegram via the akush-core API (service:bot principal).
+        capabilities=frozenset({
+            "money.notify", "crypto.notify", "money.query", "money.actions",
+        }),
+        # Host is CT111: the poller (core.money_telegram.poller) runs here and
+        # calls akush-core (CT108) over HTTP — the bot itself never touches
+        # the money DB. Token lives ONLY in vault
+        # (secrets/money/telegram_bot_token); core.money_telegram.token
+        # materializes it into this 0600 env file (bootstrap, never logged).
+        host="ct111",
+        env_file="/etc/kai/akush_bot.env",
+        # DISABLED (fail-safe) until the operator provisions the bot token
+        # into vault. The one flag flip: set enabled=True, restart
+        # akush-telegram (+ reload the orchestrator so notify re-gates).
+        # Everything else is already built and waits for this.
         enabled=False,
     ),
 }

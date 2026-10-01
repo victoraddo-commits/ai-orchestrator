@@ -181,6 +181,25 @@ def start():
     except Exception as _mms_exc:
         info(f"money sms bridge registration failed: {type(_mms_exc).__name__}")
 
+    # Phase 6: Akush Money Telegram notification fan-out (§45). Same pattern
+    # as the SMS bridge: idempotent + fail-safe in-process bus subscription.
+    try:
+        from core.money_notify import notify as _money_notify
+        _money_notify.register_subscriber()
+        info("money notify subscriber registered")
+    except Exception as _mnn_exc:
+        info(f"money notify registration failed: {type(_mnn_exc).__name__}")
+
+    # Phase 6: relay akush-core tagged financial_events (payload.tag =
+    # money.* topics) onto the bus → money_notify fan-out. Single poller
+    # thread; fail-safe; restart-safe via persisted last relayed inbox id.
+    try:
+        from core.money_notify import relay as _money_relay
+        _money_relay.start_relay()
+        info("money relay started")
+    except Exception as _mr_exc:
+        info(f"money relay start failed: {type(_mr_exc).__name__}")
+
     info("scheduler started (DeepSeek pool + Telegram monitor + Health Worker + Provider Health Monitor)")
 
     if notify:

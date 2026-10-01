@@ -4383,6 +4383,39 @@ def delete_law_document_endpoint(doc_id: str, operator: str = Depends(_require_w
     return {"ok": True}
 
 
+# ── Akush Money OCR (GAP G2 §37) ───────────────────────────────────────────
+# Stateless service-gated OCR: only akush-core's ``akush`` principal (bearer
+# token from vault secrets/money/service_tokens). CT111 stores nothing — the
+# response (sha256 + extracted fields) is the whole contract; CT108 owns all
+# storage. Extracted OCR text is untrusted DATA (§54).
+
+def _require_money_ocr_service(authorization: str | None = Header(default=None)) -> str:
+    """Gate POST /internal/ocr to akush-core's ``akush`` principal only."""
+    from core.money_ocr.service import require_service_authorized
+
+    try:
+        return require_service_authorized(authorization)
+    except PermissionError as error:
+        detail = str(error)
+        if "service unavailable" in detail:
+            raise HTTPException(status_code=503, detail="OCR service token not configured")
+        raise HTTPException(status_code=401, detail="Unauthorized service principal")
+
+
+@app.post("/internal/ocr")
+async def money_ocr_endpoint(
+    file: UploadFile = File(...),
+    _: str = Depends(_require_money_ocr_service),
+):
+    from core.money_ocr.service import ocr_document
+
+    content = await file.read()
+    try:
+        return ocr_document(content, file.filename or "upload", file.content_type or "")
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
 # ── SSE Event Streaming for Real-Time Dashboard Updates ─────────────────────────────
 
 # Global variables for SSE connections

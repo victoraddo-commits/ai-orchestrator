@@ -261,7 +261,7 @@ def test_panel_wiring_each_exactly_once():
 
 def test_panel_wiring_deep_link_present():
     html = CC_HTML.read_text()
-    assert "AKUSH_PWA_URL = 'https://192.168.1.118:8095/'" in html
+    assert "AKUSH_PWA_URL = 'http://proxmox-b.tail82a9ca.ts.net:8770/'" in html
     assert "Open full Akush Money" in html
 
 

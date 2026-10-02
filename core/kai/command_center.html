@@ -488,6 +488,33 @@ tr:hover td { background: var(--bg-elevated); color: var(--fg); }
 .modal-success { color: var(--accent); font-size: 0.75rem; display: none; margin-top: 8px; font-family: var(--font-mono); }
 .modal-success.visible { display: block; }
 
+/* ── UX redesign (2026-10-02): skeletons, focus ring, form modal ── */
+.skeleton {
+  position: relative; overflow: hidden; background: var(--bg-elevated);
+  border-radius: 6px; min-height: 12px; color: transparent !important;
+}
+.skeleton::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(148,163,184,0.12), transparent);
+  animation: skelWave 1.4s ease-in-out infinite;
+}
+@keyframes skelWave { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skeleton.card-skel { min-height: 84px; }
+.skeleton.metric-skel { min-height: 34px; width: 60%; }
+.btn:focus-visible, .nav-item:focus-visible, .mobile-nav-item:focus-visible,
+.more-sheet-item:focus-visible, a:focus-visible, button:focus-visible,
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px;
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+  .modal-box { animation: none; }
+}
+.fmodal-sub { font-size: 0.68rem; color: var(--fg-muted); margin: -8px 0 12px; font-family: var(--font-mono); }
+.fmodal-fields .form-group:last-of-type { margin-bottom: 0; }
+.fmodal-error-wrap { margin-top: 8px; }
+
 /* ── Toast ──────────────────────────────────────────────────────── */
 
 .toast {
@@ -1121,61 +1148,61 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <a class="nav-item" href="#command" data-hash="command"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/></svg></span><span class="label">Command</span></a>
       <a class="nav-item" href="#voice" data-hash="voice"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"/></svg></span><span class="label">Voice</span></a>
       <a class="nav-item" href="#activity" data-hash="activity"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="label">Activity</span></a>
-      <div class="sidebar-section-label">Management</div>
       <a class="nav-item" href="#modules" data-hash="modules"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></span><span class="label">Modules</span></a>
-      <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal Brain</span></a>
-      <a class="nav-item" href="#payments" data-hash="payments"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M6 15h4"/></svg></span><span class="label">Pricing &amp; Payments</span></a>
-      <a class="nav-item" href="#hubtel" data-hash="hubtel">
-      <a class="nav-item" href="#akush" data-hash="akush"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg></span><span class="label">Hubtel</span></a>
+      <a class="nav-item" href="#kai-chat" data-hash="kai-chat"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="label">Kai Chat</span></a>
+      <div class="sidebar-section-label">Money</div>
+      <a class="nav-item" href="#akush" data-hash="akush"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg></span><span class="label">Akush Money</span></a>
+      <a class="nav-item" href="#hubtel" data-hash="hubtel"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg></span><span class="label">Hubtel</span></a>
       <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
       <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span><span class="label">Arbitra</span></a>
-      <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
-      <a class="nav-item" href="#android" data-hash="android"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18"/><path d="M8 6h8"/></svg></span><span class="label">Android</span></a>
-      <a class="nav-item" href="#docs" data-hash="docs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span><span class="label">Docs</span></a>
-      <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
+      <a class="nav-item" href="#payments" data-hash="payments"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><path d="M6 15h4"/></svg></span><span class="label">Pricing &amp; Payments</span></a>
+      <div class="sidebar-section-label">Build</div>
+      <a class="nav-item" href="#roadmap" data-hash="roadmap"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5-2.5v-13L9 7l6-3 5.5 2.5v13L15 17z"/><path d="M9 7v13M15 4v13"/></svg></span><span class="label">Roadmap</span></a>
+      <a class="nav-item" href="#directives" data-hash="directives"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span><span class="label">Directives</span></a>
       <a class="nav-item" href="#missions" data-hash="missions"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">Missions</span></a>
       <a class="nav-item" href="#executive" data-hash="executive"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span><span class="label">Executive</span></a>
       <a class="nav-item" href="#enhancements" data-hash="enhancements"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></span><span class="label">Enhancements</span></a>
       <a class="nav-item" href="#factory" data-hash="factory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 20h20M4 20V8l6 4V8l6 4V4h6v16"/></svg></span><span class="label">Factory</span></a>
       <a class="nav-item" href="#evolution" data-hash="evolution"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></span><span class="label">Evolution</span></a>
-      <div class="sidebar-section-label">Account Registration</div>
-      <a class="nav-item" href="#onboarding" data-hash="onboarding"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Onboarding</span></a>
-      <a class="nav-item" href="#accounts" data-hash="accounts"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span class="label">Accounts</span></a>
-      <a class="nav-item" href="#providers" data-hash="providers"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></span><span class="label">Providers</span></a>
-      <a class="nav-item" href="#site-recipes" data-hash="site-recipes"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4h16v4H4zM4 10h16v10H4z"/><path d="M8 14h8M8 17h5"/></svg></span><span class="label">Site Recipes</span></a>
-      <a class="nav-item" href="#inbox" data-hash="inbox"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg></span><span class="label">Inbox</span></a>
-      <div class="sidebar-section-label">Infrastructure</div>
-      <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
-      <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
-      <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span><span class="label">Airdrop</span></a>
-      <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span class="label">Infra</span></a>
-      <a class="nav-item" href="#wireguard" data-hash="wireguard"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">WireGuard</span></a>
-      <a class="nav-item" href="#smarthome" data-hash="smarthome"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span><span class="label">Smart Home</span></a>
-      <a class="nav-item" href="#power" data-hash="power"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg></span><span class="label">Power / UPS</span></a>
-      <a class="nav-item" href="#directives" data-hash="directives"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg></span><span class="label">Directives</span></a>
-      <a class="nav-item" href="#directory" data-hash="directory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Directory</span></a>
-      <div class="sidebar-section-label">System</div>
-      <a class="nav-item" href="#security" data-hash="security"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><span class="label">Security</span></a>
-      <a class="nav-item" href="#settings" data-hash="settings"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Settings</span></a>
-      <a class="nav-item" href="#logs" data-hash="logs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span><span class="label">Logs</span></a>
-      <a class="nav-item" href="#diagnostics" data-hash="diagnostics"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span class="label">Diagnostics</span></a>
-      <a class="nav-item" href="#audit" data-hash="audit"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Audit</span></a>
-      <a class="nav-item" href="#world" data-hash="world"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">World</span></a>
-      <a class="nav-item" href="#kai-chat" data-hash="kai-chat"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="label">Kai Chat</span></a>
-      <a class="nav-item" href="#devices" data-hash="devices"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span><span class="label">Devices</span></a>
-      <a class="nav-item" href="#network" data-hash="network"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">Network</span></a>
-      <a class="nav-item" href="#models" data-hash="models"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg></span><span class="label">Models</span></a>
-      <a class="nav-item" href="#vault" data-hash="vault"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span><span class="label">Vault</span></a>
+      <a class="nav-item" href="#android" data-hash="android"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18"/><path d="M8 6h8"/></svg></span><span class="label">Android</span></a>
+      <a class="nav-item" href="#talent" data-hash="talent"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span><span class="label">Talent</span></a>
+      <a class="nav-item" href="#ai-workforce" data-hash="ai-workforce"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Workforce</span></a>
+      <a class="nav-item" href="#docs" data-hash="docs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span><span class="label">Docs</span></a>
+      <a class="nav-item" href="#legal" data-hash="legal"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span><span class="label">Legal Brain</span></a>
+      <div class="sidebar-section-label">Intelligence</div>
       <a class="nav-item" href="#secondbrain" data-hash="secondbrain"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 015 5c0 2-1 3-2 4v6a3 3 0 01-6 0v-6c-1-1-2-2-2-4a5 5 0 015-5z"/></svg></span><span class="label">2nd Brain</span></a>
       <a class="nav-item" href="#knowledge" data-hash="knowledge"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></span><span class="label">Knowledge</span></a>
-      <a class="nav-item" href="#approvals" data-hash="approvals"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Approvals</span></a>
+      <a class="nav-item" href="#learning" data-hash="learning"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/></svg></span><span class="label">Learning</span></a>
+      <a class="nav-item" href="#world" data-hash="world"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">World</span></a>
+      <a class="nav-item" href="#enterprise" data-hash="enterprise"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span><span class="label">Enterprise</span></a>
+      <a class="nav-item" href="#inbox" data-hash="inbox"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg></span><span class="label">Inbox</span></a>
       <a class="nav-item" href="#notifications" data-hash="notifications"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg></span><span class="label">Notify</span></a>
+      <a class="nav-item" href="#approvals" data-hash="approvals"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Approvals</span></a>
+      <a class="nav-item" href="#security" data-hash="security"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span><span class="label">Security</span></a>
+      <a class="nav-item" href="#audit" data-hash="audit"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Audit</span></a>
+      <div class="sidebar-section-label">System</div>
+      <a class="nav-item" href="#docker" data-hash="docker"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="label">Docker</span></a>
+      <a class="nav-item" href="#infrastructure" data-hash="infrastructure"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span class="label">Infra</span></a>
+      <a class="nav-item" href="#wireguard" data-hash="wireguard"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 7.7l5.4-.8z"/></svg></span><span class="label">WireGuard</span></a>
+      <a class="nav-item" href="#network" data-hash="network"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15 15 0 010 20 15 15 0 010-20"/></svg></span><span class="label">Network</span></a>
+      <a class="nav-item" href="#smarthome" data-hash="smarthome"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg></span><span class="label">Smart Home</span></a>
+      <a class="nav-item" href="#power" data-hash="power"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg></span><span class="label">Power / UPS</span></a>
+      <a class="nav-item" href="#devices" data-hash="devices"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg></span><span class="label">Devices</span></a>
+      <a class="nav-item" href="#models" data-hash="models"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg></span><span class="label">Models</span></a>
+      <a class="nav-item" href="#vault" data-hash="vault"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span><span class="label">Vault</span></a>
+      <a class="nav-item" href="#telegram" data-hash="telegram"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg></span><span class="label">Telegram</span></a>
+      <a class="nav-item" href="#airdrop" data-hash="airdrop"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></span><span class="label">Airdrop</span></a>
+      <a class="nav-item" href="#providers" data-hash="providers"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg></span><span class="label">Providers</span></a>
+      <a class="nav-item" href="#onboarding" data-hash="onboarding"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></span><span class="label">Onboarding</span></a>
+      <a class="nav-item" href="#accounts" data-hash="accounts"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span class="label">Accounts</span></a>
+      <a class="nav-item" href="#site-recipes" data-hash="site-recipes"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 4h16v4H4zM4 10h16v10H4z"/><path d="M8 14h8M8 17h5"/></svg></span><span class="label">Site Recipes</span></a>
+      <a class="nav-item" href="#directory" data-hash="directory"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span><span class="label">Directory</span></a>
       <a class="nav-item" href="#backups" data-hash="backups"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-6.2-8.6"/><polyline points="21 3 21 9 15 9"/></svg></span><span class="label">Backups</span></a>
       <a class="nav-item" href="#sessions" data-hash="sessions"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="22" x2="16" y2="22"/><line x1="12" y1="18" x2="12" y2="22"/></svg></span><span class="label">Sessions</span></a>
       <a class="nav-item" href="#emergency" data-hash="emergency"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span><span class="label">Emergency</span></a>
-      <a class="nav-item" href="#roadmap" data-hash="roadmap"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 20l-5.5-2.5v-13L9 7l6-3 5.5 2.5v13L15 17z"/><path d="M9 7v13M15 4v13"/></svg></span><span class="label">Roadmap</span></a>
-      <a class="nav-item" href="#learning" data-hash="learning"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1 2.7 2.5 6 2.5s6-1.5 6-2.5v-5"/></svg></span><span class="label">Learning</span></a>
-      <a class="nav-item" href="#enterprise" data-hash="enterprise"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span><span class="label">Enterprise</span></a>
+      <a class="nav-item" href="#diagnostics" data-hash="diagnostics"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span><span class="label">Diagnostics</span></a>
+      <a class="nav-item" href="#logs" data-hash="logs"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span><span class="label">Logs</span></a>
+      <a class="nav-item" href="#settings" data-hash="settings"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span><span class="label">Settings</span></a>
     </div>
     <div class="sidebar-footer">
       <button class="collapse-btn" onclick="toggleSidebar()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg> <span>Collapse</span></button>
@@ -1189,14 +1216,14 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
     <a class="mobile-nav-item active" href="#home" data-hash="home" onclick="switchMobileTab(event,'home')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Home
     </a>
-    <a class="mobile-nav-item" href="#ai-workforce" data-hash="ai-workforce" onclick="switchMobileTab(event,'ai-workforce')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Workforce
+    <a class="mobile-nav-item" href="#akush" data-mhash="akush" onclick="switchMobileTab(event,'akush')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg>Money
     </a>
     <a class="mobile-nav-item" href="#docker" data-hash="docker" onclick="switchMobileTab(event,'docker')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>Infra
     </a>
-    <a class="mobile-nav-item" href="#kai-chat" data-hash="kai-chat" onclick="switchMobileTab(event,'kai-chat')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>Chat
+    <a class="mobile-nav-item" href="#approvals" data-hash="approvals" onclick="switchMobileTab(event,'approvals')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Approvals
     </a>
     <button class="mobile-nav-item" onclick="toggleMoreMenu()" aria-label="More">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>More
@@ -1529,14 +1556,28 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
 </div>
 
 <!-- Confirm Delete -->
-<div class="modal-overlay" id="confirm-modal">
+<div class="modal-overlay" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
   <div class="modal-box">
     <h2 id="confirm-title">Confirm</h2>
     <p id="confirm-msg" style="font-size:0.75rem;color:var(--fg-secondary);margin-bottom:8px;font-family:var(--font-mono)"></p>
     <div class="err-msg" id="confirm-error"></div>
     <div class="btn-row">
-      <button class="btn btn-sm" onclick="closeConfirm()">Cancel</button>
+      <button class="btn btn-sm" id="confirm-cancel-btn" onclick="closeConfirm()">Cancel</button>
       <button class="btn btn-sm btn-danger" id="confirm-ok-btn" onclick="runConfirm()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shared form/prompt modal engine (PWA pattern port, 2026-10-02) -->
+<div class="modal-overlay" id="fmodal" role="dialog" aria-modal="true" aria-labelledby="fmodal-title">
+  <div class="modal-box">
+    <h2 id="fmodal-title">Form</h2>
+    <p class="fmodal-sub" id="fmodal-sub" style="display:none"></p>
+    <div class="fmodal-fields" id="fmodal-fields"></div>
+    <div class="err-msg fmodal-error-wrap" id="fmodal-error"></div>
+    <div class="btn-row">
+      <button class="btn btn-sm" id="fmodal-cancel" onclick="fmodClose()">Cancel</button>
+      <button class="btn btn-sm btn-accent" id="fmodal-ok">OK</button>
     </div>
   </div>
 </div>
@@ -1622,13 +1663,167 @@ function confirmAction(title, msg, cb) {
   $('confirm-title').textContent = title;
   $('confirm-msg').textContent = msg;
   $('confirm-error').classList.remove('visible');
-  S._confirmCb = cb;
+  S._confirmCb = function(){ if (cb) { try { cb(); } catch(e) { toast(e.message,'err'); } } };
   $('confirm-modal').classList.add('visible');
 }
-function closeConfirm() { $('confirm-modal').classList.remove('visible'); S._confirmCb = null; }
+function closeConfirm() {
+  $('confirm-modal').classList.remove('visible');
+  const cancelled = S._confirmCancel; S._confirmCancel = null;
+  S._confirmCb = null;
+  if (cancelled) cancelled();
+  if (S._lastFocus) { try { S._lastFocus.focus(); } catch(_){} }
+}
 function runConfirm() {
-  if (S._confirmCb) { try { S._confirmCb(); } catch(e) { toast(e.message,'err'); } }
+  const cb = S._confirmCb;
+  S._confirmCancel = null;
   closeConfirm();
+  if (cb) { try { cb(); } catch(e) { toast(e.message,'err'); } }
+}
+
+// ── Shared dialog engine (ported from the Akush PWA pattern) ──────
+// uiConfirm/uiPrompt/showFormModal are promise-based replacements for
+// window.confirm / window.prompt / window.alert. All dialogs close on
+// Esc or backdrop click, trap focus, restore focus, validate inline,
+// and disable the submit button while saving. Toasts report results.
+function _modFocusables(ov) {
+  return [...ov.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.offsetParent !== null);
+}
+document.addEventListener('keydown', e => {
+  const ov = document.querySelector('.modal-overlay.visible');
+  if (!ov) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (ov.id === 'fmodal' && S._fmodOnCancel) { S._fmodOnCancel(); return; }
+    if (ov.id === 'confirm-modal') { closeConfirm(); return; }
+    ov.classList.remove('visible');
+    if (S._lastFocus) { try { S._lastFocus.focus(); } catch(_){} }
+  } else if (e.key === 'Tab') {
+    const f = _modFocusables(ov);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+    else if (document.activeElement && !ov.contains(document.activeElement)) { first.focus(); e.preventDefault(); }
+  }
+});
+document.addEventListener('click', e => {
+  if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {
+    if (e.target.id === 'fmodal' && S._fmodOnCancel) { S._fmodOnCancel(); return; }
+    if (e.target.id === 'confirm-modal') { closeConfirm(); return; }
+    e.target.classList.remove('visible');
+    if (S._lastFocus) { try { S._lastFocus.focus(); } catch(_){} }
+  }
+});
+document.addEventListener('pointerdown', e => {
+  if (!(e.target && e.target.closest && e.target.closest('.modal-overlay'))) S._lastFocus = document.activeElement;
+});
+function showFormModal(opts) {
+  return new Promise(resolve => {
+    const ov = $('fmodal'); const host = $('fmodal-fields');
+    const fields = opts.fields || [];
+    $('fmodal-title').textContent = opts.title || 'Form';
+    const sub = $('fmodal-sub');
+    if (opts.sub) { sub.textContent = opts.sub; sub.style.display = ''; } else { sub.style.display = 'none'; }
+    const errEl = $('fmodal-error'); errEl.textContent = ''; errEl.classList.remove('visible');
+    host.innerHTML = fields.map(f => {
+      const id = 'fmod-f-' + f.name;
+      let ctl;
+      if (f.type === 'select') {
+        ctl = '<select id="' + id + '"' + (f.autofocus ? ' autofocus' : '') + '>' + (f.options || []).map(o => {
+          const val = (typeof o === 'object') ? o.value : o, lab = (typeof o === 'object') ? o.label : o;
+          return '<option value="' + esc(val) + '"' + (String(f.value == null ? '' : f.value) === String(val) ? ' selected' : '') + '>' + esc(lab) + '</option>';
+        }).join('') + '</select>';
+      } else if (f.type === 'textarea') {
+        ctl = '<textarea id="' + id + '" rows="' + (f.rows || 3) + '" placeholder="' + esc(f.placeholder || '') + '">' + esc(f.value == null ? '' : String(f.value)) + '</textarea>';
+      } else {
+        ctl = '<input type="' + (f.type || 'text') + '" id="' + id + '" value="' + esc(f.value == null ? '' : String(f.value)) + '" placeholder="' + esc(f.placeholder || '') + '"' + (f.autofocus ? ' autofocus' : '') + (f.autocomplete ? ' autocomplete="' + f.autocomplete + '"' : '') + '>';
+      }
+      return '<div class="form-group"><label for="' + id + '">' + esc(f.label || f.name) + '</label>' + ctl +
+        (f.hint ? '<div class="field-hint">' + esc(f.hint) + '</div>' : '') + '</div>';
+    }).join('');
+    const ok = $('fmodal-ok');
+    ok.textContent = opts.okLabel || 'OK';
+    ok.className = 'btn btn-sm ' + (opts.danger ? 'btn-danger' : 'btn-accent');
+    ok.disabled = false;
+    $('fmodal-cancel').textContent = opts.cancelLabel || 'Cancel';
+    const cleanup = () => { ov.classList.remove('visible'); ok.disabled = false; ok.textContent = 'OK'; S._fmodOnCancel = null; };
+    const fail = msg => { errEl.textContent = msg; errEl.classList.add('visible'); };
+    const submit = () => {
+      const vals = {}; let valid = true; let firstBad = null;
+      fields.forEach(f => {
+        const el = $('fmod-f-' + f.name); if (!el) return;
+        el.classList.remove('error');
+        const v = el.value.trim();
+        if (f.required && !v) { el.classList.add('error'); valid = false; firstBad = firstBad || el; }
+        else if (f.type === 'number' && v !== '' && !isFinite(Number(v))) { el.classList.add('error'); valid = false; firstBad = firstBad || el; }
+        vals[f.name] = (f.type === 'number' && v !== '') ? Number(v) : v;
+      });
+      if (!valid) { fail(opts.requiredMsg || 'Please fill in the required fields.'); if (firstBad) firstBad.focus(); return; }
+      if (typeof opts.validate === 'function') { const msg = opts.validate(vals); if (msg) { fail(msg); return; } }
+      ok.disabled = true; ok.textContent = opts.savingLabel || 'Saving…';
+      Promise.resolve().then(() => opts.onSubmit ? opts.onSubmit(vals) : vals)
+        .then(res => { cleanup(); resolve(res === undefined ? vals : res); },
+              e => { ok.disabled = false; ok.textContent = opts.okLabel || 'OK'; fail((e && e.message) || 'error'); });
+    };
+    ok.onclick = submit;
+    host.querySelectorAll('input,select,textarea').forEach(el => {
+      el.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' && ev.target.tagName !== 'TEXTAREA') { ev.preventDefault(); submit(); }
+      });
+      el.addEventListener('input', () => el.classList.remove('error'));
+    });
+    S._fmodOnCancel = () => { cleanup(); resolve(null); };
+    ov.classList.add('visible');
+    const af = host.querySelector('[autofocus]') || host.querySelector('input,select,textarea') || ok;
+    setTimeout(() => { try { af.focus(); } catch(_){} }, 0);
+  });
+}
+function uiPrompt(title, label, opts = {}) {
+  return showFormModal({
+    title, sub: opts.message, okLabel: opts.okLabel || 'OK', danger: !!opts.danger,
+    fields: [{ name: 'value', label: label, type: opts.type || 'text',
+      value: opts.value != null ? opts.value : '', placeholder: opts.placeholder || '',
+      required: opts.required !== false, hint: opts.hint, autocomplete: opts.autocomplete }],
+    requiredMsg: opts.requiredMsg || ((label || 'Value') + ' is required.')
+  }).then(r => (r === null ? null : r.value));
+}
+function uiSelect(title, label, opts = {}) {
+  return showFormModal({
+    title, sub: opts.message, okLabel: opts.okLabel || 'OK', danger: !!opts.danger,
+    fields: [{ name: 'value', label: label, type: 'select', options: opts.options || [],
+      value: opts.value != null ? opts.value : (opts.options && opts.options[0] && (typeof opts.options[0] === 'object' ? opts.options[0].value : opts.options[0])),
+      required: true, hint: opts.hint }],
+    requiredMsg: opts.requiredMsg || ((label || 'Value') + ' is required.')
+  }).then(r => (r === null ? null : r.value));
+}
+function uiInfo(title, msg) {
+  return new Promise(resolve => {
+    const ok = $('confirm-ok-btn');
+    S._confirmCb = () => resolve(true);
+    $('confirm-title').textContent = title;
+    $('confirm-msg').textContent = msg;
+    $('confirm-error').classList.remove('visible');
+    ok.textContent = 'OK'; ok.className = 'btn btn-sm btn-accent';
+    $('confirm-cancel-btn').style.display = 'none';
+    $('confirm-modal').classList.add('visible');
+    setTimeout(() => { try { ok.focus(); } catch(_){} }, 0);
+  });
+}
+function uiConfirm(title, msg, opts = {}) {
+  return new Promise(resolve => {
+    const ok = $('confirm-ok-btn'), cancel = $('confirm-cancel-btn');
+    $('confirm-title').textContent = title;
+    $('confirm-msg').textContent = msg;
+    $('confirm-error').classList.remove('visible');
+    S._confirmCb = () => resolve(true);
+    S._confirmCancel = () => resolve(false);
+    ok.textContent = opts.okLabel || 'Confirm';
+    ok.className = 'btn btn-sm ' + (opts.danger === false ? 'btn-accent' : 'btn-danger');
+    cancel.style.display = '';
+    $('confirm-modal').classList.add('visible');
+    setTimeout(() => { try { ok.focus(); } catch(_){} }, 0);
+  });
 }
 
 // ── Auth ──────────────────────────────────────────────────────────
@@ -1839,7 +2034,8 @@ function filterMoreMenu(v) {
 function _syncMobileNav(hash) {
   const name = (hash || '').replace('#', '') || 'home';
   document.querySelectorAll('.mobile-nav-item').forEach(el => el.classList.remove('active'));
-  const tab = document.querySelector(`.mobile-nav-item[data-hash="${name}"]`);
+  const tab = document.querySelector(`.mobile-nav-item[data-hash="${name}"]`) ||
+    document.querySelector(`.mobile-nav-item[data-mhash="${name}"]`);
   if (tab) tab.classList.add('active');
   document.querySelectorAll('#more-sheet-items .more-sheet-item').forEach(
     el => el.classList.toggle('active', el.dataset.hash === name));
@@ -1854,15 +2050,29 @@ function navigateTo(hash) {
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   const panel=$(`panel-${name}`);if(panel)panel.classList.add('active');
   $('topbar-title').textContent=PANEL_TITLES[name]||name;
-  if(!S.loadedPanels.has(name)){S.loadedPanels.add(name);loadPanel(name);}
+  if(!S.loadedPanels.has(name)){S.loadedPanels.add(name);applySkeletons(name);loadPanel(name);}
   _syncMobileNav(hash);
+}
+// Skeleton placeholders: replace any "loading…" spans in the target panel with
+// shimmer blocks so content areas keep their height while the loader runs (no jump).
+function applySkeletons(name){
+  const sec=$('panel-'+name); if(!sec)return;
+  sec.querySelectorAll('.loading').forEach(el=>{
+    const d=document.createElement('div');
+    d.className='skeleton card-skel';
+    d.setAttribute('aria-hidden','true');
+    el.replaceWith(d);
+  });
 }
 // Panel dispatcher map — single place mapping a panel key to its loader.
 // Kept as a named const so auditPanelWiring() can verify it against the DOM.
 const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld,onboarding:loadOnboarding,accounts:loadAccounts,providers:loadProviders,'site-recipes':loadSiteRecipes,inbox:loadInbox,akush:loadAkush};
 function loadPanel(name) {
   const fns=PANEL_LOADERS;
-  if(fns[name])fns[name]();
+  // Skeletons: applied AFTER the loader's synchronous first paint (which
+  // writes its own "loading…" span) so the shimmer persists during the
+  // async fetch instead of being clobbered immediately.
+  if(fns[name]){fns[name]();applySkeletons(name);}
   else if(window.MODEL_PAGES && MODEL_PAGES[name])loadModelPage(MODEL_PAGES[name].id);
 }
 // ── Wiring self-check (Command Center coverage contract) ──────────
@@ -1984,9 +2194,9 @@ async function missionShow(id){
   }catch(e){ el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>'; }
 }
 window.cancelMission=async function(id){
-  if(!confirm('Cancel mission '+id+'?'))return;
+  if(!await uiConfirm('Cancel Mission','Cancel mission '+id+'?',{danger:true,okLabel:'Cancel Mission'}))return;
   try{await api(`/kai/tools/kai.missions.cancel/execute`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({args:{mission_id:id,reason:'operator cancelled from Command Center'}})});loadMissions();}
-  catch(e){alert('Cancel failed: '+e.message);}
+  catch(e){toast('Cancel failed: '+e.message,'err');}
 };
 async function loadExecutive() {
   const el=$('executive-content');
@@ -2034,7 +2244,7 @@ async function loadEnhancements() {
 }
 window.setEnhancement=async function(key,action){
   try{await api(`/kai/tools/enhancements/${key}/${action}`, {method:'POST'}); loadEnhancements();}
-  catch(e){alert('Failed: '+e.message);}
+  catch(e){toast('Failed: '+e.message,'err');}
 };
 
 async function loadFactory() {
@@ -2066,12 +2276,12 @@ async function loadFactory() {
   }catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 window.factoryBuild=async function(){
-  if(!confirm('Run the full factory pipeline (build+test+scan+emulator+AAB)?'))return;
+  if(!await uiConfirm('Run Factory Pipeline','Run the full factory pipeline (build+test+scan+emulator+AAB)?',{okLabel:'Run Pipeline'}))return;
   $('factory-content').innerHTML='<span class="loading">Pipeline running — this takes 2-4 minutes…</span>';
   try{
     const r=await api('/kai/tools/kai.factory.build/execute',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({args:{project:'kai-ultimate'}})});
     loadFactory();
-  }catch(e){alert('Build failed: '+e.message);loadFactory();}
+  }catch(e){toast('Build failed: '+e.message,'err');loadFactory();}
 };
 
 async function loadEvolution() {
@@ -4001,7 +4211,7 @@ async function lgOpen(gid){
     el.innerHTML=h;
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
-async function lgRename(gid,name){const nn=prompt('Rename group',name||'');if(!nn)return;
+async function lgRename(gid,name){const nn=await uiPrompt('Rename Group','Group name',{value:name||'',placeholder:name||'New group name',requiredMsg:'Group name is required.'});if(!nn)return;
   try{const d=await api('/api/juris-kai/cc/groups/'+encodeURIComponent(gid),{method:'PATCH',body:JSON.stringify({name:nn})});
     if(d.success){toast('Renamed');loadLegalGroups();}else toast('Error: '+(d.error||'failed'),'err');}catch(e){toast('Error: '+e.message,'err');}}
 function lgArchive(gid){confirmAction('Archive group','Archive this group? Members lose access.',async function(){
@@ -4140,7 +4350,7 @@ async function doLegalSearch(){
   catch(e){el.innerHTML=`<span class="error-text">${esc(e.message)}</span>`;}
 }
 async function generateReferralCode(){
-  const acct=prompt('Account ID to generate invite code for:','');if(!acct)return;
+  const acct=await uiPrompt('Generate Invite Code','Account ID to generate invite code for:',{requiredMsg:'Account ID is required.'});if(!acct)return;
   try{const d=await api('/api/juris-kai/referrals/generate',{method:'POST',body:JSON.stringify({account_id:acct})});
     if(d.success){navigator.clipboard.writeText(d.invite_code).catch(()=>{});toast('Referral: '+d.invite_code+' (copied, reward: '+d.reward_days+'d, trial: '+d.invitee_trial_days+'d)');}
     else toast('Failed: '+(d.error||'unknown'),'err');}
@@ -4602,10 +4812,10 @@ window.filterTelegramUsers = function() {
   });
 };
 
-window.showAddTelegramUser = function() {
-  const id = prompt('Enter Telegram user ID:');
+window.showAddTelegramUser = async function() {
+  const id = await uiPrompt('Allow Telegram User','Telegram user ID:',{placeholder:'e.g. 123456789',requiredMsg:'Telegram user ID is required.'});
   if (!id) return;
-  const name = prompt('Display name (optional):');
+  const name = await uiPrompt('Allow Telegram User','Display name (optional):',{required:false});
   addTelegramUser(id, name);
 };
 
@@ -4794,11 +5004,11 @@ async function loadTelegramGroups(container) {
   }
 }
 
-window.showAddTelegramGroup = function() {
-  const gid = prompt('Enter group chat ID (e.g. -1001234567890):');
+window.showAddTelegramGroup = async function() {
+  const gid = await uiPrompt('Add Telegram Group','Group chat ID',{placeholder:'e.g. -1001234567890',requiredMsg:'Group chat ID is required.'});
   if (!gid) return;
-  const mention = confirm('Require @mention to trigger the bot? (OK=Yes, Cancel=No)');
-  addTelegramGroup(gid, mention);
+  const mention = await uiSelect('Add Telegram Group','Require @mention to trigger the bot?',{options:[{value:'no',label:'No — trigger on any message'},{value:'yes',label:'Yes — only when the bot is @mentioned'}]});
+  addTelegramGroup(gid, mention === 'yes');
 };
 
 window.addTelegramGroup = async function(groupId, requireMention) {
@@ -5933,7 +6143,7 @@ function wgAutoRefresh(){
   },30000);
 }
 async function wgRestartServer(){
-  if(!confirm('Restart the wg0 interface on Ohio? Existing tunnels will briefly drop.'))return;
+  if(!await uiConfirm('Restart wg0','Restart the wg0 interface on Ohio? Existing tunnels will briefly drop.',{danger:true,okLabel:'Restart'}))return;
   try{const d=await api('/api/wg/restart',{method:'POST'});
     toast(d&&d.up?'wg0 restarted':'restart may have failed');
     WG_STATE.usage={}; loadWireguard();
@@ -6088,7 +6298,7 @@ async function wgCopyConfig(enc){
   catch(e){toast('copy failed: '+e.message);}
 }
 async function wgRename(enc,current){
-  const name=prompt('New name for this connection:',current||'');
+  const name=await uiPrompt('Rename Connection','New name for this connection:',{value:current||'',requiredMsg:'Connection name is required.'});
   if(name==null) return;
   const clean=name.trim(); if(!clean) return;
   try{ await api('/api/wg/peers/'+enc,{method:'PATCH',body:JSON.stringify({name:clean})}); toast('renamed'); loadWireguard(); }
@@ -6124,7 +6334,7 @@ async function wgDownload(enc,fmt){
 async function wgPause(enc){try{await api('/api/wg/peers/'+enc+'/pause',{method:'POST'});toast('device paused');loadWireguard();}catch(e){toast('pause failed: '+e.message);}}
 async function wgResume(enc){try{await api('/api/wg/peers/'+enc+'/resume',{method:'POST'});toast('device resumed');loadWireguard();}catch(e){toast('resume failed: '+e.message);}}
 async function wgDelete(enc,name){
-  if(!confirm('Delete WireGuard device "'+(name||'')+'"? This removes the peer and its stored client key.'))return;
+  if(!await uiConfirm('Delete Device','Delete WireGuard device "'+(name||'')+'"? This removes the peer and its stored client key.',{danger:true,okLabel:'Delete'}))return;
   try{await api('/api/wg/peers/'+enc,{method:'DELETE'});toast('device deleted');loadWireguard();}catch(e){toast('delete failed: '+e.message);}
 }
 async function wgRaw(){
@@ -6298,7 +6508,7 @@ async function directiveComplete(name,btn){
         const d=j.detail||{};
         const unmet=(d.checks||[]).filter(c=>c.status==='unmet')
           .map(c=>'• '+(c.requirement||'requirement')+' — '+(c.evidence||'')).join('\n');
-        alert('Verification refused — directive NOT completed.\n\n'
+        uiInfo('Verification Refused','Directive NOT completed.\n\n'
           +(d.reason||j.error||('HTTP '+r.status))
           +(unmet?'\n\nUnmet:\n'+unmet:''));
         if(btn)btn.disabled=false;
@@ -6348,7 +6558,7 @@ async function docView(path){
       +'<div class="btn-row"><button class="btn btn-xs" onclick="docViewClose()">Close</button></div>'
       +'</div>';
     ov.classList.add('visible');
-  }catch(e){ alert('Could not open file: '+e.message); }
+  }catch(e){ toast('Could not open file: '+e.message,'err'); }
 }
 function docViewClose(){ const ov=document.getElementById('doc-view-overlay'); if(ov) ov.classList.remove('visible'); }
 async function loadDocsFiles(){
@@ -7015,7 +7225,7 @@ async function loadEmergency(){
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 async function emgStatus(){const el=$('emg-result');try{el.innerHTML=emgRender(await api('/api/emergency/status'));}catch(e){el.textContent=e.message;}}
-async function emgStop(){if(!confirm('EMERGENCY STOP \u2014 halt autonomous execution?'))return;const el=$('emg-result');el.textContent='stopping…';try{el.innerHTML='<p class="field-hint">Emergency stop sent.</p>'+_autoTable(await api('/api/emergency/stop',{method:'POST',body:JSON.stringify({reason:'operator'})}));}catch(e){el.textContent='error: '+e.message;}}
+async function emgStop(){if(!await uiConfirm('Emergency Stop','EMERGENCY STOP — halt autonomous execution?',{danger:true,okLabel:'Emergency Stop'}))return;const el=$('emg-result');el.textContent='stopping…';try{el.innerHTML='<p class="field-hint">Emergency stop sent.</p>'+_autoTable(await api('/api/emergency/stop',{method:'POST',body:JSON.stringify({reason:'operator'})}));}catch(e){el.textContent='error: '+e.message;}}
 async function emgResume(){const el=$('emg-result');el.textContent='resuming…';try{el.innerHTML='<p class="field-hint">Resume sent.</p>'+_autoTable(await api('/api/emergency/resume',{method:'POST',body:'{}'}));}catch(e){el.textContent='error: '+e.message;}}
 function _rmBadge(s){const m={completed:'ok',in_progress:'info',pending:'warn',proposed:'info',failed:'bad',blocked:'bad'};return '<span class="badge '+(m[s]||'info')+'">'+esc(s||'—')+'</span>';}
 async function loadRoadmap(){
@@ -7278,7 +7488,7 @@ async function arbValidate(id){
   try{const d=await arbP('/arbitra/ventures/'+id+'/validate',b);toast('validation: '+d.verdict+' ('+d.overall+')');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}
 }
 async function arbMvp(id){try{const d=await arbP('/arbitra/ventures/'+id+'/mvp',{name:'MVP'});toast('MVP delivered');arbOpenVenture(id);}catch(e){toast('MVP blocked: '+e.message,'err');}}
-async function arbRestructure(id){const r=arbVal('av-pivot');if(!r){toast('reason required','err');return;}if(!confirm('Restructure venture #'+id+' (pivot back to VALIDATE)?'))return;try{await arbP('/arbitra/ventures/'+id+'/restructure',{reason:r});toast('venture restructured');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+async function arbRestructure(id){const r=arbVal('av-pivot');if(!r){toast('reason required','err');return;}if(!await uiConfirm('Restructure Venture','Restructure venture #'+id+' (pivot back to VALIDATE)?',{danger:true,okLabel:'Restructure'}))return;try{await arbP('/arbitra/ventures/'+id+'/restructure',{reason:r});toast('venture restructured');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
 async function arbAnalyze(id){
   const el=$('arb-analysis'); if(!el)return; el.innerHTML='<span class="loading">analyzing with local model…</span>';
   try{const d=await arbP('/arbitra/analyze',{venture_id:id});
@@ -7286,7 +7496,7 @@ async function arbAnalyze(id){
     el.innerHTML='<div class="card"><h3>AI analysis '+badge+' <span class="badge info">'+esc(d.model||'')+'</span></h3><pre style="font-size:0.62rem;white-space:pre-wrap;word-break:break-word">'+esc(d.analysis||'')+'</pre>'+(d.error?'<div class="muted" style="font-size:0.6rem">model error: '+esc(d.error)+'</div>':'')+'</div>';
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
-async function arbExit(id){const p=arbNum('av-exit');if(p==null){toast('proceeds required','err');return;}if(!confirm('Record exit for venture #'+id+' with proceeds '+p+'?'))return;try{await arbP('/arbitra/ventures/'+id+'/exit',{kind:'sale',proceeds:p});toast('exit recorded');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
+async function arbExit(id){const p=arbNum('av-exit');if(p==null){toast('proceeds required','err');return;}if(!await uiConfirm('Record Exit','Record exit for venture #'+id+' with proceeds '+p+'?',{danger:true,okLabel:'Record Exit'}))return;try{await arbP('/arbitra/ventures/'+id+'/exit',{kind:'sale',proceeds:p});toast('exit recorded');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}}
 function arbKill(id){confirmAction('Kill venture','Mark venture #'+id+' as KILL? This records a kill decision.',async()=>{try{await arbP('/arbitra/ventures/'+id+'/kill',{decision:'KILL',reason:'operator'});toast('venture killed');arbOpenVenture(id);}catch(e){toast('error: '+e.message,'err');}});}
 async function arbIssueEquity(id){
   const sh=arbVal('eq-sh'); if(!sh){toast('shareholder required','err');return;}
@@ -7378,7 +7588,7 @@ async function arbProposeDividend(){
   const pe=arbVal('dv-pe'); if(pe)b.period_end=pe;
   try{await arbP('/arbitra/dividends/propose',b);toast('dividend proposed');arbTab('dividends');}catch(e){toast('error: '+e.message,'err');}
 }
-async function arbPayDividend(id){const dest=prompt('Destination for the treasury receipt:','cold-treasury');if(!dest)return;try{const d=await arbP('/arbitra/dividends/'+id+'/pay',{destination:dest});toast('dividend paid'+(d.treasury_receipt?' — receipt '+d.treasury_receipt.amount:''));arbTab('dividends');}catch(e){toast('error: '+e.message,'err');}}
+async function arbPayDividend(id){const dest=await uiSelect('Pay Dividend','Destination for the treasury receipt:',{options:[{value:'cold-treasury',label:'Cold treasury'},{value:'operating',label:'Operating account'}],value:'cold-treasury',okLabel:'Pay'});if(!dest)return;try{const d=await arbP('/arbitra/dividends/'+id+'/pay',{destination:dest});toast('dividend paid'+(d.treasury_receipt?' — receipt '+d.treasury_receipt.amount:''));arbTab('dividends');}catch(e){toast('error: '+e.message,'err');}}
 async function arbApproveDividend(id){try{await arbP('/arbitra/dividends/'+id+'/approve',{});toast('dividend approved');arbTab('dividends');}catch(e){toast('error: '+e.message,'err');}}
 async function arbDistributable(){
   const el=$('dvx-result'); if(!el)return; const vid=arbNum('dvx-vid'); if(vid==null){toast('venture id required','err');return;}
@@ -7841,7 +8051,11 @@ function paletteRender(q){
 }
 function openPalette(){const p=$('palette');if(!p)return;p.style.display='flex';const i=$('palette-input');i.value='';paletteRender('');i.focus();}
 function closePalette(){const p=$('palette');if(p)p.style.display='none';}
-(function(){const pi=$('palette-input');if(pi)pi.addEventListener('input',e=>paletteRender(e.target.value));})();
+(function(){
+  const bind=()=>{const pi=$('palette-input');if(pi&&!pi.dataset.bound){pi.dataset.bound='1';pi.addEventListener('input',e=>paletteRender(e.target.value));}};
+  bind();
+  document.addEventListener('DOMContentLoaded',bind);
+})();
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPalette();}
   else if(e.key==='Escape'){closePalette();}
@@ -8072,9 +8286,10 @@ async function shAutCreate(){
 async function shAutRun(id){try{const d=await api('/api/smarthome/automations/'+encodeURIComponent(id)+'/run',{method:'POST'});
   toast(d.ran?('ran: '+JSON.stringify(d.results)):('not run: '+d.reason), d.ran?'ok':'err'); shAutomationsLoad();}catch(e){toast('run failed: '+e.message,'err');}}
 async function shAutToggle(id,on){try{await api('/api/smarthome/automations/'+encodeURIComponent(id)+'/enable',{method:'POST',body:JSON.stringify({enabled:on})});shAutomationsLoad();}catch(e){toast('toggle failed: '+e.message,'err');}}
-async function shAutDel(id){if(!confirm('Delete this automation?'))return;try{await api('/api/smarthome/automations/'+encodeURIComponent(id),{method:'DELETE'});toast('deleted');shAutomationsLoad();}catch(e){toast('delete failed: '+e.message,'err');}}
+async function shAutDel(id){if(!await uiConfirm('Delete Automation','Delete this automation?',{danger:true,okLabel:'Delete'}))return;try{await api('/api/smarthome/automations/'+encodeURIComponent(id),{method:'DELETE'});toast('deleted');shAutomationsLoad();}catch(e){toast('delete failed: '+e.message,'err');}}
 async function shSetRoom(id){
-  const name=prompt('Room name for this device (blank to clear):',''); if(name===null) return;
+  const name=await uiPrompt('Set Device Room','Room name for this device (blank to clear):',{required:false,okLabel:'Save'});
+  if(name===null) return;
   const clean=name.trim();
   try{ await api('/api/smarthome/devices/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(clean?{name:clean}:{room:null})});
     toast('room updated'); loadSmartHome(); }catch(e){toast('room failed: '+e.message,'err');}
@@ -8654,7 +8869,7 @@ async function loadAkush(){
   }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
 }
 async function akushInboxAct(id,action){
-  if(!confirm('Operator confirmation: '+action+' inbox item #'+id+'?'))return;
+  if(!await uiConfirm('Confirm Action','Operator confirmation: '+action+' inbox item #'+id+'?',{danger:action!=='approve',okLabel:action.charAt(0).toUpperCase()+action.slice(1)}))return;
   try{
     await api('/api/money/inbox/'+id+'/act',{method:'POST',body:JSON.stringify({action,confirmed:true})});
     toast('inbox item #'+id+' '+action+' done');
@@ -8663,8 +8878,8 @@ async function akushInboxAct(id,action){
 }
 window.loadAkush=loadAkush;
 window.akushInboxAct=akushInboxAct;
-
-</script> style="display:none;align-items:flex-start;justify-content:center">
+</script>
+<div class="palette-overlay" id="palette" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.8);z-index:200;align-items:flex-start;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)">
   <div class="modal-box" style="max-width:560px;width:92%;margin-top:10vh;padding:0">
     <input id="palette-input" autocomplete="off" placeholder="Type a command…  (network · doctor · missions · guardian)" style="width:100%;box-sizing:border-box;padding:14px;font-size:0.9rem;background:var(--bg-deep);color:var(--fg);border:0;border-bottom:1px solid var(--border);outline:none">
     <div id="palette-results" style="max-height:50vh;overflow:auto"></div>

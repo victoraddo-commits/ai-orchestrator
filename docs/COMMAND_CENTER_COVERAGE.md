@@ -730,3 +730,28 @@ shapes, detail 404, publish promote/404, publish body validation (422), publish
 unknown-version 404 with no demotion, a symbolic-only password recipe, a
 `secret_guard.find_secret_fields()` sweep across list/detail, a forced raw-secret
 store record that is never echoed, and the model-edge/store-boundary rejections.
+
+## UX redesign 2026-10-02 (grouped nav + dialogs + skeletons)
+
+- Sidebar regrouped into five calm sections: **Overview / Money / Build /
+  Intelligence / System**. All 54 panel hashes unchanged (wiring contract
+  untouched); `auditPanelWiring()` stays green.
+- Fixed pre-existing broken `hubtel` nav anchor (was an unclosed `<a>` and the
+  Akush item was mislabeled "Hubtel") — both items now render correctly under
+  **Money**.
+- Mobile bottom nav: Home / Money (akush) / Infra (docker) / Approvals / More
+  (generated sheet - unchanged mechanism).
+- Shared dialog engine ported from the Akush PWA: `showFormModal` / `uiPrompt` /
+  `uiSelect` / `uiConfirm` / `uiInfo` - Esc + backdrop close, focus trap +
+  restore, `aria-modal`, inline validation, disabled-while-saving submit, toast
+  results. All `prompt()` / `confirm()` / `alert()` call sites (23) converted.
+  Dropdown selects added for Telegram group mention policy and Arbitra dividend
+  destination.
+- Skeleton shimmer (`applySkeletons`) replaces panel "loading..." spans on
+  first open so layout does not jump.
+- Restored the missing command-palette overlay opening tag (pre-existing broken
+  markup on the script close line) and deferred the palette input listener bind.
+- Backups: `command_center.html.bak-uxredesign-20261002`,
+  `COMMAND_CENTER_COVERAGE.md.bak-uxredesign-20261002`.
+- Rollback: `cp core/kai/command_center.html.bak-uxredesign-20261002
+  core/kai/command_center.html && systemctl restart ai-orchestrator-api`.

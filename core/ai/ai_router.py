@@ -25,6 +25,7 @@ import time
 from datetime import datetime
 
 import core.ai_provider as ai_provider
+from core.kai.infusion import infuse as _kai_infuse
 import core.llm_clients as llm_clients
 import core.ai.provider_health as provider_health
 import core.ai.circuit_breaker as circuit_breaker
@@ -689,7 +690,8 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             if capability == "coding_agent":
                 response = run_fn(project_path, description, timeout=timeout)
             else:
-                response = run_fn(description, timeout=timeout, project_path=project_path)
+                text_prompt, _infused = _kai_infuse(description, resolved_type)
+                response = run_fn(text_prompt, timeout=timeout, project_path=project_path)
         except Exception as error:
             duration_ms = int((time.time() - start) * 1000)
             record_usage(provider, resolved_type, description, success=False,
@@ -847,7 +849,8 @@ def delegate(description, task_type=None, timeout=60, project_path=None, capabil
             if capability == "coding_agent":
                 response = run_fn(project_path, description, timeout=timeout)
             else:
-                response = run_fn(description, timeout=timeout, project_path=project_path)
+                text_prompt, _infused = _kai_infuse(description, resolved_type)
+                response = run_fn(text_prompt, timeout=timeout, project_path=project_path)
         except Exception as error:
             duration_ms = int((time.time() - start) * 1000)
             record_usage(name, resolved_type, description, success=False, duration_ms=duration_ms, error=str(error), usage=llm_clients.pop_last_usage())

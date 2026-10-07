@@ -50,9 +50,12 @@ def test_kai_brain_and_kai_coder_have_both_capabilities():
 def test_text_only_local_providers_have_text_task_capability_only():
     providers = ai_provider.list_providers()
 
-    for name in ("kai_deep", "local", "llama3", "local_brain_fast", "local_coder"):
+    for name in ("kai_deep", "llama3", "local_brain_fast", "local_coder"):
         assert "text_task" in providers[name]["capabilities"]
         assert "coding_agent" not in providers[name]["capabilities"]
+    # local serves the brain: coding_agent allowed under the local-only directive
+    assert "text_task" in providers["local"]["capabilities"]
+    assert "coding_agent" in providers["local"]["capabilities"]
 
 
 def test_list_providers_does_not_expose_raw_callables():
@@ -75,11 +78,12 @@ def test_get_provider_returns_none_for_unknown_name():
 
 
 def test_local_provider_is_text_only():
-    """Local provider (qwen2.5:7b ollama) is text-only — no coding agent."""
+    """Local provider serves the brain (qwen3-coder:kai). Under the local-only
+    directive (2026-10-06) coding routes through it too — no third-party providers."""
     provider = ai_provider.get_provider("local")
 
     assert provider["run_text_task"] is not None
-    assert provider["run_coding_task"] is None
+    assert provider["run_coding_task"] is not None
 
 
 def test_register_provider_adds_a_new_entry():

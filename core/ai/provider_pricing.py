@@ -76,6 +76,14 @@ PRICING = {
     "kai_coder": {
         "qwen2.5-coder-7b": {"input_per_million": 0.00, "output_per_million": 0.00},
     },
+    # 2026-10-06: gpu_a/gpu_b are aliases of the single local brain now
+    # (dedicated 11435/11436 instances retired under the local-only directive).
+    "kai_coder_gpu_a": {
+        "qwen3-coder:kai": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
+    "kai_coder_gpu_b": {
+        "qwen3-coder:kai": {"input_per_million": 0.00, "output_per_million": 0.00},
+    },
     "kai_deep": {
         "qwen3.6-27b": {"input_per_million": 0.00, "output_per_million": 0.00},
     },

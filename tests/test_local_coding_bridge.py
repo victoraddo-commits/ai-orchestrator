@@ -252,4 +252,5 @@ class TestProviderWiring:
     def test_coding_role_points_at_local_coding_providers(self):
         from core.ai.ai_router import ROLE_PROVIDERS
 
-        assert ROLE_PROVIDERS["coding"] == ["kai_coder", "kai_brain"]
+        assert ROLE_PROVIDERS["coding"] == [
+            "kai_coder", "kai_coder_gpu_a", "kai_coder_gpu_b", "local"]

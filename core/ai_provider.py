@@ -360,9 +360,10 @@ def _kai_brain_run_coding_task(project_path, instruction, timeout=1200, **kwargs
 register_provider(
     "local",
     run_text_task=_local_run_text_task,
+    run_coding_task=_kai_coder_run_coding_task,
     available_fn=_local_available,
     kind="local",
-    description="qwen2.5:7b via ollama on localhost:11434 (SSH tunnel to GPU server) — PRIMARY local model for all KAI services, zero-cost inference, updated 2026-09-09",
+    description="qwen3-coder:kai via ollama on localhost:11434 (SSH tunnel to GPU server) — PRIMARY local model for all KAI services, zero-cost inference, local-only directive 2026-10-06",
     cost_tier="free",
 )
 
@@ -684,14 +685,14 @@ def _ollama_available_port(port: int, model_prefix: str) -> bool:
         return False
 
 
-# ── kai_coder_gpu_a — dedicated ollama instance on VM 104 GPU port 11435 ──
+# ── kai_coder_gpu_a — alias of the VM104 brain via :11434 (replicas retired under local-only directive) ──
 
 def _kai_coder_gpu_a_run_text_task(prompt, timeout=120, project_path=None):
-    return _ollama_call_port(11435, "kai-coder:7b", prompt, timeout=timeout)
+    return _ollama_call_port(11434, "qwen3-coder:kai", prompt, timeout=timeout)
 
 
 def _kai_coder_gpu_a_available():
-    return _ollama_available_port(11435, "kai-coder")
+    return _ollama_available_port(11434, "qwen3-coder")
 
 
 def _kai_coder_gpu_a_run_coding_task(project_path, instruction, timeout=1200, **kwargs):
@@ -712,14 +713,14 @@ register_provider(
 )
 
 
-# ── kai_coder_gpu_b — dedicated ollama instance on VM 104 GPU port 11436 ──
+# ── kai_coder_gpu_b — alias of the VM104 brain via :11434 (replicas retired under local-only directive) ──
 
 def _kai_coder_gpu_b_run_text_task(prompt, timeout=120, project_path=None):
-    return _ollama_call_port(11436, "kai-coder:7b", prompt, timeout=timeout)
+    return _ollama_call_port(11434, "qwen3-coder:kai", prompt, timeout=timeout)
 
 
 def _kai_coder_gpu_b_available():
-    return _ollama_available_port(11436, "kai-coder")
+    return _ollama_available_port(11434, "qwen3-coder")
 
 
 def _kai_coder_gpu_b_run_coding_task(project_path, instruction, timeout=1200, **kwargs):

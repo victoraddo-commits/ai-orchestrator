@@ -96,3 +96,33 @@ def test_dispatch_reports_handler_exceptions_instead_of_raising(monkeypatch):
     assert result["matched"] is True
     assert result["result"] is None
     assert result["error"] == "roadmap store is corrupt"
+
+
+def test_workforce_listing_commands_dispatch_cleanly(monkeypatch):
+    import core.kai.commands as commands_mod
+
+    class _Snap:
+        pass
+
+    def _fake_snapshots():
+        return {"local": {"status": "healthy", "percent_remaining": 80}}
+
+    monkeypatch.setattr(
+        commands_mod, "get_all_snapshots", _fake_snapshots, raising=False
+    )
+    for phrase in ("Kai, list AI workers", "Kai, show AI workforce"):
+        result = commands_mod.dispatch(phrase)
+        assert result["matched"] is True, phrase
+        assert result["error"] is None, (phrase, result["error"])
+        assert result["result"] is not None, phrase
+
+
+def test_workforce_listing_real_import_path():
+    """Regression: the real provider_health name must be importable and dispatch must work."""
+    from core.ai.provider_health import get_all_quota_snapshots  # real name must exist
+
+    import core.kai.commands as commands_mod
+    result = commands_mod.dispatch("Kai, list AI workers")
+    assert result["matched"] is True
+    assert result["error"] is None, result["error"]
+    assert result["result"] is not None

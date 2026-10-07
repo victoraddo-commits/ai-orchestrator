@@ -142,7 +142,7 @@ def _handle_list_tasks():
 # 13K: Voice/Text workforce command handlers
 def _handle_list_workers():
     from core.ai_provider import list_providers
-    from core.ai.provider_health import get_all_snapshots
+    from core.ai.provider_health import get_all_quota_snapshots as get_all_snapshots
 
     providers = list_providers()
     quota_data = get_all_snapshots() or {}
@@ -180,7 +180,7 @@ def _handle_provider_ranking():
 
 def _handle_available_providers():
     from core.ai_provider import list_providers
-    from core.ai.provider_health import get_all_snapshots
+    from core.ai.provider_health import get_all_quota_snapshots as get_all_snapshots
 
     providers = list_providers()
     quota_data = get_all_snapshots() or {}

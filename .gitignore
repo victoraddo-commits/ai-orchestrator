@@ -49,3 +49,8 @@ key.pem
 core/second_brain/stores/operational/records.jsonl
 core/second_brain/stores/operational/*.jsonl
 core/second_brain/stores/*/records.jsonl
+
+# local-only backups — never commit
+*.bak-*
+probe.txt
+core/second_brain/stores/*/records.jsonl

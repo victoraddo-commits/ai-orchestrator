@@ -235,14 +235,20 @@ class TestHubtelPayments:
         """Client reports unconfigured when env vars are missing."""
         import core.juris_kai.payments as pmts
         pmts._payment_client = None
-        # Temporarily unset credentials
-        old_id = pmts.HUBTEL_CLIENT_ID
-        pmts.HUBTEL_CLIENT_ID = ""
+        # Credentials now live in env (client reads HUBTEL_CLIENT_ID/SECRET at
+        # construction); clear them from the environment instead of module attrs.
+        import os
+        saved = {k: os.environ.get(k) for k in
+                 ("HUBTEL_CLIENT_ID", "HUBTEL_CLIENT_SECRET", "HUBTEL_CREDS_FILE")}
+        for k in saved:
+            os.environ.pop(k, None)
         try:
             client = pmts.get_payment_client()
             assert client.is_configured() is False
         finally:
-            pmts.HUBTEL_CLIENT_ID = old_id
+            for k, v in saved.items():
+                if v is not None:
+                    os.environ[k] = v
             pmts._payment_client = None
 
 

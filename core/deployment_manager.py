@@ -125,6 +125,7 @@ def build_image(build):
     # working pattern already used for this LXC's other Docker builds.
     result = _docker(
         "buildx", "build",
+        "--builder", "insecure-builder",
         "--allow", "security.insecure",
         "--security-opt", "apparmor=unconfined",
         "--load",

@@ -8,7 +8,8 @@ def base_scan(**overrides):
             "node": {"data": {
                 "cpu": 0.10,
                 "memory": {"total": 100, "used": 10},
-                "rootfs": {"total": 100, "used": 10, "avail": 90}
+                "rootfs": {"total": 100, "used": 10, "avail": 90},
+                "uptime": 200000
             }},
             "lxc": {"data": []},
             "qemu": {"data": []},

@@ -14,7 +14,7 @@ def test_scan_src_directory_finds_modules():
     results = scan_src_directory(Path("/project/src"))
     ids = [r["id"] for r in results]
     assert "kai-vault" in ids
-    assert "kai-notify" in ids
+    assert "kai-money" in ids
 
 def test_find_secret_stores_detects_json_secrets():
     stores = find_secret_stores(Path("/project/ai-orchestrator/core/ai/secrets.py"))
@@ -22,14 +22,14 @@ def test_find_secret_stores_detects_json_secrets():
     assert any("secrets.py" in s["id"] or "provider_secrets" in s["id"] for s in stores)
 
 def test_find_telegram_bots_detects_notify():
-    bots = find_telegram_bots(Path("/project/src/kai-notify/src/index.js"))
+    bots = find_telegram_bots(Path("/project/src/kai-money/services/kai-notify/src/index.js"))
     assert len(bots) >= 1
     assert bots[0]["platform"] == "telegram"
 
 def test_find_notification_systems():
     systems = find_notification_systems(Path("/project/src"))
     ids = [s["id"] for s in systems]
-    assert "kai-notify" in ids
+    assert "kai-money" in ids
 
 def test_build_initial_graph_has_required_keys():
     graph = build_initial_graph()

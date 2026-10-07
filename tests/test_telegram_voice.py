@@ -234,7 +234,8 @@ class TestRouteVoiceMessageErrors:
         """speak returns ok=False."""
         mock_download.return_value = b"ogg"
         mock_import.return_value = None
-        with patch("core.api.handle_kai_chat") as mock_chat:
+        import core.telegram_bridge as tbm
+        with patch.object(tbm, "_handle_kai_chat", create=True) as mock_chat:
             mock_chat.return_value = {"response": "hello"}
             with patch("core.voice_router.transcribe") as mock_transcribe:
                 mock_transcribe.return_value = {"ok": True, "text": "hi"}

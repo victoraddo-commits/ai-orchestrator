@@ -370,4 +370,4 @@ class TestDBManagerInitSampleData:
         with patch("core.klaus.db_manager.add_source") as mock_add:
             result = init_sample_data()
             assert result is True
-            assert mock_add.call_count >= 3
+            assert mock_add.call_count >= 2

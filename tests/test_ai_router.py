@@ -845,9 +845,12 @@ def test_candidates_for_coding_rotates_only_the_front_group():
     # here is the full list).
     candidates = ai_router._candidates_for("coding")
 
-    assert len(candidates) == len(ai_router.ROLE_PROVIDERS["coding"])
+    # 2026-09-12: front group holds the three coder replicas; 'local' (the
+    # brain alias) is the stable tail. front + tail == the full role list.
     assert candidates[:len(ai_router.CODING_ROTATING_FRONT)] == ai_router.CODING_ROTATING_FRONT
-    assert candidates[len(ai_router.CODING_ROTATING_FRONT):] == ai_router.ROLE_PROVIDERS["coding"]
+    assert candidates[len(ai_router.CODING_ROTATING_FRONT):] == [
+        n for n in ai_router.ROLE_PROVIDERS["coding"] if n not in ai_router.CODING_ROTATING_FRONT]
+    assert sorted(candidates) == sorted(ai_router.ROLE_PROVIDERS["coding"])
 
 
 def test_candidates_for_coding_front_order_rotates_while_the_tail_never_changes():
@@ -862,8 +865,11 @@ def test_candidates_for_coding_front_order_rotates_while_the_tail_never_changes(
         tails.append(candidates[len(ai_router.CODING_ROTATING_FRONT):])
 
     front = ai_router.CODING_ROTATING_FRONT
-    assert all(f == front for f in fronts)
-    expected_tail = [n for n in ai_router.ROLE_PROVIDERS["coding"]]
+    # Non-empty front group ROTATES: across calls every member takes a turn
+    # at the head, and each call's front is a rotation of the same set.
+    assert all(sorted(f) == sorted(front) for f in fronts)
+    assert len({tuple(f) for f in fronts}) > 1, "front should actually rotate"
+    expected_tail = [n for n in ai_router.ROLE_PROVIDERS["coding"] if n not in front]
     assert all(tail == expected_tail for tail in tails)
 
 
@@ -903,12 +909,12 @@ def test_delegate_does_not_double_rotate_the_coding_candidates(monkeypatch):
 
     monkeypatch.setattr(ai_router, "_rotate_candidates", spying_rotate)
 
-    # Disable all except the last one (kai_brain).
+    # Disable all except the last one (local — the brain alias, 2026-09-12 chain).
     for name in ai_router.ROLE_PROVIDERS["coding"][:-1]:
         provider = ai_provider.get_provider(name)
         monkeypatch.setitem(provider, "available_fn", lambda: False)
 
-    last = ai_provider.get_provider("kai_brain")
+    last = ai_provider.get_provider(ai_router.ROLE_PROVIDERS["coding"][-1])
     monkeypatch.setitem(last, "available_fn", lambda: True)
     monkeypatch.setitem(
         last, "run_coding_task",
@@ -1052,7 +1058,8 @@ def test_dashboard_includes_file_access_flag():
     dashboard = ai_router.get_provider_dashboard()
 
     assert dashboard["kai_coder"]["file_access"] is True
-    assert dashboard["local"]["file_access"] is False
+    # local = brain alias under the local-only directive: same bridge, file access
+    assert dashboard["local"]["file_access"] is True
     assert dashboard["llama3"]["file_access"] is False
 
 

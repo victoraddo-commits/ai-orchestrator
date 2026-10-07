@@ -101,6 +101,10 @@ def test_register_provider_adds_a_new_entry():
     assert providers["test-provider"]["description"] == "a test provider"
 
 
+    # ISOLATION: remove the test provider so downstream registry-dependent tests
+    # see a clean registry (module-level singleton would otherwise leak).
+    ai_provider._PROVIDERS.pop("test-provider", None)
+
 def test_every_registered_provider_has_a_valid_cost_tier():
     providers = ai_provider.list_providers()
 

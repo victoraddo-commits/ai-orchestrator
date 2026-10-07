@@ -359,8 +359,48 @@ register_provider(
 register_provider(
     "local",
     run_text_task=_local_run_text_task,
+    run_coding_task=_kai_coder_run_coding_task,
     available_fn=_local_available,
     kind="local",
     description="qwen3-coder:kai via ollama on VM104 P40 — local text-task provider (aliased to the served VM104 model; formerly qwen2.5:7b).",
+    cost_tier="free",
+)
+
+# --- kai_vision: local VLM (Qwen3-VL-8B / M3) via the VM104 A4 GPU proxy :5010 ---
+_KAI_VISION_URL = os.environ.get("KAI_VISION_URL", "http://192.168.1.241:5010")
+_KAI_VISION_MODEL = os.environ.get("KAI_VISION_MODEL", "M3")
+
+
+def _kai_vision_available(timeout=3):
+    """True when the A4 GPU vision proxy (:5010) is up (M3 reachable)."""
+    try:
+        import urllib.request as _u
+        with _u.urlopen(_KAI_VISION_URL.rstrip("/") + "/health", timeout=timeout) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _kai_vision_run_text_task(prompt, timeout=300, project_path=None):
+    """M3 (Qwen3-VL-8B) via the A4 proxy (OpenAI-compatible). Text fallback; use
+    core.kai_vision for image tasks. NOTE: on the single P40 this swaps the brain
+    out on demand (the proxy restores it after 60s idle)."""
+    import json as _json
+    import urllib.request as _u
+    body = _json.dumps({"model": _KAI_VISION_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 1024, "temperature": 0.2}).encode()
+    req = _u.Request(_KAI_VISION_URL.rstrip("/") + "/v1/chat/completions", data=body,
+                     headers={"content-type": "application/json"})
+    with _u.urlopen(req, timeout=timeout) as r:
+        return _json.loads(r.read())["choices"][0]["message"]["content"]
+
+
+register_provider(
+    "kai_vision",
+    run_text_task=_kai_vision_run_text_task,
+    available_fn=_kai_vision_available,
+    kind="local",
+    description="M3 (Qwen3-VL-8B-Aggressive) via the VM104 A4 GPU proxy :5010 — kai.vision: local vision-language model for image description, OCR, document/image extraction, GUI parsing (image tasks via core.kai_vision).",
     cost_tier="free",
 )

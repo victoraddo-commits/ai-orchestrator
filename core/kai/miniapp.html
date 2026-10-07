@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kai</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{color-scheme:dark}
+body{font-family:-apple-system,system-ui,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:14px}
+h1{font-size:18px;margin:0 0 4px}
+.sub{font-size:12px;color:#8b949e;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+button{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:14px;font-size:15px}
+button:active{background:#21262d}
+pre{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:55vh;overflow:auto;margin-top:12px}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:#1f6feb33;color:#58a6ff}
+.err{color:#f85149}
+</style></head>
+<body>
+<h1>Kai Control</h1>
+<div class="sub" id="who">connecting…</div>
+<div class="grid">
+  <button onclick="go('status')">Status</button>
+  <button onclick="go('network')">Network</button>
+  <button onclick="go('missions')">Missions</button>
+  <button onclick="go('approvals')">Approvals</button>
+  <button onclick="go('backups')">Backups</button>
+  <button onclick="go('doctor')">Doctor</button>
+</div>
+<pre id="out">Tap an action…</pre>
+<script>
+const tg=(window.Telegram&&window.Telegram.WebApp)||null;
+let READY=false;
+
+function initData(){ return (tg&&tg.initData)||''; }
+
+async function boot(){
+  const el=document.getElementById('who');
+  if(!tg){ el.innerHTML='<span class="err">not in Telegram</span> (dev mode — actions will 401)'; return; }
+  tg.ready(); tg.expand();
+  try{
+    const r=await fetch('/api/telegram/webapp-auth',{method:'POST',
+      headers:{'content-type':'application/json'},
+      body:JSON.stringify({init_data:initData()})});
+    const d=await r.json();
+    if(r.ok&&d.ok){ READY=true;
+      const u=d.user||{}; el.innerHTML='<span class="badge">verified</span> '+(u.username?('@'+u.username):('id '+u.id));
+    } else { el.innerHTML='<span class="err">auth failed: '+(d.error||r.status)+'</span>'; }
+  }catch(e){ el.innerHTML='<span class="err">auth error: '+e.message+'</span>'; }
+}
+
+async function go(action){
+  const el=document.getElementById('out'); el.textContent='loading '+action+'…';
+  try{
+    const r=await fetch('/miniapp/api/'+action,{headers:{'X-Telegram-Init-Data':initData()}});
+    el.textContent=JSON.stringify(await r.json(),null,1);
+  }catch(e){ el.textContent='error: '+e.message; }
+}
+boot();
+</script>
+</body></html>

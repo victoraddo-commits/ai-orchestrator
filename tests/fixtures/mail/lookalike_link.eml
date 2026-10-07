@@ -1,0 +1,12 @@
+Return-Path: <bounces@proton.me>
+Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=proton.me; dkim=pass header.d=proton.me; dmarc=pass header.from=proton.me
+Message-ID: <phish-006@proton.me>
+Date: Wed, 30 Sep 2026 08:25:00 +0000
+From: Proton Mail <no-reply@proton.me>
+To: Kai-Enzoai@protonmail.com
+Subject: Verify your email address
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Verify here: https://protonn.me/verify?token=steal3
+Or here: https://xn--protn-9ta.me/verify?token=steal4

@@ -41,6 +41,9 @@ def _get_node_configs():
         },
         {
             "name": "pve-b",
+            # Logical name stays "pve-b" (labels/tests); the real PVE node
+            # hostname used in API paths is "pve" (verified 2026-09-27).
+            "api_node": os.environ.get("PROXMOX_B_API_NODE", "pve"),
             "host": os.environ.get("PROXMOX_B_HOST", "192.168.1.110"),
             "fallback_host": os.environ.get("PROXMOX_B_FALLBACK_HOST", ""),
             "token_id": os.environ.get("PROXMOX_B_TOKEN_ID", "kai@pve!kai"),
@@ -154,6 +157,11 @@ def get_vpn_status(node_name=None):
     return dict(_vpn_status_cache)
 
 
+def _api_node_name(node):
+    """Real PVE node hostname for API paths (logical name may differ)."""
+    return node.get("api_node") or node["name"]
+
+
 def collect_node_health(node):
     h = {"node": node["name"], "host": node["host"], "reachable": False,
          "checked_at": datetime.now(timezone.utc).isoformat()}
@@ -174,22 +182,27 @@ def collect_node_health(node):
         return h
     h["reachable"] = True
 
-    status = _api_get(node, f"nodes/{node['name']}/status")
+    status = _api_get(node, f"nodes/{_api_node_name(node)}/status")
     if status:
         h["uptime"] = status.get("uptime", 0)
         h["cpu"] = round(status.get("cpu", 0) * 100, 1)
-        h["memory_used"] = status.get("mem", 0)
-        h["memory_total"] = status.get("maxmem", 1)
+    # PVE 9 GET /nodes/{node}/status may omit mem/maxmem; the /nodes index
+    # always carries them. Prefer status, fall back to the index payload.
+    mem_used = (status or {}).get("mem") or (next((n for n in (node_info or []) if isinstance(n, dict) and n.get("node") == _api_node_name(node)), {})).get("mem") or 0
+    mem_total = (status or {}).get("maxmem") or (next((n for n in (node_info or []) if isinstance(n, dict) and n.get("node") == _api_node_name(node)), {})).get("maxmem") or 0
+    if mem_total:
+        h["memory_used"] = int(mem_used)
+        h["memory_total"] = int(mem_total)
         h["memory_pct"] = round(h["memory_used"] / max(h["memory_total"], 1) * 100, 1)
 
-    containers = _api_get(node, f"nodes/{node['name']}/lxc") or []
-    vms = _api_get(node, f"nodes/{node['name']}/qemu") or []
+    containers = _api_get(node, f"nodes/{_api_node_name(node)}/lxc") or []
+    vms = _api_get(node, f"nodes/{_api_node_name(node)}/qemu") or []
     h["containers"] = len(containers)
     h["vms"] = len(vms)
     h["running_containers"] = len([c for c in containers if c.get("status") == "running"])
     h["running_vms"] = len([v for v in vms if v.get("status") == "running"])
 
-    storage = _api_get(node, f"nodes/{node['name']}/storage") or []
+    storage = _api_get(node, f"nodes/{_api_node_name(node)}/storage") or []
     storages = []
     for s in storage:
         storages.append({
@@ -199,7 +212,7 @@ def collect_node_health(node):
         })
     h["storage"] = storages
 
-    backups = _api_get(node, f"nodes/{node['name']}/storage/local/backup") or []
+    backups = _api_get(node, f"nodes/{_api_node_name(node)}/storage/local/backup") or []
     recent = []
     for b in backups[-5:]:
         recent.append({
@@ -230,6 +243,9 @@ def check_alerts(health_data):
                 alerts.append({"node": name, "severity": "warning", "component": "storage",
                                "message": f"Storage {s['name']} on {name} at {s['used_pct']}%"})
         if h.get("memory_pct", 0) > 90:
-            alerts.append({"node": name, "severity": "warning", "component": "memory",
-                           "message": f"Memory on {name} at {h['memory_pct']}%"})
+            from core.host_memory_guard import classify_pressure
+
+            snap = classify_pressure(h.get("memory_total", 1), h.get("memory_used", 0))
+            alerts.append({"node": name, "severity": snap["severity"], "component": "memory",
+                           "message": f"{name}: {snap['message']}"})
     return alerts

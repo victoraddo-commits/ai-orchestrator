@@ -149,3 +149,67 @@ def send_voice(bot, chat_id, audio_bytes: bytes, duration: int = None) -> dict:
         return json.load(urllib.request.urlopen(req, timeout=60))
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": type(e).__name__}
+
+
+def send_document(bot, chat_id, file_path, caption: str = None) -> dict:
+    """Send a local file as a Telegram document (multipart upload).
+
+    Mirrors send_voice: minimal multipart, token resolved via token_for(),
+    never logged. Returns the raw API response dict.
+    """
+    if not is_transportable(bot):
+        return {"ok": False, "error": "bot not transportable"}
+    data = Path(file_path).read_bytes()
+    boundary = "----kaitgmoduleboundary"
+    parts = []
+    parts.append(f"--{boundary}\r\nContent-Disposition: form-data; "
+                 f'name="chat_id"\r\n\r\n{chat_id}\r\n'.encode())
+    if caption:
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; "
+                     f'name="caption"\r\n\r\n{caption}\r\n'.encode())
+    parts.append(f"--{boundary}\r\nContent-Disposition: form-data; "
+                 f'name="document"; filename="{Path(file_path).name}"\r\n'
+                 f"Content-Type: application/vnd.android.package-archive\r\n\r\n".encode()
+                 + data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    body = b"".join(parts)
+    tok = token_for(bot)
+    req = urllib.request.Request(f"{API}/bot{tok}/sendDocument", data=body,
+                                 headers={"Content-Type":
+                                          f"multipart/form-data; boundary={boundary}"})
+    try:
+        return json.load(urllib.request.urlopen(req, timeout=120))
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": type(e).__name__}
+
+
+def send_document(bot, chat_id, file_path, caption: str = None) -> dict:
+    """Send a local file as a Telegram document (multipart upload).
+
+    Mirrors send_voice: minimal multipart, token resolved via token_for(),
+    never logged. Returns the raw API response dict.
+    """
+    if not is_transportable(bot):
+        return {"ok": False, "error": "bot not transportable"}
+    data = Path(file_path).read_bytes()
+    boundary = "----kaitgmoduleboundary"
+    parts = []
+    parts.append(f"--{boundary}\r\nContent-Disposition: form-data; "
+                 f'name="chat_id"\r\n\r\n{chat_id}\r\n'.encode())
+    if caption:
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; "
+                     f'name="caption"\r\n\r\n{caption}\r\n'.encode())
+    parts.append(f"--{boundary}\r\nContent-Disposition: form-data; "
+                 f'name="document"; filename="{Path(file_path).name}"\r\n'
+                 f"Content-Type: application/vnd.android.package-archive\r\n\r\n".encode()
+                 + data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    body = b"".join(parts)
+    tok = token_for(bot)
+    req = urllib.request.Request(f"{API}/bot{tok}/sendDocument", data=body,
+                                 headers={"Content-Type":
+                                          f"multipart/form-data; boundary={boundary}"})
+    try:
+        return json.load(urllib.request.urlopen(req, timeout=120))
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": type(e).__name__}

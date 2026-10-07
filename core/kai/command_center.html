@@ -1152,6 +1152,7 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <a class="nav-item" href="#kai-chat" data-hash="kai-chat"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="label">Kai Chat</span></a>
       <div class="sidebar-section-label">Money</div>
       <a class="nav-item" href="#akush" data-hash="akush"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M8 12h8M12 8v8"/></svg></span><span class="label">Akush Money</span></a>
+      <a class="nav-item" href="#sentinel" data-hash="sentinel"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></span><span class="label">Sentinel CCTV</span></a>
       <a class="nav-item" href="#hubtel" data-hash="hubtel"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg></span><span class="label">Hubtel</span></a>
       <a class="nav-item" href="#bet" data-hash="bet"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></span><span class="label">KAI Bet</span></a>
       <a class="nav-item" href="#arbitra" data-hash="arbitra"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span><span class="label">Arbitra</span></a>
@@ -1344,6 +1345,7 @@ body.wall-mode .sidebar{display:none} body.wall-mode .main-area{margin-left:0}
       <section class="panel" id="panel-providers"><div id="providers-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-site-recipes" aria-label="Site Recipes"><div id="site-recipes-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-akush"><div id="akush-content"><span class="loading">loading…</span></div></section>
+      <section class="panel" id="panel-sentinel"><div id="sentinel-content"><span class="loading">loading…</span></div></section>
       <section class="panel" id="panel-inbox"><div id="inbox-content"><span class="loading">loading…</span></div></section>
 
       <!-- DOCKER -->
@@ -1610,7 +1612,8 @@ const PANEL_TITLES = {
   sessions:'Sessions', emergency:'Emergency', roadmap:'Roadmap', learning:'Learning', enterprise:'Enterprise',
   diagnostics:'Diagnostics', audit:'Audit', world:'World Model',
   onboarding:'Onboarding', accounts:'Accounts', providers:'Providers', 'site-recipes':'Site Recipes', inbox:'Inbox',
-  akush:'Akush Money'
+  akush:'Akush Money',
+  sentinel:'Sentinel CCTV'
 };
 
 const $=id=>document.getElementById(id);
@@ -2066,7 +2069,7 @@ function applySkeletons(name){
 }
 // Panel dispatcher map — single place mapping a panel key to its loader.
 // Kept as a named const so auditPanelWiring() can verify it against the DOM.
-const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld,onboarding:loadOnboarding,accounts:loadAccounts,providers:loadProviders,'site-recipes':loadSiteRecipes,inbox:loadInbox,akush:loadAkush};
+const PANEL_LOADERS = {home:loadHome,command:loadCommand,voice:loadVoice,activity:loadActivity,modules:loadModules,legal:loadLegal,payments:loadPayments,'ai-workforce':loadWorkforce,arbitra:loadArbitra,bet:loadBet,talent:loadTalent,android:loadAndroid,docs:loadDocs,hubtel:loadHubtel,docker:loadDocker,telegram:loadTelegram,airdrop:loadAirdrop,infrastructure:loadInfra,security:loadSecurity,settings:loadSettings,logs:loadLogs,'kai-chat':loadKaiChat,devices:loadDevices,missions:loadMissions,executive:loadExecutive,enhancements:loadEnhancements,factory:loadFactory,evolution:loadEvolution,network:loadNetwork,models:loadModels,vault:loadVault,secondbrain:loadSecondBrain,knowledge:loadKnowledge,approvals:loadApprovals,notifications:loadNotifications,backups:loadBackups,sessions:loadSessions,emergency:loadEmergency,roadmap:loadRoadmap,learning:loadLearning,enterprise:loadEnterprise,wireguard:loadWireguard,smarthome:loadSmartHome,power:loadPower,directives:loadDirectives,directory:loadDirectory,diagnostics:loadDiagnostics,audit:loadAudit,world:loadWorld,onboarding:loadOnboarding,accounts:loadAccounts,providers:loadProviders,'site-recipes':loadSiteRecipes,inbox:loadInbox,akush:loadAkush,sentinel:loadSentinel};
 function loadPanel(name) {
   const fns=PANEL_LOADERS;
   // Skeletons: applied AFTER the loader's synchronous first paint (which
@@ -8878,6 +8881,47 @@ async function akushInboxAct(id,action){
 }
 window.loadAkush=loadAkush;
 window.akushInboxAct=akushInboxAct;
+async function loadSentinel(){
+  const el=document.getElementById('sentinel-content');
+  if(!el)return;
+  el.innerHTML='<span class="loading">loading…</span>';
+  try{
+    const [h,c,inc,rec,st,ver]=await Promise.all([
+      api('/api/sentinel/health').catch(e=>({error:e.message})),
+      api('/api/sentinel/cameras').catch(e=>({cameras:[]})),
+      api('/api/sentinel/incidents').catch(e=>({incidents:[]})),
+      api('/api/sentinel/recordings').catch(e=>({})),
+      api('/api/sentinel/storage').catch(e=>({})),
+      api('/api/sentinel/verify').catch(e=>({ok:false})),
+    ]);
+    let html='';
+    if(h&&h.error){html+='<div class="card"><h3>Sentinel offline</h3><p class="error-text">'+esc(h.error)+'</p></div>';}
+    // camera health
+    const cams=(h&&h.cameras)||{};
+    const names=Object.keys(cams);
+    html+='<div class="card"><h3>Cameras <span class="badge '+(names.length?'ok':'muted')+'">'+names.length+' live</span></h3>';
+    html+=names.length?'<div class="table-wrap"><table><thead><tr><th>Camera</th><th>FPS</th><th>Detect FPS</th></tr></thead><tbody>'
+      +names.map(n=>'<tr><td>'+esc(n)+'</td><td>'+esc(String(cams[n].camera_fps??'\u2014'))+'</td><td>'+esc(String(cams[n].detection_fps??'\u2014'))+'</td></tr>').join('')
+      +'</tbody></table></div>':'<p class="empty">No camera data.</p>';
+    html+='</div>';
+    // storage
+    html+='<div class="card"><h3>Storage &amp; DVR</h3>'
+      +'<p class="muted" style="font-size:0.72rem">'+esc((st&&st.df)||'\u2014')+'</p>'
+      +'<p>Segments recorded: <strong>'+esc(String((rec&&rec.segments_total)??0))+'</strong> '
+      +'<span class="muted" style="font-size:0.66rem">'+esc(JSON.stringify((rec&&rec.per_camera)||{}))+'</span></p>'
+      +'<p>Evidence chain: <span class="badge '+((ver&&ver.ok)?'ok':'bad')+'">'+((ver&&ver.ok)?'verified ('+(ver.bundles||0)+' bundles)':'BROKEN')+'</span></p>';
+    html+='</div>';
+    // incidents
+    const incs=(inc&&inc.incidents)||[];
+    html+='<div class="card"><h3>Incidents <span class="badge '+(incs.length?'warn':'muted')+'">'+incs.length+' recent</span></h3>';
+    html+=incs.length?'<div class="table-wrap"><table><thead><tr><th>Time</th><th>Camera</th><th>Label</th><th>Severity</th><th>Angles</th><th>Hash</th></tr></thead><tbody>'
+      +incs.slice(0,10).map(i=>'<tr><td style="font-size:0.66rem">'+esc((i.started_at||'').slice(0,19))+'</td><td>'+esc(i.camera||'')+'</td><td>'+esc(i.label||'')+'</td><td>'+esc(i.severity||'')+'</td><td>'+((i.clips||[]).length)+'</td><td style="font-size:0.6rem" class="muted">'+esc((i.bundle_hash||'').slice(0,10))+'</td></tr>').join('')
+      +'</tbody></table></div>':'<p class="empty">No incidents yet.</p>';
+    html+='</div>';
+    el.innerHTML=html;
+  }catch(e){el.innerHTML='<span class="error-text">'+esc(e.message)+'</span>';}
+}
+window.loadSentinel=loadSentinel;
 </script>
 <div class="palette-overlay" id="palette" style="display:none;position:fixed;inset:0;background:rgba(2,6,23,0.8);z-index:200;align-items:flex-start;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)">
   <div class="modal-box" style="max-width:560px;width:92%;margin-top:10vh;padding:0">

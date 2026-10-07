@@ -1,0 +1,12 @@
+Return-Path: <bounces@proton.me>
+Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=proton.me; dkim=pass header.d=proton.me; dmarc=pass header.from=proton.me
+Message-ID: <alert-003@proton.me>
+Date: Wed, 30 Sep 2026 08:10:00 +0000
+From: Proton Security <security@proton.me>
+To: Kai-Enzoai@protonmail.com
+Subject: Security alert: new sign-in to your account
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+A new sign-in to your account was detected from an unrecognized device.
+If this was not you, secure your account immediately.

@@ -1,0 +1,126 @@
+"""CT111 onboarding integration — mission-backed browser sessions.
+
+This is the orchestration/governance half of the split. It:
+
+1. resolves the provider and enforces the STEP 2 ToS/legality gate
+   (``core.providers.ensure_automation_allowed``) **before** any browser action;
+2. creates a real Mission Engine mission (``core.kai_missions``) and starts it;
+3. drives the CT110 browser service through :class:`BrowserOperatorClient`;
+4. publishes canonical ``browser.session.*`` / ``human.action.*`` events on the
+   real event bus and writes HMAC audit records.
+
+No credential value ever passes through here; the provider descriptor's
+``official_domain`` is the only identity used for URL checks.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from core import audit_logger, kai_event_bus
+from core.browser.client import BrowserOperatorClient
+from core.browser.tools import register_browser_tools
+
+SOURCE = "browser_onboarding"
+
+
+def _publish(topic: str, payload: dict) -> None:
+    kai_event_bus.publish(topic, payload, source=SOURCE)
+
+
+def _audit(event_type: str, endpoint: str, method: str, details: dict) -> None:
+    audit_logger.log_audit_event(
+        event_type=event_type, operator=SOURCE, endpoint=endpoint,
+        method=method, status_code=200, details=details)
+
+
+def start_onboarding_session(
+    identity_id: str,
+    provider_id: str,
+    *,
+    objective: Optional[str] = None,
+    mission_id: Optional[str] = None,
+    client: Optional[BrowserOperatorClient] = None,
+    requires_review: bool = True,
+) -> dict:
+    """Gate → mission → session. Returns mission_id + session payload."""
+    from core.providers import ensure_automation_allowed, get_provider
+
+    descriptor = get_provider(provider_id)                 # raises ProviderNotFound
+    ensure_automation_allowed(provider_id)                 # blocking precondition (ALLOWED only)
+
+    register_browser_tools(client)
+    cli = client or BrowserOperatorClient()
+
+    if mission_id is None:
+        from core.kai_missions import create_mission, start_mission
+
+        mission = create_mission(
+            objective or f"Onboard {identity_id} with {provider_id}",
+            tasks=[{
+                "tool_id": "kai.browser.open_session",
+                "args": {"identity_id": identity_id, "provider_id": provider_id},
+                "description": f"Open isolated browser session for {provider_id}",
+            }],
+            requires_review=requires_review,
+        )
+        mission_id = mission["id"]
+        start_mission(mission_id)
+
+    session = cli.open_session(identity_id, provider_id, mission_id=mission_id)
+    payload = {
+        "mission_id": mission_id,
+        "provider_id": descriptor.provider_id,
+        "official_domain": descriptor.official_domain,
+        "session": session,
+    }
+    _publish("browser.session.started", {
+        "session_id": session.get("session_id"), "mission_id": mission_id,
+        "identity_id": identity_id, "provider_id": descriptor.provider_id,
+        "official_domain": descriptor.official_domain})
+    _audit("browser.onboarding.start", f"browser/{provider_id}", "CREATE", {
+        "mission_id": mission_id, "identity_id": identity_id,
+        "provider_id": provider_id, "session_id": session.get("session_id")})
+    return payload
+
+
+def pause_for_human(session_id: str, *, reason: str, action_required: str,
+                    client: Optional[BrowserOperatorClient] = None, **kwargs) -> dict:
+    cli = client or BrowserOperatorClient()
+    record = cli.pause_for_human(session_id, reason=reason,
+                                 action_required=action_required, **kwargs)
+    _publish("browser.session.paused", {
+        "session_id": session_id, "mission_id": record.get("mission_id"),
+        "takeover_id": record.get("takeover_id"), "action_required": action_required})
+    _publish("human.action.required", {
+        "session_id": session_id, "mission_id": record.get("mission_id"),
+        "takeover_id": record.get("takeover_id"), "action_required": action_required,
+        "no_vnc_url": record.get("no_vnc_url"), "instructions": record.get("instructions")})
+    _audit("browser.onboarding.pause", f"browser/{session_id}", "UPDATE", {
+        "takeover_id": record.get("takeover_id"), "action_required": action_required,
+        "reason": reason})
+    return record
+
+
+def resume_if_completed(session_id: str, *,
+                        client: Optional[BrowserOperatorClient] = None) -> dict:
+    cli = client or BrowserOperatorClient()
+    result = cli.resume(session_id)
+    if result.get("resumed"):
+        _publish("browser.session.resumed", {
+            "session_id": session_id, "takeover_id": result.get("takeover_id")})
+        _publish("human.action.completed", {
+            "session_id": session_id, "takeover_id": result.get("takeover_id")})
+        _audit("browser.onboarding.resume", f"browser/{session_id}", "UPDATE", {
+            "takeover_id": result.get("takeover_id")})
+    return result
+
+
+def end_session(session_id: str, *,
+                client: Optional[BrowserOperatorClient] = None) -> dict:
+    cli = client or BrowserOperatorClient()
+    session = cli.end_session(session_id)
+    _publish("browser.session.ended", {"session_id": session_id})
+    _audit("browser.onboarding.end", f"browser/{session_id}", "UPDATE", {
+        "session_id": session_id})
+    return session

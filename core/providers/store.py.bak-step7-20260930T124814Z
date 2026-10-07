@@ -1,0 +1,157 @@
+"""Provider registry store.
+
+Two layers, matching the platform's conventions:
+
+* **In-code catalog** — built-in :class:`ProviderDescriptor` singletons plus
+  adapters registered at runtime. This is the authoritative reference data.
+* **Persisted overrides** — human-confirmed policy decisions, stored in
+  ``memory/provider_overrides.json`` through the canonical atomic primitive
+  ``core.memory.load`` / ``core.memory.update`` (fcntl.flock, ``.bak`` backup,
+  ``os.replace``) with the secret-guard at the storage boundary.
+
+``effective()`` merges the latest override onto the base descriptor so the gate
+always evaluates the operator-confirmed policy.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import TYPE_CHECKING, Callable, Optional
+
+from core.memory import load, update
+from core.secret_guard import assert_no_secret_fields
+
+from core.providers import catalog
+from core.providers.schema import ProviderDescriptor
+
+if TYPE_CHECKING:  # avoid a runtime import cycle (adapter imports schema only)
+    from core.providers.adapter import ProviderAdapter
+
+OVERRIDES_FILE = "provider_overrides.json"
+
+_DESCRIPTORS: dict[str, ProviderDescriptor] = {}
+_ADAPTERS: dict[str, "ProviderAdapter"] = {}
+
+
+class ProviderNotFound(KeyError):
+    def __init__(self, provider_id: str):
+        super().__init__(f"provider not found: {provider_id}")
+        self.provider_id = provider_id
+
+
+class DuplicateProvider(ValueError):
+    def __init__(self, provider_id: str):
+        super().__init__(f"provider already registered: {provider_id}")
+        self.provider_id = provider_id
+
+
+class DuplicateAdapter(ValueError):
+    def __init__(self, provider_id: str):
+        super().__init__(f"adapter already registered for provider: {provider_id}")
+        self.provider_id = provider_id
+
+
+def memory_dir() -> Path:
+    """Memory directory resolved at call time so tests can isolate per-run."""
+    return Path(os.environ.get("AI_ORCHESTRATOR_MEMORY_DIR", "memory"))
+
+
+def _records(data) -> list[dict]:
+    if isinstance(data, dict):
+        data = data.get("records", [])
+    return list(data or [])
+
+
+# -- in-code catalog -----------------------------------------------------------
+
+
+def _seed_descriptors() -> None:
+    _DESCRIPTORS.clear()
+    for descriptor in catalog.BUILTIN_DESCRIPTORS:
+        _DESCRIPTORS[descriptor.provider_id] = descriptor
+
+
+def register_descriptor(descriptor: ProviderDescriptor) -> ProviderDescriptor:
+    if descriptor.provider_id in _DESCRIPTORS:
+        raise DuplicateProvider(descriptor.provider_id)
+    _DESCRIPTORS[descriptor.provider_id] = descriptor
+    return descriptor
+
+
+def get_base(provider_id: str) -> Optional[ProviderDescriptor]:
+    return _DESCRIPTORS.get(provider_id)
+
+
+def list_base() -> list[ProviderDescriptor]:
+    return list(_DESCRIPTORS.values())
+
+
+def register_adapter(adapter: "ProviderAdapter") -> "ProviderAdapter":
+    descriptor = adapter.descriptor
+    provider_id = descriptor.provider_id
+    if provider_id not in _DESCRIPTORS:
+        _DESCRIPTORS[provider_id] = descriptor
+    if provider_id in _ADAPTERS:
+        raise DuplicateAdapter(provider_id)
+    _ADAPTERS[provider_id] = adapter
+    return adapter
+
+
+def get_adapter(provider_id: str) -> Optional["ProviderAdapter"]:
+    return _ADAPTERS.get(provider_id)
+
+
+def list_adapters() -> list["ProviderAdapter"]:
+    return list(_ADAPTERS.values())
+
+
+# -- persisted overrides -------------------------------------------------------
+
+
+def read_overrides() -> list[dict]:
+    return _records(load(OVERRIDES_FILE, directory=memory_dir()))
+
+
+def update_overrides(mutate_fn: Callable[[list[dict]], list[dict]]) -> list[dict]:
+    def _mutate(data):
+        records = mutate_fn(_records(data))
+        assert_no_secret_fields(records)
+        return records
+
+    return update(OVERRIDES_FILE, _mutate, directory=memory_dir())
+
+
+def latest_override(provider_id: str) -> Optional[dict]:
+    found = None
+    for record in read_overrides():
+        if record.get("provider_id") == provider_id:
+            found = record
+    return found
+
+
+# -- effective descriptor ------------------------------------------------------
+
+
+def effective(provider_id: str) -> Optional[ProviderDescriptor]:
+    """Base descriptor with the latest confirmed policy override applied."""
+    base = get_base(provider_id)
+    if base is None:
+        return None
+    override = latest_override(provider_id)
+    if not override:
+        return base
+    updates = {}
+    for field in ("automation_policy", "policy_source", "notes"):
+        if override.get(field) is not None:
+            updates[field] = override[field]
+    return base.model_copy(update=updates)
+
+
+def reset() -> None:
+    """Re-seed built-ins and drop registered adapters/overrides. For boot/tests."""
+    _seed_descriptors()
+    _ADAPTERS.clear()
+
+
+_seed_descriptors()

@@ -1,0 +1,56 @@
+"""Built-in provider catalog (pure data, no I/O).
+
+Descriptors shipped with KAI are the *authoritative* reference data and live in
+code, not in ``memory/``: ``automation_policy`` is safety-critical, and a
+runtime-editable file must not be able to silently flip PROHIBITED → ALLOWED.
+Runtime *policy overrides* (human-confirmed decisions) are stored separately
+via :mod:`core.providers.store` and audited.
+
+Only stub/example providers ship in STEP 2. Real providers (Amazon, etc.) are
+added in later steps once their ToS/legality has been evaluated.
+"""
+
+from __future__ import annotations
+
+from core.providers.schema import AutomationPolicy, ProviderDescriptor
+
+BUILTIN_DESCRIPTORS: tuple[ProviderDescriptor, ...] = (
+    ProviderDescriptor(
+        provider_id="generic",
+        display_name="Generic Provider (stub)",
+        official_domain="example.invalid",
+        registration_url=None,
+        account_types=["generic"],
+        has_api=False,
+        has_oauth=False,
+        browser_required=True,
+        requires_email=True,
+        requires_captcha=True,
+        automation_policy=AutomationPolicy.UNKNOWN,
+        policy_source="shipped stub: automation policy not yet evaluated",
+        regions=["*"],
+        notes="Placeholder adapter used to exercise the interface + policy gate.",
+    ),
+    ProviderDescriptor(
+        provider_id="proton",
+        display_name="Proton Mail",
+        official_domain="proton.me",
+        registration_url="https://proton.me/mail",
+        account_types=["email"],
+        has_api=False,
+        has_oauth=False,
+        browser_required=True,
+        requires_email=False,
+        requires_phone=False,
+        requires_captcha=True,
+        requires_mfa=True,
+        automation_policy=AutomationPolicy.UNKNOWN,
+        policy_source="STEP 4: KAI mailbox read via Proton Bridge (localhost IMAP/SMTP)",
+        regions=["*"],
+        notes=(
+            "KAI-owned mailbox. Inbound/outbound mail is handled by the STEP 4 "
+            "email worker via Proton Bridge; this is not provider-registration "
+            "automation, so the ToS gate does not gate mail reads."
+        ),
+    ),
+)

@@ -1,0 +1,25 @@
+Return-Path: <bounces@amazon.com>
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=amazon.com; s=selector; h=from:to:subject;
+Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=amazon.com; dkim=pass header.d=amazon.com; dmarc=pass header.from=amazon.com
+Received-SPF: pass (mx.example.org: domain of amazon.com designates 205.251.242.1 as permitted sender)
+Message-ID: <amzn-verify-001@amazon.com>
+Date: Wed, 30 Sep 2026 09:00:00 +0000
+From: "Amazon.com" <no-reply@amazon.com>
+Reply-To: support@amazon.com
+To: kai-onboard@example.invalid
+Subject: Verify your email address
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="BOUND1"
+
+--BOUND1
+Content-Type: text/plain; charset="utf-8"
+
+Welcome to Amazon. Please verify your email address by visiting:
+https://www.amazon.com/ap/verify?token=abc123
+
+--BOUND1
+Content-Type: text/html; charset="utf-8"
+
+<html><body><p>Welcome. <a href="https://www.amazon.com/ap/verify?token=abc123">Verify your email</a></p></body></html>
+
+--BOUND1--

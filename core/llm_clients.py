@@ -530,8 +530,8 @@ def call_gpuai_minimax(prompt, model=GPUAI_MINIMAX_MODEL, timeout=60, max_tokens
 # reliability, hallucination resistance, and long-context extraction.
 # The ollama API is reachable via LAN on Proxmox B (192.168.1.109).
 # No API key needed — ollama runs unauthenticated on the local network.
-OLLAMA_BASE_URL = "http://192.168.1.109:11434"
-OLLAMA_MODEL = "qwen2.5:7b"
+OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+OLLAMA_MODEL = "qwen3-coder:kai"
 
 # ── Concurrency guard — prevents NVMe I/O saturation on Proxmox B ────
 # Benchmark 2026-08-11 proved: >6 concurrent ollama workers → NVMe saturation
@@ -552,7 +552,7 @@ def check_ollama_available(timeout=5):
 
 
 def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
-    """Call qwen2.5:7b via ollama on Proxmox B (LAN at 192.168.1.109:11434).
+    """Call the VM104 ollama brain via the local tunnel (keep_alive=-1 pinned).
 
     Uses ollama's /api/generate endpoint (not OpenAI-compatible) with
     stream=false. Returns just the response text. Raises ProviderUnavailable
@@ -588,7 +588,7 @@ def call_ollama_qwen(prompt, model=OLLAMA_MODEL, timeout=120):
 # Added 2026-09-09: VM 104 Ollama server
 
 OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "qwen2.5:7b"
+OLLAMA_MODEL = "qwen3-coder:kai"
 
 def call_ollama(prompt, max_tokens=2048, temperature=0.7, model=None, cognitive_role=None, timeout=120):
     """Call Ollama server on VM 104 with cognitive routing support.
@@ -597,7 +597,7 @@ def call_ollama(prompt, max_tokens=2048, temperature=0.7, model=None, cognitive_
         prompt: Text prompt
         max_tokens: Maximum tokens to generate
         temperature: Sampling temperature
-        model: Explicit model name (e.g., "qwen2.5:7b", "kai-brain:27b")
+        model: Explicit model name (e.g., "qwen2.5:7b", "qwen3-coder:kai")
         cognitive_role: Route via cognitive router (e.g., "reasoning", "coding", "fast")
                        Takes precedence over model parameter
 
@@ -607,7 +607,7 @@ def call_ollama(prompt, max_tokens=2048, temperature=0.7, model=None, cognitive_
     import requests
 
     # Determine which model to use
-    target_model = OLLAMA_MODEL  # Default: qwen2.5:7b
+    target_model = OLLAMA_MODEL  # Default: qwen3-coder:kai
 
     if cognitive_role:
         # Use cognitive router

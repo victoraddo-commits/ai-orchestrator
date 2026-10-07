@@ -1,0 +1,24 @@
+Return-Path: <bounces@proton.me>
+Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=proton.me; dkim=pass header.d=proton.me; dmarc=pass header.from=proton.me
+Message-ID: <attach-007@proton.me>
+Date: Wed, 30 Sep 2026 08:30:00 +0000
+From: Proton Mail <no-reply@proton.me>
+To: Kai-Enzoai@protonmail.com
+Subject: Your account statement
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MIX1"
+
+--MIX1
+Content-Type: text/plain; charset="utf-8"
+
+Please find your statement attached.
+
+--MIX1
+Content-Type: application/pdf; name="statement.pdf"
+Content-Disposition: attachment; filename="statement.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJcOkw7zDtsOfCjEgMCBvYmoKPDwvVHlwZSAvQ2F0YWxvZz4+CmVuZG9iagp0cmFpbGVy
+PDwvUm9vdCAxIDAgUj4+CjUlRU9GCg==
+
+--MIX1--

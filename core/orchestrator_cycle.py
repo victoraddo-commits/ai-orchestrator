@@ -113,7 +113,7 @@ def _safe_run_ecosystem_discovery():
                 # may have been corrected), but preserve manually-added fields
                 # (notes, description, etc.) by only overwriting discovery fields.
                 merged_entities[entity_id] = {**old_entities[entity_id], **{
-                    k: v for k, v in new_entity.items()
+                    k: v for k, v in entity.items()
                     if k in ("type", "status", "path", "name", "description",
                              "docker_name", "docker_status", "canonical_owner")
                 }}

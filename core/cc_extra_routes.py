@@ -2211,3 +2211,74 @@ def money_anomalies(request: Request, status: str | None = "pending"):
             "confidence": a.get("confidence"), "created_at": a.get("created_at"),
         })
     return {"open": r.get("open", 0), "count": len(out), "data": out}
+
+# Kai Sentinel camera VMS module (CT116 kai-sentinel :8090) ──────────────────
+_SENTINEL_BASE = os.environ.get("CC_SENTINEL_URL", "http://192.168.1.116:8090")
+_SENTINEL_TOKEN = os.environ.get("CC_SENTINEL_TOKEN", "")
+
+
+def _sentinel_call(path: str, params: dict | None = None) -> dict:
+    import urllib.parse
+    import urllib.request
+    url = _SENTINEL_BASE.rstrip("/") + path
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url)
+    if _SENTINEL_TOKEN:
+        req.add_header("authorization", "Bearer " + _SENTINEL_TOKEN)
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return json.loads(r.read())
+
+
+@cc_extra_router.get("/api/sentinel/health")
+def sentinel_health(request: Request):
+    _req_op(request)
+    try:
+        return _sentinel_call("/sentinel/health")
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}
+
+
+@cc_extra_router.get("/api/sentinel/cameras")
+def sentinel_cameras(request: Request):
+    _req_op(request)
+    try:
+        return _sentinel_call("/sentinel/cameras")
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}
+
+
+@cc_extra_router.get("/api/sentinel/incidents")
+def sentinel_incidents(request: Request, limit: int = 50):
+    _req_op(request)
+    try:
+        return _sentinel_call("/sentinel/incidents", {"limit": limit})
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120], "incidents": []}
+
+
+@cc_extra_router.get("/api/sentinel/recordings")
+def sentinel_recordings(request: Request):
+    _req_op(request)
+    try:
+        return _sentinel_call("/sentinel/recordings")
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}
+
+
+@cc_extra_router.get("/api/sentinel/storage")
+def sentinel_storage(request: Request):
+    _req_op(request)
+    try:
+        return _sentinel_call("/sentinel/storage")
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}
+
+
+@cc_extra_router.get("/api/sentinel/verify")
+def sentinel_verify(request: Request):
+    _req_op(request)
+    try:
+        return _sentinel_call("/sentinel/evidence/verify")
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:120]}

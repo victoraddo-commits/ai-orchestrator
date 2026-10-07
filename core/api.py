@@ -178,6 +178,8 @@ app.include_router(klaus_api_router)
 # AI Gateway — OpenAI-compatible /v1 endpoints for external consumers
 from core.ai_gateway.gateway import router as gateway_router
 app.include_router(gateway_router)
+from core.live_discovery_routes import router as capabilities_router
+app.include_router(capabilities_router)
 
 # Telegram Manager — user management, activity tracking, config dashboard
 from core.telegram_manager.api import telegram_router

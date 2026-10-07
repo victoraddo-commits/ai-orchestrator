@@ -282,7 +282,7 @@ def handle_update(update: dict, *, client=None, prefs: dict | None = None,
 
     if not _allowed(chat_id, prefs):
         # silent rejection — never reveal that the bot exists to strangers
-        logger.info("money bot inbound rejected chat (not allowlisted)")
+        logger.info("money bot inbound rejected chat (not allowlisted) chat_id=%s", chat_id)
         return {"handled": False, "reason": "chat not allowlisted"}
 
     if callback:

@@ -1,0 +1,77 @@
+"""core.sms normalize — pure helpers over untrusted message text.
+
+Number normalization, sender classification, matching, and OTP redaction. No
+network I/O and no persistence: everything here is deterministic and safe to
+run on untrusted input.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Iterable
+
+from core.sms.schema import SenderKind
+
+_REDACTION = "[REDACTED]"
+_NON_DIGIT = re.compile(r"\D")
+
+
+def normalize_number(raw: str) -> str:
+    """Best-effort E.164-ish normalization; short codes pass through unchanged."""
+    if raw is None:
+        return ""
+    s = re.sub(r"[^\d+]", "", str(raw).strip())
+    if s.startswith("00"):
+        s = "+" + s[2:]
+    if s.startswith("+"):
+        return "+" + _NON_DIGIT.sub("", s[1:])
+    return s
+
+
+def normalize_sender(raw: str) -> str:
+    """Normalize a sender: keep alphanumeric sender IDs verbatim, else treat as
+    a number (so ``MyBank`` is not stripped to an empty string)."""
+    s = str(raw or "").strip()
+    if any(c.isalpha() for c in s):
+        return s
+    return normalize_number(s)
+
+
+def _digits(raw: str) -> str:
+    return _NON_DIGIT.sub("", str(raw or ""))
+
+
+def sender_kind(raw: str) -> SenderKind:
+    s = str(raw or "").strip()
+    if not s:
+        return SenderKind.UNKNOWN
+    if any(c.isalpha() for c in s):
+        return SenderKind.ALPHANUMERIC
+    digits = _digits(s)
+    if 4 <= len(digits) <= 6:
+        return SenderKind.SHORT_CODE
+    if len(digits) >= 7:
+        return SenderKind.MOBILE
+    return SenderKind.UNKNOWN
+
+
+def numbers_match(a: str, b: str) -> bool:
+    """True when two numbers refer to the same line (ignoring formatting and a
+    national leading zero). Compares the last 9 digits when both qualify."""
+    da, db = _digits(a), _digits(b)
+    if not da or not db:
+        return False
+    if len(da) >= 9 and len(db) >= 9:
+        return da[-9:] == db[-9:]
+    return da.lstrip("0") == db.lstrip("0")
+
+
+def redact_otp(body: str, codes: Iterable[str]) -> str:
+    """Replace every detected code with ``[REDACTED]`` (the value is never kept)."""
+    out = str(body or "")
+    for code in sorted({c for c in codes if c}, key=len, reverse=True):
+        out = out.replace(code, _REDACTION)
+    return out
+
+
+__all__ = ["normalize_number", "normalize_sender", "sender_kind", "numbers_match", "redact_otp"]

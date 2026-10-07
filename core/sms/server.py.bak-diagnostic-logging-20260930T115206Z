@@ -1,0 +1,71 @@
+"""CT111 HTTP surface for the SMS worker (FastAPI).
+
+A thin transport over :mod:`core.sms.manager`. An external gateway — or the
+Android SMS-forwarder app on the phone with the SIM — POSTs
+``{from,to,body,timestamp}`` to ``/webhook/sms`` with a shared bearer token.
+Only the token holder can deliver; an unauthenticated body is never parsed.
+
+The response is metadata only — never the message body and never a code.
+"""
+
+from __future__ import annotations
+
+import os
+from typing import Optional
+
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse
+
+from core.sms.adapter import WebhookAdapter, WebhookAuthError, WebhookPayloadError
+from core.sms.schema import SmsIngestResult
+
+
+def _bearer(authorization: Optional[str]) -> Optional[str]:
+    if not authorization:
+        return None
+    prefix = "bearer "
+    if authorization.lower().startswith(prefix):
+        return authorization[len(prefix):].strip()
+    return authorization.strip()
+
+
+def create_app(manager_module=None, token: Optional[str] = None,
+               adapter: Optional[WebhookAdapter] = None) -> FastAPI:
+    from core.sms import manager as _manager
+
+    manager = manager_module or _manager
+    if token is None:
+        from core.sms import vault
+
+        token = vault.load_webhook_token() or os.environ.get("KAI_SMS_WEBHOOK_TOKEN")
+    webhook = adapter or WebhookAdapter(token)
+
+    app = FastAPI(title="KAI SMS Worker", version="1.0.0")
+
+    @app.exception_handler(WebhookAuthError)
+    def _401(_req, _exc):  # noqa: ANN001
+        return JSONResponse(status_code=401, content={"detail": "unauthorized"})
+
+    @app.exception_handler(WebhookPayloadError)
+    def _422(_req, exc):  # noqa: ANN001
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    @app.get("/health")
+    def health() -> dict:
+        return {"status": "ok", "worker": manager.health()}
+
+    @app.post("/webhook/sms")
+    def webhook_sms(body: dict, authorization: Optional[str] = Header(default=None),
+                    x_sms_token: Optional[str] = Header(default=None)) -> dict:
+        presented = _bearer(authorization) or x_sms_token
+        sms = manager.ingest_webhook(body, token=presented, adapter=webhook)
+        return SmsIngestResult(
+            ok=True, message_id=sms.message_id, classification=sms.classification.value,
+            otp_present=sms.otp_present, suspicious=sms.suspicious,
+            account_id=sms.account_id, mission_id=sms.mission_id,
+        ).model_dump(mode="json")
+
+    return app
+
+
+__all__ = ["create_app"]

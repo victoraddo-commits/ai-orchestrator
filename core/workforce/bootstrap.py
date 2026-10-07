@@ -161,7 +161,7 @@ def sync_local_models() -> int:
     import json as _json
     import urllib.request
     # Match llm_clients.OLLAMA_BASE_URL — ollama on Proxmox B via LAN (192.168.1.109).
-    host = os.environ.get("OLLAMA_HOST", "http://192.168.1.109:11434")
+    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
     try:
         with urllib.request.urlopen(f"{host}/api/tags", timeout=3) as resp:
             tags = _json.loads(resp.read().decode()).get("models", [])

@@ -80,12 +80,12 @@ def _req_gpu_stt() -> tuple[bool, str]:
     """Higher-quality streaming STT wants GPU; CPU fallback works degraded."""
     try:
         import requests
-        r = requests.get("http://192.168.1.109:8130/health", timeout=3)
+        r = requests.get("http://127.0.0.1:8130/health", timeout=3)
         if r.status_code == 200:
             return True, "voice server up (CPU mode — streaming quality reduced)"
         return False, "voice server down"
     except Exception:
-        return False, "voice server unreachable at 192.168.1.109:8130"
+        return False, "voice server unreachable at 127.0.0.1:8130"
 
 
 # ---------------------------------------------------------------------------

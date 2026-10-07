@@ -1,0 +1,12 @@
+Return-Path: <bounce@proton-security.example>
+Authentication-Results: mx.example.org; spf=fail smtp.mailfrom=proton-security.example; dkim=fail header.d=proton-security.example; dmarc=fail header.from=proton-security.example
+Message-ID: <phish-004@proton-security.example>
+Date: Wed, 30 Sep 2026 08:15:00 +0000
+From: "Proton Mail Security" <no-reply@proton-security.example>
+To: Kai-Enzoai@protonmail.com
+Subject: Verify your email address immediately
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+
+Your account will be suspended. Verify your email now:
+https://account.proton.me/verify?token=steal1

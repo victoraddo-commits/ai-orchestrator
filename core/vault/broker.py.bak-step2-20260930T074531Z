@@ -1,0 +1,170 @@
+"""KAI Unified Vault 2.0 — Secret Broker (§16/§17/§23).
+
+Short-lived capability leases over secrets. Subjects (apps, OpenCode, Claude
+Code, agents) request a lease for a secret path + operations; the broker:
+
+  * enforces a policy (deny-by-default),
+  * issues a time- and use-bounded capability,
+  * returns a **reference/grant**, never the secret VALUE,
+  * audits every issue/lease/deny/revoke,
+  * supports revocation.
+
+Flow (§17): Application → Vault → Policy → (Duo) → short-lived lease →
+operation → expiration. stdlib-only.
+"""
+from __future__ import annotations
+
+import base64
+import fnmatch
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import time
+import uuid
+from dataclasses import dataclass
+
+
+class Denied(Exception):
+    """Raised when policy or capability validation denies a request."""
+
+
+# High-risk paths require a Duo-approved (phone tap) lease before reveal (§10/13).
+HIGH_RISK_PATTERNS = [p.strip() for p in os.environ.get(
+    "VAULT_HIGH_RISK_PATTERNS",
+    "secrets/infrastructure/*,secrets/external/*,secrets/telegram/*").split(",") if p.strip()]
+
+
+def is_high_risk(path: str) -> bool:
+    return any(fnmatch.fnmatch(path, pat) for pat in HIGH_RISK_PATTERNS)
+
+
+@dataclass
+class Capability:
+    id: str
+    subject: str
+    path: str
+    operations: tuple
+    issued_at: float
+    expires_at: float
+    max_uses: int = 1
+    used: int = 0
+    revoked: bool = False
+
+    def active(self, now: float) -> bool:
+        return (not self.revoked and now < self.expires_at and self.used < self.max_uses)
+
+
+class SecretBroker:
+    """Deny-by-default, audited, short-lived secret leasing."""
+
+    def __init__(self, policy: dict | None = None):
+        # policy: {subject: [glob path patterns]}
+        self._policy = policy or {}
+        self._caps: dict = {}
+        self._audit: list = []
+
+    # -- policy --------------------------------------------------------------
+    def _allowed(self, subject: str, path: str) -> bool:
+        for pat in self._policy.get(subject, []):
+            if fnmatch.fnmatch(path, pat):
+                return True
+        return False
+
+    def _log(self, action: str, **kw) -> None:
+        self._audit.append({"ts": time.time(), "action": action, **kw})
+
+    # -- lifecycle -----------------------------------------------------------
+    def issue(self, subject: str, path: str, operations=("reveal",),
+              ttl: int = 300, max_uses: int = 1) -> Capability:
+        if not self._allowed(subject, path):
+            self._log("deny", subject=subject, path=path)
+            raise Denied(f"subject {subject!r} not permitted for {path!r}")
+        cap = Capability(uuid.uuid4().hex[:12], subject, path, tuple(operations),
+                         time.time(), time.time() + max(1, ttl), max(1, max_uses))
+        self._caps[cap.id] = cap
+        self._log("issue", subject=subject, path=path, cap=cap.id, ttl=ttl)
+        return cap
+
+    def lease(self, cap_id: str, operation: str = "reveal") -> dict:
+        cap = self._caps.get(cap_id)
+        now = time.time()
+        if cap is None or not cap.active(now) or operation not in cap.operations:
+            self._log("lease_deny", cap=cap_id, op=operation)
+            raise Denied("no active capability for request")
+        cap.used += 1
+        # Return a REFERENCE — never the secret value (§51 zero leakage).
+        ref = "ref:" + secrets.token_hex(8)
+        self._log("lease", cap=cap_id, op=operation, ref=ref)
+        return {"reference": ref, "path": cap.path, "operation": operation,
+                "expires_at": cap.expires_at}
+
+    def revoke(self, cap_id: str) -> bool:
+        cap = self._caps.get(cap_id)
+        if cap is None:
+            return False
+        cap.revoked = True
+        self._log("revoke", cap=cap_id)
+        return True
+
+    def list(self) -> list:
+        return list(self._caps.values())
+
+    def audit(self, limit: int = 200) -> list:
+        return self._audit[-limit:]
+
+
+# ── Stateless lease tokens (§18/§23) ───────────────────────────────────────
+# The machine plane lives on a different host than the broker, so leases are
+# issued as HMAC-signed, path-scoped, time-bounded tokens the plane verifies
+# with a shared key — no round-trip and no broker service needed on the vault
+# host. The static per-subject bearer tokens keep working (additive).
+
+def _b64e(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _b64d(s: str) -> bytes:
+    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+
+def issue_lease_token(subject: str, path: str, key: str, ttl: int = 300,
+                      max_uses: int = 1, operations=("reveal",), duo: bool = False) -> str:
+    """Return a signed lease token: base64url(payload).base64url(hmac).
+
+    ``duo=True`` marks the lease as human-approved (required for high-risk paths).
+    """
+    payload = {
+        "sub": subject, "path": path, "ops": list(operations),
+        "exp": int(time.time()) + max(1, ttl), "uses": max(1, max_uses),
+        "nonce": secrets.token_hex(8), "duo": 1 if duo else 0,
+    }
+    raw = _b64e(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
+    sig = hmac.new(key.encode(), raw.encode(), hashlib.sha256).digest()
+    return raw + "." + _b64e(sig)
+
+
+def verify_lease_token(token: str, key: str) -> dict:
+    """Verify signature + expiry. Raises Denied on any failure."""
+    if not token or "." not in token:
+        raise Denied("not a lease token")
+    raw, _, sig = token.partition(".")
+    expected = hmac.new(key.encode(), raw.encode(), hashlib.sha256).digest()
+    try:
+        if not hmac.compare_digest(_b64d(sig), expected):
+            raise Denied("lease signature mismatch")
+        payload = json.loads(_b64d(raw))
+    except (ValueError, json.JSONDecodeError) as e:
+        raise Denied(f"invalid lease token: {e}")
+    if int(payload.get("exp", 0)) < time.time():
+        raise Denied("lease expired")
+    return payload
+
+
+def lease_allows(payload: dict, path: str, operation: str = "reveal") -> bool:
+    """True when a verified lease covers this path + operation."""
+    if operation not in (payload.get("ops") or []):
+        return False
+    scope = payload.get("path") or ""
+    return path == scope or fnmatch.fnmatch(path, scope)

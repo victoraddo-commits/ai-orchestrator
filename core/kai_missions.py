@@ -237,6 +237,26 @@ def verify_mission(mission_id: str, approved: bool, note: str = "",
         return m
 
 
+def add_checkpoint(mission_id: str, note: str, evidence: dict | None = None,
+                   kind: str = "note") -> dict:
+    """Append a checkpoint to a mission (additive, non-destructive).
+
+    Used by cross-cutting subsystems (e.g. the email worker) to record verified
+    progress against a mission without forcing a task-state transition.
+    """
+    with _lock:
+        d = _load_all()
+        m = next((x for x in d["missions"] if x["id"] == mission_id), None)
+        if not m:
+            raise KeyError(mission_id)
+        m.setdefault("checkpoints", []).append({
+            "ts": _now(), "kind": kind, "note": note, "evidence": evidence or {},
+        })
+        m["updated_at"] = _now()
+        _save_all(d)
+        return m
+
+
 def _compact(data) -> str:
     s = json.dumps(data, default=str) if not isinstance(data, str) else data
     return s[:400]

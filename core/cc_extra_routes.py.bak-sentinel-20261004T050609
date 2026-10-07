@@ -1,0 +1,2213 @@
+"""Command Center — extra routes missing on older runner api.py builds.
+
+Provides the two endpoints the Telegram control commands need but that the
+runner's api.py lacks (drift): ``/api/network/overview`` and ``/kai/missions``.
+Add-only; included by api.py via the same append-anchor as cc_modules.
+"""
+from __future__ import annotations
+
+import json
+import os
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
+from pydantic import BaseModel
+
+cc_extra_router = APIRouter(tags=["command-center-extra"])
+
+
+def _req_op(request: Request) -> None:
+    """Require an operator: bridge token, a valid CC session, or the identity
+    headers injected by the auth proxy. Used to gate write/trigger endpoints.
+
+    The identity headers are honoured only from a trusted peer
+    (``core.auth.trusted_proxy``) -- an untrusted client cannot forge them."""
+    if request.headers.get("authorization"):
+        return
+    tok = request.headers.get("x-kai-session", "")
+    if tok:
+        from core import authz
+        try:
+            role = authz.resolve_role(tok)
+        except Exception:  # noqa: BLE001
+            role = None
+        if role == "operator":
+            return
+        # Valid session but not an operator → authorization failure (403);
+        # missing/invalid credentials fall through to 401 below.
+        if role is not None:
+            raise HTTPException(status_code=403,
+                                detail="operator capability required")
+    from core.auth.trusted_proxy import proxy_identity
+    if proxy_identity(request, request.headers.get("x-kai-user"),
+                      request.headers.get("x-kai-user-id")):
+        return
+    raise HTTPException(status_code=401, detail="operator session required")
+
+
+def _dispatch_control(command: str, params: dict, *, domain_map: dict | None = None):
+    """Dispatch a mutating control action through the Command Bus (build 23A).
+
+    Returns the handler's data on success. A policy refusal (DENY or
+    REQUIRE_APPROVAL) is surfaced as HTTP 403 — never silently bypassed.
+    Domain errors raised by the handler are mapped back to their original HTTP
+    semantics via ``domain_map``; anything else keeps the legacy
+    ``{"error": ...}`` 200 shape so existing panels keep rendering.
+    """
+    from core.command_bus import get_bus
+    result = get_bus().dispatch(command, params=params, source="cc_web", user="operator")
+    if result.get("status") == "success":
+        return result.get("data")
+    message = result.get("message", "command failed")
+    if result.get("decision") in ("deny", "require_approval"):
+        raise HTTPException(status_code=403, detail=message)
+    err = result.get("error_type")
+    if domain_map and err in domain_map:
+        raise HTTPException(status_code=domain_map[err], detail=message)
+    return {"error": err or "command_failed", "detail": message}
+
+
+_MEM = "/opt/ai-orchestrator/memory"
+
+
+@cc_extra_router.get("/api/network/overview")
+def network_overview():
+    """Minimal live network overview (sites/peers/tunnels) for the /network cmd."""
+    return {
+        "sites": [{"id": "site-b", "name": "Proxmox B", "status": "online"}],
+        "peers": [],
+        "tunnels": [{"name": "cloudflared", "status": "active"},
+                    {"name": "reverse-ssh (Proxmox A)", "status": "unknown"}],
+        "note": "minimal overview (runner lacked /api/network/overview)",
+    }
+
+
+@cc_extra_router.get("/api/network/nics")
+def network_nics(refresh: bool = False, _: None = Depends(_req_op)):
+    """Per-host NIC inventory (link state, speed, MAC, RX/TX, errors) + bridges,
+    VLANs and the physical NICs available for WAN. ``refresh=1`` runs a full
+    discovery cycle and persists it first (operator-gated)."""
+    from core.network_inventory import collect_nic_inventory
+    try:
+        return JSONResponse(content=collect_nic_inventory(refresh=refresh),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"hosts": [], "error": f"{type(e).__name__}: {e}"},
+                            status_code=502)
+
+
+@cc_extra_router.get("/api/network/app-access")
+def network_app_access(_: None = Depends(_req_op)):
+    """Read-only service→network exposure view (multi-WAN policy foundation)."""
+    from core.network_inventory import app_access
+    return JSONResponse(content=app_access(), headers={"Cache-Control": "no-store"})
+
+
+@cc_extra_router.get("/api/infra/usage/history")
+def infra_usage_history(range: str = "1h", _: None = Depends(_req_op)):
+    """Bucketed data-usage time series (``1h`` | ``24h`` | ``7d``).
+
+    Samples the live snapshot on-read (min-interval throttled) then returns
+    per-interface bandwidth + disk series and totals for the CC graphs."""
+    from core import infra_usage_history as hist
+    try:
+        hist.ensure_sampled()
+        data = hist.query_history(range)
+        return JSONResponse(content={"ok": True, **data, "store": hist.stats()},
+                            headers={"Cache-Control": "no-store"})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": f"{type(e).__name__}: {e}",
+                             "points": [], "interfaces": {}, "disks": {}},
+                            status_code=502)
+
+
+@cc_extra_router.get("/api/infra/usage")
+def infra_usage(refresh: bool = False):
+    """Per-host/CT/VM data usage: disk used/total/% and network rx/tx + rates."""
+    from core.infra_usage import collect_usage
+    try:
+        return JSONResponse(content=collect_usage(force=refresh),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(
+            {"error": f"{type(e).__name__}: {e}", "hosts": [], "mounts": [], "totals": {}},
+            status_code=502)
+
+
+@cc_extra_router.get("/api/wg/status")
+def wg_status():
+    """Live WireGuard peer status for the Kai exit node (kaidash on CT103),
+    proxied through the PVE-A/PVE-B socat bridges."""
+    import urllib.request
+    _url = os.environ.get("WG_DASH_URL", "http://192.168.1.110:51880/api")
+    try:
+        with urllib.request.urlopen(_url, timeout=6) as r:
+            return JSONResponse(content=json.load(r), headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"wg dashboard unreachable: {type(e).__name__}: {e}", "ifaces": []},
+                            status_code=502)
+
+
+@cc_extra_router.get("/api/wg/raw")
+def wg_raw():
+    """Raw wg dump text from the exit node (for diagnostics)."""
+    import urllib.request
+    _url = os.environ.get("WG_DASH_URL", "http://192.168.1.110:51880/api")
+    try:
+        with urllib.request.urlopen(_url, timeout=6) as r:
+            j = json.load(r)
+        return JSONResponse({"raw": _wg_dump_text(j)})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
+
+
+def _wg_dump_text(j):
+    lines = []
+    for f in j.get("ifaces", []):
+        lines.append(f"interface {f['iface']} pub={f.get('pub','')} port={f.get('port','')} fwmark={f.get('fwmark','')}")
+        for pe in f.get("peers", []):
+            lines.append(
+                f"  peer {pe['pub']} endpoint={pe.get('endpoint','-')} allowed={pe.get('allowed','')} "
+                f"since={pe.get('since','never')} rx={pe.get('rx',0)} tx={pe.get('tx',0)}")
+    return "\n".join(lines)
+
+
+# ── Kai Directives (proxy to local :8099 upload service) ────────────────────
+# The CC browser doesn't need the directive token: the backend reads the token
+# file (same host) and injects it, gated by the operator's CC session.
+
+_DIRECTIVES_BASE = os.environ.get("DIRECTIVES_BASE", "http://127.0.0.1:8099")
+_DIRECTIVES_TOKEN_FILE = os.environ.get(
+    "KAI_DIRECTIVES_TOKEN_FILE", "/opt/ai-orchestrator/directives/.token")
+
+
+def _directives_token() -> str:
+    try:
+        with open(_DIRECTIVES_TOKEN_FILE) as fh:
+            return fh.read().strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _directives_proxy(path: str, method: str = "GET", body: bytes = b"",
+                      ctype: str = "application/json") -> Response:
+    import urllib.error
+    import urllib.request
+    token = _directives_token()
+    url = _DIRECTIVES_BASE + path
+    req = urllib.request.Request(url, data=body or None, method=method)
+    req.add_header("X-Directive-Token", token)
+    if body:
+        req.add_header("Content-Type", ctype)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            raw = r.read()
+        ctype_out = r.headers.get("Content-Type", "application/json")
+        return Response(content=raw, media_type=ctype_out)
+    except urllib.error.HTTPError as e:
+        # Propagate the upstream status (e.g. 409 verification refusal) so the
+        # CC can show the honest verdict instead of a generic 502.
+        raw = e.read()
+        ctype_out = e.headers.get("Content-Type", "application/json")
+        return Response(content=raw, media_type=ctype_out, status_code=e.code)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"directives service unreachable: {type(e).__name__}: {e}"},
+                            status_code=502)
+
+
+@cc_extra_router.get("/api/directives/list")
+def directives_list():
+    """List uploaded directives (proxies kai-directives :8099)."""
+    return _directives_proxy("/api/directives")
+
+
+@cc_extra_router.post("/api/directives/upload")
+async def directives_upload(request: Request, _: None = Depends(_req_op)):
+    """Upload a directive (raw body; X-Filename header, optional)."""
+    body = await request.body()
+    fn = request.headers.get("x-filename", "pasted-directive.md")
+    import urllib.request
+    token = _directives_token()
+    url = _DIRECTIVES_BASE + "/api/upload"
+    req = urllib.request.Request(url, data=body or None, method="POST")
+    req.add_header("X-Directive-Token", token)
+    req.add_header("X-Filename", fn)
+    req.add_header("Content-Type", "application/octet-stream")
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            out = json.load(r)
+        return JSONResponse(out)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"directives service unreachable: {type(e).__name__}: {e}"},
+                            status_code=502)
+
+
+@cc_extra_router.get("/api/directives/get/{directive_id}")
+def directives_get(directive_id: str):
+    """Fetch a single directive's content."""
+    import urllib.parse
+    return _directives_proxy("/api/directives/" + urllib.parse.quote(directive_id))
+
+
+@cc_extra_router.post("/api/directives/ack/{directive_id}")
+def directives_ack(directive_id: str, _: None = Depends(_req_op)):
+    """Ack a directive (mark as read/followed)."""
+    import urllib.parse
+    return _directives_proxy("/api/ack/" + urllib.parse.quote(directive_id, safe=""), "POST")
+
+
+@cc_extra_router.get("/kai/directives/health")
+def directives_health():
+    """Health of the kai-directives upload service."""
+    try:
+        return _directives_proxy("/health")
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(e)})
+
+
+@cc_extra_router.get("/api/directives/completed")
+def directives_completed():
+    """List directives moved to directives/completed/ (with verdict metadata)."""
+    return _directives_proxy("/api/directives/completed")
+
+
+@cc_extra_router.post("/api/directives/complete/{directive_id}")
+async def directives_complete(directive_id: str, request: Request,
+                              _: None = Depends(_req_op)):
+    """Verify + complete a directive; refusal (409) carries the verdict."""
+    import urllib.parse
+    body = await request.body() or b"{}"
+    return _directives_proxy(
+        "/api/directives/" + urllib.parse.quote(directive_id, safe="") + "/complete",
+        "POST", body, "application/json")
+
+
+@cc_extra_router.get("/api/directives/docs/list")
+def directives_docs_list():
+    """List files under the repo docs/ folder."""
+    return _directives_proxy("/api/directives/docs")
+
+
+@cc_extra_router.get("/api/directives/docs/download/{rel_path:path}")
+def directives_docs_download(rel_path: str):
+    """Download a file from the repo docs/ folder."""
+    import urllib.parse
+    return _directives_proxy(
+        "/api/directives/docs/" + urllib.parse.quote(rel_path, safe="/"))
+
+
+# ── Reports (KAI 2.0 Phase 3) — proxies the directives service reports API ──
+# Same token-gated backend proxy as directives; the CC session gates the UI.
+
+def _reports_quote(report_id: str) -> str:
+    import urllib.parse
+    return urllib.parse.quote(report_id, safe="")
+
+
+@cc_extra_router.get("/api/reports/list")
+def reports_list():
+    """List discoverable markdown reports (docs/, reports/, directives/)."""
+    return _directives_proxy("/api/reports")
+
+
+@cc_extra_router.get("/api/reports/get/{report_id}")
+def reports_get(report_id: str):
+    """Fetch one report with its markdown rendered to sanitized HTML."""
+    return _directives_proxy("/api/reports/" + _reports_quote(report_id))
+
+
+@cc_extra_router.get("/api/reports/download/{report_id}")
+def reports_download(report_id: str):
+    """Download the raw markdown of a report."""
+    return _directives_proxy("/api/reports/" + _reports_quote(report_id) + "/download")
+
+
+# ── Service Directory (proxy to kai-directory :8097, CT114) ─────────────────
+DIRECTORY_BASE = os.environ.get("KAI_DIRECTORY_BASE", "http://192.168.1.114:8097")
+
+
+@cc_extra_router.get("/api/directory/services")
+def directory_services(category: str = "", q: str = ""):
+    """List catalogued services (proxies kai-directory :8097)."""
+    import urllib.parse
+    import urllib.request
+    qs = urllib.parse.urlencode({"category": category, "q": q})
+    try:
+        with urllib.request.urlopen(f"{DIRECTORY_BASE}/services?{qs}", timeout=10) as r:
+            return JSONResponse(json.loads(r.read()))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"directory unreachable: {type(e).__name__}: {e}"}, status_code=502)
+
+
+@cc_extra_router.get("/api/directory/conformance")
+def directory_conformance():
+    """Directory coverage check (proxies kai-directory :8097)."""
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"{DIRECTORY_BASE}/conformance", timeout=20) as r:
+            return JSONResponse(json.loads(r.read()))
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"directory unreachable: {type(e).__name__}: {e}"}, status_code=502)
+
+
+@cc_extra_router.get("/kai/missions")
+def kai_missions():
+    try:
+        with open(os.path.join(_MEM, "missions.json")) as fh:
+            data = json.load(fh)
+        recs = data.get("records", data) if isinstance(data, dict) else data
+        if isinstance(recs, dict):
+            recs = list(recs.values())
+        return {"missions": recs}
+    except Exception as e:  # noqa: BLE001
+        return {"missions": [], "error": type(e).__name__}
+
+
+class _SteerBody(BaseModel):
+    action: str = ""
+    objective: str = ""
+    note: str = ""
+
+
+# Domain errors the Mission Engine raises, mapped back to their HTTP meaning
+# (roadmap 20D): unknown mission 404, forbidden transition 409, malformed 422.
+_MISSION_DOMAIN_STATUS = {"LookupError": 404, "InvalidTransition": 409, "ValueError": 422}
+
+
+@cc_extra_router.post("/kai/missions/{mission_id}/steer")
+def kai_mission_steer(mission_id: str, body: _SteerBody = None,
+                      _: None = Depends(_req_op)):
+    """Pause / resume / redirect a Mission Engine mission (operator-gated)."""
+    return _dispatch_control(
+        "control.mission.steer",
+        {"mission_id": mission_id,
+         "action": (body.action if body else "") or "",
+         "objective": (body.objective if body else "") or None,
+         "note": (body.note if body else "") or None},
+        domain_map=_MISSION_DOMAIN_STATUS)
+
+
+@cc_extra_router.post("/kai/missions/{mission_id}/execute")
+def kai_mission_execute(mission_id: str, body: _SteerBody = None,
+                        _: None = Depends(_req_op)):
+    """Stop a Mission Engine mission (the steering module's /stop target)."""
+    return _dispatch_control(
+        "control.mission.stop",
+        {"mission_id": mission_id,
+         "action": (body.action if body else "") or "stop",
+         "objective": (body.objective if body else "") or None,
+         "note": (body.note if body else "") or None},
+        domain_map=_MISSION_DOMAIN_STATUS)
+
+
+def _diag_part(fn, default):
+    """Run one diagnostics collector; never let a single section 500 the page."""
+    try:
+        return fn()
+    except Exception as e:  # noqa: BLE001
+        if isinstance(default, dict):
+            return {**default, "error": f"{type(e).__name__}: {e}"}
+        return default
+
+
+@cc_extra_router.get("/api/diagnostics")
+def api_diagnostics(_: None = Depends(_req_op)):
+    """Operator-gated diagnostics roll-up.
+
+    Aggregates the observability snapshot, enriched circuit breakers, the
+    unified telemetry snapshot and provider health into the single shape the
+    Command Center diagnostics panel renders. Reuses the existing collectors
+    (observability, telemetry, ``/kai/circuit-breakers``, provider_health) —
+    no new systems and no duplicated breaker-enrichment logic.
+    """
+    from datetime import datetime, timezone
+
+    from core import observability as _observability
+    from core import telemetry as _telemetry
+
+    def _objects():
+        from core.api import _load_audit_source
+        return {
+            "incident": _load_audit_source("incidents.json"),
+            "decision": _load_audit_source("decisions.json"),
+            "approval": _load_audit_source("approval_queue.json"),
+            "remediation": _load_audit_source("remediation_history.json"),
+            "verification": _load_audit_source("verification_history.json"),
+        }
+
+    def _health():
+        from core.api import health as _health_endpoint
+        return _health_endpoint()
+
+    def _breakers():
+        from core.api import circuit_breakers_list_endpoint
+        return circuit_breakers_list_endpoint().get("circuit_breakers", [])
+
+    def _providers():
+        from core.ai import provider_health
+        return provider_health.get_all_quota_snapshots() or {}
+
+    telemetry = _diag_part(_telemetry.snapshot, {})
+    observability = _diag_part(
+        lambda: _observability.snapshot(
+            objects=_diag_part(_objects, {}),
+            health=_diag_part(_health, {}),
+            metrics=telemetry,
+            traces=[],
+        ),
+        {},
+    )
+    return {
+        "schema": "diagnostics/1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "observability": observability,
+        "circuit_breakers": _diag_part(_breakers, []),
+        "telemetry": telemetry,
+        "providers": _diag_part(_providers, {}),
+    }
+
+
+@cc_extra_router.get("/kai/world")
+def kai_world():
+    """Full world-model snapshot for the Command Center World panel.
+
+    Read-only, same access policy as the sibling ``/kai/tools/world``. Entities
+    are returned as a sorted list (the store keys them by id). Reuses
+    ``core.world_model`` — it does not collect or invent state itself.
+    """
+    from core import world_model
+    snap = world_model.get_snapshot()
+    entities = [{"id": eid, **(entity or {})}
+                for eid, entity in (snap.get("entities") or {}).items()]
+    entities.sort(key=lambda e: str(e.get("id", "")))
+    return {
+        "schema_version": snap.get("schema_version", 1),
+        "updated_at": snap.get("updated_at"),
+        "counts": snap.get("counts") or {},
+        "entities": entities,
+        "edges": snap.get("edges") or [],
+        "changes": snap.get("changes_since_previous") or [],
+    }
+
+
+@cc_extra_router.get("/kai/doctor")
+def kai_doctor():
+    """Full system self-diagnostic (§23)."""
+    try:
+        from core.kai_doctor import summary as _summary
+        return _summary()
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__}
+
+
+class _StopBody(BaseModel):
+    reason: str = ""
+
+
+@cc_extra_router.get("/api/emergency/status")
+def emergency_status():
+    try:
+        from core.kai_emergency import stopped_info
+        return stopped_info()
+    except Exception as e:  # noqa: BLE001
+        return {"stopped": False, "error": type(e).__name__}
+
+
+@cc_extra_router.post("/api/emergency/stop")
+def emergency_stop(body: _StopBody = None, _: None = Depends(_req_op)):
+    """Emergency stop — dispatched through the Command Bus (AgentGuard + audit)."""
+    return _dispatch_control("control.emergency.stop",
+                             {"reason": (body.reason if body else "")})
+
+
+@cc_extra_router.post("/api/emergency/resume")
+def emergency_resume(_: None = Depends(_req_op)):
+    """Emergency resume — dispatched through the Command Bus (AgentGuard + audit)."""
+    return _dispatch_control("control.emergency.resume", {})
+
+
+# -- Architecture Guardian (§24) -------------------------------------------
+_KNOWN_SERVICES = [
+    ("ai-orchestrator-api", 8000, "ai-orchestrator-api"),
+    ("kai-scheduler", None, "kai-scheduler"),
+    ("juris-kai", None, "juris-kai"),
+    ("kai-directives", 8099, "kai-directives"),
+    ("kai-auto-approval", None, "kai-auto-approval"),
+]
+
+
+def _svc_active(svc: str) -> bool:
+    try:
+        import subprocess
+        return subprocess.run(["systemctl", "is-active", f"{svc}.service"],
+                              capture_output=True, text=True, timeout=3).stdout.strip() == "active"
+    except Exception:  # noqa: BLE001
+        return False
+
+
+@cc_extra_router.get("/kai/guardian")
+def kai_guardian():
+    try:
+        from core.kai.architecture_guardian import ArchitectureGuardian
+        inv = [{"name": n, "port": p, "enabled": True, "active": _svc_active(s)}
+               for n, p, s in _KNOWN_SERVICES]
+        findings = ArchitectureGuardian().scan(inv)
+        return {"inventory": inv, "findings": [f.to_dict() for f in findings]}
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__}
+
+
+# -- PWA icons (Kai Mobile) ------------------------------------------------
+@cc_extra_router.get("/kai/{icon}")
+def kai_icon(icon: str):
+    if icon not in ("icon-192.png", "icon-512.png"):
+        raise HTTPException(status_code=404, detail="not found")
+    from pathlib import Path
+    p = Path("/opt/ai-orchestrator/core/kai") / icon
+    try:
+        return Response(p.read_bytes(), media_type="image/png")
+    except OSError:
+        raise HTTPException(status_code=404, detail="icon missing")
+
+
+# -- WebAuthn ceremony proxy (27A) — forwards to the vault host ------------
+_VAULT_URL = os.environ.get("VAULT_URL", "https://192.168.1.107:8443")
+
+
+def _vault_token() -> str:
+    for tf in ("/root/.credentials/ai-orchestrator-vault-token", "/etc/kai/vault_mp_token"):
+        try:
+            with open(tf) as fh:
+                return fh.read().strip()
+        except OSError:
+            continue
+    return ""
+
+
+def _vault_ssl_context(url: str):
+    """TLS context for the vault machine plane (CA bundle / scoped internal)."""
+    try:
+        from core.ai.kai_vault_client import ssl_context_for
+        return ssl_context_for(url)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _vault_call(path: str, method: str = "GET", body=None):
+    import json as _json
+    import urllib.error
+    import urllib.request
+    data = _json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(
+        _VAULT_URL + path, data=data, method=method,
+        headers={"Authorization": "Bearer " + _vault_token(), "content-type": "application/json"})
+    try:
+        with urllib.request.urlopen(
+                req, timeout=8, context=_vault_ssl_context(_VAULT_URL)) as r:
+            return _json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            return _json.load(e)
+        except Exception:  # noqa: BLE001
+            return {"error": f"vault HTTP {e.code}"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__}
+
+
+@cc_extra_router.get("/kai/webauthn/challenge")
+def wa_challenge():
+    return _vault_call("/api/v1/webauthn/challenge")
+
+
+@cc_extra_router.get("/kai/webauthn/credentials")
+def wa_credentials():
+    return _vault_call("/api/v1/webauthn/credentials")
+
+
+@cc_extra_router.post("/kai/webauthn/register")
+async def wa_register(request: Request, _: None = Depends(_req_op)):
+    return _vault_call("/api/v1/webauthn/register", "POST", await request.json())
+
+
+@cc_extra_router.post("/kai/webauthn/authenticate")
+async def wa_authenticate(request: Request, _: None = Depends(_req_op)):
+    return _vault_call("/api/v1/webauthn/authenticate", "POST", await request.json())
+
+
+# -- Duo Push approval (27S) -----------------------------------------------
+@cc_extra_router.get("/kai/duo/status")
+def duo_status():
+    from core.vault.duo import config_from_env, is_configured
+    c = config_from_env()
+    return {"configured": is_configured(c), "username": c.get("username", "")}
+
+
+@cc_extra_router.post("/kai/duo/approve")
+def duo_approve(username: str = "", _: None = Depends(_req_op)):
+    from core.vault.duo import DuoClient, config_from_env, is_configured
+    c = config_from_env()
+    if not is_configured(c):
+        return JSONResponse(status_code=503, content={
+            "ok": False, "error": "Duo not configured (set DUO_IKEY/DUO_SKEY/DUO_API_HOST)"})
+    user = username or c.get("username", "")
+    if not user:
+        return {"ok": False, "error": "username required"}
+    try:
+        out = DuoClient(c["ikey"], c["skey"], c["host"]).approve(user, timeout=60)
+        return {"ok": True, **out}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+# -- Hubtel billing config (17P) — vault-first, masked reads ----------------
+_HUBTEL_PATHS = {
+    "client_id": "secrets/external/hubtel-client-id",
+    "client_secret": "secrets/external/hubtel-client-secret",
+    "merchant_number": "secrets/external/hubtel-merchant-number",
+    "callback_url": "secrets/external/hubtel-callback-url",
+}
+_HUBTEL_REQUIRED = ("client_id", "client_secret", "merchant_number")
+
+
+def _mask(name: str, v: str) -> str:
+    if not v:
+        return ""
+    if name == "client_secret":
+        return "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" + v[-2:]
+    if len(v) <= 8:
+        return v[:2] + "\u2026"
+    return v[:4] + "\u2026" + v[-2:]
+
+
+def _operator(request: Request) -> bool:
+    """Legacy boolean operator check. Prefer ``_req_op`` for write gates so a
+    valid-but-insufficient session yields 403 (not 401)."""
+    tok = request.headers.get("x-kai-session", "")
+    if tok:
+        from core import authz
+        try:
+            if authz.resolve_role(tok) == "operator":
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+    return bool(request.headers.get("authorization", ""))
+
+
+@cc_extra_router.get("/hubtel/status")
+def hubtel_status():
+    """Configured = path present in the vault. Never reveals values
+    (Hubtel paths are high-risk and Duo-gated for reveal)."""
+    r = _vault_call("/api/v1/machine/paths")
+    paths = set(r.get("paths") or [])
+    out, masked = {}, {}
+    for name, path in _HUBTEL_PATHS.items():
+        present = path in paths
+        out[name] = present
+        masked[name] = "set (encrypted)" if present else ""
+    return {"backend": "vault", "configured": out, "masked": masked,
+            "ready": all(out.get(k) for k in _HUBTEL_REQUIRED)}
+
+
+class _HubtelBody(BaseModel):
+    client_id: str = ""
+    client_secret: str = ""
+    merchant_number: str = ""
+    callback_url: str = ""
+
+
+@cc_extra_router.put("/hubtel/config")
+def hubtel_config(body: _HubtelBody, request: Request):
+    _req_op(request)
+    provided = {k: v for k, v in body.model_dump().items() if v}
+    if not provided:
+        return {"ok": False, "error": "no fields provided"}
+    saved, errors = [], {}
+    for name, value in provided.items():
+        r = _vault_call("/api/v1/machine/secret/set", "POST",
+                        {"path": _HUBTEL_PATHS[name], "value": value,
+                         "reason": "hubtel config set via Command Center"})
+        if r.get("ok"):
+            saved.append(name)
+        else:
+            errors[name] = r.get("error", "failed")
+    return {"ok": not errors, "saved": saved, "errors": errors}
+
+
+# -- Duo-first SSO (central auth plane) ------------------------------------
+class _DuoLoginBody(BaseModel):
+    username: str = ""
+    scopes: list | None = None
+    passcode: str = ""
+
+
+@cc_extra_router.get("/auth/duo/status")
+def duo_sso_status():
+    from core.auth import duo_sso
+    from core.vault.duo import config_from_env, is_configured
+    return {"enabled": duo_sso.enabled(), "configured": is_configured(),
+            "username": config_from_env().get("username", "")}
+
+
+@cc_extra_router.post("/auth/duo/sms")
+def duo_sso_sms(body: _DuoLoginBody):
+    """Send an SMS passcode (fallback when no Duo Push device is enrolled)."""
+    from core.auth import duo_sso
+    from core.vault.duo import config_from_env
+    user = body.username or config_from_env().get("username", "")
+    if not user:
+        return JSONResponse(status_code=422, content={"ok": False, "error": "username required"})
+    out = duo_sso.send_sms(user)
+    return out if out.get("ok") else JSONResponse(status_code=502, content=out)
+
+
+@cc_extra_router.post("/auth/duo/session")
+def duo_sso_session(body: _DuoLoginBody):
+    """Duo push (or SMS passcode) -> short-lived SSO + Command Center session."""
+    from core.auth import duo_sso
+    from core.vault.duo import config_from_env
+    user = body.username or config_from_env().get("username", "")
+    if not user:
+        return JSONResponse(status_code=422, content={"ok": False, "error": "username required"})
+    scopes = tuple(body.scopes or ["login"])
+    if body.passcode:
+        out = duo_sso.login_with_passcode(user, body.passcode, scopes=scopes)
+    else:
+        out = duo_sso.login(user, scopes=scopes)
+    return out if out.get("ok") else JSONResponse(status_code=401, content=out)
+
+
+@cc_extra_router.get("/auth/duo/verify")
+def duo_sso_verify(token: str = ""):
+    from core.auth import duo_sso
+    claims = duo_sso.verify_session(token)
+    return {"valid": bool(claims), **(claims or {})}
+
+
+class _DuoTokenBody(BaseModel):
+    token: str = ""
+
+
+@cc_extra_router.post("/auth/duo/logout")
+def duo_sso_logout(body: _DuoTokenBody):
+    from core.auth import duo_sso
+    return {"revoked": duo_sso.revoke(body.token)}
+
+
+# -- Telegram Mini App (§31) -----------------------------------------------
+@cc_extra_router.get("/miniapp", response_class=HTMLResponse)
+def miniapp():
+    from pathlib import Path
+    p = Path("/opt/ai-orchestrator/core/kai/miniapp.html")
+    try:
+        return p.read_text()
+    except OSError:
+        return "<h1>Kai</h1><p>miniapp not found</p>"
+
+
+class _WebAppAuthBody(BaseModel):
+    init_data: str = ""
+
+
+@cc_extra_router.post("/api/telegram/webapp-auth")
+def telegram_webapp_auth(body: _WebAppAuthBody):
+    """Validate Telegram WebApp initData (§31) and return the verified identity."""
+    token = os.environ.get("KAI_TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return JSONResponse(status_code=503,
+                            content={"ok": False, "error": "bot token not configured"})
+    from core.telegram.webapp_auth import validate_init_data
+    try:
+        info = validate_init_data(body.init_data, token)
+    except ValueError as e:
+        return JSONResponse(status_code=401, content={"ok": False, "error": str(e)})
+    return {"ok": True, "user": info["user"], "auth_date": info["auth_date"]}
+
+
+def _roadmap_summary() -> dict:
+    try:
+        import json as _json
+        with open("/opt/ai-orchestrator/roadmap.json") as fh:
+            phases = _json.load(fh).get("phases", [])
+        done = sum(1 for p in phases if p.get("status") == "completed")
+        return {"total": len(phases), "completed": done}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _miniapp_data(action: str, q: str = "") -> dict:
+    """Server-side data for the authenticated Mini App. Values-free, read-only."""
+    try:
+        if action == "status":
+            from core import backup_manager as bm
+            bks = bm.list_backups()
+            return {"roadmap": _roadmap_summary(),
+                    "backups": {"count": len(bks),
+                                "latest": (bks[0]["name"] if bks else None)}}
+        if action == "network":
+            return network_overview()
+        if action == "missions":
+            return kai_missions()
+        if action == "doctor":
+            return kai_doctor()
+        if action == "approvals":
+            try:
+                from core.approval import list_pending
+                return {"pending": list_pending()}
+            except Exception as e:  # noqa: BLE001
+                return {"pending": [], "error": type(e).__name__}
+        if action == "backups":
+            from core import backup_manager as bm
+            items = bm.list_backups()
+            return {"count": len(items),
+                    "backups": [{"name": b["name"], "created_at": b.get("created_at"),
+                                 "verified": b.get("verified"), "size_bytes": b.get("size_bytes")}
+                                for b in items]}
+        return {"error": "unknown action"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__}
+
+
+@cc_extra_router.get("/miniapp/api/{action}")
+@cc_extra_router.post("/miniapp/api/{action}")
+async def miniapp_api(action: str, request: Request):
+    """Token-gated Mini App API. Authenticates Telegram initData on EVERY call
+    (X-Telegram-Init-Data header), so only a real Telegram WebApp session can
+    read data. The admin Command Center is NOT exposed."""
+    token = os.environ.get("KAI_TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return JSONResponse(status_code=503, content={"error": "bot token not configured"})
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+    from core.telegram.webapp_auth import validate_init_data
+    try:
+        validate_init_data(init_data, token)
+    except ValueError as e:
+        return JSONResponse(status_code=401, content={"error": str(e)})
+    q = ""
+    if action == "knowledge":
+        try:
+            q = (await request.json()).get("q", "")
+        except Exception:  # noqa: BLE001
+            q = ""
+    return _miniapp_data(action, q)
+
+
+# -- Vault Workspace (§24) — metadata only, never values -------------------
+@cc_extra_router.get("/kai/vault/metadata")
+def vault_metadata():
+    """List machine-plane secret PATHS + status. Never returns values."""
+    import json as _json
+
+    def _health_and_paths():
+        """Query the machine plane: /health (count) + /api/v1/machine/paths."""
+        token = ""
+        for tf in ("/root/.credentials/ai-orchestrator-vault-token",
+                   "/etc/kai/vault_mp_token"):
+            try:
+                with open(tf) as fh:
+                    token = fh.read().strip()
+                if token:
+                    break
+            except OSError:
+                continue
+        base = os.environ.get("VAULT_URL", "https://192.168.1.107:8443")
+        try:
+            import urllib.request
+            context = _vault_ssl_context(base)
+            with urllib.request.urlopen(f"{base}/health", timeout=2, context=context) as r:
+                seeded = _json.load(r).get("seeded_paths", 0)
+            paths = []
+            if token:
+                req = urllib.request.Request(
+                    f"{base}/api/v1/machine/paths",
+                    headers={"Authorization": f"Bearer {token}"})
+                with urllib.request.urlopen(req, timeout=2, context=context) as r:
+                    paths = _json.load(r).get("paths", [])
+            return True, seeded, paths
+        except Exception:  # noqa: BLE001
+            return False, 0, []
+
+    reachable, seeded, paths = _health_and_paths()
+    if not paths:  # fall back to the capability manifest if present
+        try:
+            with open("/opt/ai-orchestrator/config/vault_capabilities.json") as fh:
+                caps = _json.load(fh).get("capabilities", {})
+            paths = list(caps.get("read", [])) + list(caps.get("write", []))
+        except Exception:  # noqa: BLE001
+            paths = []
+
+    secrets = [{"name": p.rsplit("/", 1)[-1].upper(), "path": p,
+                "value": "\u25cf\u25cf\u25cf\u25cf\u25cf\u25cf",
+                "status": "healthy" if reachable else "blocked",
+                "rotation_days": None, "used_by": "Kai"} for p in sorted(paths)]
+    count = len(secrets) or seeded
+    return {"backend": "kai-vault-machine-plane (:8443 TLS-only; plain :8120 closed 2026-10-01 R2)",
+            "reachable": reachable,
+            "status": "healthy" if reachable else "blocked",
+            "count": count, "seeded_paths": seeded, "secrets": secrets,
+            "remediation": "" if reachable else "start kai-vault-machine-plane on CT107"}
+
+
+# -- Self-healing (§22) + resiliency ---------------------------------------
+@cc_extra_router.get("/kai/resiliency")
+def kai_resiliency():
+    try:
+        from core.resiliency import get_resiliency_status
+        return get_resiliency_status()
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__}
+
+
+@cc_extra_router.post("/kai/self-healing")
+def kai_self_healing():
+    try:
+        from core.self_healing import run_self_healing
+        return run_self_healing()
+    except Exception as e:  # noqa: BLE001
+        return {"error": type(e).__name__}
+
+
+# -- Session Center (§32) ---------------------------------------------------
+from core.session_center import SessionCenter  # noqa: E402
+
+_SESSIONS = SessionCenter()
+
+
+class _AttachBody(BaseModel):
+    session_id: str
+    mission_id: str
+
+
+@cc_extra_router.get("/api/sessions")
+def sessions_list():
+    return {"sessions": _SESSIONS.list()}
+
+
+@cc_extra_router.post("/api/sessions")
+def sessions_attach(body: _AttachBody):
+    return _SESSIONS.attach(body.session_id, body.mission_id)
+
+
+@cc_extra_router.post("/api/sessions/{sid}/{action}")
+def sessions_action(sid: str, action: str):
+    fn = getattr(_SESSIONS, action, None)
+    if action not in ("detach", "reconnect", "interrupt", "resume") or fn is None:
+        return {"ok": False, "error": "unknown action"}
+    return {"ok": bool(fn(sid))}
+
+
+# ── Module registry → Command Center tab source of truth (directive 2026-09-19) ──
+
+@cc_extra_router.get("/api/cc/modules")
+def cc_modules():
+    """Registry entries that own a Command Center tab.
+
+    ``status`` is the lifecycle flag (``live|hidden|retired``); ``health`` is the
+    backing endpoint the CC probes at render time before showing the tab.
+    ``retired_tabs`` names tabs whose module no longer exists on the server, so
+    the CC can drop them instead of rendering a dead panel.
+    """
+    from core.module_registry import get_cc_modules, get_retired_cc_tabs
+    return {"modules": get_cc_modules(), "retired_tabs": get_retired_cc_tabs()}
+
+
+# ── Legal Brain (Knowledge Engine) real sub-views ───────────────────────────
+# ``/cc/legal/*`` proxies straight to the legal-brain service, which has no
+# ``/knowledge`` or ``/firewall`` paths. These orchestrator-side views reuse
+# core.legal_brain_client so the CC shows real data instead of a 404 dump.
+
+def _legal_sources() -> list:
+    from core import legal_brain_client as lb
+    reg = lb.sources()
+    if isinstance(reg, dict):
+        return reg.get("sources", []) or []
+    return reg or []
+
+
+@cc_extra_router.get("/api/legal-brain/sources")
+def legal_brain_sources():
+    try:
+        sources = _legal_sources()
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(
+            {"ok": False, "error": f"{type(e).__name__}: {e}", "sources": []},
+            status_code=502)
+    return {"ok": True, "count": len(sources), "sources": sources}
+
+
+@cc_extra_router.get("/api/legal-brain/firewall")
+def legal_brain_firewall():
+    """Source-allowlist / policy status for the Knowledge Engine firewall.
+
+    The firewall is the legal brain's admitted-source registry: only enabled
+    primary/secondary domains may be ingested. This surfaces the policy and the
+    exact allowlist so the CC can show it as a real table.
+    """
+    try:
+        sources = _legal_sources()
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(
+            {"ok": False, "error": f"{type(e).__name__}: {e}",
+             "policy": {}, "sources": []}, status_code=502)
+    enabled = [s for s in sources if s.get("enabled", True)]
+    disabled = [s for s in sources if not s.get("enabled", True)]
+    domains = sorted({s.get("domain") for s in enabled if s.get("domain")})
+    by_access: dict = {}
+    for s in sources:
+        by_access[s.get("access", "unknown")] = by_access.get(s.get("access", "unknown"), 0) + 1
+    return {
+        "ok": True,
+        "policy": {
+            "mode": "allowlist",
+            "enforced": True,
+            "allowed_sources": len(enabled),
+            "blocked_sources": len(disabled),
+            "allowed_domains": len(domains),
+            "by_access": by_access,
+        },
+        "domains": domains,
+        "sources": sources,
+    }
+
+
+# ── Legal Brain panel proxy (Legal Brain 2.0 Phase 8, Task 3) ───────────────
+# The CC browser never talks to the brain (CT100) directly. Every route here
+# proxies ``core.legal_brain_client`` (the token is injected server-side) and is
+# operator-gated — even reads, because a corpus read is still privileged. The
+# upstream base URL/token never reaches the browser.
+
+def _lb_error(exc: Exception) -> JSONResponse:
+    """Map a brain transport error to an honest, non-2xx JSON response.
+
+    An upstream ``HTTPError`` keeps its status (e.g. 404 unknown everyday
+    topic); anything else is a 502 (brain unreachable / bad payload).
+    """
+    import urllib.error
+    if isinstance(exc, urllib.error.HTTPError):
+        code = exc.code if 400 <= exc.code < 600 else 502
+        return JSONResponse({"ok": False, "error": f"brain HTTP {exc.code}"},
+                            status_code=code)
+    return JSONResponse(
+        {"ok": False, "error": f"{type(exc).__name__}: {exc}"},
+        status_code=502)
+
+
+def _lb_ok(data):
+    """Wrap a brain dict payload (or list) in the ``{ok: True, ...}`` shape."""
+    if isinstance(data, dict):
+        return {"ok": True, **data}
+    return {"ok": True, "data": data}
+
+
+@cc_extra_router.get("/api/legal/health")
+def legal_health(stale_days: int | None = None, _: None = Depends(_req_op)):
+    """Corpus knowledge-health snapshot (docs/with-content/temporal/integrity)."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.legal_health(stale_days=stale_days))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/coverage")
+def legal_coverage(threshold: int | None = None, _: None = Depends(_req_op)):
+    """Legal-area coverage + harvest priorities."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.coverage(threshold=threshold))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/gaps")
+def legal_gaps(status: str = "", limit: int = 50,
+               _: None = Depends(_req_op)):
+    """Ask-to-Acquire gap queue (status/domain/ministry/question)."""
+    from core import legal_brain_client as lb
+    try:
+        gaps = lb.list_gaps(status=status or None, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+    return {"ok": True, "count": len(gaps or []), "gaps": gaps or []}
+
+
+class _AcquireBody(BaseModel):
+    per_source: int = 5
+    delay: float = 0.5
+
+
+@cc_extra_router.post("/api/legal/gaps/{gap_id}/acquire")
+def legal_gap_acquire(gap_id: int, body: _AcquireBody | None = None,
+                      _: None = Depends(_req_op)):
+    """Run one bounded acquisition pass for a gap (operator-gated write)."""
+    from core import legal_brain_client as lb
+    per_source = int(body.per_source) if body is not None else 5
+    delay = float(body.delay) if body is not None else 0.5
+    return lb.acquire_gap(gap_id, per_source=per_source, delay=delay)
+
+
+@cc_extra_router.get("/api/legal/everyday")
+def legal_everyday(_: None = Depends(_req_op)):
+    """Everyday-Law topic catalogue."""
+    from core import legal_brain_client as lb
+    try:
+        return {"ok": True, "topics": lb.everyday_topics()}
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/everyday/{topic}")
+def legal_everyday_topic(topic: str, _: None = Depends(_req_op)):
+    """One grounded plain-language explainer (404 for an unknown topic)."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.everyday(topic))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/licences")
+def legal_licences(_: None = Depends(_req_op)):
+    """Source commercial-use licence register (read-only)."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.licences())
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/relations/{doc_id}")
+def legal_relations(doc_id: int, _: None = Depends(_req_op)):
+    """Typed knowledge-graph relations of one document."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.relations(doc_id))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+@cc_extra_router.get("/api/legal/status/{doc_id}")
+def legal_status(doc_id: int, _: None = Depends(_req_op)):
+    """Temporal / current-law status of one document."""
+    from core import legal_brain_client as lb
+    try:
+        return _lb_ok(lb.status(doc_id))
+    except Exception as exc:  # noqa: BLE001
+        return _lb_error(exc)
+
+
+class _AskBody(BaseModel):
+    query: str = ""
+    task_type: str = "juris_research"
+    deep: bool = False
+    fast: bool = False
+    stream: bool = False
+    context: str = ""
+
+
+def _compact_docs(docs: list) -> list:
+    """Bound retrieval docs to the fields the Ask tab renders (never bodies)."""
+    keep = ("id", "title", "citation", "year", "store_mode", "authority_level")
+    return [{k: d.get(k) for k in keep if d.get(k) is not None}
+            for d in (docs or [])]
+
+
+def _legal_generate(prompt: str, task_type: str) -> tuple[str, str]:
+    """Blocking local generation with the same fallback as the Juris test query."""
+    from core.juris_kai import streaming
+    try:
+        return streaming.generate(prompt, task_type=task_type), streaming.DEFAULT_MODEL
+    except Exception:  # noqa: BLE001 - fall back to the generic router
+        from core.ai.ai_router import delegate
+        result = delegate(prompt, task_type=task_type, capability="text_task")
+        return (result.get("response") or ""), (result.get("provider") or "")
+
+
+def _legal_ask_quick(query: str, task_type: str, context: str) -> dict:
+    from core.juris_kai import grounding
+    plan = grounding.build_grounded_plan(query, task_type, context=context,
+                                         asker="cc")
+    if plan["refusal"]:
+        return {
+            "success": True, "mode": "quick", "text": plan["refusal"],
+            "verdict": plan["verdict"], "grounded": False,
+            "refusal": plan["refusal"], "sources": [], "sources_footer": "",
+            "uncertainty": None, "model": "", "latency_ms": 0,
+        }
+    started = time.time()
+    try:
+        text, model = _legal_generate(plan["prompt"], task_type)
+    except Exception as exc:  # noqa: BLE001 - report, never blank the endpoint
+        return {"success": False, "mode": "quick", "error": str(exc)}
+    if text and text.strip():
+        text = plan["banner"] + text + plan["footer"]
+    return {
+        "success": True, "mode": "quick", "text": text,
+        "verdict": plan["verdict"], "grounded": bool(plan.get("groundable")),
+        "refusal": None, "sources": _compact_docs(plan["docs"]),
+        "sources_footer": plan["footer"], "uncertainty": None,
+        "model": model, "latency_ms": round((time.time() - started) * 1000, 1),
+    }
+
+
+def _deep_payload(query: str, result: dict, fast: bool) -> dict:
+    """Shape a ``run_deep`` result for the Ask tab (fast or thorough)."""
+    from core.juris_kai import grounding, reasoning
+    docs = result.get("docs") or []
+    judge = result.get("judge") or {}
+    latency = result.get("latency") or {}
+    text = (reasoning.render_deep(result)
+            + grounding.build_sources_footer(docs))
+    judge_ttft = latency.get("judge_ttft")
+    ttft_ms = None
+    if judge_ttft is not None:
+        pre = latency.get("retrieve", 0.0) + latency.get(
+            "parallel", latency.get("advocate", 0.0))
+        ttft_ms = round((pre + judge_ttft) * 1000, 1)
+    return {
+        "success": True, "mode": "deep_fast" if fast else "deep",
+        "fast": bool(fast), "text": text,
+        "verdict": result.get("verdict") or ("GROUNDED" if docs else "UNGROUNDED"),
+        "grounded": bool(docs), "refusal": None,
+        "sources": _compact_docs(docs),
+        "sources_footer": grounding.build_sources_footer(docs),
+        "uncertainty": {
+            "established": len(judge.get("established") or []),
+            "disputed": len(judge.get("disputed") or []),
+            "unresolved": len(judge.get("unresolved") or []),
+            "confidence": judge.get("confidence"),
+        },
+        "degraded": bool(result.get("degraded")),
+        "latency": latency,
+        "ttft_ms": ttft_ms,
+        "model": "deep",
+    }
+
+
+def _legal_ask_deep(query: str, fast: bool = False) -> dict:
+    from core.juris_kai import reasoning
+    result = reasoning.run_deep(query, fast=fast)
+    return _deep_payload(query, result, fast)
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+
+
+def _legal_ask_deep_stream(query: str, fast: bool = False):
+    """Stream a Deep answer as SSE: status now, judge deltas, then final.
+
+    The heavy passes run on a daemon worker; the judge's first token is relayed
+    as soon as it arrives (low TTFT) and the full, citation-firewalled answer
+    follows in the ``final`` event. The worker is bounded by the caller's
+    per-pass read timeouts, so a stalled model closes the stream rather than
+    hanging the endpoint.
+    """
+    import queue
+    import threading
+
+    from core.juris_kai import reasoning
+
+    events: "queue.Queue" = queue.Queue()
+    box: dict = {}
+
+    def _work():
+        try:
+            def _on_chunk(piece):
+                events.put(("delta", piece))
+
+            box["result"] = reasoning.run_deep(
+                query, fast=fast, stream_judge=True, on_judge_chunk=_on_chunk)
+        except Exception as exc:  # noqa: BLE001 - surface, never hang
+            box["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            events.put(("done", None))
+
+    threading.Thread(target=_work, name="juris-deep-sse", daemon=True).start()
+
+    def _gen():
+        yield _sse("status", {"mode": "deep_fast" if fast else "deep",
+                              "fast": bool(fast), "phase": "reasoning"})
+        while True:
+            kind, payload = events.get()
+            if kind == "done":
+                break
+            yield _sse("delta", {"text": payload})
+        result = box.get("result")
+        if result is None:
+            yield _sse("error", {"error": box.get("error") or "deep failed"})
+            return
+        yield _sse("final", _deep_payload(query, result, fast))
+
+    return StreamingResponse(_gen(), media_type="text/event-stream")
+
+
+@cc_extra_router.post("/api/legal/ask")
+def legal_ask(body: _AskBody, _: None = Depends(_req_op)):
+    """Grounded legal answer for the Ask tab; optional deep (IRAC) reasoning.
+
+    ``deep=true&fast=true`` runs the fast 3-pass variant (retrieval-only
+    opponent, leaner budgets); ``stream=true`` streams the judge pass as SSE.
+    Strict grounding: an unsupported or non-Ghana question is refused without a
+    model call. Operator-gated because it invokes local generation and may
+    record an Ask-to-Acquire gap.
+    """
+    query = (body.query or "").strip()
+    if not query:
+        return {"success": False, "error": "query is required"}
+    if body.deep:
+        if body.stream:
+            return _legal_ask_deep_stream(query, fast=body.fast)
+        return _legal_ask_deep(query, fast=body.fast)
+    return _legal_ask_quick(query, body.task_type or "juris_research",
+                            body.context or "")
+
+
+# ---------------------------------------------------------------------------
+# WireGuard device management — CT102 "device pool" (10.6.0.0/24)
+#
+# The Command Center never reaches CT102 directly: the WG host is not
+# reachable on the LAN from the CC (ARP/TCP to 192.168.1.182 fail from PVE-A,
+# PVE-B and CT111; only `pct exec` works). ``core.wg_peer_service`` drives the
+# CT105 agent over the existing key-based SSH chain
+# (CT111 -> PVE-B -> PVE-A -> `pct exec 105`), so no new listener is exposed on
+# the WireGuard host. Every route below is operator-gated (or accepts the
+# WG_CTL_TOKEN service token) and never returns a server private key. Client
+# private keys are one-time: only the add response carries one.
+# ---------------------------------------------------------------------------
+
+def _req_wg_op(request: Request) -> None:
+    """Operator OR service-token gate for WireGuard management endpoints."""
+    import secrets
+    tok = os.environ.get("WG_CTL_TOKEN")
+    if tok:
+        supplied = request.headers.get("x-kai-wg-token", "")
+        if supplied and secrets.compare_digest(supplied, tok):
+            return
+    _req_op(request)
+
+
+def _wg_svc():
+    from core import wg_peer_service
+    return wg_peer_service
+
+
+def _wg_actor(request: Request) -> str:
+    """Best-effort operator identity for the audit log."""
+    ident = (request.headers.get("x-kai-user")
+             or request.headers.get("x-kai-user-id"))
+    if ident:
+        return ident
+    tok = request.headers.get("x-kai-session", "")
+    if tok:
+        try:
+            from core import authz
+            return authz.resolve_identity(tok) or "operator"
+        except Exception:  # noqa: BLE001
+            return "operator"
+    return "operator"
+
+
+def encode_pubkey_param(pubkey: str) -> str:
+    """Opaque, URL-safe form of a WireGuard pubkey for use in path segments.
+
+    WireGuard pubkeys are standard base64 and may contain ``/`` (which cannot
+    appear in a URL path segment) and ``+``. We therefore URL-safe-base64 the
+    pubkey string itself. Raw pubkeys (no ``+``/``/``) are also accepted by
+    :func:`_decode_pubkey_param`, so both forms keep working.
+    """
+    import base64 as _b64
+    return _b64.urlsafe_b64encode(pubkey.encode("ascii")).decode("ascii").rstrip("=")
+
+
+def _decode_pubkey_param(value: str) -> str:
+    import base64 as _b64
+    import re as _re
+    if value and _re.fullmatch(r"[A-Za-z0-9_-]{20,120}", value):
+        try:
+            pad = "=" * (-len(value) % 4)
+            dec = _b64.urlsafe_b64decode(value + pad).decode("ascii")
+            if _re.fullmatch(r"[A-Za-z0-9+/]{42}[A-Za-z0-9+/=]{2}", dec):
+                return dec
+        except Exception:  # noqa: BLE001
+            pass
+    return value
+
+
+def _wg_err(exc):
+    status = getattr(exc, "status", 502)
+    if not isinstance(status, int) or status < 400:
+        status = 502
+    return JSONResponse({"error": str(exc)}, status_code=status)
+
+
+class WgAddDevice(BaseModel):
+    name: str
+    ip: str | None = None
+    dns: str | None = None
+    allowed_ips: str | None = None
+    endpoint: str | None = None
+    keepalive: int | None = None
+    mtu: int | None = None
+    mode: str | None = None            # "client" (full tunnel) | "site-to-site"
+    peer_lans: list[str] | None = None # remote LAN CIDRs for site-to-site
+
+
+class WgUpdateDevice(BaseModel):
+    name: str | None = None
+    dns: str | None = None
+    allowed_ips: str | None = None
+    keepalive: int | None = None
+    mtu: int | None = None
+
+
+@cc_extra_router.get("/api/wg/peers")
+def wg_devices(_: None = Depends(_req_wg_op)):
+    """List devices in the WireGuard pool (private keys are never included)."""
+    try:
+        return JSONResponse(content=_wg_svc().list_peers(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers")
+def wg_device_add(body: WgAddDevice, _: None = Depends(_req_wg_op)):
+    """Add a device: allocate the next free IP, generate keys, return config+QR."""
+    try:
+        opts = body.model_dump(exclude_none=True)
+        name = opts.pop("name")
+        return JSONResponse(content=_wg_svc().add_peer(name, **opts))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/pause")
+def wg_device_pause(pubkey: str, _: None = Depends(_req_wg_op)):
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().pause_peer(pubkey))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/resume")
+def wg_device_resume(pubkey: str, _: None = Depends(_req_wg_op)):
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().resume_peer(pubkey))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.delete("/api/wg/peers/{pubkey}")
+def wg_device_delete(pubkey: str, _: None = Depends(_req_wg_op)):
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().delete_peer(pubkey))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.patch("/api/wg/peers/{pubkey}")
+def wg_device_update(pubkey: str, body: WgUpdateDevice,
+                     _: None = Depends(_req_wg_op)):
+    """Rename / retune a managed device (managed peers only)."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(
+            content=_wg_svc().rename_peer(
+                pubkey, **body.model_dump(exclude_none=True)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+class WgRenameBody(BaseModel):
+    name: str
+
+
+class WgAllowedBody(BaseModel):
+    ips: str
+
+
+@cc_extra_router.get("/api/wg/server")
+def wg_server(_: None = Depends(_req_wg_op)):
+    """Server status card: up/down, port, pubkey, peer count, throughput."""
+    try:
+        return JSONResponse(content=_wg_svc().server_status(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/usage")
+def wg_usage(peer: str = "", window: str = "24h",
+             _: None = Depends(_req_wg_op)):
+    """Usage series + 24h/7d byte deltas for charts."""
+    try:
+        return JSONResponse(content=_wg_svc().usage(peer, window),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/server_export")
+def wg_server_export(_: None = Depends(_req_wg_op)):
+    """Server config with every private key stripped."""
+    try:
+        return JSONResponse(content=_wg_svc().server_export(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/restart")
+def wg_restart(request: Request, _: None = Depends(_req_wg_op)):
+    """Restart the wg0 interface (wg-quick down/up). Brief."""
+    try:
+        return JSONResponse(content=_wg_svc().restart_server(_wg_actor(request)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/restart")
+def wg_device_restart(pubkey: str, request: Request,
+                      _: None = Depends(_req_wg_op)):
+    """Alias for the server restart (the tunnel, not the single peer)."""
+    try:
+        return JSONResponse(content=_wg_svc().restart_server(_wg_actor(request)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/rename")
+def wg_device_rename(pubkey: str, body: WgRenameBody, request: Request,
+                     _: None = Depends(_req_wg_op)):
+    """Rename a managed peer (audit-logged)."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().rename_peer(
+            pubkey, body.name, actor=_wg_actor(request)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.post("/api/wg/peers/{pubkey}/allowed")
+def wg_device_allowed(pubkey: str, body: WgAllowedBody, request: Request,
+                      _: None = Depends(_req_wg_op)):
+    """Set a managed peer's server-side AllowedIPs (audit-logged)."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().set_allowed(
+            pubkey, body.ips, actor=_wg_actor(request)))
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/peers/{pubkey}/config")
+def wg_device_config(pubkey: str, type: str = "wg",
+                     _: None = Depends(_req_wg_op)):
+    """Export a client config as WireGuard / DD-WRT / OpenWRT."""
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        return JSONResponse(content=_wg_svc().peer_config(pubkey, type),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+@cc_extra_router.get("/api/wg/peers/{pubkey}/qr")
+def wg_device_qr(pubkey: str, type: str = "wg", raw: int = 0,
+                 _: None = Depends(_req_wg_op)):
+    """QR for the client config; JSON base64 by default, ``?raw=1`` for PNG."""
+    import base64 as _b64
+    try:
+        pubkey = _decode_pubkey_param(pubkey)
+        data = _wg_svc().peer_qr(pubkey, type)
+        if raw:
+            return Response(content=_b64.b64decode(data["qr_png_base64"]),
+                            media_type="image/png")
+        return JSONResponse(content=data, headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _wg_err(e)
+
+
+# ---------------------------------------------------------------------------
+# A/B/C full-mesh WireGuard (wg-kai) — Proxmox A <-> B <-> C over the tailnet.
+#
+# Read-only. Live status is read over the existing key-based SSH chain
+# (CT111 -> PVE-B -> {PVE-A, PVE-C}) by ``core.wg_mesh``; the interface private
+# key is never returned and public keys are masked. Operator-gated like the
+# device-pool routes above.
+# ---------------------------------------------------------------------------
+
+@cc_extra_router.get("/api/wg/mesh")
+def wg_mesh_status(_: None = Depends(_req_wg_op)):
+    """Full-mesh snapshot: per-node reachability, peer count and handshakes."""
+    from core import wg_mesh as _mesh
+    try:
+        return JSONResponse(content=_mesh.mesh_status(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"},
+                            status_code=getattr(e, "status", 502))
+
+
+
+# ---------------------------------------------------------------------------
+# Smart Home fabric (Phase E2) — registry view, live refresh, control.
+#
+# KAI is authoritative; Home Assistant is just a provider. Reads are operator
+# gated like the rest of the CC; control dispatches through the Command Bus
+# (AgentGuard + audit) and is verified by read-back. Nothing is fabricated:
+# unknown state stays unknown and stale state is labelled.
+# ---------------------------------------------------------------------------
+
+class ShControlBody(BaseModel):
+    changes: dict
+
+
+def _sh_svc():
+    from core.smarthome import service as _s
+    return _s
+
+
+def _sh_err(exc):
+    from core.smarthome.adapters.base import AdapterError
+    status = getattr(exc, "status", None)
+    if not isinstance(status, int) or status < 400:
+        status = 502 if not isinstance(exc, AdapterError) else 400
+    return JSONResponse({"error": str(exc)}, status_code=status)
+
+
+@cc_extra_router.get("/api/smarthome/devices")
+def sh_devices(_: None = Depends(_req_op)):
+    """All registered smart-home devices, with freshness (never invented state)."""
+    from core.smarthome import registry as _reg
+    try:
+        devices = [_sh_svc().device_view(d.to_dict()) for d in _reg.list_devices()]
+        return JSONResponse(content={"count": len(devices), "devices": devices},
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.get("/api/smarthome/rooms")
+def sh_rooms(_: None = Depends(_req_op)):
+    """Rooms plus devices grouped by room (unassigned devices are explicit)."""
+    from core.smarthome import registry as _reg
+    from core.smarthome import rooms as _rooms
+    try:
+        devices = [_sh_svc().device_view(d.to_dict()) for d in _reg.list_devices()]
+        grouped: dict[str, list] = {}
+        for d in devices:
+            grouped.setdefault(d.get("room") or "__unassigned", []).append(d)
+        return JSONResponse(content={
+            "rooms": [r.to_dict() for r in _rooms.list_rooms()],
+            "by_room": grouped,
+        }, headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/refresh")
+def sh_refresh(provider: str | None = None, _: None = Depends(_req_op)):
+    """Pull live state from the provider(s) into the registry."""
+    try:
+        return JSONResponse(content=_sh_svc().refresh(provider))
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/devices/{device_id}/control")
+def sh_control(device_id: str, body: ShControlBody,
+               _: None = Depends(_req_op)):
+    """Control a device via the Command Bus; verified by read-back."""
+    try:
+        return JSONResponse(content=_sh_svc().control(device_id, body.changes))
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.get("/api/smarthome/providers")
+def sh_providers(_: None = Depends(_req_op)):
+    """Registered providers and whether their adapter is configured/reachable."""
+    from core.smarthome import registry as _reg
+    try:
+        provs: dict[str, dict] = {}
+        for d in _reg.list_devices():
+            p = provs.setdefault(d.provider, {"devices": 0, "reachable": None})
+            p["devices"] += 1
+        for name in list(provs):
+            try:
+                adapter = _sh_svc().get_adapter(name)
+                provs[name]["reachable"] = True
+                probe = getattr(adapter, "health", None)
+                if callable(probe):
+                    try:
+                        h = probe() or {}
+                    except Exception as he:  # noqa: BLE001
+                        h = {"ok": False, "detail": str(he)[:200]}
+                    provs[name]["health"] = h
+                    if not h.get("ok"):
+                        provs[name]["reachable"] = False
+            except Exception:  # noqa: BLE001
+                # No adapter for this provider (e.g. the mixed direct-LAN
+                # bucket). Reachability is unknown, not "unreachable".
+                provs[name]["reachable"] = None
+        return JSONResponse(content={"providers": provs},
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+class ShRoomBody(BaseModel):
+    room: str | None = None
+    name: str | None = None
+    area: str | None = None
+
+
+@cc_extra_router.patch("/api/smarthome/devices/{device_id}")
+def sh_set_room(device_id: str, body: ShRoomBody, _: None = Depends(_req_op)):
+    """Assign/clear a device's room (creating the room record when named)."""
+    from core.smarthome import registry as _reg
+    from core.smarthome import rooms as _rooms
+    from core.smarthome.models import Room
+    try:
+        if body.name:
+            rid = body.room or body.name.strip().lower().replace(" ", "-")
+            _rooms.upsert_room(Room(id=rid, name=body.name, area=body.area))
+        else:
+            rid = body.room
+        rec = _reg.set_room(device_id, rid)
+        if rec is None:
+            return JSONResponse({"error": "unknown device"}, status_code=404)
+        return JSONResponse({"device": device_id, "room": rec.room})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+# ---------------------------------------------------------------------------
+# Smart Home automations (Phase F) — trigger/condition/action, audited.
+# ---------------------------------------------------------------------------
+
+class ShAutomationBody(BaseModel):
+    name: str
+    trigger: dict
+    conditions: list[dict] | None = None
+    actions: list[dict] | None = None
+    enabled: bool | None = True
+
+
+class ShAutomationToggle(BaseModel):
+    enabled: bool
+
+
+def _sh_act(action: dict):
+    """Execute one automation action through the service (Command Bus + audit)."""
+    from core.smarthome import service as _s
+    return _s.control(action.get("device_id"), action.get("changes", {}))
+
+
+def _sh_state_provider(device_id: str):
+    from core.smarthome import registry as _reg
+    rec = _reg.get(device_id) if device_id else None
+    return (rec.state if rec else None)
+
+
+@cc_extra_router.get("/api/smarthome/automations")
+def sh_automations(_: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        return JSONResponse(content={"automations": [x.to_dict() for x in _a.list_automations()]},
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/automations")
+def sh_automation_create(body: ShAutomationBody, _: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        a = _a.Automation.new(body.name, body.trigger, body.conditions,
+                              body.actions, bool(body.enabled))
+        return JSONResponse(content=_a.add(a).to_dict(), status_code=201)
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.delete("/api/smarthome/automations/{automation_id}")
+def sh_automation_delete(automation_id: str, _: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        return JSONResponse(content={"deleted": _a.delete(automation_id)})
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/automations/{automation_id}/enable")
+def sh_automation_enable(automation_id: str, body: ShAutomationToggle,
+                         _: None = Depends(_req_op)):
+    from core.smarthome import automations as _a
+    try:
+        a = _a.set_enabled(automation_id, body.enabled)
+        if a is None:
+            return JSONResponse({"error": "unknown automation"}, status_code=404)
+        return JSONResponse(content=a.to_dict())
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+@cc_extra_router.post("/api/smarthome/automations/{automation_id}/run")
+def sh_automation_run(automation_id: str, _: None = Depends(_req_op)):
+    """Manually run an automation (conditions still enforced)."""
+    from core.smarthome import automations as _a
+    try:
+        a = _a.get(automation_id)
+        if a is None:
+            return JSONResponse({"error": "unknown automation"}, status_code=404)
+        return JSONResponse(content=_a.run(a, _sh_state_provider, _sh_act))
+    except Exception as e:  # noqa: BLE001
+        return _sh_err(e)
+
+
+# ---------------------------------------------------------------------------
+# Sollatek UPS (Proxmox B) — authoritative power telemetry (directive §44-54).
+# Read-only: no power actions are exposed here (those require the sensitive
+# action pipeline + operator approval).
+# ---------------------------------------------------------------------------
+
+@cc_extra_router.get("/api/power/ups/events")
+def power_ups_events(limit: int = 100, _: None = Depends(_req_op)):
+    from core.smarthome import ups_state as _us
+    return JSONResponse(content={"events": _us.read_events(limit)},
+                        headers={"Cache-Control": "no-store"})
+
+
+@cc_extra_router.get("/api/voice/status")
+def voice_status(_: None = Depends(_req_op)):
+    """Voice readiness — probes the real gateway, never assumes."""
+    from core import voice_router as _vr
+    gateway = _vr._probe_local()
+    return JSONResponse(content={
+        "gateway_url": _vr._VOICE_HTTP_URL,
+        "gateway_up": gateway,
+        "stt": gateway, "tts": gateway,
+        "available": gateway,
+        "routes": ["/kai/voice/transcribe", "/kai/voice/speak", "/kai/voice/chat"],
+    }, headers={"Cache-Control": "no-store"})
+
+
+@cc_extra_router.get("/api/power/ups")
+def power_ups(_: None = Depends(_req_op)):
+    """Normalized Sollatek UPS status from NUT on Proxmox B (never fabricated)."""
+    from core.smarthome import ups as _ups
+    try:
+        return JSONResponse(content=_ups.status_with_state(),
+                            headers={"Cache-Control": "no-store"})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"reachable": False,
+                             "states": ["COMMUNICATION LOST"],
+                             "error": f"{type(e).__name__}: {e}"},
+                            status_code=200)
+
+# ---------------------------------------------------------------------------
+# Akush Money module (Phase 7, CT108 akush-core on 192.168.1.118:8095) ──────
+# Operator-gated read proxy + inbox action proxy. Uses the `cc` service token
+# from vault secrets/money/service_tokens (machine plane). NEVER proxies raw
+# SMS bodies or OTP values: responses are shaped below — only ids, statuses,
+# counts, classifications, and masked metadata leave this module.
+# ---------------------------------------------------------------------------
+_AKUSH_BASE = os.environ.get("CC_AKUSH_URL", "https://192.168.1.118:8095")
+_AKUSH_TOKEN_PATH = "secrets/money/service_tokens"
+_AKUSH_URL_BASE = os.environ.get("CC_AKUSH_PWA_URL", "https://192.168.1.118:8095/")
+_akush_tok_cache = {"value": "", "at": 0.0}
+_AKUSH_INBOX_ACTIONS = ("confirm", "reject", "ignore", "match", "investigate")
+
+
+def _akush_service_token() -> str:
+    """`cc` service token from vault. Cached 5 min; the value is never
+    logged and never appears in any response payload."""
+    if _akush_tok_cache["value"] and time.time() - _akush_tok_cache["at"] < 300:
+        return _akush_tok_cache["value"]
+    r = _vault_call("/api/v1/machine/secret", "POST", {
+        "path": _AKUSH_TOKEN_PATH, "operation": "reveal",
+        "reason": "command-center akush money panel service auth",
+    })
+    raw = r.get("value") if isinstance(r, dict) else None
+    if raw:
+        try:
+            tok = (json.loads(raw) or {}).get("cc", "")
+            if tok:
+                _akush_tok_cache["value"] = str(tok)
+                _akush_tok_cache["at"] = time.time()
+        except (ValueError, TypeError):
+            pass
+    return _akush_tok_cache["value"]
+
+
+def _akush_call(path: str, method: str = "GET", body=None, params: dict | None = None) -> dict:
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    url = _AKUSH_BASE.rstrip("/") + path
+    if params:
+        qs = urllib.parse.urlencode({k: v for k, v in params.items() if v not in (None, "")})
+        if qs:
+            url += "?" + qs
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method, headers={
+        "authorization": "Bearer " + _akush_service_token(),
+        "content-type": "application/json",
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10,
+                                    context=_akush_tls_context()) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            detail = json.load(e)
+        except Exception:  # noqa: BLE001
+            detail = {}
+        # pass through upstream auth/validation semantics, degrade the rest
+        if e.code in (400, 401, 403, 404, 409, 422):
+            raise HTTPException(status_code=e.code, detail=detail)
+        raise HTTPException(status_code=502, detail=f"akush-core HTTP {e.code}")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502,
+                            detail=f"akush-core unreachable: {type(e).__name__}")
+
+
+def _akush_tls_context():
+    """TLS context for the pinned LAN host akush-core (CT108, self-signed —
+    documented §49 deviation, docs/akush/SECURITY.md). This host only."""
+    import ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def _akush_health() -> dict:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(_AKUSH_BASE.rstrip("/") + "/health", timeout=5,
+                                    context=_akush_tls_context()) as r:
+            return json.load(r)
+    except Exception as e:  # noqa: BLE001
+        return {"status": "degraded", "error": type(e).__name__}
+
+
+@cc_extra_router.get("/api/money/overview")
+def money_overview(request: Request):
+    """Dashboard cards for the Akush Money CC panel: health, accounts,
+    SMS ingestion, inbox, anomalies, obligations, reconciliation, backup."""
+    _req_op(request)
+    health = _akush_health()
+
+    accounts, inbox, anomalies, sts, sms_status = {}, [], [], {}, {}
+    if isinstance(health, dict) and health.get("status") == "ok":
+        accounts = _akush_call("/api/v1/accounts")
+        try:
+            inbox = _akush_call("/api/v1/financial-inbox", params={"limit": 200}).get("data", [])
+        except HTTPException:
+            inbox = []
+        try:
+            anomalies = _akush_call("/api/v1/anomalies", params={"limit": 50})
+        except HTTPException:
+            anomalies = {}
+        try:
+            sts = _akush_call("/api/v1/safe-to-spend")
+        except HTTPException:
+            sts = {}
+        try:
+            sms_status = _akush_call("/api/v1/sms-ingestion-status")
+        except HTTPException:
+            sms_status = {}
+
+    acct_by_status: dict[str, int] = {}
+    for a in (accounts.get("data") or []):
+        st = a.get("status") or "unknown"
+        acct_by_status[st] = acct_by_status.get(st, 0) + 1
+
+    inbox_counts: dict[str, int] = {}
+    for i in inbox:
+        st = i.get("status") or "unknown"
+        inbox_counts[st] = inbox_counts.get(st, 0) + 1
+
+    # upcoming obligations (7d) from the safe-to-spend itemization (real dues)
+    b = sts.get("breakdown") or {}
+    bills_7d = [x for x in ((b.get("bills_due") or {}).get("items") or [])
+                if str(x.get("date") or "") <= (time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 86400)))]
+    debt_7d = [x for x in ((b.get("debt_due") or {}).get("items") or [])
+               if str(x.get("date") or "") <= (time.strftime("%Y-%m-%d", time.gmtime(time.time() + 7 * 86400)))]
+    obligations_total = sum(float(x.get("amount") or 0) for x in bills_7d + debt_7d)
+
+    # reconciliation health (per-account records; read-only, honest null when none)
+    recon_open = recon_resolved = recon_total = 0
+    recon_pct = None
+    try:
+        for a in (accounts.get("data") or [])[:10]:
+            rec = _akush_call(f"/api/v1/accounts/{a['id']}/reconciliations")
+            for r in (rec.get("data") or rec.get("reconciliations") or []):
+                recon_total += 1
+                if (r.get("status") or "") == "open":
+                    recon_open += 1
+                else:
+                    recon_resolved += 1
+        if recon_total:
+            recon_pct = round(100 * recon_resolved / recon_total)
+    except HTTPException:
+        pass
+
+    # backup info (local kai-backup state, read-only)
+    backup = {"status": "unknown"}
+    try:
+        from core import backup_manager
+        latest = backup_manager.latest()
+        backup = {
+            "status": "ok" if latest else "no backups yet",
+            "latest": {k: latest.get(k) for k in ("name", "created", "size_bytes") if latest and k in latest},
+        }
+    except Exception as e:  # noqa: BLE001
+        backup = {"status": "unknown", "error": type(e).__name__}
+
+    # security events count
+    sec_count = None
+    try:
+        sec = _akush_call("/api/v1/security-events", params={"limit": 100})
+        sec_count = len(sec.get("data") or [])
+    except HTTPException:
+        pass
+
+    sms_status.pop("note", None)
+
+    # bridge health (§70 no-silent-failure): live CT111 bridge state + recent
+    # money.sms.bridge_failed bus events. Metadata only — no SMS bodies, no
+    # fingerprints, no tokens.
+    bridge = {"status": "unknown"}
+    try:
+        from core.money_sms import bridge as money_bridge
+        st = money_bridge.load_state()
+        dead_letter = st.get("dead_letter") or []
+        last_failed_at = st.get("last_failed_at") \
+            or max((d.get("ts") or 0 for d in dead_letter), default=None)
+        last_fwd_at = st.get("last_processed_at")
+        recent_failures = 0
+        try:
+            from core.kai_event_bus import event_bus
+            recent_failures = len(
+                event_bus.recent_events(topic=money_bridge.FAILURE_TOPIC, limit=200))
+        except Exception:
+            recent_failures = None
+        bridge = {
+            "status": "degraded" if dead_letter else "ok",
+            "dead_letter_count": len(dead_letter),
+            "counters": {k: st.get("counters", {}).get(k) for k in
+                         ("forwarded", "duplicates", "failed", "skipped_otp",
+                          "dropped_overflow")},
+            "last_forwarded_age_seconds": (
+                round(time.time() - last_fwd_at) if last_fwd_at else None),
+            "last_failure_age_seconds": (
+                round(time.time() - last_failed_at) if last_failed_at else None),
+            "recent_bridge_failed_events": recent_failures,
+        }
+    except Exception as e:  # noqa: BLE001
+        bridge = {"status": "unknown", "error": type(e).__name__}
+
+    return {
+        "health": health,
+        "pwa_url": _AKUSH_URL_BASE,
+        "accounts": {"count": len(accounts.get("data") or []), "by_status": acct_by_status},
+        "sms_ingestion": sms_status or {"status": "unavailable"},
+        "inbox": {"counts": inbox_counts,
+                  "pending": inbox_counts.get("pending", 0)},
+        "anomalies": {"open": anomalies.get("open", 0) if isinstance(anomalies, dict) else 0},
+        "obligations_7d": {"count": len(bills_7d) + len(debt_7d),
+                           "total": round(obligations_total, 2)},
+        "reconciliation": {"total": recon_total, "open": recon_open,
+                           "resolved": recon_resolved, "health_pct": recon_pct},
+        "backup": backup,
+        "bridge": bridge,
+        "security_events_recent": sec_count,
+    }
+
+
+@cc_extra_router.get("/api/money/accounts")
+def money_accounts(request: Request, status: str | None = None):
+    """Accounts (shaped: id/name/institution/kind/status/opening — no
+    identifiers, no raw notes)."""
+    _req_op(request)
+    r = _akush_call("/api/v1/accounts", params={"status": status})
+    out = []
+    for a in (r.get("data") or []):
+        out.append({
+            "id": a.get("id"), "name": a.get("name"),
+            "institution": a.get("institution"), "kind": a.get("kind"),
+            "status": a.get("status"), "opening_balance": a.get("opening_balance"),
+            "currency": a.get("currency"),
+        })
+    return {"count": len(out), "data": out}
+
+
+@cc_extra_router.get("/api/money/inbox")
+def money_inbox(request: Request, status: str = "pending"):
+    """Financial inbox preview. Metadata only: ids, kinds, suggested actions,
+    confidence, timestamps. SMS bodies and OTP values are NEVER proxied."""
+    _req_op(request)
+    r = _akush_call("/api/v1/financial-inbox", params={"status": status, "limit": 50})
+    out = []
+    for i in (r.get("data") or []):
+        out.append({
+            "id": i.get("id"), "status": i.get("status"),
+            "event_kind": i.get("event_kind"), "suggested_action": i.get("suggested_action"),
+            "confidence": i.get("confidence"), "source": i.get("source"),
+            "created_at": i.get("created_at"),
+        })
+    return {"status_filter": status, "count": len(out), "data": out}
+
+
+class _MoneyInboxActBody(BaseModel):
+    action: str
+    payload: dict | None = None
+    confirmed: bool = False
+
+
+@cc_extra_router.post("/api/money/inbox/{item_id}/act")
+def money_inbox_act(item_id: int, body: _MoneyInboxActBody, request: Request):
+    """Operator-confirmed proxy for POST /financial-inbox/:id/act.
+    Requires `confirmed: true` in the body (the CC panel asks first)."""
+    _req_op(request)
+    if not body.confirmed:
+        raise HTTPException(status_code=400,
+                            detail="confirmation required: repeat with confirmed=true")
+    if body.action not in _AKUSH_INBOX_ACTIONS:
+        raise HTTPException(status_code=400,
+                            detail="action must be one of " + "|".join(_AKUSH_INBOX_ACTIONS))
+    r = _akush_call(f"/api/v1/financial-inbox/{item_id}/act", method="POST",
+                    body={"action": body.action, "payload": body.payload or {}})
+    return {"ok": True, "result": r}
+
+
+@cc_extra_router.get("/api/money/anomalies")
+def money_anomalies(request: Request, status: str | None = "pending"):
+    """Open anomalies (metadata only — payload summaries are whitelisted)."""
+    _req_op(request)
+    r = _akush_call("/api/v1/anomalies", params={"status": status, "limit": 50})
+    out = []
+    for a in (r.get("data") or []):
+        out.append({
+            "id": a.get("id"), "status": a.get("status"),
+            "suggested_action": a.get("suggested_action"),
+            "severity": a.get("severity"), "summary": a.get("summary"),
+            "confidence": a.get("confidence"), "created_at": a.get("created_at"),
+        })
+    return {"open": r.get("open", 0), "count": len(out), "data": out}

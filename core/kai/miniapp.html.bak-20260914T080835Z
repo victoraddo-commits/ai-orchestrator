@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kai</title>
+<style>
+:root{color-scheme:dark}
+body{font-family:-apple-system,system-ui,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:14px}
+h1{font-size:18px;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+button{background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:10px;padding:14px;font-size:15px}
+button:active{background:#21262d}
+pre{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:55vh;overflow:auto;margin-top:12px}
+</style></head>
+<body>
+<h1>Kai Control</h1>
+<div class="grid">
+  <button onclick="go('status')">Status</button>
+  <button onclick="go('network')">Network</button>
+  <button onclick="go('vpn')">VPN</button>
+  <button onclick="go('missions')">Missions</button>
+  <button onclick="go('approvals')">Approvals</button>
+  <button onclick="go('health')">Health</button>
+  <button onclick="go('doctor')">Doctor</button>
+  <button onclick="go('knowledge')">Knowledge</button>
+</div>
+<pre id="out">Tap an action…</pre>
+<script>
+const MAP={status:'/api/command-center/summary',network:'/api/network/overview',vpn:'/api/vpn/status',
+  missions:'/kai/missions',approvals:'/api/approvals/pending',health:'/health',
+  doctor:'/kai/doctor',knowledge:'/knowledge/query'};
+async function go(a){
+  const el=document.getElementById('out'); el.textContent='loading '+a+'…';
+  try{
+    const opts={credentials:'include'};
+    if(a==='knowledge'){opts.method='POST';opts.headers={'content-type':'application/json'};opts.body=JSON.stringify({q:prompt('Knowledge query?')||''});}
+    const r=await fetch(MAP[a],opts);
+    el.textContent=JSON.stringify(await r.json(),null,1);
+  }catch(e){ el.textContent='error: '+e.message; }
+}
+</script>
+</body></html>

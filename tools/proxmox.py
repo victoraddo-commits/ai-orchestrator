@@ -1,9 +1,22 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from dotenv import load_dotenv
+
+_SESSION = requests.Session()
+_SESSION.headers.update({"Connection": "keep-alive"})
+
+def _par_map(fns):
+    """Run {label: fn()} concurrently; return {label: result}. Kai fix 2026-10-06:
+    PVE API calls are TLS-handshake-bound (~250ms each, 5-7 sequential in
+    status/status_b => 1.5-4s). Parallel + keep-alive => ~300-900ms."""
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(fn): label for label, fn in fns.items()}
+        return {futures[fut]: fut.result() for fut in futures}
+
 
 load_dotenv()
 
@@ -29,11 +42,10 @@ def api_request(path, host=None, token_id=None, token_secret=None):
     if not token_id and not token_secret:
         return {"error": "Missing Proxmox API token"}
 
-    # Add :8006 only when host has no explicit port (tunnel case already carries its own port)
-    if ":" not in host:
-        url_host = f"{host}:8006"
-    else:
-        url_host = host
+    # Add :8006 only when host has no explicit port (tunnel case already
+    # carries its own port — e.g. socat 192.168.1.110:8009 -> pve-A:8006;
+    # appending :8006 there produced host:8009:8006 and InvalidURL).
+    url_host = host if ":" in host else f"{host}:8006"
     url = f"https://{url_host}/api2/json{path}"
 
     if token_id and token_secret:
@@ -44,7 +56,7 @@ def api_request(path, host=None, token_id=None, token_secret=None):
     headers = {"Authorization": auth}
 
     try:
-        r = requests.get(url, headers=headers, verify=_get_verify(), timeout=10)
+        r = _SESSION.get(url, headers=headers, verify=_get_verify(), timeout=10)
     except Exception as e:
         # Transport-level failure: DNS, refused connection, TLS, timeout.
         return {"error": "unreachable", "detail": str(e)}
@@ -121,14 +133,16 @@ def get_network(node=None, host=None, token_id=None, token_secret=None):
 
 
 def status():
-    """Default status using env vars (Proxmox A)."""
-    return {
-        "node": get_node_status(),
-        "lxc": get_lxc(),
-        "qemu": get_qemu(),
-        "tasks": get_tasks(),
-        "network": get_network()
-    }
+    """Proxmox A status: socat 8009 forwards to A:8006; token belongs to A."""
+    NODE = "pve-A"
+    kw = {"host": None, "token_id": None, "token_secret": None}
+    return _par_map({
+        "node":    lambda: get_node_status(node=NODE),
+        "lxc":     lambda: get_lxc(node=NODE),
+        "qemu":    lambda: get_qemu(node=NODE),
+        "tasks":   lambda: get_tasks(node=NODE),
+        "network": lambda: get_network(node=NODE),
+    })
 
 
 # A vzdump job that has been running for longer than this is not evidence of
@@ -144,29 +158,34 @@ def status_b():
     """
     token_id = os.getenv("PROXMOX_B_TOKEN_ID", "")
     token_secret = os.getenv("PROXMOX_B_TOKEN_SECRET", os.getenv("PROXMOX_B_TOKEN", ""))
-    # Direct LAN — no SSH tunnel needed
+    # Endpoint: host may already carry its own port (e.g. socat tunnel
+    # 192.168.1.110:8009 -> pve-A:8006); only append PROXMOX_B_PORT when the
+    # host value has no port, otherwise we produced host:8009:8006 (InvalidURL).
     host = os.getenv("PROXMOX_B_HOST", "192.168.1.110")
     port = os.getenv("PROXMOX_B_PORT", "8006")
-    endpoint = f"{host}:{port}"
-    return {
-        "node": get_node_status(host=endpoint, token_id=token_id, token_secret=token_secret),
-        "lxc": get_lxc(host=endpoint, token_id=token_id, token_secret=token_secret),
-        "qemu": get_qemu(host=endpoint, token_id=token_id, token_secret=token_secret),
-        "tasks": get_tasks(host=endpoint, token_id=token_id, token_secret=token_secret),
-        "network": get_network(host=endpoint, token_id=token_id, token_secret=token_secret),
+    endpoint = host if ":" in host else f"{host}:{port}"
+    # Kai fix 2026-10-06: run the 7 PVE API calls concurrently (was sequential
+    # 1.5s+; now ~max(individual) ≈ 300ms).
+    fns = {
+        "node":    lambda: get_node_status(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "lxc":     lambda: get_lxc(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "qemu":    lambda: get_qemu(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "tasks":   lambda: get_tasks(host=endpoint, token_id=token_id, token_secret=token_secret),
+        "network": lambda: get_network(host=endpoint, token_id=token_id, token_secret=token_secret),
         # Backup-specific signals (2026-09-20): the unfiltered recent task
         # window is dominated by push_file and misses vzdump jobs entirely.
         # Query the filtered task list AND the backup storage directly so the
         # health check can prove "backups are running" instead of guessing
         # from a window that scrolls.
-        "backup_tasks": get_tasks(
+        "backup_tasks": lambda: get_tasks(
             host=endpoint, token_id=token_id, token_secret=token_secret,
             limit=VZDUMP_QUERY_LIMIT, typefilter="vzdump",
         ),
-        "backup_content": get_backup_content(
+        "backup_content": lambda: get_backup_content(
             host=endpoint, token_id=token_id, token_secret=token_secret,
         ),
     }
+    return _par_map(fns)
 
 
 if __name__ == "__main__":

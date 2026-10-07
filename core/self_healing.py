@@ -55,7 +55,7 @@ def _detect_stuck_builds():
 
 def _detect_provider_errors():
     """Detect providers with consecutive errors that need circuit-breaker reset."""
-    from core.ai.provider_health import get_all_snapshots
+    from core.ai.provider_health import get_all_quota_snapshots as get_all_snapshots
 
     snapshots = get_all_snapshots() or {}
     if not isinstance(snapshots, dict):

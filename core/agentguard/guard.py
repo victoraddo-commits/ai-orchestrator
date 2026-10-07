@@ -19,6 +19,14 @@ class ActionType(str, Enum):
     FINANCIAL = "financial"
     COMMUNICATION = "communication"
     CREDENTIAL = "credential"
+    ACCOUNT_REGISTER = "account_register"
+    ACCOUNT_RECOVERY = "account_recovery"
+    PROVIDER_DISCOVER = "provider_discover"
+    PROVIDER_AUTOMATION = "provider_automation"
+    EMAIL_RECEIVE = "email_receive"
+    EMAIL_FOLLOW_LINK = "email_follow_link"
+    SMS_RECEIVE = "sms_receive"
+    SMS_OTP_HANDOFF = "sms_otp_handoff"
 
 
 class RiskLevel(str, Enum):
@@ -141,8 +149,33 @@ class AgentGuard:
             return RiskLevel.HIGH
         if action == ActionType.CREDENTIAL:
             return RiskLevel.HIGH
+        # Account ownership / recovery changes are HIGH: they can take over an
+        # account, so they require operator approval.
+        if action == ActionType.ACCOUNT_RECOVERY:
+            return RiskLevel.HIGH
+
+        # Email is untrusted data: inbound receive is a LOW read; following a
+        # (validated) verification link is a governed network action (MEDIUM).
+        if action == ActionType.EMAIL_RECEIVE:
+            return RiskLevel.LOW
+        if action == ActionType.EMAIL_FOLLOW_LINK:
+            return RiskLevel.MEDIUM
+
+        # SMS is untrusted data: inbound receive is a LOW read; handing a
+        # detected OTP to the onboarding flow (in memory) is MEDIUM.
+        if action == ActionType.SMS_RECEIVE:
+            return RiskLevel.LOW
+        if action == ActionType.SMS_OTP_HANDOFF:
+            return RiskLevel.MEDIUM
 
         # MEDIUM risk patterns
+        # Account registration is MEDIUM: an audited, allowed action.
+        if action == ActionType.ACCOUNT_REGISTER:
+            return RiskLevel.MEDIUM
+        # Provider automation (an adapter performing a provider action) is
+        # MEDIUM; the provider policy gate is the binding precondition.
+        if action == ActionType.PROVIDER_AUTOMATION:
+            return RiskLevel.MEDIUM
         if action == ActionType.WRITE and not resource.startswith("/tmp"):
             return RiskLevel.MEDIUM
         if action == ActionType.NETWORK and not (
@@ -157,6 +190,9 @@ class AgentGuard:
         if action == ActionType.WRITE and resource.startswith("/tmp"):
             return RiskLevel.LOW
         if action == ActionType.READ and not "secret" in resource:
+            return RiskLevel.LOW
+        # Provider discovery is a read-only catalog lookup.
+        if action == ActionType.PROVIDER_DISCOVER:
             return RiskLevel.LOW
 
         # Default: SAFE

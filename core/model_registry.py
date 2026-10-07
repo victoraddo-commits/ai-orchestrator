@@ -27,11 +27,14 @@ LOCAL_MODELS = {
     "kai_deep": "qwen3-coder:kai",
     "kai_small": "qwen2.5:1.5b",
     "local": "qwen3-coder:kai",
+    # 2026-10-05: local vision-language model (Qwen3-VL-8B) via the VM104 A4 GPU proxy.
+    # Single P40: using kai_vision swaps the brain out on demand (proxy auto-restores).
+    "kai_vision": "M3 (Qwen3-VL-8B-Aggressive)",
     "llama_coder_cpu": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
     "koboldcpp_cpu": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
     "koboldcpp_cpu_a": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
     "koboldcpp_cpu_b": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
-    "qwen": "qwen2.5:7b",
+    "qwen": "qwen3-coder:kai",
 }
 
 # Declared model-level capabilities (beyond the transport-level capabilities
@@ -40,7 +43,9 @@ MODEL_CAPABILITIES = {
     "qwen3-coder:kai": ["coding", "reasoning", "tool_use", "long_context", "architecture"],
     "qwen2.5:1.5b": ["fast", "lookup", "grounded"],
     "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf": ["coding", "fast", "cpu"],
-    "qwen2.5:7b": ["classification", "reasoning", "fast"],
+    "qwen3-coder:kai": ["classification", "reasoning", "fast"],
+    "M3 (Qwen3-VL-8B-Aggressive)": ["vision", "ocr", "image_description",
+        "document_extraction", "gui_parsing", "basic_coding"],
 }
 
 _ENDPOINTS = {
@@ -49,6 +54,7 @@ _ENDPOINTS = {
     "kai_deep": "http://localhost:11434",
     "kai_small": "http://localhost:11434",
     "local": "http://localhost:11434",
+    "kai_vision": "http://192.168.1.241:5010",
     "llama_coder_cpu": "http://192.168.1.242:5001",
     "koboldcpp_cpu": "http://192.168.1.242:5001",
     "koboldcpp_cpu_a": "http://192.168.1.242:5001",
@@ -79,7 +85,7 @@ def node_for(name: str) -> str:
     ep = _ENDPOINTS.get(name) or ""
     if "192.168.1.242" in ep or ":5001" in ep or ":5002" in ep:
         return "vm112-cpu"
-    if "11434" in ep or "localhost" in ep or "127.0.0.1" in ep:
+    if "11434" in ep or "localhost" in ep or "127.0.0.1" in ep or ":5010" in ep:
         return "vm104-gpu"
     return "unknown"
 

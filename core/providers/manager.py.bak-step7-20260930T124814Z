@@ -1,0 +1,326 @@
+"""Provider Registry + policy-gate facade.
+
+Register/get/list providers, resolve a provider by name or URL, bind adapters,
+record human-confirmed policy overrides, and — the blocking precondition —
+authorize provider actions through the ToS/legality gate.
+
+Every mutation is published on the real event bus and written to the HMAC
+audit log. Persistence of overrides reuses the step-1 memory primitive.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Optional, Union
+
+from core import audit_logger, kai_event_bus
+
+from core.providers import gate, store
+from core.providers.adapter import ProviderAdapter
+from core.providers.schema import (
+    AutomationPolicy,
+    GateDecision,
+    ProviderDescriptor,
+    now_iso,
+)
+from core.providers.store import (  # re-exported for callers
+    DuplicateAdapter,
+    DuplicateProvider,
+    ProviderNotFound,
+)
+
+SOURCE = "provider_registry"
+
+_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://")
+
+#: Relative restrictiveness — a *decrease* is a loosening and needs approval.
+_RESTRICTIVENESS = {
+    AutomationPolicy.ALLOWED: 0,
+    AutomationPolicy.UNKNOWN: 1,
+    AutomationPolicy.PROHIBITED: 2,
+}
+
+
+class AdapterNotFound(KeyError):
+    def __init__(self, provider_id: str):
+        super().__init__(f"no adapter registered for provider: {provider_id}")
+        self.provider_id = provider_id
+
+
+class PolicyOverridePending(RuntimeError):
+    """Raised when a loosening override must be operator-approved first.
+
+    A *tightening* override (or one already approved) applies immediately; a
+    *loosening* one is routed through the platform approval queue and only
+    takes effect once the operator approves it and the caller retries with the
+    returned ``approval_id``.
+    """
+
+    def __init__(self, approval_id: str, provider_id: str, policy: str):
+        super().__init__(
+            f"policy override for {provider_id!r} -> {policy} requires approval "
+            f"({approval_id})")
+        self.approval_id = approval_id
+        self.provider_id = provider_id
+        self.policy = policy
+
+
+def _approval_is_approved(approval_id: str) -> bool:
+    try:
+        from core import approval
+
+        for request in approval.load_requests():
+            if request.get("id") == approval_id:
+                return request.get("status") in ("approved", "executed")
+    except Exception:  # noqa: BLE001 - the approval store must never break the gate
+        return False
+    return False
+
+
+def _request_override_approval(provider_id: str, policy: str,
+                               policy_source: str, reason: Optional[str]) -> str:
+    from core import approval
+
+    request = approval.create_request(
+        action=f"provider.policy.override:{provider_id}",
+        service=f"provider:{provider_id}",
+        reason=(reason or f"override {provider_id} automation policy to {policy} "
+                          f"(source: {policy_source})"),
+    )
+    if isinstance(request, dict):
+        return request["id"]
+    return getattr(request, "id")
+
+
+def _as_descriptor(payload: Union[ProviderDescriptor, dict]) -> ProviderDescriptor:
+    return payload if isinstance(payload, ProviderDescriptor) else ProviderDescriptor(**payload)
+
+
+def _audit(event_type: str, provider_id: str, method: str, details: Optional[dict] = None) -> None:
+    audit_logger.log_audit_event(
+        event_type=event_type,
+        operator=SOURCE,
+        endpoint=f"provider/{provider_id}",
+        method=method,
+        status_code=200,
+        details=details or {},
+    )
+
+
+def _publish(topic: str, provider_id: str, **extra) -> None:
+    payload = {"provider_id": provider_id}
+    payload.update(extra)
+    kai_event_bus.publish(topic, payload, source=SOURCE)
+
+
+# -- registry CRUD -------------------------------------------------------------
+
+
+def register_provider(payload: Union[ProviderDescriptor, dict]) -> ProviderDescriptor:
+    descriptor = _as_descriptor(payload)
+    store.register_descriptor(descriptor)
+    _publish(
+        "provider.registered",
+        descriptor.provider_id,
+        display_name=descriptor.display_name,
+        automation_policy=descriptor.automation_policy.value,
+    )
+    _audit(
+        "provider.register", descriptor.provider_id, "CREATE",
+        {"display_name": descriptor.display_name,
+         "automation_policy": descriptor.automation_policy.value},
+    )
+    return descriptor
+
+
+def get_provider(provider_id: str) -> ProviderDescriptor:
+    descriptor = store.effective(provider_id)
+    if descriptor is None:
+        raise ProviderNotFound(provider_id)
+    return descriptor
+
+
+def list_providers() -> list[ProviderDescriptor]:
+    return [store.effective(d.provider_id) for d in store.list_base()]
+
+
+# -- discovery -----------------------------------------------------------------
+
+
+def _normalize(token: str) -> str:
+    value = token.strip().lower()
+    value = _SCHEME_RE.sub("", value)
+    value = value.split("@")[-1]
+    value = value.split("/")[0]
+    value = value.split(":")[0]
+    if value.startswith("www."):
+        value = value[4:]
+    return value
+
+
+def discover(name_or_url: str) -> ProviderDescriptor:
+    """Resolve a name, id or URL to a provider descriptor.
+
+    Matching is exact on normalized provider id, official domain, or display
+    name (case-insensitive). Raises ``ProviderNotFound`` when unresolved.
+    """
+    needle = _normalize(name_or_url)
+    for descriptor in store.list_base():
+        candidates = {
+            descriptor.provider_id,
+            (descriptor.official_domain or "").lower(),
+            descriptor.display_name.lower(),
+        }
+        if needle in candidates:
+            resolved = store.effective(descriptor.provider_id)
+            _publish("provider.discovered", resolved.provider_id, query=name_or_url)
+            _audit(
+                "provider.discover", resolved.provider_id, "READ",
+                {"query": name_or_url},
+            )
+            return resolved
+    raise ProviderNotFound(name_or_url)
+
+
+# -- adapters ------------------------------------------------------------------
+
+
+def register_adapter(adapter: ProviderAdapter) -> ProviderAdapter:
+    store.register_adapter(adapter)
+    _audit(
+        "provider.adapter.register", adapter.descriptor.provider_id, "CREATE",
+        {"display_name": adapter.descriptor.display_name},
+    )
+    return adapter
+
+
+def get_adapter(provider_id: str) -> ProviderAdapter:
+    adapter = store.get_adapter(provider_id)
+    if adapter is None:
+        raise AdapterNotFound(provider_id)
+    return adapter
+
+
+def list_adapters() -> list[ProviderAdapter]:
+    return store.list_adapters()
+
+
+# -- policy overrides ----------------------------------------------------------
+
+
+def set_policy_override(
+    provider_id: str,
+    policy: Union[AutomationPolicy, str],
+    policy_source: str,
+    reason: Optional[str] = None,
+    *,
+    approval_id: Optional[str] = None,
+) -> ProviderDescriptor:
+    """Record a human-confirmed policy decision for *provider_id* (audited).
+
+    This is the only runtime path that can change a provider's effective
+    automation policy. ``policy_source`` is required so provenance is kept.
+
+    A **tightening** override (e.g. ALLOWED → PROHIBITED) applies immediately.
+    A **loosening** override (e.g. PROHIBITED → ALLOWED) is routed through the
+    AgentGuard/approval queue: it raises :class:`PolicyOverridePending` carrying
+    the approval id and does NOT take effect until re-called with that
+    ``approval_id`` after the operator approved it.
+    """
+    try:
+        target = AutomationPolicy(policy)
+    except ValueError:
+        raise ValueError(f"invalid automation policy: {policy!r}")
+    if store.get_base(provider_id) is None:
+        raise ProviderNotFound(provider_id)
+
+    current = store.effective(provider_id).automation_policy
+    if _RESTRICTIVENESS[target] < _RESTRICTIVENESS[current]:
+        if not (approval_id and _approval_is_approved(approval_id)):
+            pending_id = _request_override_approval(
+                provider_id, target.value, policy_source, reason)
+            _publish(
+                "provider.policy.override.pending",
+                provider_id,
+                automation_policy=target.value,
+                approval_id=pending_id,
+            )
+            _audit(
+                "provider.policy.override.pending", provider_id, "CREATE",
+                {"automation_policy": target.value, "approval_id": pending_id,
+                 "policy_source": policy_source},
+            )
+            raise PolicyOverridePending(pending_id, provider_id, target.value)
+
+    record = {
+        "provider_id": provider_id,
+        "automation_policy": target.value,
+        "policy_source": policy_source,
+        "reason": reason,
+        "approval_id": approval_id,
+        "updated_at": now_iso(),
+    }
+
+    def _mutate(records: list[dict]) -> list[dict]:
+        records.append(record)
+        return records
+
+    store.update_overrides(_mutate)
+    _publish(
+        "provider.policy.override",
+        provider_id,
+        automation_policy=target.value,
+        policy_source=policy_source,
+    )
+    _audit(
+        "provider.policy.override", provider_id, "UPDATE",
+        {"automation_policy": target.value, "policy_source": policy_source,
+         "reason": reason, "approval_id": approval_id},
+    )
+    return get_provider(provider_id)
+
+
+# -- gate facade (the blocking precondition) -----------------------------------
+
+
+def authorize_provider_action(provider_id: str) -> GateDecision:
+    """Return the gate decision if automation is allowed, else raise."""
+    return gate.ensure_automation_allowed(provider_id)
+
+
+def get_ready_adapter(provider_id: str) -> ProviderAdapter:
+    """Return the adapter for an action — ONLY after the policy gate passes.
+
+    The gate is called first; a UNKNOWN/PROHIBITED provider raises before the
+    adapter is ever handed back, so no provider action can bypass the gate.
+    """
+    gate.ensure_automation_allowed(provider_id)
+    return get_adapter(provider_id)
+
+
+def reset_registry() -> None:
+    """Re-seed built-ins, clear adapters, then re-register shipped examples."""
+    store.reset()
+    from core.providers import examples
+
+    examples.register_examples()
+
+
+__all__ = [
+    "ProviderNotFound",
+    "DuplicateProvider",
+    "DuplicateAdapter",
+    "AdapterNotFound",
+    "PolicyOverridePending",
+    "register_provider",
+    "get_provider",
+    "list_providers",
+    "discover",
+    "register_adapter",
+    "get_adapter",
+    "list_adapters",
+    "set_policy_override",
+    "authorize_provider_action",
+    "get_ready_adapter",
+    "reset_registry",
+]
